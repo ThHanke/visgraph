@@ -2,95 +2,112 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* Ontology Painter Design System - Beautiful pastel colors with excellent contrast */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Core Background */
+    --background: 210 20% 98%;
+    --foreground: 215 25% 27%;
 
+    /* Surface Colors */
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-
+    --card-foreground: 215 25% 27%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 215 25% 27%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* Brand Colors - Soft Lavender */
+    --primary: 250 55% 70%;
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 250 55% 65%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Secondary - Soft Mint */
+    --secondary: 160 40% 85%;
+    --secondary-foreground: 160 30% 25%;
+    --secondary-hover: 160 40% 80%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    /* Accent - Warm Peach */
+    --accent: 25 85% 85%;
+    --accent-foreground: 25 40% 25%;
+    --accent-hover: 25 85% 80%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    /* Muted */
+    --muted: 210 20% 95%;
+    --muted-foreground: 215 15% 50%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    /* Destructive - Soft Coral */
+    --destructive: 350 70% 75%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    /* Borders and Inputs */
+    --border: 210 15% 88%;
+    --input: 210 15% 92%;
+    --ring: 250 55% 70%;
+    --radius: 0.75rem;
 
-    --radius: 0.5rem;
+    /* Canvas Colors - 20+ Pastel Namespace Colors */
+    --ns-lavender: 250 55% 75%;
+    --ns-mint: 160 40% 75%;
+    --ns-peach: 25 85% 80%;
+    --ns-sky: 200 70% 80%;
+    --ns-rose: 330 60% 80%;
+    --ns-sage: 120 30% 75%;
+    --ns-cream: 45 60% 85%;
+    --ns-lilac: 280 45% 80%;
+    --ns-seafoam: 180 35% 75%;
+    --ns-blush: 15 70% 85%;
+    --ns-periwinkle: 220 60% 80%;
+    --ns-coral: 10 75% 80%;
+    --ns-eucalyptus: 140 25% 75%;
+    --ns-champagne: 50 45% 85%;
+    --ns-orchid: 290 50% 80%;
+    --ns-aqua: 190 45% 80%;
+    --ns-apricot: 30 80% 82%;
+    --ns-mauve: 270 35% 80%;
+    --ns-mint-cream: 170 30% 85%;
+    --ns-powder: 240 40% 85%;
+    --ns-honey: 40 70% 85%;
+    --ns-thistle: 260 40% 82%;
 
-    --sidebar-background: 0 0% 98%;
+    /* Canvas Specific */
+    --canvas-bg: 210 25% 97%;
+    --canvas-grid: 210 15% 90%;
+    --node-shadow: 0 4px 20px hsla(215, 25%, 27%, 0.1);
+    --edge-default: 215 20% 60%;
+    --edge-selected: 250 55% 60%;
+    
+    /* Glassmorphism Effects */
+    --glass-bg: hsla(0, 0%, 100%, 0.8);
+    --glass-border: hsla(210, 15%, 88%, 0.6);
+    --glass-shadow: 0 8px 32px hsla(215, 25%, 27%, 0.08);
 
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Animation Variables */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-spring: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --background: 215 30% 8%;
+    --foreground: 210 20% 95%;
+    --card: 215 25% 12%;
+    --card-foreground: 210 20% 95%;
+    --popover: 215 25% 12%;
+    --popover-foreground: 210 20% 95%;
+    --primary: 250 55% 65%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 160 25% 20%;
+    --secondary-foreground: 160 40% 85%;
+    --muted: 215 25% 15%;
+    --muted-foreground: 215 15% 65%;
+    --accent: 25 60% 25%;
+    --accent-foreground: 25 85% 85%;
+    --destructive: 350 70% 65%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 215 20% 20%;
+    --input: 215 20% 18%;
+    --ring: 250 55% 65%;
+    --canvas-bg: 215 30% 10%;
+    --canvas-grid: 215 20% 18%;
   }
 }
 
@@ -101,5 +118,104 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
+}
+
+/* Knowledge Graph Canvas Styles */
+.knowledge-graph-canvas {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.knowledge-graph-canvas .react-flow__node {
+  font-family: inherit;
+}
+
+.knowledge-graph-canvas .react-flow__edge {
+  stroke-width: 2px;
+  transition: var(--transition-smooth);
+}
+
+.knowledge-graph-canvas .react-flow__edge.selected {
+  stroke-width: 3px;
+}
+
+.knowledge-graph-canvas .react-flow__edge-path {
+  stroke: hsl(var(--muted-foreground));
+  transition: var(--transition-smooth);
+}
+
+.knowledge-graph-canvas .react-flow__edge.selected .react-flow__edge-path {
+  stroke: hsl(var(--primary));
+}
+
+.knowledge-graph-canvas .react-flow__controls {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(20px);
+  border-radius: calc(var(--radius) + 4px);
+}
+
+.knowledge-graph-canvas .react-flow__minimap {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(20px);
+  border-radius: calc(var(--radius) + 4px);
+}
+
+.knowledge-graph-canvas .react-flow__handle {
+  background: hsl(var(--primary));
+  border: 2px solid hsl(var(--primary-foreground));
+  width: 12px;
+  height: 12px;
+  transition: var(--transition-smooth);
+}
+
+.knowledge-graph-canvas .react-flow__handle:hover {
+  background: hsl(var(--primary-hover));
+  transform: scale(1.2);
+}
+
+/* Glassmorphism for UI elements */
+.shadow-glass {
+  box-shadow: var(--glass-shadow);
+}
+
+/* Node animations */
+@keyframes nodeAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.react-flow__node {
+  animation: nodeAppear 0.3s ease-out;
+}
+
+/* Custom scrollbar for popovers */
+.scroll-area {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted)) transparent;
+}
+
+.scroll-area::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-area::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted));
+  border-radius: 3px;
+}
+
+.scroll-area::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
 }
