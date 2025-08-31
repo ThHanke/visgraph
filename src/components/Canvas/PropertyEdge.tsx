@@ -22,7 +22,9 @@ export const PropertyEdge = memo(({
   sourcePosition,
   targetPosition,
   selected,
-  data
+  data,
+  markerEnd,
+  style
 }: EdgeProps) => {
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
@@ -31,6 +33,7 @@ export const PropertyEdge = memo(({
     targetX,
     targetY,
     targetPosition,
+    curvature: 0.25,
   });
 
   const namespaceColors: Record<string, string> = {
@@ -45,13 +48,31 @@ export const PropertyEdge = memo(({
 
   return (
     <>
+      <defs>
+        <marker
+          id={`arrow-${id}`}
+          markerWidth="12"
+          markerHeight="12"
+          refX="8"
+          refY="3"
+          orient="auto"
+          markerUnits="strokeWidth"
+        >
+          <path
+            d="M0,0 L0,6 L9,3 z"
+            fill={selected ? 'hsl(var(--primary))' : 'hsl(var(--edge-default))'}
+          />
+        </marker>
+      </defs>
       <BaseEdge 
         path={edgePath} 
         style={{
           stroke: selected ? 'hsl(var(--primary))' : 'hsl(var(--edge-default))',
           strokeWidth: selected ? 3 : 2,
+          strokeDasharray: 'none',
+          ...style
         }}
-        markerEnd="url(#react-flow__arrowclosed)"
+        markerEnd={`url(#arrow-${id})`}
       />
       <EdgeLabelRenderer>
         <div
@@ -62,7 +83,7 @@ export const PropertyEdge = memo(({
         >
           <Badge 
             variant="secondary" 
-            className={`text-xs px-2 py-1 shadow-md backdrop-blur-sm ${badgeColor}`}
+            className={`text-xs px-2 py-1 shadow-md backdrop-blur-sm ${badgeColor} border`}
           >
             {(data as any)?.label || (data as any)?.propertyType || 'property'}
           </Badge>

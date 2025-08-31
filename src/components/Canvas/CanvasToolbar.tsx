@@ -12,6 +12,12 @@ import {
   DialogTrigger,
 } from '../ui/dialog';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -33,9 +39,10 @@ interface CanvasToolbarProps {
   onAddNode: (classType: string, namespace: string) => void;
   onToggleLegend: () => void;
   showLegend: boolean;
+  onExport: (format: 'turtle' | 'owl-xml' | 'json-ld') => void;
 }
 
-export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend }: CanvasToolbarProps) => {
+export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport }: CanvasToolbarProps) => {
   const [isAddNodeOpen, setIsAddNodeOpen] = useState(false);
   const [isLoadOntologyOpen, setIsLoadOntologyOpen] = useState(false);
   const [ontologyUrl, setOntologyUrl] = useState('');
@@ -210,10 +217,25 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend }: CanvasT
       </Button>
 
       {/* Export Options */}
-      <Button variant="outline" size="sm" className="shadow-glass backdrop-blur-sm">
-        <Download className="h-4 w-4 mr-2" />
-        Export
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="shadow-glass backdrop-blur-sm">
+            <Download className="h-4 w-4 mr-2" />
+            Export
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem onClick={() => onExport('turtle')}>
+            Turtle (.ttl)
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onExport('owl-xml')}>
+            OWL/XML (.owl)
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onExport('json-ld')}>
+            JSON-LD (.jsonld)
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {/* Graph Stats */}
       <div className="flex items-center gap-2 px-3 py-1.5 bg-card/80 backdrop-blur-sm border border-border rounded-md shadow-glass">

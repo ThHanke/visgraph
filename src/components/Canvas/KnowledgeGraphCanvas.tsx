@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import {
   ReactFlow,
   MiniMap,
@@ -18,7 +18,12 @@ import { OntologyNode } from './OntologyNode';
 import { PropertyEdge } from './PropertyEdge';
 import { CanvasToolbar } from './CanvasToolbar';
 import { NamespaceLegend } from './NamespaceLegend';
+import { ReasoningIndicator } from './ReasoningIndicator';
+import { ReasoningReportModal } from './ReasoningReportModal';
 import { useOntologyStore } from '../../stores/ontologyStore';
+import { useReasoningStore } from '../../stores/reasoningStore';
+import { useSettingsStore } from '../../stores/settingsStore';
+import { GraphExporter } from '../../utils/graphExporter';
 
 const nodeTypes = {
   ontologyNode: OntologyNode,
@@ -79,7 +84,11 @@ export const KnowledgeGraphCanvas = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [showLegend, setShowLegend] = useState(true);
+  const [showReasoningReport, setShowReasoningReport] = useState(false);
+  
   const { loadedOntologies } = useOntologyStore();
+  const { startReasoning } = useReasoningStore();
+  const { settings } = useSettingsStore();
 
   const onConnect = useCallback(
     (params: Connection) => setEdges((eds) => addEdge({
@@ -110,12 +119,28 @@ export const KnowledgeGraphCanvas = () => {
     setNodes((nds) => [...nds, newNode]);
   }, [setNodes]);
 
+  const handleExport = useCallback((format: 'turtle' | 'owl-xml' | 'json-ld') => {
+    GraphExporter.exportGraph(nodes, edges, format);
+  }, [nodes, edges]);
+
+  // Auto-reasoning when graph changes
+  useEffect(() => {
+    if (settings.autoReasoning && nodes.length > 0) {
+      const debounceTimer = setTimeout(() => {
+        startReasoning(nodes, edges);
+      }, 1000); // Debounce reasoning calls
+
+      return () => clearTimeout(debounceTimer);
+    }
+  }, [nodes, edges, settings.autoReasoning, startReasoning]);
+
   return (
     <div className="w-full h-screen bg-canvas-bg relative">
       <CanvasToolbar 
         onAddNode={onAddNode}
         onToggleLegend={() => setShowLegend(!showLegend)}
         showLegend={showLegend}
+        onExport={handleExport}
       />
       
       <ReactFlow
@@ -129,6 +154,14 @@ export const KnowledgeGraphCanvas = () => {
         fitView
         className="knowledge-graph-canvas"
         style={{ backgroundColor: 'hsl(var(--canvas-bg))' }}
+        connectionLineStyle={{
+          strokeWidth: 2,
+          stroke: 'hsl(var(--primary))',
+        }}
+        defaultEdgeOptions={{
+          type: 'propertyEdge',
+          style: { strokeWidth: 2 },
+        }}
       >
         <Background 
           variant={BackgroundVariant.Dots} 
@@ -157,6 +190,13 @@ export const KnowledgeGraphCanvas = () => {
           ]}
         />
       )}
+
+      <ReasoningIndicator onOpenReport={() => setShowReasoningReport(true)} />
+      
+      <ReasoningReportModal 
+        open={showReasoningReport}
+        onOpenChange={setShowReasoningReport}
+      />
     </div>
   );
 };
