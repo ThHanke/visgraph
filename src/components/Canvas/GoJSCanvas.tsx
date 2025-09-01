@@ -9,6 +9,8 @@ import { ReasoningIndicator } from './ReasoningIndicator';
 import { ReasoningReportModal } from './ReasoningReportModal';
 import { AutoComplete } from '../ui/AutoComplete';
 import { Progress } from '../ui/progress';
+import { NodePropertyEditor } from './NodePropertyEditor';
+import { LinkPropertyEditor } from './LinkPropertyEditor';
 import { toast } from 'sonner';
 
 export const GoJSCanvas = () => {
@@ -19,6 +21,12 @@ export const GoJSCanvas = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState('');
+  const [showNodeEditor, setShowNodeEditor] = useState(false);
+  const [showLinkEditor, setShowLinkEditor] = useState(false);
+  const [selectedNode, setSelectedNode] = useState<any>(null);
+  const [selectedLink, setSelectedLink] = useState<any>(null);
+  const [linkSourceNode, setLinkSourceNode] = useState<any>(null);
+  const [linkTargetNode, setLinkTargetNode] = useState<any>(null);
   
   const { loadedOntologies, availableClasses, availableProperties, loadOntologyFromRDF, loadKnowledgeGraph } = useOntologyStore();
   const { startReasoning } = useReasoningStore();
@@ -33,9 +41,14 @@ export const GoJSCanvas = () => {
     const diagram = $(go.Diagram, diagramRef.current, {
       'undoManager.isEnabled': true,
       'toolManager.hoverDelay': 100,
+      'animationManager.isEnabled': false,
+      initialContentAlignment: go.Spot.Center,
       layout: $(go.ForceDirectedLayout, {
-        defaultSpringLength: 100,
-        defaultElectricalCharge: 150
+        defaultSpringLength: 120,
+        defaultElectricalCharge: 200,
+        maxIterations: 200,
+        epsilonDistance: 0.5,
+        infinityDistance: 1000
       }),
       model: new go.GraphLinksModel()
     });
@@ -55,9 +68,23 @@ export const GoJSCanvas = () => {
           fill: 'hsl(var(--card))',
           stroke: 'hsl(var(--border))',
           strokeWidth: 2,
-          minSize: new go.Size(120, 80)
+          minSize: new go.Size(120, 80),
+          portId: '',
+          fromLinkable: true,
+          toLinkable: true,
+          cursor: 'pointer'
         },
-        new go.Binding('fill', 'namespace', (ns) => `hsl(var(--ns-${ns || 'default'}))`)
+        new go.Binding('fill', 'namespace', (ns) => {
+          const colors = {
+            'foaf': 'hsl(220 14.3% 95.9%)',
+            'org': 'hsl(152 45% 95%)',
+            'rdfs': 'hsl(24 85% 95%)',
+            'owl': 'hsl(221 83% 95%)',
+            'iof': 'hsl(339 84% 95%)',
+            'default': 'hsl(var(--card))'
+          };
+          return colors[ns as keyof typeof colors] || colors.default;
+        })
       ),
       $(go.Panel, 'Vertical',
         { margin: 8 },
@@ -122,12 +149,80 @@ export const GoJSCanvas = () => {
       }
     });
 
+    // Enable linking tool for creating connections
+    diagram.toolManager.linkingTool.temporaryLink.routing = go.Link.Orthogonal;
+    diagram.toolManager.linkingTool.temporaryLink.curve = go.Link.JumpOver;
+    diagram.toolManager.relinkingTool.isEnabled = true;
+
+    // Add double-click listeners for editing
+    diagram.addDiagramListener('ObjectDoubleClicked', (e) => {
+      const obj = e.subject.part;
+      if (obj instanceof go.Node) {
+        setSelectedNode(obj.data);
+        setShowNodeEditor(true);
+      } else if (obj instanceof go.Link) {
+        const sourceNode = obj.fromNode?.data;
+        const targetNode = obj.toNode?.data;
+        setSelectedLink(obj.data);
+        setLinkSourceNode(sourceNode);
+        setLinkTargetNode(targetNode);
+        setShowLinkEditor(true);
+      }
+    });
+
+    // Handle new link creation
+    diagram.addDiagramListener('LinkDrawn', (e) => {
+      const link = e.subject;
+      const sourceNode = link.fromNode?.data;
+      const targetNode = link.toNode?.data;
+      
+      if (sourceNode && targetNode) {
+        setSelectedLink(link.data);
+        setLinkSourceNode(sourceNode);
+        setLinkTargetNode(targetNode);
+        setShowLinkEditor(true);
+      }
+    });
+
     diagramInstanceRef.current = diagram;
 
     return () => {
       diagram.div = null;
     };
   }, []);
+
+  // Update diagram when currentGraph changes
+  useEffect(() => {
+    const diagram = diagramInstanceRef.current;
+    if (!diagram || !loadedOntologies.length) return;
+
+    const { currentGraph } = useOntologyStore.getState();
+    if (currentGraph.nodes.length > 0 || currentGraph.edges.length > 0) {
+      diagram.startTransaction('load graph');
+      
+      // Convert parsed nodes to GoJS format
+      const goNodes = currentGraph.nodes.map(node => ({
+        key: node.id,
+        classType: node.classType,
+        individualName: node.individualName,
+        namespace: node.namespace,
+        literalProperties: node.literalProperties || [],
+        loc: node.position ? `${node.position.x} ${node.position.y}` : `${Math.random() * 800} ${Math.random() * 600}`
+      }));
+      
+      // Convert parsed edges to GoJS format
+      const goLinks = currentGraph.edges.map(edge => ({
+        from: edge.source,
+        to: edge.target,
+        label: edge.label,
+        propertyType: edge.propertyType,
+        namespace: edge.namespace
+      }));
+      
+      diagram.model = new go.GraphLinksModel(goNodes, goLinks);
+      diagram.commitTransaction('load graph');
+    }
+  }, [loadedOntologies]);
 
   // Load demo file on startup
   useEffect(() => {
@@ -206,15 +301,81 @@ export const GoJSCanvas = () => {
     }
   }, [loadKnowledgeGraph]);
 
-  const handleExport = useCallback((format: 'turtle' | 'owl-xml' | 'json-ld') => {
+  const handleSaveNodeProperties = useCallback((properties: any[]) => {
+    if (!diagramInstanceRef.current || !selectedNode) return;
+
+    const diagram = diagramInstanceRef.current;
+    diagram.startTransaction('update node properties');
+    
+    const node = diagram.findNodeForKey(selectedNode.key);
+    if (node) {
+      diagram.model.setDataProperty(node.data, 'literalProperties', properties);
+    }
+    
+    diagram.commitTransaction('update node properties');
+  }, [selectedNode]);
+
+  const handleSaveLinkProperty = useCallback((propertyType: string, label: string) => {
+    if (!diagramInstanceRef.current || !selectedLink) return;
+
+    const diagram = diagramInstanceRef.current;
+    diagram.startTransaction('update link property');
+    
+    const link = diagram.findLinkForKey(selectedLink.key || '');
+    if (link) {
+      diagram.model.setDataProperty(link.data, 'propertyType', propertyType);
+      diagram.model.setDataProperty(link.data, 'label', label);
+    }
+    
+    diagram.commitTransaction('update link property');
+  }, [selectedLink]);
+
+  const handleExport = useCallback(async (format: 'turtle' | 'owl-xml' | 'json-ld') => {
     if (!diagramInstanceRef.current) return;
     
     const diagram = diagramInstanceRef.current;
     const nodes = diagram.model.nodeDataArray;
     const links = (diagram.model as go.GraphLinksModel).linkDataArray;
     
-    // Export logic would go here
-    toast.success(`Graph exported as ${format.toUpperCase()}`);
+    try {
+      const { exportGraph } = await import('../../utils/graphExporter');
+      // Convert GoJS data to our expected format
+      const goJSNodes = nodes.map(node => ({
+        key: node.key || node.id || `node-${Math.random()}`,
+        classType: node.classType || 'Thing',
+        individualName: node.individualName || node.key || 'Individual',
+        namespace: node.namespace || 'default',
+        literalProperties: node.literalProperties || []
+      }));
+      
+      const goJSLinks = links.map(link => ({
+        from: link.from || link.source,
+        to: link.to || link.target,
+        label: link.label || 'related',
+        propertyType: link.propertyType || 'owl:related',
+        namespace: link.namespace || 'owl'
+      }));
+      
+      const exportedData = await exportGraph(goJSNodes, goJSLinks, format);
+      
+      // Create and download file
+      const blob = new Blob([exportedData], { 
+        type: format === 'json-ld' ? 'application/json' : 'text/plain' 
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `knowledge-graph.${format === 'owl-xml' ? 'owl' : format === 'json-ld' ? 'jsonld' : 'ttl'}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast.success(`Graph exported as ${format.toUpperCase()}`);
+    } catch (error) {
+      toast.error('Export failed');
+      console.error('Export error:', error);
+    }
   }, []);
 
   return (
@@ -261,6 +422,22 @@ export const GoJSCanvas = () => {
       <ReasoningReportModal 
         open={showReasoningReport}
         onOpenChange={setShowReasoningReport}
+      />
+
+      <NodePropertyEditor
+        open={showNodeEditor}
+        onOpenChange={setShowNodeEditor}
+        nodeData={selectedNode}
+        onSave={handleSaveNodeProperties}
+      />
+
+      <LinkPropertyEditor
+        open={showLinkEditor}
+        onOpenChange={setShowLinkEditor}
+        linkData={selectedLink}
+        sourceNode={linkSourceNode}
+        targetNode={linkTargetNode}
+        onSave={handleSaveLinkProperty}
       />
     </div>
   );

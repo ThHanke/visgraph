@@ -119,8 +119,26 @@ export const KnowledgeGraphCanvas = () => {
     setNodes((nds) => [...nds, newNode]);
   }, [setNodes]);
 
-  const handleExport = useCallback((format: 'turtle' | 'owl-xml' | 'json-ld') => {
-    GraphExporter.exportGraph(nodes, edges, format);
+  const handleExport = useCallback(async (format: 'turtle' | 'owl-xml' | 'json-ld') => {
+    try {
+      const { exportGraph } = await import('../../utils/graphExporter');
+      const exportedData = await exportGraph(nodes as any, edges as any, format);
+      
+      // Create and download file
+      const blob = new Blob([exportedData], { 
+        type: format === 'json-ld' ? 'application/json' : 'text/plain' 
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `knowledge-graph.${format === 'owl-xml' ? 'owl' : format === 'json-ld' ? 'jsonld' : 'ttl'}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Export failed:', error);
+    }
   }, [nodes, edges]);
 
   // Auto-reasoning when graph changes

@@ -34,6 +34,7 @@ import {
   Network,
 } from 'lucide-react';
 import { useOntologyStore } from '../../stores/ontologyStore';
+import { AutoComplete } from '../ui/AutoComplete';
 
 interface CanvasToolbarProps {
   onAddNode: (classType: string, namespace: string) => void;
@@ -105,22 +106,26 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                   <SelectValue placeholder="Select namespace" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="foaf">foaf</SelectItem>
-                  <SelectItem value="org">org</SelectItem>
-                  <SelectItem value="rdfs">rdfs</SelectItem>
-                  <SelectItem value="owl">owl</SelectItem>
-                  <SelectItem value="dc">dc</SelectItem>
-                  <SelectItem value="skos">skos</SelectItem>
+                  {Array.from(new Set(availableClasses.map(cls => cls.namespace))).map(ns => (
+                    <SelectItem key={ns} value={ns}>{ns}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="classType">Class Type</Label>
-              <Input
-                id="classType"
-                placeholder="e.g., Person, Organization, Document"
+              <AutoComplete 
+                options={availableClasses
+                  .filter(cls => !newNodeNamespace || cls.namespace === newNodeNamespace)
+                  .map(cls => ({
+                    value: cls.label,
+                    label: cls.label,
+                    description: cls.uri
+                  }))}
                 value={newNodeClass}
-                onChange={(e) => setNewNodeClass(e.target.value)}
+                onValueChange={setNewNodeClass}
+                placeholder="Select class type..."
+                emptyMessage="No classes found. Load an ontology first."
               />
             </div>
             <div className="flex justify-end gap-2">

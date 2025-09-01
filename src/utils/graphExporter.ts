@@ -1,4 +1,32 @@
-import { Node, Edge } from '@xyflow/react';
+// Support for both React Flow and GoJS data formats
+interface ReactFlowNode {
+  id: string;
+  data: any;
+}
+
+interface ReactFlowEdge {
+  id: string;
+  source: string;
+  target: string;
+  data?: any;
+}
+
+// GoJS uses plain objects with different structure
+interface GoJSNode {
+  key: string;
+  classType: string;
+  individualName: string;
+  namespace: string;
+  literalProperties: { key: string; value: string; type?: string }[];
+}
+
+interface GoJSLink {
+  from: string;
+  to: string;
+  label: string;
+  propertyType: string;
+  namespace: string;
+}
 
 interface ExportOptions {
   format: 'turtle' | 'owl-xml' | 'json-ld';
@@ -19,7 +47,15 @@ export class GraphExporter {
     };
   }
 
-  static exportToTurtle(nodes: Node[], edges: Edge[], options: ExportOptions = {
+  private static isReactFlowNode(node: ReactFlowNode | GoJSNode): node is ReactFlowNode {
+    return 'data' in node;
+  }
+
+  private static isReactFlowEdge(edge: ReactFlowEdge | GoJSLink): edge is ReactFlowEdge {
+    return 'source' in edge && 'target' in edge;
+  }
+
+  static exportToTurtle(nodes: (ReactFlowNode | GoJSNode)[], edges: (ReactFlowEdge | GoJSLink)[], options: ExportOptions = {
     format: 'turtle',
     includeNamespaces: true,
     includeMetadata: true
@@ -43,38 +79,60 @@ export class GraphExporter {
 
     // Export individuals/nodes
     nodes.forEach(node => {
-      const { classType, individualName, namespace, properties } = node.data;
+      // Handle both GoJS and React Flow formats
+      const nodeData = this.isReactFlowNode(node) ? node.data : node;
+      const { classType, individualName, namespace } = nodeData;
+      const properties = 'literalProperties' in nodeData ? nodeData.literalProperties : [];
+      
       const individualUri = `${namespace}:${String(individualName).replace(/\s+/g, '_')}`;
       const classUri = `${namespace}:${classType}`;
       
-      turtle += `${individualUri} a ${classUri} ;\n`;
+      turtle += `${individualUri} a ${classUri}`;
       
-      // Add properties
-      Object.entries(properties || {}).forEach(([prop, value], index, array) => {
-        const isLast = index === array.length - 1;
-        turtle += `    ${prop} "${value}"`;
-        turtle += isLast ? ' .\n\n' : ' ;\n';
-      });
+      // Add literal properties
+      if (Array.isArray(properties) && properties.length > 0) {
+        turtle += ' ;\n';
+        properties.forEach((prop, index) => {
+          const isLast = index === properties.length - 1;
+          turtle += `    ${prop.key} "${prop.value}"`;
+          turtle += isLast ? ' .\n\n' : ' ;\n';
+        });
+      } else {
+        turtle += ' .\n\n';
+      }
     });
 
     // Export relationships/edges
     edges.forEach(edge => {
-      const sourceNode = nodes.find(n => n.id === edge.source);
-      const targetNode = nodes.find(n => n.id === edge.target);
+      // Handle both GoJS and React Flow formats
+      const sourceId = this.isReactFlowEdge(edge) ? edge.source : edge.from;
+      const targetId = this.isReactFlowEdge(edge) ? edge.target : edge.to;
+      const propertyType = this.isReactFlowEdge(edge) ? edge.data?.propertyType : edge.propertyType;
       
-      if (sourceNode && targetNode && edge.data) {
-        const sourceUri = `${sourceNode.data.namespace}:${String(sourceNode.data.individualName).replace(/\s+/g, '_')}`;
-        const targetUri = `${targetNode.data.namespace}:${String(targetNode.data.individualName).replace(/\s+/g, '_')}`;
-        const propertyUri = edge.data.propertyType;
+      const sourceNode = nodes.find(n => {
+        const nodeId = this.isReactFlowNode(n) ? n.id : n.key;
+        return nodeId === sourceId;
+      });
+      const targetNode = nodes.find(n => {
+        const nodeId = this.isReactFlowNode(n) ? n.id : n.key;
+        return nodeId === targetId;
+      });
+      
+      if (sourceNode && targetNode && propertyType) {
+        const sourceData = this.isReactFlowNode(sourceNode) ? sourceNode.data : sourceNode;
+        const targetData = this.isReactFlowNode(targetNode) ? targetNode.data : targetNode;
         
-        turtle += `${sourceUri} ${propertyUri} ${targetUri} .\n`;
+        const sourceUri = `${sourceData.namespace}:${String(sourceData.individualName).replace(/\s+/g, '_')}`;
+        const targetUri = `${targetData.namespace}:${String(targetData.individualName).replace(/\s+/g, '_')}`;
+        
+        turtle += `${sourceUri} ${propertyType} ${targetUri} .\n`;
       }
     });
 
     return turtle;
   }
 
-  static exportToOwlXml(nodes: Node[], edges: Edge[], options: ExportOptions = {
+  static exportToOwlXml(nodes: (ReactFlowNode | GoJSNode)[], edges: (ReactFlowEdge | GoJSLink)[], options: ExportOptions = {
     format: 'owl-xml',
     includeNamespaces: true,
     includeMetadata: true
@@ -106,13 +164,15 @@ export class GraphExporter {
 
     // Export individuals
     nodes.forEach(node => {
-      const { classType, individualName, namespace, properties } = node.data;
+      const nodeData = this.isReactFlowNode(node) ? node.data : node;
+      const { classType, individualName, namespace } = nodeData;
+      const properties = 'literalProperties' in nodeData ? nodeData.literalProperties : [];
       const individualId = String(individualName).replace(/\s+/g, '_');
       
       xml += `    <${namespace}:${classType} rdf:about="#${individualId}">\n`;
       
-      Object.entries(properties || {}).forEach(([prop, value]) => {
-        xml += `        <${prop}>${value}</${prop}>\n`;
+      properties.forEach(prop => {
+        xml += `        <${prop.key}>${prop.value}</${prop.key}>\n`;
       });
       
       xml += `    </${namespace}:${classType}>\n\n`;
@@ -120,18 +180,30 @@ export class GraphExporter {
 
     // Export object properties
     edges.forEach(edge => {
-      const sourceNode = nodes.find(n => n.id === edge.source);
-      const targetNode = nodes.find(n => n.id === edge.target);
+      const sourceId = this.isReactFlowEdge(edge) ? edge.source : edge.from;
+      const targetId = this.isReactFlowEdge(edge) ? edge.target : edge.to;
+      const propertyType = this.isReactFlowEdge(edge) ? edge.data?.propertyType : edge.propertyType;
       
-      if (sourceNode && targetNode && edge.data) {
-        const sourceId = String(sourceNode.data.individualName).replace(/\s+/g, '_');
-        const targetId = String(targetNode.data.individualName).replace(/\s+/g, '_');
-        const property = String(edge.data.propertyType).split(':');
+      const sourceNode = nodes.find(n => {
+        const nodeId = this.isReactFlowNode(n) ? n.id : n.key;
+        return nodeId === sourceId;
+      });
+      const targetNode = nodes.find(n => {
+        const nodeId = this.isReactFlowNode(n) ? n.id : n.key;
+        return nodeId === targetId;
+      });
+      
+      if (sourceNode && targetNode && propertyType) {
+        const sourceData = this.isReactFlowNode(sourceNode) ? sourceNode.data : sourceNode;
+        const targetData = this.isReactFlowNode(targetNode) ? targetNode.data : targetNode;
+        const sourceIndividualId = String(sourceData.individualName).replace(/\s+/g, '_');
+        const targetIndividualId = String(targetData.individualName).replace(/\s+/g, '_');
+        const property = String(propertyType).split(':');
         
         xml += `    <owl:ObjectPropertyAssertion>\n`;
         xml += `        <owl:ObjectProperty IRI="#${property[1]}" />\n`;
-        xml += `        <owl:NamedIndividual IRI="#${sourceId}" />\n`;
-        xml += `        <owl:NamedIndividual IRI="#${targetId}" />\n`;
+        xml += `        <owl:NamedIndividual IRI="#${sourceIndividualId}" />\n`;
+        xml += `        <owl:NamedIndividual IRI="#${targetIndividualId}" />\n`;
         xml += `    </owl:ObjectPropertyAssertion>\n\n`;
       }
     });
@@ -140,7 +212,7 @@ export class GraphExporter {
     return xml;
   }
 
-  static exportToJsonLd(nodes: Node[], edges: Edge[], options: ExportOptions = {
+  static exportToJsonLd(nodes: (ReactFlowNode | GoJSNode)[], edges: (ReactFlowEdge | GoJSLink)[], options: ExportOptions = {
     format: 'json-ld',
     includeNamespaces: true,
     includeMetadata: true
@@ -163,14 +235,17 @@ export class GraphExporter {
 
     // Export individuals
     nodes.forEach(node => {
-      const { classType, individualName, namespace, properties } = node.data;
+      const nodeData = this.isReactFlowNode(node) ? node.data : node;
+      const { classType, individualName, namespace } = nodeData;
+      const properties = 'literalProperties' in nodeData ? nodeData.literalProperties : [];
+      
       const individual: any = {
         '@id': `${namespace}:${String(individualName).replace(/\s+/g, '_')}`,
         '@type': `${namespace}:${classType}`
       };
 
-      Object.entries(properties || {}).forEach(([prop, value]) => {
-        individual[prop] = value;
+      properties.forEach(prop => {
+        individual[prop.key] = prop.value;
       });
 
       jsonLd['@graph'].push(individual);
@@ -178,17 +253,29 @@ export class GraphExporter {
 
     // Export relationships
     edges.forEach(edge => {
-      const sourceNode = nodes.find(n => n.id === edge.source);
-      const targetNode = nodes.find(n => n.id === edge.target);
+      const sourceId = this.isReactFlowEdge(edge) ? edge.source : edge.from;
+      const targetId = this.isReactFlowEdge(edge) ? edge.target : edge.to;
+      const propertyType = this.isReactFlowEdge(edge) ? edge.data?.propertyType : edge.propertyType;
       
-      if (sourceNode && targetNode && edge.data) {
-        const sourceId = `${sourceNode.data.namespace}:${String(sourceNode.data.individualName).replace(/\s+/g, '_')}`;
-        const targetId = `${targetNode.data.namespace}:${String(targetNode.data.individualName).replace(/\s+/g, '_')}`;
+      const sourceNode = nodes.find(n => {
+        const nodeId = this.isReactFlowNode(n) ? n.id : n.key;
+        return nodeId === sourceId;
+      });
+      const targetNode = nodes.find(n => {
+        const nodeId = this.isReactFlowNode(n) ? n.id : n.key;
+        return nodeId === targetId;
+      });
+      
+      if (sourceNode && targetNode && propertyType) {
+        const sourceData = this.isReactFlowNode(sourceNode) ? sourceNode.data : sourceNode;
+        const targetData = this.isReactFlowNode(targetNode) ? targetNode.data : targetNode;
+        const sourceIndividualId = `${sourceData.namespace}:${String(sourceData.individualName).replace(/\s+/g, '_')}`;
+        const targetIndividualId = `${targetData.namespace}:${String(targetData.individualName).replace(/\s+/g, '_')}`;
         
         // Find the source individual in the graph and add the relationship
-        const sourceIndividual = jsonLd['@graph'].find((item: any) => item['@id'] === sourceId);
-        if (sourceIndividual && edge.data.propertyType) {
-          sourceIndividual[String(edge.data.propertyType)] = { '@id': targetId };
+        const sourceIndividual = jsonLd['@graph'].find((item: any) => item['@id'] === sourceIndividualId);
+        if (sourceIndividual && propertyType) {
+          sourceIndividual[String(propertyType)] = { '@id': targetIndividualId };
         }
       }
     });
@@ -208,7 +295,7 @@ export class GraphExporter {
     URL.revokeObjectURL(url);
   }
 
-  static exportGraph(nodes: Node[], edges: Edge[], format: 'turtle' | 'owl-xml' | 'json-ld'): void {
+  static exportGraph(nodes: (ReactFlowNode | GoJSNode)[], edges: (ReactFlowEdge | GoJSLink)[], format: 'turtle' | 'owl-xml' | 'json-ld'): void {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     
     let content: string;
@@ -238,3 +325,17 @@ export class GraphExporter {
     this.downloadFile(content, filename, mimeType);
   }
 }
+
+// Export function for direct use
+export const exportGraph = async (nodes: (ReactFlowNode | GoJSNode)[], edges: (ReactFlowEdge | GoJSLink)[], format: 'turtle' | 'owl-xml' | 'json-ld'): Promise<string> => {
+  switch (format) {
+    case 'turtle':
+      return GraphExporter.exportToTurtle(nodes, edges);
+    case 'owl-xml':
+      return GraphExporter.exportToOwlXml(nodes, edges);
+    case 'json-ld':
+      return GraphExporter.exportToJsonLd(nodes, edges);
+    default:
+      throw new Error(`Unsupported format: ${format}`);
+  }
+};
