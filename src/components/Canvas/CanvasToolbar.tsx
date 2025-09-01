@@ -40,9 +40,10 @@ interface CanvasToolbarProps {
   onToggleLegend: () => void;
   showLegend: boolean;
   onExport: (format: 'turtle' | 'owl-xml' | 'json-ld') => void;
+  onLoadFile?: (file: File) => void;
 }
 
-export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport }: CanvasToolbarProps) => {
+export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onLoadFile }: CanvasToolbarProps) => {
   const [isAddNodeOpen, setIsAddNodeOpen] = useState(false);
   const [isLoadOntologyOpen, setIsLoadOntologyOpen] = useState(false);
   const [ontologyUrl, setOntologyUrl] = useState('');
@@ -214,6 +215,29 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport 
       >
         {showLegend ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
         Legend
+      </Button>
+
+      {/* Load File */}
+      <input
+        type="file"
+        accept=".ttl,.rdf,.owl,.n3"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file && onLoadFile) {
+            onLoadFile(file);
+          }
+        }}
+        className="hidden"
+        id="file-input"
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => document.getElementById('file-input')?.click()}
+        className="shadow-glass backdrop-blur-sm"
+      >
+        <Upload className="h-4 w-4 mr-2" />
+        Load File
       </Button>
 
       {/* Export Options */}

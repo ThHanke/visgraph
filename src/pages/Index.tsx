@@ -1,9 +1,9 @@
-import { KnowledgeGraphCanvas } from '../components/Canvas/KnowledgeGraphCanvas';
+import { GoJSCanvas } from '../components/Canvas/GoJSCanvas';
 
 const Index = () => {
   return (
     <main className="w-full h-screen overflow-hidden">
-      <KnowledgeGraphCanvas />
+      <GoJSCanvas />
     </main>
   );
 };

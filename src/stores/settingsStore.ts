@@ -13,6 +13,7 @@ interface Settings {
   autoReasoning: boolean;
   layoutAlgorithm: 'force' | 'hierarchical' | 'circular';
   enableValidation: boolean;
+  startupFileUrl: string;
 }
 
 interface SettingsStore {
@@ -34,7 +35,8 @@ const defaultSettings: Settings = {
   shaclShapesUrl: '',
   autoReasoning: true,
   layoutAlgorithm: 'force',
-  enableValidation: true
+  enableValidation: true,
+  startupFileUrl: 'https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl'
 };
 
 export const useSettingsStore = create<SettingsStore>()(

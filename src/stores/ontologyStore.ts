@@ -35,10 +35,14 @@ interface OntologyStore {
   availableClasses: OntologyClass[];
   availableProperties: ObjectProperty[];
   validationErrors: ValidationError[];
+  currentGraph: { nodes: any[]; edges: any[] };
   loadOntology: (url: string) => Promise<void>;
+  loadOntologyFromRDF: (rdfContent: string, onProgress?: (progress: number, message: string) => void) => Promise<void>;
+  loadKnowledgeGraph: (source: string, options?: { onProgress?: (progress: number, message: string) => void }) => Promise<void>;
   validateGraph: (nodes: any[], edges: any[]) => ValidationError[];
   getCompatibleProperties: (sourceClass: string, targetClass: string) => ObjectProperty[];
   clearOntologies: () => void;
+  setCurrentGraph: (nodes: any[], edges: any[]) => void;
 }
 
 export const useOntologyStore = create<OntologyStore>((set, get) => ({
@@ -46,6 +50,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
   availableClasses: [],
   availableProperties: [],
   validationErrors: [],
+  currentGraph: { nodes: [], edges: [] },
 
   loadOntology: async (url: string) => {
     try {
@@ -137,12 +142,129 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     });
   },
 
+  loadOntologyFromRDF: async (rdfContent: string, onProgress?: (progress: number, message: string) => void) => {
+    try {
+      const { parseRDFFile } = await import('../utils/rdfParser');
+      onProgress?.(10, 'Starting RDF parsing...');
+      
+      const parsedGraph = await parseRDFFile(rdfContent, onProgress);
+      
+      // Extract ontology information from parsed graph
+      const ontologyClasses: OntologyClass[] = [];
+      const ontologyProperties: ObjectProperty[] = [];
+      
+      // Group nodes by class type to create class definitions
+      const classGroups = new Map<string, any[]>();
+      parsedGraph.nodes.forEach(node => {
+        const classKey = `${node.namespace}:${node.classType}`;
+        if (!classGroups.has(classKey)) {
+          classGroups.set(classKey, []);
+        }
+        classGroups.get(classKey)!.push(node);
+      });
+      
+      // Create class definitions
+      classGroups.forEach((nodes, classKey) => {
+        const firstNode = nodes[0];
+        const properties = Array.from(new Set(
+          nodes.flatMap(node => node.literalProperties.map(prop => prop.key))
+        ));
+        
+        ontologyClasses.push({
+          uri: classKey,
+          label: firstNode.classType,
+          namespace: firstNode.namespace,
+          properties,
+          restrictions: {}
+        });
+      });
+      
+      // Extract properties from edges
+      const propertyGroups = new Map<string, any[]>();
+      parsedGraph.edges.forEach(edge => {
+        if (!propertyGroups.has(edge.propertyType)) {
+          propertyGroups.set(edge.propertyType, []);
+        }
+        propertyGroups.get(edge.propertyType)!.push(edge);
+      });
+      
+      propertyGroups.forEach((edges, propertyType) => {
+        const domains = Array.from(new Set(edges.map(edge => {
+          const sourceNode = parsedGraph.nodes.find(n => n.id === edge.source);
+          return sourceNode ? `${sourceNode.namespace}:${sourceNode.classType}` : '';
+        }).filter(Boolean)));
+        
+        const ranges = Array.from(new Set(edges.map(edge => {
+          const targetNode = parsedGraph.nodes.find(n => n.id === edge.target);
+          return targetNode ? `${targetNode.namespace}:${targetNode.classType}` : '';
+        }).filter(Boolean)));
+        
+        const firstEdge = edges[0];
+        ontologyProperties.push({
+          uri: propertyType,
+          label: firstEdge.label,
+          domain: domains,
+          range: ranges,
+          namespace: firstEdge.namespace
+        });
+      });
+      
+      const loadedOntology: LoadedOntology = {
+        url: 'parsed-rdf',
+        name: 'Parsed RDF Graph',
+        classes: ontologyClasses,
+        properties: ontologyProperties,
+        namespaces: parsedGraph.namespaces
+      };
+      
+      set((state) => ({
+        loadedOntologies: [...state.loadedOntologies, loadedOntology],
+        availableClasses: [...state.availableClasses, ...ontologyClasses],
+        availableProperties: [...state.availableProperties, ...ontologyProperties],
+        currentGraph: { nodes: parsedGraph.nodes, edges: parsedGraph.edges }
+      }));
+      
+    } catch (error) {
+      console.error('Failed to load ontology from RDF:', error);
+      throw error;
+    }
+  },
+
+  loadKnowledgeGraph: async (source: string, options?: { onProgress?: (progress: number, message: string) => void }) => {
+    try {
+      let rdfContent: string;
+      
+      if (source.startsWith('http://') || source.startsWith('https://')) {
+        options?.onProgress?.(10, 'Fetching RDF from URL...');
+        const response = await fetch(source);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch RDF: ${response.statusText}`);
+        }
+        rdfContent = await response.text();
+        options?.onProgress?.(20, 'RDF content downloaded');
+      } else {
+        rdfContent = source;
+      }
+      
+      await get().loadOntologyFromRDF(rdfContent, options?.onProgress);
+      
+    } catch (error) {
+      console.error('Failed to load knowledge graph:', error);
+      throw error;
+    }
+  },
+
+  setCurrentGraph: (nodes: any[], edges: any[]) => {
+    set({ currentGraph: { nodes, edges } });
+  },
+
   clearOntologies: () => {
     set({
       loadedOntologies: [],
       availableClasses: [],
       availableProperties: [],
-      validationErrors: []
+      validationErrors: [],
+      currentGraph: { nodes: [], edges: [] }
     });
   }
 }));
