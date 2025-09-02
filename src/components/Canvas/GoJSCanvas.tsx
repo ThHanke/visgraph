@@ -198,29 +198,30 @@ export const GoJSCanvas = () => {
 
     const { currentGraph } = useOntologyStore.getState();
     if (currentGraph.nodes.length > 0 || currentGraph.edges.length > 0) {
-      diagram.startTransaction('load graph');
-      
-      // Convert parsed nodes to GoJS format
-      const goNodes = currentGraph.nodes.map(node => ({
-        key: node.id,
-        classType: node.classType,
-        individualName: node.individualName,
-        namespace: node.namespace,
-        literalProperties: node.literalProperties || [],
-        loc: node.position ? `${node.position.x} ${node.position.y}` : `${Math.random() * 800} ${Math.random() * 600}`
-      }));
-      
-      // Convert parsed edges to GoJS format
-      const goLinks = currentGraph.edges.map(edge => ({
-        from: edge.source,
-        to: edge.target,
-        label: edge.label,
-        propertyType: edge.propertyType,
-        namespace: edge.namespace
-      }));
-      
-      diagram.model = new go.GraphLinksModel(goNodes, goLinks);
-      diagram.commitTransaction('load graph');
+      // Use a timeout to ensure any pending transactions are finished
+      setTimeout(() => {
+        // Convert parsed nodes to GoJS format
+        const goNodes = currentGraph.nodes.map(node => ({
+          key: node.id,
+          classType: node.classType,
+          individualName: node.individualName,
+          namespace: node.namespace,
+          literalProperties: node.literalProperties || [],
+          loc: node.position ? `${node.position.x} ${node.position.y}` : `${Math.random() * 800} ${Math.random() * 600}`
+        }));
+        
+        // Convert parsed edges to GoJS format
+        const goLinks = currentGraph.edges.map(edge => ({
+          from: edge.source,
+          to: edge.target,
+          label: edge.label,
+          propertyType: edge.propertyType,
+          namespace: edge.namespace
+        }));
+        
+        // Set model without transaction since we're replacing the entire model
+        diagram.model = new go.GraphLinksModel(goNodes, goLinks);
+      }, 100);
     }
   }, [loadedOntologies]);
 
