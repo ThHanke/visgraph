@@ -27,10 +27,26 @@ export const GoJSCanvas = () => {
   const [selectedLink, setSelectedLink] = useState<any>(null);
   const [linkSourceNode, setLinkSourceNode] = useState<any>(null);
   const [linkTargetNode, setLinkTargetNode] = useState<any>(null);
+  const [viewMode, setViewMode] = useState<'abox' | 'tbox'>('abox');
   
   const { loadedOntologies, availableClasses, availableProperties, loadOntologyFromRDF, loadKnowledgeGraph } = useOntologyStore();
   const { startReasoning } = useReasoningStore();
   const { settings } = useSettingsStore();
+
+  // Update diagram visibility when view mode changes
+  useEffect(() => {
+    const diagram = diagramInstanceRef.current;
+    if (!diagram) return;
+
+    diagram.startTransaction('update view mode');
+    diagram.nodes.each(node => {
+      const data = node.data;
+      const isOWLEntity = data.entityType === 'class' || data.entityType === 'property';
+      const shouldShow = viewMode === 'tbox' ? isOWLEntity : !isOWLEntity;
+      diagram.model.setDataProperty(data, 'visible', shouldShow);
+    });
+    diagram.commitTransaction('update view mode');
+  }, [viewMode]);
 
   // Initialize GoJS diagram
   useEffect(() => {
@@ -53,8 +69,8 @@ export const GoJSCanvas = () => {
       model: new go.GraphLinksModel()
     });
 
-    // Node template with proper namespace coloring
-    diagram.nodeTemplate = $(go.Node, 'Auto',
+    // Split box node template with class type in upper section and individual in lower
+    diagram.nodeTemplate = $(go.Node, 'Vertical',
       {
         locationSpot: go.Spot.Center,
         selectionAdornmentTemplate: $(go.Adornment, 'Auto',
@@ -63,94 +79,112 @@ export const GoJSCanvas = () => {
         )
       },
       new go.Binding('location', 'loc', go.Point.parse).makeTwoWay(go.Point.stringify),
-      $(go.Shape, 'RoundedRectangle',
-        {
-          fill: '#ffffff',
-          stroke: '#e2e8f0',
-          strokeWidth: 2,
-          minSize: new go.Size(140, 100),
-          portId: '',
-          fromLinkable: true,
-          toLinkable: true,
-          cursor: 'pointer'
-        },
-        new go.Binding('fill', 'namespace', (ns) => {
-          const namespaceColors = {
-            'foaf': '#f3f0ff',      // lavender
-            'org': '#f0fdf4',       // mint  
-            'rdfs': '#fef7ed',      // peach
-            'owl': '#eff6ff',       // sky
-            'iof': '#fdf2f8',       // rose
-            'rdf': '#f0f9ff',       // aqua
-            'skos': '#fefce8',      // honey
-            'dc': '#fcf8ff',        // orchid
-            'dct': '#f8fafc',       // powder
-            'xsd': '#f0fdfa',       // seafoam
-            'reasoning': '#fefce8', // light yellow for reasoning entities
-            'default': '#ffffff'
-          };
-          return namespaceColors[ns as keyof typeof namespaceColors] || namespaceColors.default;
-        }),
-        new go.Binding('stroke', 'hasReasoningError', (hasError) => hasError ? '#ef4444' : '#e2e8f0'),
-        new go.Binding('strokeWidth', 'hasReasoningError', (hasError) => hasError ? 3 : 2)
+      new go.Binding('visible', 'visible', (vis) => vis !== false),
+      
+      // Upper section - Class Type and Namespace
+      $(go.Panel, 'Auto',
+        { portId: '', fromLinkable: true, toLinkable: true },
+        $(go.Shape, 'RoundedRectangle',
+          {
+            fill: '#ffffff',
+            stroke: '#e2e8f0',
+            strokeWidth: 2,
+            minSize: new go.Size(140, 40),
+            parameter1: 8
+          },
+          new go.Binding('fill', 'namespace', (ns) => {
+            const namespaceColors = {
+              'foaf': '#f3f0ff',      // lavender
+              'org': '#f0fdf4',       // mint  
+              'rdfs': '#fef7ed',      // peach
+              'owl': '#eff6ff',       // sky
+              'iof': '#fdf2f8',       // rose
+              'rdf': '#f0f9ff',       // aqua
+              'skos': '#fefce8',      // honey
+              'dc': '#fcf8ff',        // orchid
+              'dct': '#f8fafc',       // powder
+              'xsd': '#f0fdfa',       // seafoam
+              'reasoning': '#fefce8', // light yellow for reasoning entities
+              'default': '#ffffff'
+            };
+            return namespaceColors[ns as keyof typeof namespaceColors] || namespaceColors.default;
+          }),
+          new go.Binding('stroke', 'hasReasoningError', (hasError) => hasError ? '#ef4444' : '#e2e8f0'),
+          new go.Binding('strokeWidth', 'hasReasoningError', (hasError) => hasError ? 3 : 2)
+        ),
+        $(go.Panel, 'Horizontal',
+          { margin: 6, alignment: go.Spot.Center },
+          // Namespace badge
+          $(go.TextBlock,
+            {
+              font: 'bold 9px Inter, sans-serif',
+              stroke: '#475569',
+              margin: new go.Margin(0, 4, 0, 0),
+              background: '#f1f5f9'
+            },
+            new go.Binding('text', 'namespace', (ns) => ns || 'default')
+          ),
+          // Class type
+          $(go.TextBlock,
+            {
+              font: 'bold 12px Inter, sans-serif',
+              stroke: '#1e293b',
+              maxSize: new go.Size(100, NaN),
+              wrap: go.TextBlock.WrapFit,
+              textAlign: 'center'
+            },
+            new go.Binding('text', 'classType', (type) => type || 'Thing'),
+            new go.Binding('stroke', 'hasReasoningError', (hasError) => hasError ? '#dc2626' : '#1e293b')
+          )
+        )
       ),
-      $(go.Panel, 'Vertical',
-        { margin: 8, alignment: go.Spot.Center },
-        // Class type (larger, bold)
-        $(go.TextBlock,
+      
+      // Lower section - Individual Information
+      $(go.Panel, 'Auto',
+        $(go.Shape, 'RoundedRectangle',
           {
-            font: 'bold 13px Inter, sans-serif',
-            stroke: '#1e293b',
-            margin: new go.Margin(0, 0, 4, 0),
-            maxSize: new go.Size(120, NaN),
-            wrap: go.TextBlock.WrapFit,
-            textAlign: 'center'
+            fill: '#fafafa',
+            stroke: '#e2e8f0',
+            strokeWidth: 1,
+            minSize: new go.Size(140, 60),
+            parameter1: 8
           },
-          new go.Binding('text', 'classType', (type) => type || 'Thing'),
-          new go.Binding('stroke', 'hasReasoningError', (hasError) => hasError ? '#dc2626' : '#1e293b')
+          new go.Binding('stroke', 'hasReasoningError', (hasError) => hasError ? '#ef4444' : '#e2e8f0')
         ),
-        // Individual name (smaller, normal)
-        $(go.TextBlock,
-          {
-            font: '11px Inter, sans-serif',
-            stroke: '#64748b',
-            margin: new go.Margin(0, 0, 6, 0),
-            maxSize: new go.Size(120, NaN),
-            wrap: go.TextBlock.WrapFit,
-            textAlign: 'center'
-          },
-          new go.Binding('text', 'individualName', (name) => name || ''),
-          new go.Binding('visible', 'individualName', (name) => !!name)
-        ),
-        // Namespace badge
-        $(go.TextBlock,
-          {
-            font: '9px Inter, sans-serif',
-            stroke: '#475569',
-            margin: new go.Margin(2, 6, 6, 6),
-            background: '#f1f5f9'
-          },
-          new go.Binding('text', 'namespace', (ns) => ns || 'default'),
-          new go.Binding('visible', 'namespace', (ns) => !!ns)
-        ),
-        // Literal properties (smaller text)
         $(go.Panel, 'Vertical',
-          { 
-            maxSize: new go.Size(120, 60),
-            itemTemplate: $(go.Panel, 'Horizontal',
-              { margin: new go.Margin(1, 0, 1, 0) },
-              $(go.TextBlock, 
-                { 
-                  font: '9px Inter, sans-serif', 
-                  stroke: '#64748b',
-                  maxSize: new go.Size(120, NaN),
-                  wrap: go.TextBlock.WrapFit
-                },
-                new go.Binding('text', '', (prop) => `${prop.key}: ${prop.value}`)
+          { margin: 8, alignment: go.Spot.Center },
+          // Individual name
+          $(go.TextBlock,
+            {
+              font: '11px Inter, sans-serif',
+              stroke: '#374151',
+              margin: new go.Margin(0, 0, 4, 0),
+              maxSize: new go.Size(120, NaN),
+              wrap: go.TextBlock.WrapFit,
+              textAlign: 'center'
+            },
+            new go.Binding('text', 'individualName', (name) => name || 'Unnamed Individual'),
+            new go.Binding('visible', 'individualName', (name) => !!name || true)
+          ),
+          // Literal properties
+          $(go.Panel, 'Vertical',
+            { 
+              maxSize: new go.Size(120, 40),
+              itemTemplate: $(go.Panel, 'Horizontal',
+                { margin: new go.Margin(1, 0, 1, 0) },
+                $(go.TextBlock, 
+                  { 
+                    font: '9px Inter, sans-serif', 
+                    stroke: '#6b7280',
+                    maxSize: new go.Size(120, NaN),
+                    wrap: go.TextBlock.WrapFit
+                  },
+                  new go.Binding('text', '', (prop) => `${prop.key}: ${prop.value}`)
+                )
               )
-            )
-          },
-          new go.Binding('itemArray', 'literalProperties', (props) => props || [])
+            },
+            new go.Binding('itemArray', 'literalProperties', (props) => props || [])
+          )
         )
       )
     );
@@ -166,8 +200,12 @@ export const GoJSCanvas = () => {
           $(go.Shape, { toArrow: 'Standard', fill: '#7c3aed', stroke: null })
         )
       },
-      $(go.Shape, { strokeWidth: 2, stroke: '#64748b' }),
-      $(go.Shape, { toArrow: 'Standard', fill: '#64748b', stroke: null }),
+      $(go.Shape, { strokeWidth: 2, stroke: '#64748b' },
+        new go.Binding('stroke', 'hasReasoningError', (hasError) => hasError ? '#ef4444' : '#64748b')
+      ),
+      $(go.Shape, { toArrow: 'Standard', fill: '#64748b', stroke: null },
+        new go.Binding('fill', 'hasReasoningError', (hasError) => hasError ? '#ef4444' : '#64748b')
+      ),
       $(go.TextBlock,
         {
           segmentIndex: 0,
@@ -191,7 +229,13 @@ export const GoJSCanvas = () => {
         const nodes = diagram.model.nodeDataArray;
         const links = (diagram.model as go.GraphLinksModel).linkDataArray;
         startReasoning(nodes, links).then((result) => {
-          // Mark nodes with reasoning errors
+          diagram.startTransaction('update reasoning errors');
+          // Clear previous error markings
+          nodes.forEach(node => {
+            diagram.model.setDataProperty(node, 'hasReasoningError', false);
+          });
+          
+          // Mark nodes and edges with reasoning errors
           if (result.errors.length > 0) {
             result.errors.forEach(error => {
               if (error.nodeId) {
@@ -200,8 +244,17 @@ export const GoJSCanvas = () => {
                   diagram.model.setDataProperty(node.data, 'hasReasoningError', true);
                 }
               }
+              if (error.edgeId) {
+                const link = diagram.findLinkForKey(error.edgeId);
+                if (link) {
+                  diagram.model.setDataProperty(link.data, 'hasReasoningError', true);
+                }
+              }
             });
           }
+          diagram.commitTransaction('update reasoning errors');
+        }).catch(error => {
+          console.error('Reasoning failed:', error);
         });
       }
     });
@@ -264,6 +317,7 @@ export const GoJSCanvas = () => {
           individualName: node.individualName,
           namespace: node.namespace,
           literalProperties: node.literalProperties || [],
+          entityType: node.entityType || 'individual', // 'class', 'property', or 'individual'
           loc: node.position ? `${node.position.x} ${node.position.y}` : `${Math.random() * 800} ${Math.random() * 600}`
         }));
         
@@ -444,6 +498,8 @@ export const GoJSCanvas = () => {
         showLegend={showLegend}
         onExport={handleExport}
         onLoadFile={onLoadFile}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
       />
       
       {isLoading && (

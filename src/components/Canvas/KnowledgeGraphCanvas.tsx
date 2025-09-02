@@ -85,6 +85,7 @@ export const KnowledgeGraphCanvas = () => {
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [showLegend, setShowLegend] = useState(true);
   const [showReasoningReport, setShowReasoningReport] = useState(false);
+  const [viewMode, setViewMode] = useState<'abox' | 'tbox'>('abox');
   
   const { loadedOntologies } = useOntologyStore();
   const { startReasoning } = useReasoningStore();
@@ -159,6 +160,8 @@ export const KnowledgeGraphCanvas = () => {
         onToggleLegend={() => setShowLegend(!showLegend)}
         showLegend={showLegend}
         onExport={handleExport}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
       />
       
       <ReactFlow

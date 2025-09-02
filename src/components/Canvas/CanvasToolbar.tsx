@@ -42,9 +42,11 @@ interface CanvasToolbarProps {
   showLegend: boolean;
   onExport: (format: 'turtle' | 'owl-xml' | 'json-ld') => void;
   onLoadFile?: (file: File) => void;
+  viewMode: 'abox' | 'tbox';
+  onViewModeChange: (mode: 'abox' | 'tbox') => void;
 }
 
-export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onLoadFile }: CanvasToolbarProps) => {
+export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onLoadFile, viewMode, onViewModeChange }: CanvasToolbarProps) => {
   const [isAddNodeOpen, setIsAddNodeOpen] = useState(false);
   const [isLoadOntologyOpen, setIsLoadOntologyOpen] = useState(false);
   const [ontologyUrl, setOntologyUrl] = useState('');
@@ -210,6 +212,26 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* View Mode Toggle */}
+      <div className="flex items-center bg-card/80 backdrop-blur-sm border border-border rounded-md shadow-glass">
+        <Button
+          variant={viewMode === 'abox' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => onViewModeChange('abox')}
+          className="rounded-r-none"
+        >
+          A-Box
+        </Button>
+        <Button
+          variant={viewMode === 'tbox' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => onViewModeChange('tbox')}
+          className="rounded-l-none"
+        >
+          T-Box
+        </Button>
+      </div>
 
       {/* Toggle Legend */}
       <Button 
