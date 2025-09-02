@@ -127,9 +127,8 @@ export const GoJSCanvas = () => {
           {
             font: '9px Inter, sans-serif',
             stroke: '#475569',
-            margin: new go.Margin(0, 0, 4, 0),
-            background: '#f1f5f9',
-            padding: new go.Margin(2, 6, 2, 6)
+            margin: new go.Margin(2, 6, 6, 6),
+            background: '#f1f5f9'
           },
           new go.Binding('text', 'namespace', (ns) => ns || 'default'),
           new go.Binding('visible', 'namespace', (ns) => !!ns)
@@ -176,7 +175,7 @@ export const GoJSCanvas = () => {
           background: '#ffffff',
           font: '10px Inter, sans-serif',
           stroke: '#1e293b',
-          padding: new go.Margin(2, 4, 2, 4),
+          margin: new go.Margin(2, 4, 2, 4),
           maxSize: new go.Size(150, NaN),
           wrap: go.TextBlock.WrapFit,
           textAlign: 'center'
