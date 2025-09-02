@@ -53,90 +53,136 @@ export const GoJSCanvas = () => {
       model: new go.GraphLinksModel()
     });
 
-    // Node template
+    // Node template with proper namespace coloring
     diagram.nodeTemplate = $(go.Node, 'Auto',
       {
         locationSpot: go.Spot.Center,
         selectionAdornmentTemplate: $(go.Adornment, 'Auto',
-          $(go.Shape, { fill: null, stroke: 'hsl(var(--primary))', strokeWidth: 3 }),
+          $(go.Shape, { fill: null, stroke: '#7c3aed', strokeWidth: 3 }),
           $(go.Placeholder)
         )
       },
       new go.Binding('location', 'loc', go.Point.parse).makeTwoWay(go.Point.stringify),
       $(go.Shape, 'RoundedRectangle',
         {
-          fill: 'hsl(var(--card))',
-          stroke: 'hsl(var(--border))',
+          fill: '#ffffff',
+          stroke: '#e2e8f0',
           strokeWidth: 2,
-          minSize: new go.Size(120, 80),
+          minSize: new go.Size(140, 100),
           portId: '',
           fromLinkable: true,
           toLinkable: true,
           cursor: 'pointer'
         },
         new go.Binding('fill', 'namespace', (ns) => {
-          const colors = {
-            'foaf': 'hsl(220 14.3% 95.9%)',
-            'org': 'hsl(152 45% 95%)',
-            'rdfs': 'hsl(24 85% 95%)',
-            'owl': 'hsl(221 83% 95%)',
-            'iof': 'hsl(339 84% 95%)',
-            'default': 'hsl(var(--card))'
+          const namespaceColors = {
+            'foaf': '#f3f0ff',      // lavender
+            'org': '#f0fdf4',       // mint  
+            'rdfs': '#fef7ed',      // peach
+            'owl': '#eff6ff',       // sky
+            'iof': '#fdf2f8',       // rose
+            'rdf': '#f0f9ff',       // aqua
+            'skos': '#fefce8',      // honey
+            'dc': '#fcf8ff',        // orchid
+            'dct': '#f8fafc',       // powder
+            'xsd': '#f0fdfa',       // seafoam
+            'reasoning': '#fefce8', // light yellow for reasoning entities
+            'default': '#ffffff'
           };
-          return colors[ns as keyof typeof colors] || colors.default;
-        })
+          return namespaceColors[ns as keyof typeof namespaceColors] || namespaceColors.default;
+        }),
+        new go.Binding('stroke', 'hasReasoningError', (hasError) => hasError ? '#ef4444' : '#e2e8f0'),
+        new go.Binding('strokeWidth', 'hasReasoningError', (hasError) => hasError ? 3 : 2)
       ),
       $(go.Panel, 'Vertical',
-        { margin: 8 },
+        { margin: 8, alignment: go.Spot.Center },
+        // Class type (larger, bold)
         $(go.TextBlock,
           {
-            font: 'bold 12px sans-serif',
-            stroke: 'hsl(var(--foreground))',
-            margin: new go.Margin(0, 0, 4, 0)
+            font: 'bold 13px Inter, sans-serif',
+            stroke: '#1e293b',
+            margin: new go.Margin(0, 0, 4, 0),
+            maxSize: new go.Size(120, NaN),
+            wrap: go.TextBlock.WrapFit,
+            textAlign: 'center'
           },
-          new go.Binding('text', 'classType')
+          new go.Binding('text', 'classType', (type) => type || 'Thing'),
+          new go.Binding('stroke', 'hasReasoningError', (hasError) => hasError ? '#dc2626' : '#1e293b')
         ),
+        // Individual name (smaller, normal)
         $(go.TextBlock,
           {
-            font: '10px sans-serif',
-            stroke: 'hsl(var(--muted-foreground))',
-            margin: new go.Margin(0, 0, 4, 0)
+            font: '11px Inter, sans-serif',
+            stroke: '#64748b',
+            margin: new go.Margin(0, 0, 6, 0),
+            maxSize: new go.Size(120, NaN),
+            wrap: go.TextBlock.WrapFit,
+            textAlign: 'center'
           },
-          new go.Binding('text', 'individualName')
+          new go.Binding('text', 'individualName', (name) => name || ''),
+          new go.Binding('visible', 'individualName', (name) => !!name)
         ),
+        // Namespace badge
+        $(go.TextBlock,
+          {
+            font: '9px Inter, sans-serif',
+            stroke: '#475569',
+            margin: new go.Margin(0, 0, 4, 0),
+            background: '#f1f5f9',
+            padding: new go.Margin(2, 6, 2, 6)
+          },
+          new go.Binding('text', 'namespace', (ns) => ns || 'default'),
+          new go.Binding('visible', 'namespace', (ns) => !!ns)
+        ),
+        // Literal properties (smaller text)
         $(go.Panel, 'Vertical',
-          { itemTemplate: $(go.Panel, 'Horizontal',
-              $(go.TextBlock, { font: '9px sans-serif', stroke: 'hsl(var(--muted-foreground))' },
-                new go.Binding('text', '', (prop) => `${prop.key}: ${prop.value}`))
+          { 
+            maxSize: new go.Size(120, 60),
+            itemTemplate: $(go.Panel, 'Horizontal',
+              { margin: new go.Margin(1, 0, 1, 0) },
+              $(go.TextBlock, 
+                { 
+                  font: '9px Inter, sans-serif', 
+                  stroke: '#64748b',
+                  maxSize: new go.Size(120, NaN),
+                  wrap: go.TextBlock.WrapFit
+                },
+                new go.Binding('text', '', (prop) => `${prop.key}: ${prop.value}`)
+              )
             )
           },
-          new go.Binding('itemArray', 'literalProperties')
+          new go.Binding('itemArray', 'literalProperties', (props) => props || [])
         )
       )
     );
 
-    // Link template
+    // Link template with proper labels
     diagram.linkTemplate = $(go.Link,
       {
         routing: go.Link.AvoidsNodes,
         curve: go.Link.JumpOver,
         corner: 5,
         selectionAdornmentTemplate: $(go.Adornment, 'Link',
-          $(go.Shape, { isPanelMain: true, stroke: 'hsl(var(--primary))', strokeWidth: 3 }),
-          $(go.Shape, { toArrow: 'Standard', fill: 'hsl(var(--primary))', stroke: null })
+          $(go.Shape, { isPanelMain: true, stroke: '#7c3aed', strokeWidth: 3 }),
+          $(go.Shape, { toArrow: 'Standard', fill: '#7c3aed', stroke: null })
         )
       },
-      $(go.Shape, { strokeWidth: 2, stroke: 'hsl(var(--border))' }),
-      $(go.Shape, { toArrow: 'Standard', fill: 'hsl(var(--border))', stroke: null }),
+      $(go.Shape, { strokeWidth: 2, stroke: '#64748b' }),
+      $(go.Shape, { toArrow: 'Standard', fill: '#64748b', stroke: null }),
       $(go.TextBlock,
         {
           segmentIndex: 0,
           segmentFraction: 0.5,
-          background: 'hsl(var(--background))',
-          font: '10px sans-serif',
-          stroke: 'hsl(var(--foreground))'
+          background: '#ffffff',
+          font: '10px Inter, sans-serif',
+          stroke: '#1e293b',
+          padding: new go.Margin(2, 4, 2, 4),
+          maxSize: new go.Size(150, NaN),
+          wrap: go.TextBlock.WrapFit,
+          textAlign: 'center'
         },
-        new go.Binding('text', 'label')
+        new go.Binding('text', 'label', (label) => label || 'related'),
+        new go.Binding('visible', 'label', (label) => !!label)
       )
     );
 
@@ -145,7 +191,19 @@ export const GoJSCanvas = () => {
       if (settings.autoReasoning) {
         const nodes = diagram.model.nodeDataArray;
         const links = (diagram.model as go.GraphLinksModel).linkDataArray;
-        startReasoning(nodes, links);
+        startReasoning(nodes, links).then((result) => {
+          // Mark nodes with reasoning errors
+          if (result.errors.length > 0) {
+            result.errors.forEach(error => {
+              if (error.nodeId) {
+                const node = diagram.findNodeForKey(error.nodeId);
+                if (node) {
+                  diagram.model.setDataProperty(node.data, 'hasReasoningError', true);
+                }
+              }
+            });
+          }
+        });
       }
     });
 
@@ -409,11 +467,15 @@ export const GoJSCanvas = () => {
         <NamespaceLegend 
           className="absolute top-20 right-4 z-10"
           namespaces={[
-            { name: 'foaf', color: 'namespace-lavender', description: 'Friend of a Friend' },
-            { name: 'org', color: 'namespace-mint', description: 'Organization Ontology' },
-            { name: 'rdfs', color: 'namespace-peach', description: 'RDF Schema' },
-            { name: 'owl', color: 'namespace-sky', description: 'Web Ontology Language' },
-            { name: 'iof', color: 'namespace-coral', description: 'Industrial Ontologies Foundry' }
+            { name: 'foaf', color: '#f3f0ff', description: 'Friend of a Friend' },
+            { name: 'org', color: '#f0fdf4', description: 'Organization Ontology' },
+            { name: 'rdfs', color: '#fef7ed', description: 'RDF Schema' },
+            { name: 'owl', color: '#eff6ff', description: 'Web Ontology Language' },
+            { name: 'iof', color: '#fdf2f8', description: 'Industrial Ontologies Foundry' },
+            { name: 'rdf', color: '#f0f9ff', description: 'Resource Description Framework' },
+            { name: 'skos', color: '#fefce8', description: 'Simple Knowledge Organization System' },
+            { name: 'dc', color: '#fcf8ff', description: 'Dublin Core' },
+            { name: 'reasoning', color: '#fefce8', description: 'Reasoning Results' }
           ]}
         />
       )}

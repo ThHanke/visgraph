@@ -16,31 +16,6 @@ interface NamespaceLegendProps {
 }
 
 export const NamespaceLegend = ({ namespaces, className }: NamespaceLegendProps) => {
-  const namespaceColorMap: Record<string, string> = {
-    'namespace-lavender': 'bg-namespace-lavender',
-    'namespace-mint': 'bg-namespace-mint',
-    'namespace-peach': 'bg-namespace-peach',
-    'namespace-sky': 'bg-namespace-sky',
-    'namespace-rose': 'bg-namespace-rose',
-    'namespace-sage': 'bg-namespace-sage',
-    'namespace-cream': 'bg-namespace-cream',
-    'namespace-lilac': 'bg-namespace-lilac',
-    'namespace-seafoam': 'bg-namespace-seafoam',
-    'namespace-blush': 'bg-namespace-blush',
-    'namespace-periwinkle': 'bg-namespace-periwinkle',
-    'namespace-coral': 'bg-namespace-coral',
-    'namespace-eucalyptus': 'bg-namespace-eucalyptus',
-    'namespace-champagne': 'bg-namespace-champagne',
-    'namespace-orchid': 'bg-namespace-orchid',
-    'namespace-aqua': 'bg-namespace-aqua',
-    'namespace-apricot': 'bg-namespace-apricot',
-    'namespace-mauve': 'bg-namespace-mauve',
-    'namespace-mint-cream': 'bg-namespace-mint-cream',
-    'namespace-powder': 'bg-namespace-powder',
-    'namespace-honey': 'bg-namespace-honey',
-    'namespace-thistle': 'bg-namespace-thistle',
-  };
-
   return (
     <Card className={cn('w-80 shadow-glass backdrop-blur-sm bg-card/90', className)}>
       <CardHeader className="pb-3">
@@ -53,10 +28,8 @@ export const NamespaceLegend = ({ namespaces, className }: NamespaceLegendProps)
         {namespaces.map((ns) => (
           <div key={ns.name} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
             <div 
-              className={cn(
-                'w-4 h-4 rounded-full border border-white/30',
-                namespaceColorMap[ns.color] || 'bg-muted'
-              )}
+              className="w-4 h-4 rounded-full border border-white/30"
+              style={{ backgroundColor: ns.color }}
             />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
