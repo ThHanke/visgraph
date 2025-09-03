@@ -105,14 +105,19 @@ export const KnowledgeGraphCanvas = () => {
   );
 
   const onAddNode = useCallback((entityUri: string) => {
+    // Extract entity information from URI
+    const parts = entityUri.split(':');
+    const namespace = parts.length > 1 ? parts[0] : 'default';
+    const localName = parts.length > 1 ? parts[1] : entityUri;
+    
     const newNode: Node = {
       id: `node-${Date.now()}`,
       type: 'ontologyNode',
       position: { x: Math.random() * 400 + 100, y: Math.random() * 300 + 100 },
       data: {
-        classType,
-        individualName: `${classType}_${Date.now()}`,
-        namespace,
+        classType: localName,
+        individualName: `${localName}_${Date.now()}`,
+        namespace: namespace,
         properties: {},
         errors: []
       }
@@ -162,6 +167,14 @@ export const KnowledgeGraphCanvas = () => {
         onExport={handleExport}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
+        availableEntities={loadedOntologies.flatMap(ont => 
+          ont.classes.map(cls => ({
+            uri: cls.uri,
+            label: cls.label,
+            namespace: cls.namespace,
+            rdfType: 'owl:Class'
+          }))
+        )}
       />
       
       <ReactFlow
