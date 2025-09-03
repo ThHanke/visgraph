@@ -529,7 +529,7 @@ export const GoJSCanvas = () => {
     return () => {
       diagram.div = null;
     };
-  }, []);
+  }, [isHydrated, settings.layoutAlgorithm, getLayoutByType]);
 
   // Update diagram when currentGraph changes
   useEffect(() => {
