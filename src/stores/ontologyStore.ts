@@ -261,6 +261,34 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       });
       
       set((state) => {
+        // Update RDF manager with current graph data BEFORE merging new data
+        if (preserveGraph && state.currentGraph.nodes.length > 0) {
+          console.log('Preserving current graph with', state.currentGraph.nodes.length, 'nodes');
+          state.currentGraph.nodes.forEach((node, index) => {
+            console.log(`Preserving node ${index + 1}:`, {
+              id: node.id,
+              uri: node.data.uri,
+              literalProperties: node.data.literalProperties?.length || 0
+            });
+            
+            const updates: any = {};
+            if (node.data.classType) {
+              updates.type = `${node.data.namespace}:${node.data.classType}`;
+            }
+            if (node.data.literalProperties && node.data.literalProperties.length > 0) {
+              updates.annotationProperties = node.data.literalProperties.map((prop: any) => ({
+                propertyUri: prop.key,
+                value: prop.value,
+                type: prop.type || 'xsd:string'
+              }));
+              console.log(`Node ${node.id} has ${updates.annotationProperties.length} properties to preserve`);
+            }
+            if (Object.keys(updates).length > 0) {
+              rdfManager.updateEntity(node.data.uri || node.id, updates);
+            }
+          });
+        }
+
         // Merge current graph with new graph when preserving
         const mergedNodes = preserveGraph && state.currentGraph.nodes.length > 0 ? 
           [...state.currentGraph.nodes, ...parsedGraph.nodes.filter(newNode => 
@@ -274,25 +302,11 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           )] : 
           parsedGraph.edges;
 
-        // Update RDF manager with current graph data
-        if (preserveGraph && state.currentGraph.nodes.length > 0) {
-          state.currentGraph.nodes.forEach(node => {
-            const updates: any = {};
-            if (node.data.classType) {
-              updates.type = `${node.data.namespace}:${node.data.classType}`;
-            }
-            if (node.data.literalProperties && node.data.literalProperties.length > 0) {
-              updates.annotationProperties = node.data.literalProperties.map((prop: any) => ({
-                propertyUri: prop.key,
-                value: prop.value,
-                type: prop.type
-              }));
-            }
-            if (Object.keys(updates).length > 0) {
-              rdfManager.updateEntity(node.data.uri || node.id, updates);
-            }
-          });
-        }
+        console.log('Final merged graph:', {
+          originalNodes: state.currentGraph.nodes.length,
+          newNodes: parsedGraph.nodes.length,
+          mergedNodes: mergedNodes.length
+        });
           
         return {
           loadedOntologies: [...state.loadedOntologies, loadedOntology],

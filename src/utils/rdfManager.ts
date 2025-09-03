@@ -174,7 +174,7 @@ export class RDFManager {
   /**
    * Expand a prefixed URI to full URI
    */
-  private expandPrefix(prefixedUri: string): string {
+  expandPrefix(prefixedUri: string): string {
     const colonIndex = prefixedUri.indexOf(':');
     if (colonIndex === -1) return prefixedUri;
     
