@@ -81,10 +81,20 @@ export const NodePropertyEditor = ({
         const typeLabel = nodeData.classType || nodeData.type;
         console.log('Looking for type:', typeLabel);
         
-        // Try to find the URI for this type label
-        const matchingEntity = classEntities.find(entity => 
-          entity.label === typeLabel || entity.uri === typeLabel
-        );
+        // Try to find the URI for this type label - handle both full URIs and namespace:label format
+        const matchingEntity = classEntities.find(entity => {
+          // Direct match
+          if (entity.label === typeLabel || entity.uri === typeLabel) return true;
+          
+          // Match namespace:label format (e.g., "iof-qual:Length")
+          if (typeLabel.includes(':')) {
+            const [namespace, label] = typeLabel.split(':');
+            return entity.label === label && entity.namespace === namespace;
+          }
+          
+          // Check if entity URI ends with the type label
+          return entity.uri.endsWith(typeLabel) || entity.uri.endsWith(`/${typeLabel}`) || entity.uri.endsWith(`#${typeLabel}`);
+        });
         console.log('Matching entity found:', matchingEntity);
         
         initialNodeType = matchingEntity ? matchingEntity.uri : typeLabel;
