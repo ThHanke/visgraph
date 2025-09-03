@@ -148,20 +148,27 @@ export const GoJSCanvas = () => {
     diagram.commitTransaction('update view mode');
   }, [viewMode]);
 
-  // Initialize GoJS diagram
+  // Initialize GoJS diagram - wait for settings to be hydrated  
   useEffect(() => {
-    if (!diagramRef.current) return;
+    if (!diagramRef.current || !isHydrated) {
+      console.log('Waiting for diagram ref or settings hydration...', { hasRef: !!diagramRef.current, isHydrated });
+      return;
+    }
 
     const $ = go.GraphObject.make;
     
-    const diagram = $(go.Diagram, diagramRef.current, {
-      'undoManager.isEnabled': true,
-      'toolManager.hoverDelay': 100,
-      'animationManager.isEnabled': false,
-      initialContentAlignment: go.Spot.Center,
-      layout: getLayoutByType(settings.layoutAlgorithm),
-      model: new go.GraphLinksModel()
-    });
+    try {
+      const layoutAlgorithm = settings.layoutAlgorithm || 'layered';
+      console.log(`Initializing diagram with layout: ${layoutAlgorithm}`);
+      
+      const diagram = $(go.Diagram, diagramRef.current, {
+        'undoManager.isEnabled': true,
+        'toolManager.hoverDelay': 100,
+        'animationManager.isEnabled': false,
+        initialContentAlignment: go.Spot.Center,
+        layout: getLayoutByType(layoutAlgorithm),
+        model: new go.GraphLinksModel()
+      });
 
     // Helper function to get namespace color
     const getNamespaceColor = (namespace: string) => {

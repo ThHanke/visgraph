@@ -18,6 +18,7 @@ interface Settings {
 
 interface SettingsStore {
   settings: Settings;
+  isHydrated: boolean;
   updateSettings: (updates: Partial<Settings>) => void;
   addOntology: (ontology: OntologyConfig) => void;
   removeOntology: (url: string) => void;
@@ -25,6 +26,7 @@ interface SettingsStore {
   loadPreset: (preset: Settings) => void;
   exportSettings: () => string;
   importSettings: (settingsJson: string) => void;
+  setHydrated: (hydrated: boolean) => void;
 }
 
 const defaultSettings: Settings = {
@@ -43,6 +45,7 @@ export const useSettingsStore = create<SettingsStore>()(
   persist(
     (set, get) => ({
       settings: defaultSettings,
+      isHydrated: false,
 
       updateSettings: (updates) => {
         set((state) => ({
@@ -95,12 +98,21 @@ export const useSettingsStore = create<SettingsStore>()(
           console.error('Failed to import settings:', error);
           throw new Error('Invalid settings format');
         }
+      },
+
+      setHydrated: (hydrated) => {
+        set({ isHydrated: hydrated });
       }
     }),
     {
       name: 'ontology-painter-settings',
       version: 1,
       storage: createJSONStorage(() => localStorage),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.setHydrated(true);
+        }
+      },
     }
   )
 );
