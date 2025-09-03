@@ -166,6 +166,14 @@ export const NodePropertyEditor = ({
   const handleSave = (e?: React.MouseEvent) => {
     e?.preventDefault();
     e?.stopPropagation();
+    
+    // Validate that all properties have keys
+    const hasEmptyProperties = properties.some(prop => !prop.key.trim());
+    if (hasEmptyProperties) {
+      alert('Please provide a property name for all annotation properties or remove empty ones.');
+      return;
+    }
+    
     // Convert URI back to label for classType if we have a matching entity
     const selectedEntity = classEntities.find(entity => entity.uri === nodeType);
     const classTypeLabel = selectedEntity ? selectedEntity.label : nodeType;
@@ -185,7 +193,7 @@ export const NodePropertyEditor = ({
       rdfTypes: updatedRdfTypes, // Update the types array
       uri: nodeIri,
       iri: nodeIri,
-      annotationProperties: properties.map(prop => ({
+      annotationProperties: properties.filter(prop => prop.key.trim()).map(prop => ({
         property: prop.key,
         key: prop.key,
         value: prop.value,
@@ -312,13 +320,17 @@ export const NodePropertyEditor = ({
               {properties.map((property, index) => (
                 <div key={index} className="grid grid-cols-12 gap-2 items-end">
                   <div className="col-span-4">
-                    <Label className="text-xs">Property</Label>
+                    <Label className="text-xs">Property *</Label>
                     <AutoComplete
                       options={getAnnotationProperties()}
                       value={property.key}
                       onValueChange={(value) => handleUpdateProperty(index, 'key', value)}
                       placeholder="Select property..."
+                      className={!property.key.trim() ? "border-red-500" : ""}
                     />
+                    {!property.key.trim() && (
+                      <p className="text-xs text-red-500 mt-1">Property is required</p>
+                    )}
                   </div>
                   
                   <div className="col-span-5">
