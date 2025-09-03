@@ -32,6 +32,13 @@ import {
   Download,
   Palette,
   Network,
+  Layout,
+  GitBranch,
+  TreePine,
+  Circle,
+  Grid3X3,
+  Layers,
+  TreeDeciduous
 } from 'lucide-react';
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { EntityAutocomplete } from '../ui/EntityAutocomplete';
