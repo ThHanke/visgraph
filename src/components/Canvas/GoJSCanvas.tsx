@@ -159,13 +159,7 @@ export const GoJSCanvas = () => {
       'toolManager.hoverDelay': 100,
       'animationManager.isEnabled': false,
       initialContentAlignment: go.Spot.Center,
-      layout: $(go.ForceDirectedLayout, {
-        defaultSpringLength: 120,
-        defaultElectricalCharge: 200,
-        maxIterations: 200,
-        epsilonDistance: 0.5,
-        infinityDistance: 1000
-      }),
+      layout: getLayoutByType(settings.layoutAlgorithm),
       model: new go.GraphLinksModel()
     });
 
