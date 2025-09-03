@@ -278,6 +278,41 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
         Legend
       </Button>
 
+      {/* Layout Selector */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="shadow-glass backdrop-blur-sm">
+            <Layout className="h-4 w-4 mr-2" />
+            Layout
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-64 bg-popover border z-50">
+          {layoutOptions.map((layout) => {
+            const IconComponent = layout.icon;
+            return (
+              <DropdownMenuItem
+                key={layout.type}
+                onClick={() => handleLayoutChange(layout.type)}
+                className="flex items-start gap-3 p-3 cursor-pointer hover:bg-accent"
+              >
+                <IconComponent className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{layout.label}</span>
+                    {currentLayout === layout.type && (
+                      <Badge variant="secondary" className="text-xs">Active</Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                    {layout.description}
+                  </p>
+                </div>
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
       {/* Load File */}
       <Dialog open={isLoadFileOpen} onOpenChange={setIsLoadFileOpen}>
         <DialogTrigger asChild>
