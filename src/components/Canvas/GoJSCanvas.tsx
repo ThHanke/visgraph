@@ -52,26 +52,29 @@ export const GoJSCanvas = () => {
   const { startReasoning } = useReasoningStore();
   const { settings } = useSettingsStore();
 
-  // Update diagram visibility when view mode changes
+  // Initialize with proper filtering
   useEffect(() => {
     const diagram = diagramInstanceRef.current;
     if (!diagram) return;
 
-    diagram.startTransaction('update view mode');
-    diagram.nodes.each(node => {
-      const data = node.data;
-      // T-box: entities with rdf:type Class, ObjectProperty, AnnotationProperty, or DatatypeProperty
-      const isTBoxEntity = data.rdfType && (
-        data.rdfType.includes('Class') || 
-        data.rdfType.includes('ObjectProperty') || 
-        data.rdfType.includes('AnnotationProperty') || 
-        data.rdfType.includes('DatatypeProperty')
-      );
-      const shouldShow = viewMode === 'tbox' ? isTBoxEntity : !isTBoxEntity;
-      diagram.model.setDataProperty(data, 'visible', shouldShow);
-    });
-    diagram.commitTransaction('update view mode');
-  }, [viewMode]);
+    // Force initial filtering when view mode or data changes
+    setTimeout(() => {
+      diagram.startTransaction('update view mode');
+      diagram.nodes.each(node => {
+        const data = node.data;
+        // T-box: entities with rdf:type Class, ObjectProperty, AnnotationProperty, or DatatypeProperty
+        const isTBoxEntity = data.rdfType && (
+          data.rdfType.includes('Class') || 
+          data.rdfType.includes('ObjectProperty') || 
+          data.rdfType.includes('AnnotationProperty') || 
+          data.rdfType.includes('DatatypeProperty')
+        );
+        const shouldShow = viewMode === 'tbox' ? isTBoxEntity : !isTBoxEntity;
+        diagram.model.setDataProperty(data, 'visible', shouldShow);
+      });
+      diagram.commitTransaction('update view mode');
+    }, 100);
+  }, [viewMode, loadedOntologies]);
 
   // Initialize GoJS diagram
   useEffect(() => {
@@ -94,8 +97,8 @@ export const GoJSCanvas = () => {
       model: new go.GraphLinksModel()
     });
 
-    // Redesigned single node template with header and body
-    diagram.nodeTemplate = $(go.Node, 'Vertical',
+    // Single unified node template with proper header/body structure
+    diagram.nodeTemplate = $(go.Node, 'Auto',
       {
         locationSpot: go.Spot.Center,
         selectionAdornmentTemplate: $(go.Adornment, 'Auto',
@@ -106,11 +109,23 @@ export const GoJSCanvas = () => {
         mouseEnter: (e, obj) => {
           const node = obj.part as go.Node;
           if (node && node.data) {
+            const shape = node.findObject('SHAPE') as go.Shape;
+            const headerShape = node.findObject('HEADER_SHAPE') as go.Shape;
+            if (shape) shape.strokeWidth = 3;
+            if (headerShape) headerShape.strokeWidth = 3;
             (diagram.div as any).style.cursor = 'pointer';
           }
         },
         mouseLeave: (e, obj) => {
-          (diagram.div as any).style.cursor = 'auto';
+          const node = obj.part as go.Node;
+          if (node && node.data) {
+            const shape = node.findObject('SHAPE') as go.Shape;
+            const headerShape = node.findObject('HEADER_SHAPE') as go.Shape;
+            const hasError = node.data.hasReasoningError;
+            if (shape) shape.strokeWidth = hasError ? 4 : 2;
+            if (headerShape) headerShape.strokeWidth = hasError ? 4 : 2;
+            (diagram.div as any).style.cursor = 'auto';
+          }
         },
         // Add click handler for annotation properties
         click: (e, obj) => {
@@ -119,200 +134,207 @@ export const GoJSCanvas = () => {
             setSelectedNode(node.data);
             setShowNodeEditor(true);
           }
-        }
+        },
+        // Tooltip for node details
+        toolTip: $(go.Adornment, 'Auto',
+          $(go.Shape, { fill: '#fefce8', stroke: '#facc15', strokeWidth: 2 }),
+          $(go.Panel, 'Vertical',
+            { margin: 8 },
+            $(go.TextBlock, 
+              { 
+                font: 'bold 11px Inter, sans-serif',
+                stroke: '#a16207',
+                maxSize: new go.Size(250, NaN),
+                wrap: go.TextBlock.WrapFit
+              },
+              new go.Binding('text', 'uri', (uri) => `URI: ${uri || 'unknown'}`)
+            ),
+            $(go.TextBlock, 
+              { 
+                font: '10px Inter, sans-serif',
+                stroke: '#a16207',
+                margin: new go.Margin(2, 0, 0, 0),
+                maxSize: new go.Size(250, NaN),
+                wrap: go.TextBlock.WrapFit
+              },
+              new go.Binding('text', 'rdfType', (type) => `RDF Type: ${type || 'unknown'}`)
+            )
+          )
+        )
       },
       new go.Binding('location', 'loc', go.Point.parse).makeTwoWay(go.Point.stringify),
       new go.Binding('visible', 'visible', (vis) => vis !== false),
       
-      // Header - IRI and rdf:type
-      $(go.Panel, 'Auto',
-        { 
+      // Main container shape with border color from namespace
+      $(go.Shape, 'RoundedRectangle',
+        {
+          name: 'SHAPE',
+          strokeWidth: 2,
+          fill: '#ffffff',
+          minSize: new go.Size(160, 90),
+          parameter1: 8,
           portId: '', 
           fromLinkable: true, 
-          toLinkable: true,
-          toolTip: $(go.Adornment, 'Auto',
-            $(go.Shape, { fill: '#fefce8', stroke: '#facc15', strokeWidth: 2 }),
-            $(go.Panel, 'Vertical',
-              { margin: 8 },
-              $(go.TextBlock, 
-                { 
-                  font: 'bold 11px Inter, sans-serif',
-                  stroke: '#a16207',
-                  maxSize: new go.Size(250, NaN),
-                  wrap: go.TextBlock.WrapFit
-                },
-                new go.Binding('text', 'uri', (uri) => `URI: ${uri || 'unknown'}`)
-              ),
-              $(go.TextBlock, 
-                { 
-                  font: '10px Inter, sans-serif',
-                  stroke: '#a16207',
-                  margin: new go.Margin(2, 0, 0, 0),
-                  maxSize: new go.Size(250, NaN),
-                  wrap: go.TextBlock.WrapFit
-                },
-                new go.Binding('text', 'rdfType', (type) => `RDF Type: ${type || 'unknown'}`)
-              )
-            )
-          )
+          toLinkable: true
         },
-        $(go.Shape, 'RoundedRectangle',
-          {
-            strokeWidth: 2,
-            minSize: new go.Size(160, 40),
-            parameter1: 8
-          },
-          new go.Binding('fill', 'namespace', (ns) => {
-            const namespaceColors = {
-              'foaf': 'hsl(250 75% 60%)',
-              'org': 'hsl(160 70% 45%)',
-              'rdfs': 'hsl(25 85% 65%)',
-              'owl': 'hsl(200 80% 55%)',
-              'rdf': 'hsl(190 75% 50%)',
-              'skos': 'hsl(40 80% 60%)',
-              'dc': 'hsl(290 70% 60%)',
-              'dct': 'hsl(240 65% 55%)',
-              'xsd': 'hsl(180 60% 50%)',
-              'iof': 'hsl(330 70% 60%)',
-              'reasoning': 'hsl(55 90% 85%)',
-              'default': 'hsl(215 25% 60%)'
-            };
-            return namespaceColors[ns as keyof typeof namespaceColors] || namespaceColors.default;
-          }),
-          new go.Binding('stroke', 'namespace', (ns) => {
-            const namespaceColors = {
-              'foaf': 'hsl(250 75% 40%)',
-              'org': 'hsl(160 70% 25%)',
-              'rdfs': 'hsl(25 85% 45%)',
-              'owl': 'hsl(200 80% 35%)',
-              'rdf': 'hsl(190 75% 30%)',
-              'skos': 'hsl(40 80% 40%)',
-              'dc': 'hsl(290 70% 40%)',
-              'dct': 'hsl(240 65% 35%)',
-              'xsd': 'hsl(180 60% 30%)',
-              'iof': 'hsl(330 70% 40%)',
-              'reasoning': 'hsl(55 80% 65%)',
-              'default': 'hsl(215 25% 40%)'
-            };
-            return namespaceColors[ns as keyof typeof namespaceColors] || namespaceColors.default;
-          }),
-          new go.Binding('strokeWidth', 'hasReasoningError', (hasError) => hasError ? 4 : 2)
-        ),
-        $(go.Panel, 'Vertical',
-          { margin: 8, alignment: go.Spot.Center },
-          // IRI
-          $(go.TextBlock,
-            {
-              font: 'bold 10px Inter, sans-serif',
-              stroke: '#ffffff',
-              maxSize: new go.Size(140, NaN),
-              wrap: go.TextBlock.WrapFit,
-              textAlign: 'center'
-            },
-            new go.Binding('text', 'uri', (uri) => {
-              // Shorten URI using base prefix
-              if (uri && uri.startsWith('https://github.com/Mat-O-Lab/IOFMaterialsTutorial/')) {
-                return uri.replace('https://github.com/Mat-O-Lab/IOFMaterialsTutorial/', ':');
-              }
-              // Try other common prefixes
-              const prefixMap = {
-                'http://www.w3.org/1999/02/22-rdf-syntax-ns#': 'rdf:',
-                'http://www.w3.org/2000/01/rdf-schema#': 'rdfs:',
-                'http://www.w3.org/2002/07/owl#': 'owl:',
-                'http://xmlns.com/foaf/0.1/': 'foaf:'
-              };
-              
-              for (const [namespace, prefix] of Object.entries(prefixMap)) {
-                if (uri && uri.startsWith(namespace)) {
-                  return uri.replace(namespace, prefix);
-                }
-              }
-              return uri || 'unknown:uri';
-            })
-          ),
-          // RDF Type
-          $(go.TextBlock,
-            {
-              font: '9px Inter, sans-serif',
-              stroke: '#f8f9fa',
-              margin: new go.Margin(2, 0, 0, 0),
-              maxSize: new go.Size(140, NaN),
-              wrap: go.TextBlock.WrapFit,
-              textAlign: 'center'
-            },
-            new go.Binding('text', 'rdfType', (type) => {
-              // Don't display owl:NamedIndividual in A-Box view
-              if (type === 'owl:NamedIndividual') return '';
-              return type || 'unknown:type';
-            })
-          )
-        )
+        new go.Binding('stroke', 'namespace', (ns) => {
+          const namespaceColors = {
+            'foaf': 'hsl(250 75% 40%)',
+            'org': 'hsl(160 70% 25%)',
+            'rdfs': 'hsl(25 85% 45%)',
+            'owl': 'hsl(200 80% 35%)',
+            'rdf': 'hsl(190 75% 30%)',
+            'skos': 'hsl(40 80% 40%)',
+            'dc': 'hsl(290 70% 40%)',
+            'dct': 'hsl(240 65% 35%)',
+            'xsd': 'hsl(180 60% 30%)',
+            'iof': 'hsl(330 70% 40%)',
+            ':': 'hsl(330 70% 40%)',
+            'reasoning': 'hsl(55 80% 65%)',
+            'default': 'hsl(215 25% 40%)'
+          };
+          return namespaceColors[ns as keyof typeof namespaceColors] || namespaceColors.default;
+        }),
+        new go.Binding('strokeWidth', 'hasReasoningError', (hasError) => hasError ? 4 : 2)
       ),
       
-      // Body - rdfs:label and annotation properties
-      $(go.Panel, 'Auto',
-        $(go.Shape, 'RoundedRectangle',
-          {
-            fill: '#ffffff',
-            strokeWidth: 2,
-            minSize: new go.Size(160, 50),
-            parameter1: 8
-          },
-          new go.Binding('stroke', 'namespace', (ns) => {
-            const namespaceColors = {
-              'foaf': 'hsl(250 75% 40%)',
-              'org': 'hsl(160 70% 25%)',
-              'rdfs': 'hsl(25 85% 45%)',
-              'owl': 'hsl(200 80% 35%)',
-              'rdf': 'hsl(190 75% 30%)',
-              'skos': 'hsl(40 80% 40%)',
-              'dc': 'hsl(290 70% 40%)',
-              'dct': 'hsl(240 65% 35%)',
-              'xsd': 'hsl(180 60% 30%)',
-              'iof': 'hsl(330 70% 40%)',
-              'reasoning': 'hsl(55 80% 65%)',
-              'default': 'hsl(215 25% 40%)'
-            };
-            return namespaceColors[ns as keyof typeof namespaceColors] || namespaceColors.default;
-          }),
-          new go.Binding('strokeWidth', 'hasReasoningError', (hasError) => hasError ? 4 : 2)
-        ),
-        $(go.Panel, 'Vertical',
-          { margin: 8, alignment: go.Spot.Center },
-          // rdfs:label
-          $(go.TextBlock,
+      // Vertical panel for header and body
+      $(go.Panel, 'Vertical',
+        { margin: 0 },
+        
+        // Header section with colored background
+        $(go.Panel, 'Auto',
+          $(go.Shape, 'RoundedRectangle',
             {
-              font: 'bold 12px Inter, sans-serif',
-              stroke: '#1e293b',
-              margin: new go.Margin(0, 0, 4, 0),
-              maxSize: new go.Size(140, NaN),
-              wrap: go.TextBlock.WrapFit,
-              textAlign: 'center'
+              name: 'HEADER_SHAPE',
+              strokeWidth: 0,
+              minSize: new go.Size(158, 35),
+              parameter1: 8,
+              parameter2: 8 | 2  // Only round top corners
             },
-            new go.Binding('text', 'annotationProperties', (props) => {
-              const labelProp = props?.find((p: any) => p.propertyUri === 'rdfs:label');
-              return labelProp?.value || 'No label';
+            new go.Binding('fill', 'namespace', (ns) => {
+              const namespaceColors = {
+                'foaf': 'hsl(250 75% 60%)',
+                'org': 'hsl(160 70% 45%)',
+                'rdfs': 'hsl(25 85% 65%)',
+                'owl': 'hsl(200 80% 55%)',
+                'rdf': 'hsl(190 75% 50%)',
+                'skos': 'hsl(40 80% 60%)',
+                'dc': 'hsl(290 70% 60%)',
+                'dct': 'hsl(240 65% 55%)',
+                'xsd': 'hsl(180 60% 50%)',
+                'iof': 'hsl(330 70% 60%)',
+                ':': 'hsl(330 70% 60%)',
+                'reasoning': 'hsl(55 90% 85%)',
+                'default': 'hsl(215 25% 60%)'
+              };
+              return namespaceColors[ns as keyof typeof namespaceColors] || namespaceColors.default;
             })
           ),
-          // Other annotation properties
           $(go.Panel, 'Vertical',
-            { 
-              maxSize: new go.Size(140, 40),
-              itemTemplate: $(go.Panel, 'Horizontal',
-                { margin: new go.Margin(1, 0, 1, 0) },
-                $(go.TextBlock, 
-                  { 
-                    font: '9px Inter, sans-serif', 
-                    stroke: '#6b7280',
-                    maxSize: new go.Size(140, NaN),
-                    wrap: go.TextBlock.WrapFit
-                  },
-                  new go.Binding('text', '', (prop) => `${prop.propertyUri}: ${prop.value}`)
+            { margin: 4, alignment: go.Spot.Center },
+            // Shortened URI
+            $(go.TextBlock,
+              {
+                font: 'bold 10px Inter, sans-serif',
+                stroke: '#ffffff',
+                maxSize: new go.Size(140, NaN),
+                wrap: go.TextBlock.WrapFit,
+                textAlign: 'center'
+              },
+              new go.Binding('text', 'uri', (uri) => {
+                // Shorten URI using base prefix
+                if (uri && uri.startsWith('https://github.com/Mat-O-Lab/IOFMaterialsTutorial/')) {
+                  return uri.replace('https://github.com/Mat-O-Lab/IOFMaterialsTutorial/', ':');
+                }
+                // Try other common prefixes
+                const prefixMap = {
+                  'http://www.w3.org/1999/02/22-rdf-syntax-ns#': 'rdf:',
+                  'http://www.w3.org/2000/01/rdf-schema#': 'rdfs:',
+                  'http://www.w3.org/2002/07/owl#': 'owl:',
+                  'http://xmlns.com/foaf/0.1/': 'foaf:',
+                  'https://spec.industrialontologies.org/ontology/core/Core/': 'iof:'
+                };
+                
+                for (const [namespace, prefix] of Object.entries(prefixMap)) {
+                  if (uri && uri.startsWith(namespace)) {
+                    return uri.replace(namespace, prefix);
+                  }
+                }
+                return uri || 'unknown:uri';
+              })
+            ),
+            // RDF Type - show actual type for A-box entities
+            $(go.TextBlock,
+              {
+                font: '8px Inter, sans-serif',
+                stroke: '#f8f9fa',
+                margin: new go.Margin(1, 0, 0, 0),
+                maxSize: new go.Size(140, NaN),
+                wrap: go.TextBlock.WrapFit,
+                textAlign: 'center'
+              },
+              new go.Binding('text', '', (data) => {
+                // For A-box view, show the class type (e.g., iof:MeasurementProcess)
+                if (data.entityType === 'individual') {
+                  return data.classType || data.rdfType;
+                }
+                // For T-box view, show the meta-type
+                return data.rdfType || 'unknown:type';
+              })
+            )
+          )
+        ),
+        
+        // Body section with white background
+        $(go.Panel, 'Auto',
+          { margin: new go.Margin(0, 1, 1, 1) },
+          $(go.Shape, 'RoundedRectangle',
+            {
+              fill: '#ffffff',
+              strokeWidth: 0,
+              minSize: new go.Size(156, 50),
+              parameter1: 6,
+              parameter2: 1 | 2  // Only round bottom corners
+            }
+          ),
+          $(go.Panel, 'Vertical',
+            { margin: 6, alignment: go.Spot.Center },
+            // rdfs:label
+            $(go.TextBlock,
+              {
+                font: 'bold 12px Inter, sans-serif',
+                stroke: '#1e293b',
+                margin: new go.Margin(0, 0, 4, 0),
+                maxSize: new go.Size(140, NaN),
+                wrap: go.TextBlock.WrapFit,
+                textAlign: 'center'
+              },
+              new go.Binding('text', 'annotationProperties', (props) => {
+                const labelProp = props?.find((p: any) => p.propertyUri === 'rdfs:label');
+                return labelProp?.value || 'No label';
+              })
+            ),
+            // Other annotation properties
+            $(go.Panel, 'Vertical',
+              { 
+                maxSize: new go.Size(140, 30),
+                itemTemplate: $(go.Panel, 'Horizontal',
+                  { margin: new go.Margin(1, 0, 1, 0) },
+                  $(go.TextBlock, 
+                    { 
+                      font: '8px Inter, sans-serif', 
+                      stroke: '#6b7280',
+                      maxSize: new go.Size(140, NaN),
+                      wrap: go.TextBlock.WrapFit
+                    },
+                    new go.Binding('text', '', (prop) => `${prop.propertyUri}: ${prop.value}`)
+                  )
                 )
+              },
+              new go.Binding('itemArray', 'annotationProperties', (props) => 
+                props?.filter((p: any) => p.propertyUri !== 'rdfs:label').slice(0, 2) || []
               )
-            },
-            new go.Binding('itemArray', 'annotationProperties', (props) => 
-              props?.filter((p: any) => p.propertyUri !== 'rdfs:label') || []
             )
           )
         )
@@ -457,6 +479,23 @@ export const GoJSCanvas = () => {
         });
       }
     });
+
+    // Apply initial view filtering
+    setTimeout(() => {
+      diagram.startTransaction('initial filter');
+      diagram.nodes.each(node => {
+        const data = node.data;
+        const isTBoxEntity = data.rdfType && (
+          data.rdfType.includes('Class') || 
+          data.rdfType.includes('ObjectProperty') || 
+          data.rdfType.includes('AnnotationProperty') || 
+          data.rdfType.includes('DatatypeProperty')
+        );
+        const shouldShow = viewMode === 'tbox' ? isTBoxEntity : !isTBoxEntity;
+        diagram.model.setDataProperty(data, 'visible', shouldShow);
+      });
+      diagram.commitTransaction('initial filter');
+    }, 200);
 
     // Enable linking tool for creating connections
     diagram.toolManager.linkingTool.temporaryLink.routing = go.Link.Orthogonal;
@@ -679,6 +718,7 @@ export const GoJSCanvas = () => {
         namespace: link.namespace || 'owl'
       }));
       
+      // Export with proper prefixes
       const exportedData = await exportGraph(goJSNodes, goJSLinks, format);
       
       // Create and download file
@@ -733,18 +773,39 @@ export const GoJSCanvas = () => {
       {showLegend && (
         <NamespaceLegend 
           className="absolute top-20 right-4 z-10"
-          namespaces={[
-            { name: ':', color: 'hsl(215 50% 60%)', description: 'Base URI (IOF Materials Tutorial)' },
-            { name: 'foaf', color: 'hsl(250 75% 60%)', description: 'Friend of a Friend' },
-            { name: 'org', color: 'hsl(160 70% 45%)', description: 'Organization Ontology' },
-          { name: 'rdfs', color: 'hsl(25 85% 65%)', description: 'RDF Schema' },
-          { name: 'owl', color: 'hsl(200 80% 55%)', description: 'Web Ontology Language' },
-          { name: 'rdf', color: 'hsl(190 75% 50%)', description: 'Resource Description Framework' },
-          { name: 'skos', color: 'hsl(40 80% 60%)', description: 'Simple Knowledge Organization System' },
-          { name: 'dc', color: 'hsl(290 70% 60%)', description: 'Dublin Core' },
-          { name: 'reasoning', color: 'hsl(55 90% 85%)', description: 'Reasoning Results' }
-        ]}
-      />
+          namespaces={(() => {
+            const diagram = diagramInstanceRef.current;
+            if (!diagram) return [];
+            
+            // Get all unique namespaces from visible nodes
+            const visibleNamespaces = new Set<string>();
+            diagram.nodes.each(node => {
+              if (node.visible && node.data.namespace) {
+                visibleNamespaces.add(node.data.namespace);
+              }
+            });
+            
+            const namespaceColors = {
+              ':': { color: 'hsl(330 70% 60%)', description: 'Base URI (IOF Materials Tutorial)', uri: 'https://github.com/Mat-O-Lab/IOFMaterialsTutorial/' },
+              'foaf': { color: 'hsl(250 75% 60%)', description: 'Friend of a Friend', uri: 'http://xmlns.com/foaf/0.1/' },
+              'org': { color: 'hsl(160 70% 45%)', description: 'Organization Ontology', uri: 'http://www.w3.org/ns/org#' },
+              'rdfs': { color: 'hsl(25 85% 65%)', description: 'RDF Schema', uri: 'http://www.w3.org/2000/01/rdf-schema#' },
+              'owl': { color: 'hsl(200 80% 55%)', description: 'Web Ontology Language', uri: 'http://www.w3.org/2002/07/owl#' },
+              'rdf': { color: 'hsl(190 75% 50%)', description: 'Resource Description Framework', uri: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#' },
+              'skos': { color: 'hsl(40 80% 60%)', description: 'Simple Knowledge Organization System', uri: 'http://www.w3.org/2004/02/skos/core#' },
+              'dc': { color: 'hsl(290 70% 60%)', description: 'Dublin Core', uri: 'http://purl.org/dc/elements/1.1/' },
+              'iof': { color: 'hsl(330 70% 60%)', description: 'Industrial Ontologies Foundry', uri: 'https://spec.industrialontologies.org/ontology/core/Core/' },
+              'reasoning': { color: 'hsl(55 90% 85%)', description: 'Reasoning Results', uri: '' }
+            };
+            
+            return Array.from(visibleNamespaces).map(ns => ({
+              name: ns,
+              color: namespaceColors[ns as keyof typeof namespaceColors]?.color || 'hsl(215 25% 60%)',
+              description: namespaceColors[ns as keyof typeof namespaceColors]?.description || 'Unknown namespace',
+              uri: namespaceColors[ns as keyof typeof namespaceColors]?.uri
+            }));
+          })()}
+        />
       )}
 
       <ReasoningIndicator onOpenReport={() => setShowReasoningReport(true)} />

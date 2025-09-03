@@ -125,7 +125,7 @@ export class RDFParser {
           entities.set(subjectUri, {
             id: this.createSafeId(subjectUri),
             uri: subjectUri,
-            classType: entityType === 'individual' ? typeName : subjectName,
+            classType: entityType === 'individual' ? `${typeNamespace}:${typeName}` : subjectName,
             individualName: subjectName,
             namespace: entityType === 'individual' ? typeNamespace : subjectNamespace,
             rdfType: `${typeNamespace}:${typeName}`,

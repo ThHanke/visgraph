@@ -7,6 +7,7 @@ interface Namespace {
   name: string;
   color: string;
   description: string;
+  uri?: string;
   count?: number;
 }
 
@@ -45,6 +46,11 @@ export const NamespaceLegend = ({ namespaces, className }: NamespaceLegendProps)
               <p className="text-xs text-muted-foreground truncate">
                 {ns.description}
               </p>
+              {ns.uri && (
+                <p className="text-xs text-muted-foreground/70 font-mono truncate">
+                  {ns.uri}
+                </p>
+              )}
             </div>
           </div>
         ))}
