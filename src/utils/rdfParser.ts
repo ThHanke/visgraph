@@ -14,6 +14,7 @@ export interface GraphNode {
   individualName: string;
   namespace: string;
   rdfType: string;
+  rdfTypes: string[];
   entityType: 'individual' | 'class' | 'property';
   literalProperties: { key: string; value: string; type?: string }[];
   annotationProperties: { propertyUri: string; value: string }[];
@@ -129,11 +130,19 @@ export class RDFParser {
             individualName: subjectName,
             namespace: entityType === 'individual' ? typeNamespace : subjectNamespace,
             rdfType: `${typeNamespace}:${typeName}`,
+            rdfTypes: [`${typeNamespace}:${typeName}`],
             entityType,
             literalProperties: [],
             annotationProperties: [],
             position: { x: Math.random() * 800 + 100, y: Math.random() * 600 + 100 }
           });
+        } else {
+          // Add additional rdf:type
+          const entity = entities.get(subjectUri)!;
+          if (!entity.rdfTypes.includes(`${typeNamespace}:${typeName}`)) {
+            entity.rdfTypes.push(`${typeNamespace}:${typeName}`);
+            entity.rdfType = entity.rdfTypes.join(', ');
+          }
         }
       }
     });

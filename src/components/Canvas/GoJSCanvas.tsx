@@ -59,22 +59,29 @@ export const GoJSCanvas = () => {
 
     // Force initial filtering when view mode or data changes
     setTimeout(() => {
-      diagram.startTransaction('update view mode');
-      diagram.nodes.each(node => {
-        const data = node.data;
-        // T-box: entities with rdf:type Class, ObjectProperty, AnnotationProperty, or DatatypeProperty
-        const isTBoxEntity = data.rdfType && (
-          data.rdfType.includes('Class') || 
-          data.rdfType.includes('ObjectProperty') || 
-          data.rdfType.includes('AnnotationProperty') || 
-          data.rdfType.includes('DatatypeProperty')
-        );
-        const shouldShow = viewMode === 'tbox' ? isTBoxEntity : !isTBoxEntity;
-        diagram.model.setDataProperty(data, 'visible', shouldShow);
-      });
-      diagram.commitTransaction('update view mode');
+      filterNodesByViewMode();
     }, 100);
   }, [viewMode, loadedOntologies]);
+
+  const filterNodesByViewMode = useCallback(() => {
+    const diagram = diagramInstanceRef.current;
+    if (!diagram) return;
+
+    diagram.startTransaction('update view mode');
+    diagram.nodes.each(node => {
+      const data = node.data;
+      // T-box: entities with rdf:type Class, ObjectProperty, AnnotationProperty, or DatatypeProperty
+      const isTBoxEntity = data.rdfTypes && data.rdfTypes.some((type: string) => 
+        type.includes('Class') || 
+        type.includes('ObjectProperty') || 
+        type.includes('AnnotationProperty') || 
+        type.includes('DatatypeProperty')
+      );
+      const shouldShow = viewMode === 'tbox' ? isTBoxEntity : !isTBoxEntity;
+      diagram.model.setDataProperty(data, 'visible', shouldShow);
+    });
+    diagram.commitTransaction('update view mode');
+  }, [viewMode]);
 
   // Initialize GoJS diagram
   useEffect(() => {
@@ -429,11 +436,11 @@ export const GoJSCanvas = () => {
           name: 'LABEL',
           segmentIndex: 0,
           segmentFraction: 0.5,
-          segmentOffset: new go.Point(0, -12),
-          background: '#ffffff',
+          segmentOffset: new go.Point(0, -15),
+          background: 'rgba(255, 255, 255, 0.9)',
           font: '10px Inter, sans-serif',
           stroke: '#1e293b',
-          margin: new go.Margin(2, 4, 2, 4),
+          margin: new go.Margin(3, 6, 3, 6),
           maxSize: new go.Size(120, NaN),
           wrap: go.TextBlock.WrapFit,
           textAlign: 'center',
@@ -549,18 +556,31 @@ export const GoJSCanvas = () => {
       // Use a timeout to ensure any pending transactions are finished
       setTimeout(() => {
         // Convert parsed nodes to GoJS format
-        const goNodes = currentGraph.nodes.map(node => ({
-          key: node.id,
-          uri: node.uri,
-          classType: node.classType,
-          individualName: node.individualName,
-          namespace: node.namespace,
-          rdfType: node.rdfType,
-          entityType: node.entityType || 'individual',
-          literalProperties: node.literalProperties || [],
-          annotationProperties: node.annotationProperties || [],
-          loc: node.position ? `${node.position.x} ${node.position.y}` : `${Math.random() * 800} ${Math.random() * 600}`
-        }));
+        const goNodes = currentGraph.nodes.map(node => {
+          // Filter out owl:NamedIndividual for display purposes
+          const meaningfulTypes = (node.rdfTypes || [node.rdfType]).filter(type => 
+            type && !type.includes('NamedIndividual')
+          );
+          const displayType = meaningfulTypes.length > 0 ? meaningfulTypes[0] : node.rdfType;
+          
+          return {
+            key: node.id,
+            uri: node.uri,
+            localName: node.individualName,
+            label: node.annotationProperties?.find(p => p.propertyUri.includes('label'))?.value || node.individualName,
+            classType: node.classType,
+            individualName: node.individualName,
+            namespace: node.namespace,
+            rdfType: node.rdfType,
+            rdfTypes: node.rdfTypes || [node.rdfType],
+            displayType,
+            entityType: node.entityType || 'individual',
+            literalProperties: node.literalProperties || [],
+            annotationProperties: node.annotationProperties || [],
+            loc: node.position ? `${node.position.x} ${node.position.y}` : `${Math.random() * 800} ${Math.random() * 600}`,
+            visible: true
+          };
+        });
         
         // Convert parsed edges to GoJS format
         const goLinks = currentGraph.edges.map(edge => ({
@@ -575,6 +595,11 @@ export const GoJSCanvas = () => {
         
         // Set model without transaction since we're replacing the entire model
         diagram.model = new go.GraphLinksModel(goNodes, goLinks);
+        
+        // Apply initial filtering after model is set
+        setTimeout(() => {
+          filterNodesByViewMode();
+        }, 50);
       }, 100);
     }
   }, [loadedOntologies]);
