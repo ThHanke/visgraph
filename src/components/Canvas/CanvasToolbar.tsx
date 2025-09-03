@@ -78,7 +78,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
     { type: 'force-directed', label: 'Force Directed', icon: Circle, description: 'Nodes repel each other and connected nodes attract' },
     { type: 'hierarchical', label: 'Hierarchical', icon: TreePine, description: 'Tree-like structure with clear parent-child relationships' },
     { type: 'circular', label: 'Circular', icon: Circle, description: 'Nodes arranged in a circular pattern' },
-    { type: 'grid', label: 'Grid', icon: Grid, description: 'Nodes arranged in a regular grid pattern' },
+    { type: 'grid', label: 'Grid', icon: Grid3X3, description: 'Nodes arranged in a regular grid pattern' },
     { type: 'layered-digraph', label: 'Layered Graph', icon: Layers, description: 'Directed graph with nodes in distinct layers' },
     { type: 'tree', label: 'Tree', icon: TreeDeciduous, description: 'Traditional tree layout with root at top' }
   ];
