@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { EntityAutocomplete } from '../ui/EntityAutocomplete';
+import { ConfigurationPanel } from './ConfigurationPanel';
 import { toast } from 'sonner';
 
 interface CanvasToolbarProps {
@@ -433,6 +434,9 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
           {loadedOntologies.length} ontologies loaded
         </span>
       </div>
+
+      {/* Configuration Panel */}
+      <ConfigurationPanel />
     </div>
   );
 };

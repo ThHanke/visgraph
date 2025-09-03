@@ -3,9 +3,8 @@ import * as go from 'gojs';
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { useReasoningStore } from '../../stores/reasoningStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useAppConfigStore } from '../../stores/appConfigStore';
 import { CanvasToolbar } from './CanvasToolbar';
-import { LayoutToolbar } from './LayoutToolbar';
-import { LayoutManager } from './LayoutManager';
 import { ResizableNamespaceLegend } from './ResizableNamespaceLegend';
 import { ReasoningIndicator } from './ReasoningIndicator';
 import { ReasoningReportModal } from './ReasoningReportModal';
@@ -19,7 +18,6 @@ import { AnnotationPropertyDialog } from './AnnotationPropertyDialog';
 export const GoJSCanvas = () => {
   const diagramRef = useRef<HTMLDivElement>(null);
   const diagramInstanceRef = useRef<go.Diagram | null>(null);
-  const [showLegend, setShowLegend] = useState(false);
   const [showReasoningReport, setShowReasoningReport] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -30,8 +28,38 @@ export const GoJSCanvas = () => {
   const [selectedLink, setSelectedLink] = useState<any>(null);
   const [linkSourceNode, setLinkSourceNode] = useState<any>(null);
   const [linkTargetNode, setLinkTargetNode] = useState<any>(null);
-  const [viewMode, setViewMode] = useState<'abox' | 'tbox'>('abox');
-  const [currentLayout, setCurrentLayout] = useState('force-directed');
+  
+  // Use persistent app config store
+  const { 
+    config, 
+    setCurrentLayout, 
+    setShowLegend, 
+    setViewMode: setPersistedViewMode 
+  } = useAppConfigStore();
+  
+  // Local state synchronized with persistent config
+  const [viewMode, setViewMode] = useState(config.viewMode);
+  const [showLegend, setShowLegendState] = useState(config.showLegend);
+  const [currentLayout, setCurrentLayoutState] = useState(config.currentLayout);
+  
+  // Sync local state with persisted config
+  useEffect(() => {
+    setViewMode(config.viewMode);
+    setShowLegendState(config.showLegend);
+    setCurrentLayoutState(config.currentLayout);
+  }, [config.viewMode, config.showLegend, config.currentLayout]);
+
+  // Handlers that update both local and persistent state
+  const handleToggleLegend = useCallback(() => {
+    const newValue = !showLegend;
+    setShowLegendState(newValue);
+    setShowLegend(newValue);
+  }, [showLegend, setShowLegend]);
+
+  const handleViewModeChange = useCallback((mode: 'abox' | 'tbox') => {
+    setViewMode(mode);
+    setPersistedViewMode(mode);
+  }, [setPersistedViewMode]);
   
   const { loadedOntologies, availableClasses, availableProperties, loadOntologyFromRDF, loadKnowledgeGraph, exportGraph, updateEntity } = useOntologyStore();
   
@@ -151,8 +179,9 @@ export const GoJSCanvas = () => {
     diagram.layoutDiagram(true);
     diagram.commitTransaction('change layout');
     
+    setCurrentLayoutState(layoutType);
     setCurrentLayout(layoutType);
-  }, []);
+  }, [setCurrentLayout]);
 
   // Initialize GoJS diagram
   useEffect(() => {
@@ -532,10 +561,17 @@ export const GoJSCanvas = () => {
 
     diagramInstanceRef.current = diagram;
 
+    // Apply saved layout after diagram is ready
+    setTimeout(() => {
+      if (config.currentLayout !== 'force-directed') {
+        handleLayoutChange(config.currentLayout);
+      }
+    }, 500);
+
     return () => {
       diagram.div = null;
     };
-  }, []);
+  }, [config.currentLayout, handleLayoutChange]);
 
   // Update diagram when currentGraph changes
   useEffect(() => {
@@ -751,12 +787,12 @@ export const GoJSCanvas = () => {
     <div className="w-full h-screen bg-canvas-bg relative">
       <CanvasToolbar 
         onAddNode={onAddNode}
-        onToggleLegend={() => setShowLegend(!showLegend)}
+        onToggleLegend={handleToggleLegend}
         showLegend={showLegend}
         onExport={handleExport}
         onLoadFile={onLoadFile}
         viewMode={viewMode}
-        onViewModeChange={setViewMode}
+        onViewModeChange={handleViewModeChange}
         onLayoutChange={handleLayoutChange}
         currentLayout={currentLayout}
         availableEntities={allEntities}
@@ -778,7 +814,7 @@ export const GoJSCanvas = () => {
         style={{ backgroundColor: 'hsl(var(--canvas-bg))' }}
       />
 
-      {showLegend && <ResizableNamespaceLegend onClose={() => setShowLegend(false)} />}
+      {showLegend && <ResizableNamespaceLegend onClose={() => handleToggleLegend()} />}
 
       <ReasoningIndicator onOpenReport={() => setShowReasoningReport(true)} />
       
