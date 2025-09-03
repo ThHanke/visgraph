@@ -1,6 +1,7 @@
 /**
  * @fileoverview Enhanced Node Property Editor
  * Allows editing of node type, IRI, and annotation properties with proper XSD type support
+ * Handles multiple rdf:types correctly for A-box individuals
  */
 
 import { useState, useEffect } from 'react';
@@ -75,10 +76,17 @@ export const NodePropertyEditor = ({
       console.log('NodePropertyEditor initializing with nodeData:', nodeData);
       console.log('Available class entities:', classEntities);
       
-      // Handle node type - find URI from label if available
+      // Handle node type - extract meaningful types (not owl:NamedIndividual)
       let initialNodeType = '';
-      if (nodeData.classType || nodeData.type) {
-        const typeLabel = nodeData.classType || nodeData.type;
+      if (nodeData.rdfTypes && Array.isArray(nodeData.rdfTypes)) {
+        // Filter out owl:NamedIndividual to get meaningful types
+        const meaningfulTypes = nodeData.rdfTypes.filter(type => 
+          type && !type.includes('NamedIndividual')
+        );
+        console.log('Meaningful types found:', meaningfulTypes);
+        
+        // Use the first meaningful type, or displayType as fallback
+        const typeLabel = meaningfulTypes[0] || nodeData.displayType || nodeData.classType || nodeData.type;
         console.log('Looking for type:', typeLabel);
         
         // Try to find the URI for this type label - handle both full URIs and namespace:label format
@@ -151,10 +159,19 @@ export const NodePropertyEditor = ({
     const selectedEntity = classEntities.find(entity => entity.uri === nodeType);
     const classTypeLabel = selectedEntity ? selectedEntity.label : nodeType;
     
+    // Preserve existing rdfTypes and update the meaningful type
+    const existingRdfTypes = nodeData.rdfTypes || [];
+    const updatedRdfTypes = [
+      'owl:NamedIndividual', // Always include this for individuals
+      nodeType // The new/updated meaningful type
+    ];
+    
     const updatedNodeData = {
       ...nodeData,
       classType: classTypeLabel,
       type: classTypeLabel,
+      displayType: nodeType, // Save the full URI as displayType
+      rdfTypes: updatedRdfTypes, // Update the types array
       uri: nodeIri,
       iri: nodeIri,
       annotationProperties: properties.map(prop => ({
@@ -221,13 +238,14 @@ export const NodePropertyEditor = ({
           <DialogTitle>Edit Node Properties</DialogTitle>
           <DialogDescription>
             Change the type, IRI, and annotation properties of this node.
+            In A-box mode, owl:NamedIndividual is automatically maintained.
           </DialogDescription>
         </DialogHeader>
         
         <div className="space-y-6">
           {/* Node Type Selection */}
           <div className="space-y-2">
-            <Label htmlFor="nodeType">Node Type</Label>
+            <Label htmlFor="nodeType">Node Type (Meaningful Class)</Label>
             <EntityAutocomplete 
               entities={classEntities}
               value={nodeType}
@@ -236,6 +254,9 @@ export const NodePropertyEditor = ({
               emptyMessage="No OWL classes found. Load an ontology first."
               className="w-full"
             />
+            <p className="text-xs text-muted-foreground">
+              owl:NamedIndividual will be automatically preserved for individuals
+            </p>
           </div>
 
           {/* Node IRI */}

@@ -728,7 +728,8 @@ export const GoJSCanvas = () => {
             console.log('Updating entity in RDF store:', entityUri);
             
             updateEntity(entityUri, {
-              type: updatedData.namespace ? `${updatedData.namespace}:${updatedData.classType}` : updatedData.classType,
+              type: updatedData.displayType || updatedData.classType, // Use the meaningful type
+              rdfTypes: updatedData.rdfTypes, // Update all types
               annotationProperties: updatedData.annotationProperties.map((prop: any) => ({
                 propertyUri: prop.key || prop.property,
                 value: prop.value,
@@ -745,7 +746,7 @@ export const GoJSCanvas = () => {
             diagram.skipsUndoManager = true;
             diagram.startTransaction('update node properties');
             
-            // Update all node properties
+            // Update all node properties including rdfTypes
             Object.keys(updatedData).forEach(key => {
               diagram.model.setDataProperty(selectedNode, key, updatedData[key]);
             });
