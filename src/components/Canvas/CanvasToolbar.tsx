@@ -56,6 +56,7 @@ interface CanvasToolbarProps {
 export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onLoadFile, viewMode, onViewModeChange, availableEntities }: CanvasToolbarProps) => {
   const [isAddNodeOpen, setIsAddNodeOpen] = useState(false);
   const [isLoadOntologyOpen, setIsLoadOntologyOpen] = useState(false);
+  const [isLoadFileOpen, setIsLoadFileOpen] = useState(false);
   const [ontologyUrl, setOntologyUrl] = useState('');
   const [newNodeClass, setNewNodeClass] = useState('');
   const [newNodeNamespace, setNewNodeNamespace] = useState('');
@@ -252,7 +253,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
       </Button>
 
       {/* Load File */}
-      <Dialog>
+      <Dialog open={isLoadFileOpen} onOpenChange={setIsLoadFileOpen}>
         <DialogTrigger asChild>
           <Button
             variant="outline"
@@ -281,14 +282,19 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                   onChange={(e) => setFileSource(e.target.value)}
                 />
                 <Button 
-                  onClick={() => {
+                  onClick={async () => {
                     if (fileSource.trim() && onLoadFile) {
-                      const mockFile = { 
-                        url: fileSource.trim(),
-                        type: 'url'
-                      };
-                      onLoadFile(mockFile as any);
-                      setFileSource('');
+                      try {
+                        const mockFile = { 
+                          url: fileSource.trim(),
+                          type: 'url'
+                        };
+                        await onLoadFile(mockFile as any);
+                        setFileSource('');
+                        setIsLoadFileOpen(false);
+                      } catch (error) {
+                        console.error('Failed to load file:', error);
+                      }
                     }
                   }}
                   disabled={!fileSource.trim()}
@@ -313,10 +319,15 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
             <input
               type="file"
               accept=".ttl,.rdf,.owl,.n3"
-              onChange={(e) => {
+              onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (file && onLoadFile) {
-                  onLoadFile(file);
+                  try {
+                    await onLoadFile(file);
+                    setIsLoadFileOpen(false);
+                  } catch (error) {
+                    console.error('Failed to load file:', error);
+                  }
                 }
               }}
               className="hidden"

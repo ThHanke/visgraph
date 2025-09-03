@@ -261,15 +261,44 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       });
       
       set((state) => {
-        const newGraph = preserveGraph && state.currentGraph.nodes.length > 0 ? 
-          state.currentGraph : 
-          { nodes: parsedGraph.nodes, edges: parsedGraph.edges };
+        // Merge current graph with new graph when preserving
+        const mergedNodes = preserveGraph && state.currentGraph.nodes.length > 0 ? 
+          [...state.currentGraph.nodes, ...parsedGraph.nodes.filter(newNode => 
+            !state.currentGraph.nodes.some(existingNode => existingNode.id === newNode.id)
+          )] : 
+          parsedGraph.nodes;
+          
+        const mergedEdges = preserveGraph && state.currentGraph.edges.length > 0 ? 
+          [...state.currentGraph.edges, ...parsedGraph.edges.filter(newEdge => 
+            !state.currentGraph.edges.some(existingEdge => existingEdge.id === newEdge.id)
+          )] : 
+          parsedGraph.edges;
+
+        // Update RDF manager with current graph data
+        if (preserveGraph && state.currentGraph.nodes.length > 0) {
+          state.currentGraph.nodes.forEach(node => {
+            const updates: any = {};
+            if (node.data.classType) {
+              updates.type = `${node.data.namespace}:${node.data.classType}`;
+            }
+            if (node.data.literalProperties && node.data.literalProperties.length > 0) {
+              updates.annotationProperties = node.data.literalProperties.map((prop: any) => ({
+                propertyUri: prop.key,
+                value: prop.value,
+                type: prop.type
+              }));
+            }
+            if (Object.keys(updates).length > 0) {
+              rdfManager.updateEntity(node.data.uri || node.id, updates);
+            }
+          });
+        }
           
         return {
           loadedOntologies: [...state.loadedOntologies, loadedOntology],
           availableClasses: [...state.availableClasses, ...ontologyClasses],
           availableProperties: [...state.availableProperties, ...ontologyProperties],
-          currentGraph: newGraph
+          currentGraph: { nodes: mergedNodes, edges: mergedEdges }
         };
       });
       
