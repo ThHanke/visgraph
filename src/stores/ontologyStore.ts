@@ -380,8 +380,34 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
   },
 
   updateEntity: (entityUri: string, updates: any) => {
-    const { rdfManager } = get();
+    const { rdfManager, currentGraph } = get();
     rdfManager.updateEntity(entityUri, updates);
+    
+    // Also update the current graph to reflect changes
+    const updatedNodes = currentGraph.nodes.map(node => {
+      if (node.data.uri === entityUri || node.id === entityUri) {
+        const updatedData = { ...node.data };
+        
+        if (updates.type) {
+          const [namespace, classType] = updates.type.split(':');
+          updatedData.namespace = namespace;
+          updatedData.classType = classType;
+        }
+        
+        if (updates.annotationProperties) {
+          updatedData.literalProperties = updates.annotationProperties.map((prop: any) => ({
+            key: prop.propertyUri,
+            value: prop.value,
+            type: prop.type || 'xsd:string'
+          }));
+        }
+        
+        return { ...node, data: updatedData };
+      }
+      return node;
+    });
+    
+    set({ currentGraph: { ...currentGraph, nodes: updatedNodes } });
   },
 
   exportGraph: async (format: 'turtle' | 'json-ld' | 'rdf-xml') => {

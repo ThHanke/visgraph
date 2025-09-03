@@ -4,7 +4,7 @@ import { useOntologyStore } from '../../stores/ontologyStore';
 import { useReasoningStore } from '../../stores/reasoningStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { CanvasToolbar } from './CanvasToolbar';
-import { NamespaceLegend } from './NamespaceLegend';
+import { ResizableNamespaceLegend } from './ResizableNamespaceLegend';
 import { ReasoningIndicator } from './ReasoningIndicator';
 import { ReasoningReportModal } from './ReasoningReportModal';
 import { AutoComplete } from '../ui/AutoComplete';
@@ -703,9 +703,7 @@ export const GoJSCanvas = () => {
         style={{ backgroundColor: 'hsl(var(--canvas-bg))' }}
       />
 
-      {showLegend && (
-        <NamespaceLegend />
-      )}
+      {showLegend && <ResizableNamespaceLegend onClose={() => setShowLegend(false)} />}
 
       <ReasoningIndicator onOpenReport={() => setShowReasoningReport(true)} />
       
