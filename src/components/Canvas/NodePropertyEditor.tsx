@@ -130,14 +130,18 @@ export const NodePropertyEditor = ({
   /**
    * Add a new property row
    */
-  const handleAddProperty = () => {
+  const handleAddProperty = (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     setProperties([...properties, { key: '', value: '', type: 'xsd:string' }]);
   };
 
   /**
    * Remove a property by index
    */
-  const handleRemoveProperty = (index: number) => {
+  const handleRemoveProperty = (index: number, e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     setProperties(properties.filter((_, i) => i !== index));
   };
 
@@ -154,7 +158,9 @@ export const NodePropertyEditor = ({
   /**
    * Save changes and close dialog
    */
-  const handleSave = () => {
+  const handleSave = (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     // Convert URI back to label for classType if we have a matching entity
     const selectedEntity = classEntities.find(entity => entity.uri === nodeType);
     const classTypeLabel = selectedEntity ? selectedEntity.label : nodeType;
@@ -242,7 +248,7 @@ export const NodePropertyEditor = ({
           </DialogDescription>
         </DialogHeader>
         
-        <div className="space-y-6">
+        <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space-y-6">
           {/* Node Type Selection */}
           <div className="space-y-2">
             <Label htmlFor="nodeType">Node Type (Meaningful Class)</Label>
@@ -278,7 +284,7 @@ export const NodePropertyEditor = ({
                 type="button" 
                 variant="outline" 
                 size="sm"
-                onClick={handleAddProperty}
+                onClick={(e) => handleAddProperty(e)}
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Add Property
@@ -331,7 +337,7 @@ export const NodePropertyEditor = ({
                       type="button"
                       variant="ghost"
                       size="sm"
-                      onClick={() => handleRemoveProperty(index)}
+                      onClick={(e) => handleRemoveProperty(index, e)}
                       className="h-9 px-2"
                     >
                       <X className="h-4 w-4" />
@@ -351,14 +357,14 @@ export const NodePropertyEditor = ({
 
           {/* Actions */}
           <div className="flex justify-end gap-2 pt-4 border-t">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSave}>
+            <Button type="submit" onClick={(e) => handleSave(e)}>
               Save Changes
             </Button>
           </div>
-        </div>
+        </form>
       </DialogContent>
     </Dialog>
   );
