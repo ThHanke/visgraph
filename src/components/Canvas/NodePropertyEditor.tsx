@@ -183,7 +183,7 @@ export const NodePropertyEditor = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] max-w-[min(90vw,48rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Node Properties</DialogTitle>
           <DialogDescription>

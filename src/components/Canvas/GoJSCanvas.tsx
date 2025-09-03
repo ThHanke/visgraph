@@ -718,6 +718,24 @@ export const GoJSCanvas = () => {
         nodeData={selectedNode}
         availableEntities={allEntities}
         onSave={(updatedData) => {
+          console.log('NodePropertyEditor onSave called with:', updatedData);
+          
+          // Update the entity in the RDF store FIRST
+          const entityUri = updatedData.uri || updatedData.iri;
+          if (entityUri && updatedData.annotationProperties) {
+            console.log('Updating entity in RDF store:', entityUri);
+            
+            updateEntity(entityUri, {
+              type: updatedData.namespace ? `${updatedData.namespace}:${updatedData.classType}` : updatedData.classType,
+              annotationProperties: updatedData.annotationProperties.map((prop: any) => ({
+                propertyUri: prop.key || prop.property,
+                value: prop.value,
+                type: prop.type || 'xsd:string'
+              }))
+            });
+          }
+          
+          // Update the GoJS diagram
           if (selectedNode && diagramInstanceRef.current) {
             const diagram = diagramInstanceRef.current;
             diagram.startTransaction('update node properties');

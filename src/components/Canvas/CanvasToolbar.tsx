@@ -141,7 +141,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
             Load Ontology
           </Button>
         </DialogTrigger>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] max-w-[min(90vw,32rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Load Ontology</DialogTitle>
             <DialogDescription>

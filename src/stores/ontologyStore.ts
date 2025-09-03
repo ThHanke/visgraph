@@ -260,6 +260,29 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         rdfManager.addNamespace(prefix, uri);
       });
       
+      // Load parsed entities into RDF store
+      console.log('Loading parsed entities into RDF store...');
+      parsedGraph.nodes.forEach(node => {
+        const updates: any = {};
+        
+        if (node.classType && node.namespace) {
+          updates.type = `${node.namespace}:${node.classType}`;
+        }
+        
+        if (node.literalProperties && node.literalProperties.length > 0) {
+          updates.annotationProperties = node.literalProperties.map(prop => ({
+            propertyUri: prop.key,
+            value: prop.value,
+            type: prop.type || 'xsd:string'
+          }));
+        }
+        
+        if (Object.keys(updates).length > 0) {
+          rdfManager.updateEntity(node.uri, updates);
+          console.log(`Loaded entity ${node.uri} into RDF store with type ${updates.type}`);
+        }
+      });
+      
       set((state) => {
         // Update RDF manager with current graph data BEFORE merging new data
         if (preserveGraph && state.currentGraph.nodes.length > 0) {

@@ -33,8 +33,8 @@ interface ResizableNamespaceLegendProps {
 
 export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNamespaceLegendProps) => {
   const { rdfManager } = useOntologyStore();
-  const [position, setPosition] = useState({ x: 16, y: 16 });
-  const [size, setSize] = useState({ width: 320, height: 200 });
+  const [position, setPosition] = useState({ x: Math.max(16, window.innerWidth - 320), y: 16 });
+  const [size, setSize] = useState({ width: 300, height: Math.min(300, window.innerHeight - 100) });
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
