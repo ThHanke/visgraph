@@ -6,6 +6,7 @@
 
 import { create } from 'zustand';
 import { RDFManager } from '../utils/rdfManager';
+import { useAppConfigStore } from './appConfigStore';
 
 /**
  * Represents an ontology class definition
@@ -63,6 +64,8 @@ interface OntologyStore {
   loadOntologyFromRDF: (rdfContent: string, onProgress?: (progress: number, message: string) => void, preserveGraph?: boolean) => Promise<void>;
   /** Load knowledge graph from source */
   loadKnowledgeGraph: (source: string, options?: { onProgress?: (progress: number, message: string) => void; timeout?: number }) => Promise<void>;
+  /** Load additional ontologies referenced in the graph */
+  loadAdditionalOntologies: (ontologyUris: string[], onProgress?: (progress: number, message: string) => void) => Promise<void>;
   /** Validate current graph */
   validateGraph: (nodes: any[], edges: any[]) => ValidationError[];
   /** Get compatible properties between classes */
@@ -394,10 +397,91 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       
       await get().loadOntologyFromRDF(rdfContent, options?.onProgress, true);
       
+      // Extract and load additional ontologies referenced in the content
+      options?.onProgress?.(90, 'Checking for additional ontologies...');
+      const additionalOntologies = extractReferencedOntologies(rdfContent);
+      if (additionalOntologies.length > 0) {
+        await get().loadAdditionalOntologies(additionalOntologies, options?.onProgress);
+      }
+      
     } catch (error) {
       console.error('Failed to load knowledge graph:', error);
       throw error;
     }
+  },
+
+  loadAdditionalOntologies: async (ontologyUris: string[], onProgress?: (progress: number, message: string) => void) => {
+    const { loadedOntologies } = get();
+    const alreadyLoaded = new Set(loadedOntologies.map(o => o.url));
+    const toLoad = ontologyUris.filter(uri => !alreadyLoaded.has(uri));
+    
+    if (toLoad.length === 0) {
+      onProgress?.(100, 'No new ontologies to load');
+      return;
+    }
+
+    onProgress?.(95, `Loading ${toLoad.length} additional ontologies...`);
+    
+    const wellKnownOntologies = {
+      'http://xmlns.com/foaf/0.1/': 'FOAF - Friend of a Friend',
+      'http://www.w3.org/2002/07/owl#': 'OWL - Web Ontology Language',
+      'http://www.w3.org/2000/01/rdf-schema#': 'RDFS - RDF Schema',
+      'http://www.w3.org/1999/02/22-rdf-syntax-ns#': 'RDF - Resource Description Framework',
+      'https://spec.industrialontologies.org/ontology/core/Core/': 'IOF Core Ontology',
+      'https://www.w3.org/TR/vocab-org/': 'Organization Ontology',
+      'http://www.w3.org/2004/02/skos/core#': 'SKOS - Simple Knowledge Organization System'
+    };
+
+    // Track successfully loaded ontologies in app config
+    const appConfigStore = useAppConfigStore.getState();
+
+    for (let i = 0; i < toLoad.length; i++) {
+      const uri = toLoad[i];
+      const ontologyName = wellKnownOntologies[uri as keyof typeof wellKnownOntologies];
+      
+      try {
+        onProgress?.(95 + (i / toLoad.length) * 5, `Loading ${ontologyName || uri}...`);
+        
+        // Try to load the ontology - for well-known ones use mock data, others try to fetch
+        if (wellKnownOntologies[uri as keyof typeof wellKnownOntologies]) {
+          await get().loadOntology(uri);
+          appConfigStore.addAdditionalOntology(uri);
+        } else {
+          // For unknown URIs, try to fetch if it looks like a URL
+          if (uri.startsWith('http://') || uri.startsWith('https://')) {
+            try {
+              const response = await fetch(uri, {
+                headers: { 'Accept': 'text/turtle, application/rdf+xml, application/ld+json, */*' },
+                signal: AbortSignal.timeout(10000) // 10 second timeout
+              });
+              if (response.ok) {
+                const content = await response.text();
+                await get().loadOntologyFromRDF(content, undefined, true);
+                appConfigStore.addAdditionalOntology(uri);
+              }
+            } catch (fetchError) {
+              console.warn(`Could not fetch ontology from ${uri}:`, fetchError);
+              // Create a minimal mock ontology entry
+              const mockOntology: LoadedOntology = {
+                url: uri,
+                name: uri.split('/').pop() || 'Unknown Ontology',
+                classes: [],
+                properties: [],
+                namespaces: { [uri]: uri }
+              };
+              
+              set((state) => ({
+                loadedOntologies: [...state.loadedOntologies, mockOntology]
+              }));
+            }
+          }
+        }
+      } catch (error) {
+        console.warn(`Failed to load additional ontology ${uri}:`, error);
+      }
+    }
+    
+    onProgress?.(100, 'Additional ontologies loaded');
   },
 
   setCurrentGraph: (nodes: any[], edges: any[]) => {
@@ -465,6 +549,62 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     }
   }
 }));
+
+/**
+ * Extract ontology URIs referenced in RDF content that should be loaded
+ */
+function extractReferencedOntologies(rdfContent: string): string[] {
+  const ontologyUris = new Set<string>();
+  
+  // Common namespace patterns to detect
+  const namespacePatterns = [
+    // Turtle/N3 @prefix declarations
+    /@prefix\s+\w+:\s*<([^>]+)>/g,
+    // RDF/XML namespace declarations
+    /xmlns:\w+="([^"]+)"/g,
+    // JSON-LD context entries
+    /"@context"[^}]*"([^"]+)"/g
+  ];
+  
+  // Common ontology namespaces to auto-load
+  const wellKnownOntologies = [
+    'http://xmlns.com/foaf/0.1/',
+    'http://www.w3.org/2002/07/owl#',
+    'http://www.w3.org/2000/01/rdf-schema#',
+    'https://spec.industrialontologies.org/ontology/core/Core/',
+    'https://www.w3.org/TR/vocab-org/',
+    'http://www.w3.org/2004/02/skos/core#'
+  ];
+  
+  // Extract namespace URIs from content
+  namespacePatterns.forEach(pattern => {
+    let match;
+    while ((match = pattern.exec(rdfContent)) !== null) {
+      const uri = match[1];
+      if (wellKnownOntologies.includes(uri)) {
+        ontologyUris.add(uri);
+      }
+    }
+  });
+  
+  // Also check for common prefixes used in the content
+  const prefixUsage = [
+    /\bfoaf:/g,
+    /\bowl:/g,
+    /\brdfs:/g,
+    /\biof:/g,
+    /\borg:/g,
+    /\bskos:/g
+  ];
+  
+  prefixUsage.forEach((pattern, index) => {
+    if (pattern.test(rdfContent)) {
+      ontologyUris.add(wellKnownOntologies[index]);
+    }
+  });
+  
+  return Array.from(ontologyUris);
+}
 
 // Helper functions for mock data
 function getOntologyName(url: string): string {

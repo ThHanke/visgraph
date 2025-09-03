@@ -24,6 +24,9 @@ export interface AppConfig {
   // Recently used
   recentOntologies: string[];
   recentLayouts: string[];
+  
+  // Additional ontologies to auto-load
+  additionalOntologies: string[];
 }
 
 interface AppConfigStore {
@@ -47,6 +50,10 @@ interface AppConfigStore {
   addRecentOntology: (url: string) => void;
   addRecentLayout: (layout: string) => void;
   
+  // Additional ontologies actions
+  addAdditionalOntology: (uri: string) => void;
+  removeAdditionalOntology: (uri: string) => void;
+  
   // Utility actions
   resetToDefaults: () => void;
   exportConfig: () => string;
@@ -63,7 +70,8 @@ const defaultConfig: AppConfig = {
   autoReasoning: false,
   maxVisibleNodes: 1000,
   recentOntologies: [],
-  recentLayouts: ['force-directed']
+  recentLayouts: ['force-directed'],
+  additionalOntologies: []
 };
 
 export const useAppConfigStore = create<AppConfigStore>()(
@@ -173,6 +181,25 @@ export const useAppConfigStore = create<AppConfigStore>()(
             }
           };
         });
+      },
+
+      // Additional ontologies actions
+      addAdditionalOntology: (uri: string) => {
+        set((state) => ({
+          config: {
+            ...state.config,
+            additionalOntologies: [...new Set([...state.config.additionalOntologies, uri])]
+          }
+        }));
+      },
+
+      removeAdditionalOntology: (uri: string) => {
+        set((state) => ({
+          config: {
+            ...state.config,
+            additionalOntologies: state.config.additionalOntologies.filter(o => o !== uri)
+          }
+        }));
       },
 
       // Utility actions

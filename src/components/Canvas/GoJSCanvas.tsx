@@ -34,7 +34,8 @@ export const GoJSCanvas = () => {
     config, 
     setCurrentLayout, 
     setShowLegend, 
-    setViewMode: setPersistedViewMode 
+    setViewMode: setPersistedViewMode,
+    addAdditionalOntology 
   } = useAppConfigStore();
   
   // Local state synchronized with persistent config
@@ -61,7 +62,7 @@ export const GoJSCanvas = () => {
     setPersistedViewMode(mode);
   }, [setPersistedViewMode]);
   
-  const { loadedOntologies, availableClasses, availableProperties, loadOntologyFromRDF, loadKnowledgeGraph, exportGraph, updateEntity } = useOntologyStore();
+  const { loadedOntologies, availableClasses, availableProperties, loadOntologyFromRDF, loadKnowledgeGraph, exportGraph, updateEntity, loadAdditionalOntologies } = useOntologyStore();
   
   // Get all entities for autocomplete
   const allEntities = loadedOntologies.flatMap(ontology => [
@@ -631,35 +632,48 @@ export const GoJSCanvas = () => {
     }
   }, [loadedOntologies]);
 
-  // Load demo file on startup
+  // Auto-load demo file and additional ontologies on component mount
   useEffect(() => {
-    const loadDemoFile = async () => {
-      if (settings.startupFileUrl) {
+    const initializeApp = async () => {
+      try {
         setIsLoading(true);
-        setLoadingMessage('Loading demo knowledge graph...');
-        setLoadingProgress(10);
         
-        try {
+        // Load additional ontologies from config first
+        if (config.additionalOntologies.length > 0) {
+          setLoadingMessage('Loading configured ontologies...');
+          setLoadingProgress(5);
+          await loadAdditionalOntologies(config.additionalOntologies, (progress, message) => {
+            setLoadingProgress(Math.max(progress * 0.5, 5));
+            setLoadingMessage(message);
+          });
+        }
+
+        // Then load the startup file if configured
+        if (settings.startupFileUrl) {
+          setLoadingMessage('Loading demo file...');
+          setLoadingProgress(50);
+
           await loadKnowledgeGraph(settings.startupFileUrl, {
             onProgress: (progress, message) => {
-              setLoadingProgress(progress);
+              setLoadingProgress(Math.max(progress * 0.5 + 50, 50));
               setLoadingMessage(message);
             }
           });
-          toast.success('Demo knowledge graph loaded successfully');
-        } catch (error) {
-          toast.error('Failed to load demo file');
-          console.error(error);
-        } finally {
-          setIsLoading(false);
-          setLoadingProgress(0);
-          setLoadingMessage('');
         }
+
+        setIsLoading(false);
+        setLoadingProgress(0);
+        setLoadingMessage('');
+      } catch (error) {
+        console.error('Failed to initialize app:', error);
+        setIsLoading(false);
+        setLoadingProgress(0);
+        setLoadingMessage('');
       }
     };
 
-    loadDemoFile();
-  }, [settings.startupFileUrl, loadKnowledgeGraph]);
+    initializeApp();
+  }, [settings.startupFileUrl, loadKnowledgeGraph, loadAdditionalOntologies, config.additionalOntologies]);
 
   const onAddNode = useCallback((entityUri: string) => {
     if (!diagramInstanceRef.current) return;

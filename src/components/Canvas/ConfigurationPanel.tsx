@@ -44,7 +44,8 @@ export const ConfigurationPanel = () => {
     setMaxVisibleNodes,
     resetToDefaults,
     exportConfig,
-    importConfig
+    importConfig,
+    removeAdditionalOntology
   } = useAppConfigStore();
 
   const handleExportConfig = () => {
@@ -230,6 +231,39 @@ export const ConfigurationPanel = () => {
                       ? `${config.recentOntologies.length} ontologies in history`
                       : 'No recent ontologies'}
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Auto-loaded Ontologies ({config.additionalOntologies.length})</Label>
+                  {config.additionalOntologies.length === 0 ? (
+                    <div className="text-xs text-muted-foreground">
+                      No additional ontologies loaded automatically
+                    </div>
+                  ) : (
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {config.additionalOntologies.map((ontology, index) => (
+                        <div 
+                          key={index} 
+                          className="flex items-center justify-between text-xs p-2 bg-primary/10 rounded"
+                        >
+                          <span 
+                            className="truncate flex-1 mr-2" 
+                            title={ontology}
+                          >
+                            {ontology.split('/').pop()?.replace('#', '') || ontology}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-4 w-4 p-0 text-muted-foreground hover:text-destructive"
+                            onClick={() => removeAdditionalOntology(ontology)}
+                          >
+                            ×
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
