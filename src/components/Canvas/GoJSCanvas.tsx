@@ -50,7 +50,7 @@ export const GoJSCanvas = () => {
     }))
   ]);
   const { startReasoning } = useReasoningStore();
-  const { settings, updateSettings } = useSettingsStore();
+  const { settings, updateSettings, isHydrated } = useSettingsStore();
 
   // Helper function to get GoJS layout by type
   const getLayoutByType = useCallback((layoutType: string) => {

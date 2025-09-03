@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import { GoJSCanvas } from '../../components/Canvas/GoJSCanvas';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useOntologyStore } from '../../stores/ontologyStore';
