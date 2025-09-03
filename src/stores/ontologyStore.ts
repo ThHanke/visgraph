@@ -5,6 +5,7 @@
  */
 
 import { create } from 'zustand';
+import { RDFManager } from '../utils/rdfManager';
 
 /**
  * Represents an ontology class definition
@@ -53,13 +54,15 @@ interface OntologyStore {
   validationErrors: ValidationError[];
   /** Current knowledge graph data */
   currentGraph: { nodes: any[]; edges: any[] };
+  /** RDF Manager instance */
+  rdfManager: RDFManager;
   
   /** Load an ontology from URL */
   loadOntology: (url: string) => Promise<void>;
   /** Load ontology from RDF content */
-  loadOntologyFromRDF: (rdfContent: string, onProgress?: (progress: number, message: string) => void) => Promise<void>;
+  loadOntologyFromRDF: (rdfContent: string, onProgress?: (progress: number, message: string) => void, preserveGraph?: boolean) => Promise<void>;
   /** Load knowledge graph from source */
-  loadKnowledgeGraph: (source: string, options?: { onProgress?: (progress: number, message: string) => void }) => Promise<void>;
+  loadKnowledgeGraph: (source: string, options?: { onProgress?: (progress: number, message: string) => void; timeout?: number }) => Promise<void>;
   /** Validate current graph */
   validateGraph: (nodes: any[], edges: any[]) => ValidationError[];
   /** Get compatible properties between classes */
@@ -68,6 +71,10 @@ interface OntologyStore {
   clearOntologies: () => void;
   /** Set current graph data */
   setCurrentGraph: (nodes: any[], edges: any[]) => void;
+  /** Update entity in RDF store */
+  updateEntity: (entityUri: string, updates: any) => void;
+  /** Export graph using RDF manager */
+  exportGraph: (format: 'turtle' | 'json-ld' | 'rdf-xml') => Promise<string>;
 }
 
 export const useOntologyStore = create<OntologyStore>((set, get) => ({
@@ -76,6 +83,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
   availableProperties: [],
   validationErrors: [],
   currentGraph: { nodes: [], edges: [] },
+  rdfManager: new RDFManager(),
 
   loadOntology: async (url: string) => {
     try {
@@ -167,10 +175,15 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     });
   },
 
-  loadOntologyFromRDF: async (rdfContent: string, onProgress?: (progress: number, message: string) => void) => {
+  loadOntologyFromRDF: async (rdfContent: string, onProgress?: (progress: number, message: string) => void, preserveGraph: boolean = true) => {
     try {
       const { parseRDFFile } = await import('../utils/rdfParser');
+      const { rdfManager } = get();
+      
       onProgress?.(10, 'Starting RDF parsing...');
+      
+      // Load RDF content into the RDF manager
+      await rdfManager.loadRDF(rdfContent);
       
       const parsedGraph = await parseRDFFile(rdfContent, onProgress);
       
@@ -242,12 +255,23 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         namespaces: parsedGraph.namespaces
       };
       
-      set((state) => ({
-        loadedOntologies: [...state.loadedOntologies, loadedOntology],
-        availableClasses: [...state.availableClasses, ...ontologyClasses],
-        availableProperties: [...state.availableProperties, ...ontologyProperties],
-        currentGraph: { nodes: parsedGraph.nodes, edges: parsedGraph.edges }
-      }));
+      // Add namespaces to RDF manager
+      Object.entries(parsedGraph.namespaces).forEach(([prefix, uri]) => {
+        rdfManager.addNamespace(prefix, uri);
+      });
+      
+      set((state) => {
+        const newGraph = preserveGraph && state.currentGraph.nodes.length > 0 ? 
+          state.currentGraph : 
+          { nodes: parsedGraph.nodes, edges: parsedGraph.edges };
+          
+        return {
+          loadedOntologies: [...state.loadedOntologies, loadedOntology],
+          availableClasses: [...state.availableClasses, ...ontologyClasses],
+          availableProperties: [...state.availableProperties, ...ontologyProperties],
+          currentGraph: newGraph
+        };
+      });
       
     } catch (error) {
       console.error('Failed to load ontology from RDF:', error);
@@ -255,23 +279,54 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     }
   },
 
-  loadKnowledgeGraph: async (source: string, options?: { onProgress?: (progress: number, message: string) => void }) => {
+  loadKnowledgeGraph: async (source: string, options?: { onProgress?: (progress: number, message: string) => void; timeout?: number }) => {
+    const timeout = options?.timeout || 30000; // 30 second default timeout
+    
     try {
       let rdfContent: string;
       
       if (source.startsWith('http://') || source.startsWith('https://')) {
         options?.onProgress?.(10, 'Fetching RDF from URL...');
-        const response = await fetch(source);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch RDF: ${response.statusText}`);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          controller.abort();
+        }, timeout);
+        
+        try {
+          const response = await fetch(source, { 
+            signal: controller.signal,
+            headers: {
+              'Accept': 'text/turtle, application/rdf+xml, application/ld+json, */*'
+            }
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (!response.ok) {
+            throw new Error(`Failed to fetch RDF: ${response.statusText}`);
+          }
+          
+          // Check content size
+          const contentLength = response.headers.get('content-length');
+          if (contentLength && parseInt(contentLength) > 10 * 1024 * 1024) { // 10MB limit
+            throw new Error('File too large (>10MB). Please use a smaller file.');
+          }
+          
+          rdfContent = await response.text();
+          options?.onProgress?.(20, 'RDF content downloaded');
+        } catch (error: any) {
+          clearTimeout(timeoutId);
+          if (error.name === 'AbortError') {
+            throw new Error(`Request timed out after ${timeout / 1000} seconds. The file might be too large.`);
+          }
+          throw error;
         }
-        rdfContent = await response.text();
-        options?.onProgress?.(20, 'RDF content downloaded');
       } else {
         rdfContent = source;
       }
       
-      await get().loadOntologyFromRDF(rdfContent, options?.onProgress);
+      await get().loadOntologyFromRDF(rdfContent, options?.onProgress, true);
       
     } catch (error) {
       console.error('Failed to load knowledge graph:', error);
@@ -284,6 +339,8 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
   },
 
   clearOntologies: () => {
+    const { rdfManager } = get();
+    rdfManager.clear();
     set({
       loadedOntologies: [],
       availableClasses: [],
@@ -291,6 +348,25 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       validationErrors: [],
       currentGraph: { nodes: [], edges: [] }
     });
+  },
+
+  updateEntity: (entityUri: string, updates: any) => {
+    const { rdfManager } = get();
+    rdfManager.updateEntity(entityUri, updates);
+  },
+
+  exportGraph: async (format: 'turtle' | 'json-ld' | 'rdf-xml') => {
+    const { rdfManager } = get();
+    switch (format) {
+      case 'turtle':
+        return await rdfManager.exportToTurtle();
+      case 'json-ld':
+        return await rdfManager.exportToJsonLD();
+      case 'rdf-xml':
+        return await rdfManager.exportToRdfXml();
+      default:
+        throw new Error(`Unsupported format: ${format}`);
+    }
   }
 }));
 

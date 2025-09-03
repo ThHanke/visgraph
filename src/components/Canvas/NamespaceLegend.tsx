@@ -1,73 +1,40 @@
-import { cn } from '../../lib/utils';
-import { Badge } from '../ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { Palette } from 'lucide-react';
-
-interface Namespace {
-  name: string;
-  color: string;
-  description: string;
-  uri?: string;
-  count?: number;
-}
+import { Badge } from "../ui/badge";
+import { useOntologyStore } from "@/stores/ontologyStore";
 
 interface NamespaceLegendProps {
-  namespaces: Namespace[];
-  className?: string;
+  namespaces?: Record<string, string>;
 }
 
-export const NamespaceLegend = ({ namespaces, className }: NamespaceLegendProps) => {
+export const NamespaceLegend = ({ namespaces }: NamespaceLegendProps) => {
+  const { rdfManager } = useOntologyStore();
+  
+  // Use namespaces from RDF manager if not provided
+  const displayNamespaces = namespaces || rdfManager.getNamespaces();
+  
+  // Filter out empty or undefined prefixes and ensure we have meaningful namespaces
+  const filteredNamespaces = Object.entries(displayNamespaces)
+    .filter(([prefix, uri]) => prefix && uri && prefix !== '' && uri !== '')
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  if (filteredNamespaces.length === 0) {
+    return null;
+  }
+
   return (
-    <Card className={cn('w-80 shadow-glass backdrop-blur-sm bg-card/90', className)}>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg flex items-center gap-2">
-          <Palette className="h-5 w-5 text-primary" />
-          Namespace Legend
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {namespaces.map((ns) => (
-          <div key={ns.name} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
-            <div 
-              className="w-4 h-4 rounded-full border border-white/30"
-              style={{ backgroundColor: ns.color }}
-            />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <Badge variant="outline" className="text-xs font-mono px-2 py-0">
-                  {ns.name}
-                </Badge>
-                {ns.count !== undefined && (
-                  <span className="text-xs text-muted-foreground">
-                    {ns.count} nodes
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground truncate">
-                {ns.description}
-              </p>
-              {ns.uri && (
-                <p className="text-xs text-muted-foreground/70 font-mono truncate">
-                  {ns.uri}
-                </p>
-              )}
-            </div>
+    <div className="absolute top-4 right-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border rounded-lg p-3 shadow-lg max-w-sm">
+      <h3 className="text-sm font-semibold mb-2">Namespace Legend</h3>
+      <div className="space-y-1 max-h-64 overflow-y-auto">
+        {filteredNamespaces.map(([prefix, uri]) => (
+          <div key={prefix} className="flex items-center gap-2 text-xs">
+            <Badge variant="outline" className="font-mono shrink-0">
+              {prefix}:
+            </Badge>
+            <span className="text-muted-foreground truncate flex-1" title={uri}>
+              {uri}
+            </span>
           </div>
         ))}
-        
-        {namespaces.length === 0 && (
-          <div className="text-center py-4 text-muted-foreground">
-            <p className="text-sm">No namespaces loaded</p>
-            <p className="text-xs mt-1">Load an ontology to see namespaces</p>
-          </div>
-        )}
-        
-        <div className="border-t pt-3 mt-3">
-          <p className="text-xs text-muted-foreground">
-            Each namespace is assigned a unique pastel color for easy identification of node types and relationships.
-          </p>
-        </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 };

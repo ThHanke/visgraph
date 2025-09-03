@@ -214,15 +214,7 @@ export const KnowledgeGraphCanvas = () => {
       </ReactFlow>
 
       {showLegend && (
-        <NamespaceLegend 
-          className="absolute top-20 right-4 z-10"
-          namespaces={[
-            { name: 'foaf', color: 'namespace-lavender', description: 'Friend of a Friend' },
-            { name: 'org', color: 'namespace-mint', description: 'Organization Ontology' },
-            { name: 'rdfs', color: 'namespace-peach', description: 'RDF Schema' },
-            { name: 'owl', color: 'namespace-sky', description: 'Web Ontology Language' }
-          ]}
-        />
+        <NamespaceLegend />
       )}
 
       <ReasoningIndicator onOpenReport={() => setShowReasoningReport(true)} />

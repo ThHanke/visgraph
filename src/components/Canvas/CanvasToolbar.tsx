@@ -59,8 +59,9 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   const [ontologyUrl, setOntologyUrl] = useState('');
   const [newNodeClass, setNewNodeClass] = useState('');
   const [newNodeNamespace, setNewNodeNamespace] = useState('');
+  const [fileSource, setFileSource] = useState('');
   
-  const { loadedOntologies, loadOntology, availableClasses } = useOntologyStore();
+  const { loadedOntologies, loadOntology, availableClasses, loadKnowledgeGraph } = useOntologyStore();
 
   const handleLoadOntology = async () => {
     if (ontologyUrl.trim()) {
@@ -272,23 +273,30 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="fileUrl">File URL</Label>
-              <Input
-                id="fileUrl"
-                placeholder="https://example.com/data.ttl"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    const url = (e.target as HTMLInputElement).value;
-                    if (url.trim() && onLoadFile) {
-                      // Create a mock URL object to trigger URL loading
+              <div className="flex gap-2">
+                <Input
+                  id="fileUrl"
+                  placeholder="https://example.com/data.ttl"
+                  value={fileSource}
+                  onChange={(e) => setFileSource(e.target.value)}
+                />
+                <Button 
+                  onClick={() => {
+                    if (fileSource.trim() && onLoadFile) {
                       const mockFile = { 
-                        url: url.trim(),
+                        url: fileSource.trim(),
                         type: 'url'
                       };
                       onLoadFile(mockFile as any);
+                      setFileSource('');
                     }
-                  }
-                }}
-              />
+                  }}
+                  disabled={!fileSource.trim()}
+                  variant="outline"
+                >
+                  Load
+                </Button>
+              </div>
             </div>
             
             <div className="relative">

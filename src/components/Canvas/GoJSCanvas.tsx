@@ -30,7 +30,7 @@ export const GoJSCanvas = () => {
   const [linkTargetNode, setLinkTargetNode] = useState<any>(null);
   const [viewMode, setViewMode] = useState<'abox' | 'tbox'>('abox');
   
-  const { loadedOntologies, availableClasses, availableProperties, loadOntologyFromRDF, loadKnowledgeGraph } = useOntologyStore();
+  const { loadedOntologies, availableClasses, availableProperties, loadOntologyFromRDF, loadKnowledgeGraph, exportGraph } = useOntologyStore();
   
   // Get all entities for autocomplete
   const allEntities = loadedOntologies.flatMap(ontology => [
@@ -651,42 +651,17 @@ export const GoJSCanvas = () => {
   }, [selectedLink]);
 
   const handleExport = useCallback(async (format: 'turtle' | 'owl-xml' | 'json-ld') => {
-    if (!diagramInstanceRef.current) return;
-    
-    const diagram = diagramInstanceRef.current;
-    const nodes = diagram.model.nodeDataArray;
-    const links = (diagram.model as go.GraphLinksModel).linkDataArray;
-    
     try {
-      const { exportGraph } = await import('../../utils/graphExporter');
-      // Convert GoJS data to our expected format
-      const goJSNodes = nodes.map(node => ({
-        key: node.key || node.id || `node-${Math.random()}`,
-        classType: node.classType || 'Thing',
-        individualName: node.individualName || node.key || 'Individual',
-        namespace: node.namespace || 'default',
-        literalProperties: node.literalProperties || []
-      }));
-      
-      const goJSLinks = links.map(link => ({
-        from: link.from || link.source,
-        to: link.to || link.target,
-        label: link.label || 'related',
-        propertyType: link.propertyType || 'owl:related',
-        namespace: link.namespace || 'owl'
-      }));
-      
-      // Export with proper prefixes
-      const exportedData = await exportGraph(goJSNodes, goJSLinks, format);
-      
-      // Create and download file
-      const blob = new Blob([exportedData], { 
-        type: format === 'json-ld' ? 'application/json' : 'text/plain' 
+      // Map interface format to RDF manager format
+      const rdfFormat = format === 'owl-xml' ? 'rdf-xml' : format;
+      const content = await exportGraph(rdfFormat as 'turtle' | 'json-ld' | 'rdf-xml');
+      const blob = new Blob([content], { 
+        type: format === 'json-ld' ? 'application/ld+json' : format === 'owl-xml' ? 'application/rdf+xml' : 'text/turtle'
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `knowledge-graph.${format === 'owl-xml' ? 'owl' : format === 'json-ld' ? 'jsonld' : 'ttl'}`;
+      a.download = `knowledge-graph-${new Date().toISOString().replace(/[:.]/g, '-')}.${format === 'owl-xml' ? 'owl' : format === 'json-ld' ? 'jsonld' : 'ttl'}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -697,7 +672,7 @@ export const GoJSCanvas = () => {
       toast.error('Export failed');
       console.error('Export error:', error);
     }
-  }, []);
+  }, [exportGraph]);
 
   return (
     <div className="w-full h-screen bg-canvas-bg relative">
@@ -729,41 +704,7 @@ export const GoJSCanvas = () => {
       />
 
       {showLegend && (
-        <NamespaceLegend 
-          className="absolute top-20 right-4 z-10"
-          namespaces={(() => {
-            const diagram = diagramInstanceRef.current;
-            if (!diagram) return [];
-            
-            // Get all unique namespaces from visible nodes
-            const visibleNamespaces = new Set<string>();
-            diagram.nodes.each(node => {
-              if (node.visible && node.data.namespace) {
-                visibleNamespaces.add(node.data.namespace);
-              }
-            });
-            
-            const namespaceColors = {
-              ':': { color: 'hsl(330 70% 60%)', description: 'Base URI (IOF Materials Tutorial)', uri: 'https://github.com/Mat-O-Lab/IOFMaterialsTutorial/' },
-              'foaf': { color: 'hsl(250 75% 60%)', description: 'Friend of a Friend', uri: 'http://xmlns.com/foaf/0.1/' },
-              'org': { color: 'hsl(160 70% 45%)', description: 'Organization Ontology', uri: 'http://www.w3.org/ns/org#' },
-              'rdfs': { color: 'hsl(25 85% 65%)', description: 'RDF Schema', uri: 'http://www.w3.org/2000/01/rdf-schema#' },
-              'owl': { color: 'hsl(200 80% 55%)', description: 'Web Ontology Language', uri: 'http://www.w3.org/2002/07/owl#' },
-              'rdf': { color: 'hsl(190 75% 50%)', description: 'Resource Description Framework', uri: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#' },
-              'skos': { color: 'hsl(40 80% 60%)', description: 'Simple Knowledge Organization System', uri: 'http://www.w3.org/2004/02/skos/core#' },
-              'dc': { color: 'hsl(290 70% 60%)', description: 'Dublin Core', uri: 'http://purl.org/dc/elements/1.1/' },
-              'iof': { color: 'hsl(330 70% 60%)', description: 'Industrial Ontologies Foundry', uri: 'https://spec.industrialontologies.org/ontology/core/Core/' },
-              'reasoning': { color: 'hsl(55 90% 85%)', description: 'Reasoning Results', uri: '' }
-            };
-            
-            return Array.from(visibleNamespaces).map(ns => ({
-              name: ns,
-              color: namespaceColors[ns as keyof typeof namespaceColors]?.color || 'hsl(215 25% 60%)',
-              description: namespaceColors[ns as keyof typeof namespaceColors]?.description || 'Unknown namespace',
-              uri: namespaceColors[ns as keyof typeof namespaceColors]?.uri
-            }));
-          })()}
-        />
+        <NamespaceLegend />
       )}
 
       <ReasoningIndicator onOpenReport={() => setShowReasoningReport(true)} />
