@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { EntityAutocomplete } from '../ui/EntityAutocomplete';
+import { toast } from 'sonner';
 
 interface CanvasToolbarProps {
   onAddNode: (entityUri: string) => void;

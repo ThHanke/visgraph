@@ -31,6 +31,7 @@ export const GoJSCanvas = () => {
   const [linkSourceNode, setLinkSourceNode] = useState<any>(null);
   const [linkTargetNode, setLinkTargetNode] = useState<any>(null);
   const [viewMode, setViewMode] = useState<'abox' | 'tbox'>('abox');
+  const [currentLayout, setCurrentLayout] = useState('force-directed');
   
   const { loadedOntologies, availableClasses, availableProperties, loadOntologyFromRDF, loadKnowledgeGraph, exportGraph, updateEntity } = useOntologyStore();
   
@@ -84,6 +85,74 @@ export const GoJSCanvas = () => {
     });
     diagram.commitTransaction('update view mode');
   }, [viewMode]);
+
+  // Layout change handler
+  const handleLayoutChange = useCallback((layoutType: string) => {
+    const diagram = diagramInstanceRef.current;
+    if (!diagram) return;
+
+    const $ = go.GraphObject.make;
+    let newLayout;
+
+    switch (layoutType) {
+      case 'force-directed':
+        newLayout = $(go.ForceDirectedLayout, {
+          defaultSpringLength: 120,
+          defaultElectricalCharge: 200,
+          maxIterations: 200,
+          epsilonDistance: 0.5,
+          infinityDistance: 1000
+        });
+        break;
+      case 'hierarchical':
+        newLayout = $(go.TreeLayout, {
+          angle: 90,
+          layerSpacing: 100,
+          nodeSpacing: 80,
+          arrangement: go.TreeLayout.ArrangementHorizontal
+        });
+        break;
+      case 'circular':
+        newLayout = $(go.CircularLayout, {
+          radius: 160,
+          spacing: 40,
+          direction: go.CircularLayout.Clockwise
+        });
+        break;
+      case 'grid':
+        newLayout = $(go.GridLayout, {
+          cellSize: new go.Size(150, 150),
+          spacing: new go.Size(45, 45),
+          arrangement: go.GridArrangement.LeftToRight
+        });
+        break;
+      case 'layered-digraph':
+        newLayout = $(go.LayeredDigraphLayout, {
+          direction: 0,
+          layerSpacing: 100,
+          columnSpacing: 70,
+          setsPortSpots: false
+        });
+        break;
+      case 'tree':
+        newLayout = $(go.TreeLayout, {
+          angle: 270,
+          layerSpacing: 120,
+          nodeSpacing: 72,
+          arrangement: go.TreeLayout.ArrangementVertical
+        });
+        break;
+      default:
+        return;
+    }
+
+    diagram.startTransaction('change layout');
+    diagram.layout = newLayout;
+    diagram.layoutDiagram(true);
+    diagram.commitTransaction('change layout');
+    
+    setCurrentLayout(layoutType);
+  }, []);
 
   // Initialize GoJS diagram
   useEffect(() => {
