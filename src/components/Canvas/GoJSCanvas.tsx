@@ -95,13 +95,23 @@ export const GoJSCanvas = () => {
     });
 
     // Redesigned single node template with header and body
-    diagram.nodeTemplate = $(go.Node, 'Auto',
+    diagram.nodeTemplate = $(go.Node, 'Vertical',
       {
         locationSpot: go.Spot.Center,
         selectionAdornmentTemplate: $(go.Adornment, 'Auto',
           $(go.Shape, { fill: null, stroke: '#7c3aed', strokeWidth: 3 }),
           $(go.Placeholder)
         ),
+        // Add mouse enter/leave for highlighting
+        mouseEnter: (e, obj) => {
+          const node = obj.part as go.Node;
+          if (node && node.data) {
+            (diagram.div as any).style.cursor = 'pointer';
+          }
+        },
+        mouseLeave: (e, obj) => {
+          (diagram.div as any).style.cursor = 'auto';
+        },
         // Add click handler for annotation properties
         click: (e, obj) => {
           const node = obj.part as go.Node;
@@ -121,22 +131,35 @@ export const GoJSCanvas = () => {
           fromLinkable: true, 
           toLinkable: true,
           toolTip: $(go.Adornment, 'Auto',
-            $(go.Shape, { fill: '#fefce8', stroke: '#facc15' }),
-            $(go.TextBlock, 
-              { 
-                margin: 8, 
-                font: '10px Inter, sans-serif',
-                maxSize: new go.Size(200, NaN),
-                wrap: go.TextBlock.WrapFit
-              },
-              new go.Binding('text', 'rdfType', (type) => `RDF Type: ${type || 'unknown'}`)
+            $(go.Shape, { fill: '#fefce8', stroke: '#facc15', strokeWidth: 2 }),
+            $(go.Panel, 'Vertical',
+              { margin: 8 },
+              $(go.TextBlock, 
+                { 
+                  font: 'bold 11px Inter, sans-serif',
+                  stroke: '#a16207',
+                  maxSize: new go.Size(250, NaN),
+                  wrap: go.TextBlock.WrapFit
+                },
+                new go.Binding('text', 'uri', (uri) => `URI: ${uri || 'unknown'}`)
+              ),
+              $(go.TextBlock, 
+                { 
+                  font: '10px Inter, sans-serif',
+                  stroke: '#a16207',
+                  margin: new go.Margin(2, 0, 0, 0),
+                  maxSize: new go.Size(250, NaN),
+                  wrap: go.TextBlock.WrapFit
+                },
+                new go.Binding('text', 'rdfType', (type) => `RDF Type: ${type || 'unknown'}`)
+              )
             )
           )
         },
         $(go.Shape, 'RoundedRectangle',
           {
-            strokeWidth: 3,
-            minSize: new go.Size(160, 35),
+            strokeWidth: 2,
+            minSize: new go.Size(160, 40),
             parameter1: 8
           },
           new go.Binding('fill', 'namespace', (ns) => {
@@ -173,10 +196,10 @@ export const GoJSCanvas = () => {
             };
             return namespaceColors[ns as keyof typeof namespaceColors] || namespaceColors.default;
           }),
-          new go.Binding('strokeWidth', 'hasReasoningError', (hasError) => hasError ? 4 : 3)
+          new go.Binding('strokeWidth', 'hasReasoningError', (hasError) => hasError ? 4 : 2)
         ),
         $(go.Panel, 'Vertical',
-          { margin: 6, alignment: go.Spot.Center },
+          { margin: 8, alignment: go.Spot.Center },
           // IRI
           $(go.TextBlock,
             {
@@ -231,12 +254,28 @@ export const GoJSCanvas = () => {
         $(go.Shape, 'RoundedRectangle',
           {
             fill: '#ffffff',
-            stroke: '#e2e8f0',
-            strokeWidth: 1,
+            strokeWidth: 2,
             minSize: new go.Size(160, 50),
             parameter1: 8
           },
-          new go.Binding('stroke', 'hasReasoningError', (hasError) => hasError ? '#ef4444' : '#e2e8f0')
+          new go.Binding('stroke', 'namespace', (ns) => {
+            const namespaceColors = {
+              'foaf': 'hsl(250 75% 40%)',
+              'org': 'hsl(160 70% 25%)',
+              'rdfs': 'hsl(25 85% 45%)',
+              'owl': 'hsl(200 80% 35%)',
+              'rdf': 'hsl(190 75% 30%)',
+              'skos': 'hsl(40 80% 40%)',
+              'dc': 'hsl(290 70% 40%)',
+              'dct': 'hsl(240 65% 35%)',
+              'xsd': 'hsl(180 60% 30%)',
+              'iof': 'hsl(330 70% 40%)',
+              'reasoning': 'hsl(55 80% 65%)',
+              'default': 'hsl(215 25% 40%)'
+            };
+            return namespaceColors[ns as keyof typeof namespaceColors] || namespaceColors.default;
+          }),
+          new go.Binding('strokeWidth', 'hasReasoningError', (hasError) => hasError ? 4 : 2)
         ),
         $(go.Panel, 'Vertical',
           { margin: 8, alignment: go.Spot.Center },
@@ -280,7 +319,7 @@ export const GoJSCanvas = () => {
       )
     );
 
-    // Link template with proper labels
+    // Link template with proper labels and hover effects
     diagram.linkTemplate = $(go.Link,
       {
         routing: go.Link.AvoidsNodes,
@@ -289,25 +328,94 @@ export const GoJSCanvas = () => {
         selectionAdornmentTemplate: $(go.Adornment, 'Link',
           $(go.Shape, { isPanelMain: true, stroke: '#7c3aed', strokeWidth: 3 }),
           $(go.Shape, { toArrow: 'Standard', fill: '#7c3aed', stroke: null })
-        )
+        ),
+        toolTip: $(go.Adornment, 'Auto',
+          $(go.Shape, { fill: '#fefce8', stroke: '#facc15', strokeWidth: 2 }),
+          $(go.Panel, 'Vertical',
+            { margin: 8 },
+            $(go.TextBlock, 
+              { 
+                font: 'bold 11px Inter, sans-serif',
+                stroke: '#a16207',
+                maxSize: new go.Size(250, NaN),
+                wrap: go.TextBlock.WrapFit
+              },
+              new go.Binding('text', 'propertyUri', (uri) => `Property: ${uri || 'unknown'}`)
+            ),
+            $(go.TextBlock, 
+              { 
+                font: '10px Inter, sans-serif',
+                stroke: '#a16207',
+                margin: new go.Margin(2, 0, 0, 0),
+                maxSize: new go.Size(250, NaN),
+                wrap: go.TextBlock.WrapFit
+              },
+              new go.Binding('text', 'rdfType', (type) => `RDF Type: ${type || 'unknown'}`)
+            )
+          )
+        ),
+        // Add mouse enter/leave for highlighting
+        mouseEnter: (e, obj) => {
+          const link = obj.part as go.Link;
+          if (link) {
+            const shape = link.findObject('SHAPE') as go.Shape;
+            const arrow = link.findObject('ARROWHEAD') as go.Shape;
+            const label = link.findObject('LABEL') as go.TextBlock;
+            
+            if (shape) shape.stroke = '#7c3aed';
+            if (shape) shape.strokeWidth = 3;
+            if (arrow) arrow.fill = '#7c3aed';
+            if (label) label.background = '#e0e7ff';
+            (diagram.div as any).style.cursor = 'pointer';
+          }
+        },
+        mouseLeave: (e, obj) => {
+          const link = obj.part as go.Link;
+          if (link) {
+            const hasError = link.data.hasReasoningError;
+            const shape = link.findObject('SHAPE') as go.Shape;
+            const arrow = link.findObject('ARROWHEAD') as go.Shape;
+            const label = link.findObject('LABEL') as go.TextBlock;
+            
+            if (shape) shape.stroke = hasError ? '#ef4444' : '#64748b';
+            if (shape) shape.strokeWidth = 2;
+            if (arrow) arrow.fill = hasError ? '#ef4444' : '#64748b';
+            if (label) label.background = '#ffffff';
+            (diagram.div as any).style.cursor = 'auto';
+          }
+        }
       },
-      $(go.Shape, { strokeWidth: 2, stroke: '#64748b' },
+      $(go.Shape, 
+        { 
+          name: 'SHAPE',
+          strokeWidth: 2, 
+          stroke: '#64748b' 
+        },
         new go.Binding('stroke', 'hasReasoningError', (hasError) => hasError ? '#ef4444' : '#64748b')
       ),
-      $(go.Shape, { toArrow: 'Standard', fill: '#64748b', stroke: null },
+      $(go.Shape, 
+        { 
+          name: 'ARROWHEAD',
+          toArrow: 'Standard', 
+          fill: '#64748b', 
+          stroke: null 
+        },
         new go.Binding('fill', 'hasReasoningError', (hasError) => hasError ? '#ef4444' : '#64748b')
       ),
       $(go.TextBlock,
         {
+          name: 'LABEL',
           segmentIndex: 0,
           segmentFraction: 0.5,
+          segmentOffset: new go.Point(0, -12),
           background: '#ffffff',
           font: '10px Inter, sans-serif',
           stroke: '#1e293b',
           margin: new go.Margin(2, 4, 2, 4),
-          maxSize: new go.Size(150, NaN),
+          maxSize: new go.Size(120, NaN),
           wrap: go.TextBlock.WrapFit,
-          textAlign: 'center'
+          textAlign: 'center',
+          editable: false
         },
         new go.Binding('text', 'label', (label) => label || 'related'),
         new go.Binding('visible', 'label', (label) => !!label)
