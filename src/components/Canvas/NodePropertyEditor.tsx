@@ -72,7 +72,26 @@ export const NodePropertyEditor = ({
   // Initialize form data when dialog opens
   useEffect(() => {
     if (open && nodeData) {
-      setNodeType(nodeData.classType || '');
+      console.log('NodePropertyEditor initializing with nodeData:', nodeData);
+      console.log('Available class entities:', classEntities);
+      
+      // Handle node type - find URI from label if available
+      let initialNodeType = '';
+      if (nodeData.classType || nodeData.type) {
+        const typeLabel = nodeData.classType || nodeData.type;
+        console.log('Looking for type:', typeLabel);
+        
+        // Try to find the URI for this type label
+        const matchingEntity = classEntities.find(entity => 
+          entity.label === typeLabel || entity.uri === typeLabel
+        );
+        console.log('Matching entity found:', matchingEntity);
+        
+        initialNodeType = matchingEntity ? matchingEntity.uri : typeLabel;
+      }
+      console.log('Setting initial node type to:', initialNodeType);
+      setNodeType(initialNodeType);
+      
       setNodeIri(nodeData.uri || nodeData.iri || '');
       
       // Convert existing annotation properties to the form format
@@ -88,7 +107,7 @@ export const NodePropertyEditor = ({
       }
       setProperties(existingProps);
     }
-  }, [open, nodeData]);
+  }, [open, nodeData, classEntities]);
 
   /**
    * Add a new property row
@@ -118,9 +137,14 @@ export const NodePropertyEditor = ({
    * Save changes and close dialog
    */
   const handleSave = () => {
+    // Convert URI back to label for classType if we have a matching entity
+    const selectedEntity = classEntities.find(entity => entity.uri === nodeType);
+    const classTypeLabel = selectedEntity ? selectedEntity.label : nodeType;
+    
     const updatedNodeData = {
       ...nodeData,
-      classType: nodeType,
+      classType: classTypeLabel,
+      type: classTypeLabel,
       uri: nodeIri,
       iri: nodeIri,
       annotationProperties: properties.map(prop => ({
@@ -179,7 +203,6 @@ export const NodePropertyEditor = ({
     'xsd:time',
     'xsd:anyURI'
   ];
-
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

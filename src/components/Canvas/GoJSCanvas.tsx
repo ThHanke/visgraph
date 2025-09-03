@@ -255,6 +255,7 @@ export const GoJSCanvas = () => {
         doubleClick: (e, obj) => {
           const nodeData = obj.part?.data;
           if (nodeData) {
+            console.log('Node template double-clicked, nodeData:', nodeData);
             setSelectedNode(nodeData);
             setShowNodeEditor(true);
           }
@@ -431,6 +432,7 @@ export const GoJSCanvas = () => {
     diagram.addDiagramListener('ObjectDoubleClicked', (e) => {
       const obj = e.subject.part;
       if (obj instanceof go.Node) {
+        console.log('Node double-clicked, obj.data:', obj.data);
         setSelectedNode(obj.data);
         setShowNodeEditor(true);
       } else if (obj instanceof go.Link) {
