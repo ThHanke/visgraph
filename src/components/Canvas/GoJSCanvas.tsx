@@ -12,6 +12,7 @@ import { Progress } from '../ui/progress';
 import { NodePropertyEditor } from './NodePropertyEditor';
 import { LinkPropertyEditor } from './LinkPropertyEditor';
 import { toast } from 'sonner';
+import { AnnotationPropertyDialog } from './AnnotationPropertyDialog';
 
 export const GoJSCanvas = () => {
   const diagramRef = useRef<HTMLDivElement>(null);
@@ -30,6 +31,24 @@ export const GoJSCanvas = () => {
   const [viewMode, setViewMode] = useState<'abox' | 'tbox'>('abox');
   
   const { loadedOntologies, availableClasses, availableProperties, loadOntologyFromRDF, loadKnowledgeGraph } = useOntologyStore();
+  
+  // Get all entities for autocomplete
+  const allEntities = loadedOntologies.flatMap(ontology => [
+    ...ontology.classes.map(cls => ({
+      uri: cls.uri,
+      label: cls.label,
+      namespace: cls.namespace,
+      rdfType: 'owl:Class' as const,
+      description: `Class from ${ontology.name}`
+    })),
+    ...ontology.properties.map(prop => ({
+      uri: prop.uri,
+      label: prop.label,
+      namespace: prop.namespace,
+      rdfType: prop.uri.includes('ObjectProperty') ? 'owl:ObjectProperty' : 'owl:AnnotationProperty' as const,
+      description: `Property from ${ontology.name}`
+    }))
+  ]);
   const { startReasoning } = useReasoningStore();
   const { settings } = useSettingsStore();
 
@@ -41,8 +60,9 @@ export const GoJSCanvas = () => {
     diagram.startTransaction('update view mode');
     diagram.nodes.each(node => {
       const data = node.data;
-      const isOWLEntity = data.entityType === 'class' || data.entityType === 'property';
-      const shouldShow = viewMode === 'tbox' ? isOWLEntity : !isOWLEntity;
+      // T-box: entities with rdf:type from owl namespace
+      const isTBoxEntity = data.rdfType && data.rdfType.startsWith('owl:');
+      const shouldShow = viewMode === 'tbox' ? isTBoxEntity : !isTBoxEntity;
       diagram.model.setDataProperty(data, 'visible', shouldShow);
     });
     diagram.commitTransaction('update view mode');
@@ -69,121 +89,164 @@ export const GoJSCanvas = () => {
       model: new go.GraphLinksModel()
     });
 
-    // Split box node template with class type in upper section and individual in lower
+    // Redesigned node template with header and body
     diagram.nodeTemplate = $(go.Node, 'Vertical',
       {
         locationSpot: go.Spot.Center,
         selectionAdornmentTemplate: $(go.Adornment, 'Auto',
           $(go.Shape, { fill: null, stroke: '#7c3aed', strokeWidth: 3 }),
           $(go.Placeholder)
-        )
+        ),
+        // Add click handler for annotation properties
+        click: (e, obj) => {
+          const node = obj.part as go.Node;
+          if (node && node.data) {
+            setSelectedNode(node.data);
+            setShowNodeEditor(true);
+          }
+        }
       },
       new go.Binding('location', 'loc', go.Point.parse).makeTwoWay(go.Point.stringify),
       new go.Binding('visible', 'visible', (vis) => vis !== false),
       
-      // Upper section - Class Type and Namespace
+      // Header - IRI and rdf:type
       $(go.Panel, 'Auto',
-        { portId: '', fromLinkable: true, toLinkable: true },
+        { 
+          portId: '', 
+          fromLinkable: true, 
+          toLinkable: true,
+          toolTip: $(go.Adornment, 'Auto',
+            $(go.Shape, { fill: '#fefce8', stroke: '#facc15' }),
+            $(go.TextBlock, 
+              { 
+                margin: 8, 
+                font: '10px Inter, sans-serif',
+                maxSize: new go.Size(200, NaN),
+                wrap: go.TextBlock.WrapFit
+              },
+              new go.Binding('text', 'rdfType', (type) => `RDF Type: ${type || 'unknown'}`)
+            )
+          )
+        },
         $(go.Shape, 'RoundedRectangle',
           {
-            fill: '#ffffff',
-            stroke: '#e2e8f0',
-            strokeWidth: 2,
-            minSize: new go.Size(140, 40),
+            strokeWidth: 3,
+            minSize: new go.Size(160, 35),
             parameter1: 8
           },
           new go.Binding('fill', 'namespace', (ns) => {
             const namespaceColors = {
-              'foaf': '#f3f0ff',      // lavender
-              'org': '#f0fdf4',       // mint  
-              'rdfs': '#fef7ed',      // peach
-              'owl': '#eff6ff',       // sky
-              'iof': '#fdf2f8',       // rose
-              'rdf': '#f0f9ff',       // aqua
-              'skos': '#fefce8',      // honey
-              'dc': '#fcf8ff',        // orchid
-              'dct': '#f8fafc',       // powder
-              'xsd': '#f0fdfa',       // seafoam
-              'reasoning': '#fefce8', // light yellow for reasoning entities
-              'default': '#ffffff'
+              'foaf': 'hsl(250 75% 60%)',
+              'org': 'hsl(160 70% 45%)',
+              'rdfs': 'hsl(25 85% 65%)',
+              'owl': 'hsl(200 80% 55%)',
+              'rdf': 'hsl(190 75% 50%)',
+              'skos': 'hsl(40 80% 60%)',
+              'dc': 'hsl(290 70% 60%)',
+              'dct': 'hsl(240 65% 55%)',
+              'xsd': 'hsl(180 60% 50%)',
+              'iof': 'hsl(330 70% 60%)',
+              'reasoning': 'hsl(55 90% 85%)',
+              'default': 'hsl(215 25% 60%)'
             };
             return namespaceColors[ns as keyof typeof namespaceColors] || namespaceColors.default;
           }),
-          new go.Binding('stroke', 'hasReasoningError', (hasError) => hasError ? '#ef4444' : '#e2e8f0'),
-          new go.Binding('strokeWidth', 'hasReasoningError', (hasError) => hasError ? 3 : 2)
+          new go.Binding('stroke', 'namespace', (ns) => {
+            const namespaceColors = {
+              'foaf': 'hsl(250 75% 40%)',
+              'org': 'hsl(160 70% 25%)',
+              'rdfs': 'hsl(25 85% 45%)',
+              'owl': 'hsl(200 80% 35%)',
+              'rdf': 'hsl(190 75% 30%)',
+              'skos': 'hsl(40 80% 40%)',
+              'dc': 'hsl(290 70% 40%)',
+              'dct': 'hsl(240 65% 35%)',
+              'xsd': 'hsl(180 60% 30%)',
+              'iof': 'hsl(330 70% 40%)',
+              'reasoning': 'hsl(55 80% 65%)',
+              'default': 'hsl(215 25% 40%)'
+            };
+            return namespaceColors[ns as keyof typeof namespaceColors] || namespaceColors.default;
+          }),
+          new go.Binding('strokeWidth', 'hasReasoningError', (hasError) => hasError ? 4 : 3)
         ),
-        $(go.Panel, 'Horizontal',
+        $(go.Panel, 'Vertical',
           { margin: 6, alignment: go.Spot.Center },
-          // Namespace badge
+          // IRI
           $(go.TextBlock,
             {
-              font: 'bold 9px Inter, sans-serif',
-              stroke: '#475569',
-              margin: new go.Margin(0, 4, 0, 0),
-              background: '#f1f5f9'
-            },
-            new go.Binding('text', 'namespace', (ns) => ns || 'default')
-          ),
-          // Class type
-          $(go.TextBlock,
-            {
-              font: 'bold 12px Inter, sans-serif',
-              stroke: '#1e293b',
-              maxSize: new go.Size(100, NaN),
+              font: 'bold 10px Inter, sans-serif',
+              stroke: '#ffffff',
+              maxSize: new go.Size(140, NaN),
               wrap: go.TextBlock.WrapFit,
               textAlign: 'center'
             },
-            new go.Binding('text', 'classType', (type) => type || 'Thing'),
-            new go.Binding('stroke', 'hasReasoningError', (hasError) => hasError ? '#dc2626' : '#1e293b')
+            new go.Binding('text', 'uri', (uri) => uri || 'unknown:uri')
+          ),
+          // RDF Type
+          $(go.TextBlock,
+            {
+              font: '9px Inter, sans-serif',
+              stroke: '#f8f9fa',
+              margin: new go.Margin(2, 0, 0, 0),
+              maxSize: new go.Size(140, NaN),
+              wrap: go.TextBlock.WrapFit,
+              textAlign: 'center'
+            },
+            new go.Binding('text', 'rdfType', (type) => type || 'unknown:type')
           )
         )
       ),
       
-      // Lower section - Individual Information
+      // Body - rdfs:label and annotation properties
       $(go.Panel, 'Auto',
         $(go.Shape, 'RoundedRectangle',
           {
-            fill: '#fafafa',
+            fill: '#ffffff',
             stroke: '#e2e8f0',
             strokeWidth: 1,
-            minSize: new go.Size(140, 60),
+            minSize: new go.Size(160, 50),
             parameter1: 8
           },
           new go.Binding('stroke', 'hasReasoningError', (hasError) => hasError ? '#ef4444' : '#e2e8f0')
         ),
         $(go.Panel, 'Vertical',
           { margin: 8, alignment: go.Spot.Center },
-          // Individual name
+          // rdfs:label
           $(go.TextBlock,
             {
-              font: '11px Inter, sans-serif',
-              stroke: '#374151',
+              font: 'bold 12px Inter, sans-serif',
+              stroke: '#1e293b',
               margin: new go.Margin(0, 0, 4, 0),
-              maxSize: new go.Size(120, NaN),
+              maxSize: new go.Size(140, NaN),
               wrap: go.TextBlock.WrapFit,
               textAlign: 'center'
             },
-            new go.Binding('text', 'individualName', (name) => name || 'Unnamed Individual'),
-            new go.Binding('visible', 'individualName', (name) => !!name || true)
+            new go.Binding('text', 'annotationProperties', (props) => {
+              const labelProp = props?.find((p: any) => p.propertyUri === 'rdfs:label');
+              return labelProp?.value || 'No label';
+            })
           ),
-          // Literal properties
+          // Other annotation properties
           $(go.Panel, 'Vertical',
             { 
-              maxSize: new go.Size(120, 40),
+              maxSize: new go.Size(140, 40),
               itemTemplate: $(go.Panel, 'Horizontal',
                 { margin: new go.Margin(1, 0, 1, 0) },
                 $(go.TextBlock, 
                   { 
                     font: '9px Inter, sans-serif', 
                     stroke: '#6b7280',
-                    maxSize: new go.Size(120, NaN),
+                    maxSize: new go.Size(140, NaN),
                     wrap: go.TextBlock.WrapFit
                   },
-                  new go.Binding('text', '', (prop) => `${prop.key}: ${prop.value}`)
+                  new go.Binding('text', '', (prop) => `${prop.propertyUri}: ${prop.value}`)
                 )
               )
             },
-            new go.Binding('itemArray', 'literalProperties', (props) => props || [])
+            new go.Binding('itemArray', 'annotationProperties', (props) => 
+              props?.filter((p: any) => p.propertyUri !== 'rdfs:label') || []
+            )
           )
         )
       )
@@ -313,11 +376,14 @@ export const GoJSCanvas = () => {
         // Convert parsed nodes to GoJS format
         const goNodes = currentGraph.nodes.map(node => ({
           key: node.id,
+          uri: node.uri,
           classType: node.classType,
           individualName: node.individualName,
           namespace: node.namespace,
+          rdfType: node.rdfType,
+          entityType: node.entityType || 'individual',
           literalProperties: node.literalProperties || [],
-          entityType: node.entityType || 'individual', // 'class', 'property', or 'individual'
+          annotationProperties: node.annotationProperties || [],
           loc: node.position ? `${node.position.x} ${node.position.y}` : `${Math.random() * 800} ${Math.random() * 600}`
         }));
         
@@ -327,7 +393,9 @@ export const GoJSCanvas = () => {
           to: edge.target,
           label: edge.label,
           propertyType: edge.propertyType,
-          namespace: edge.namespace
+          propertyUri: edge.propertyUri,
+          namespace: edge.namespace,
+          rdfType: edge.rdfType
         }));
         
         // Set model without transaction since we're replacing the entire model
@@ -366,24 +434,31 @@ export const GoJSCanvas = () => {
     loadDemoFile();
   }, [settings.startupFileUrl, loadKnowledgeGraph]);
 
-  const onAddNode = useCallback((classType: string, namespace: string) => {
+  const onAddNode = useCallback((entityUri: string) => {
     if (!diagramInstanceRef.current) return;
 
     const diagram = diagramInstanceRef.current;
+    const entity = allEntities.find(e => e.uri === entityUri);
+    if (!entity) return;
+
     diagram.startTransaction('add node');
     
     const nodeData = {
       key: `node-${Date.now()}`,
-      classType,
-      individualName: `${classType}_${Date.now()}`,
-      namespace,
+      uri: entity.uri,
+      classType: entity.label,
+      individualName: `${entity.label}_${Date.now()}`,
+      namespace: entity.namespace,
+      rdfType: entity.rdfType,
+      entityType: entity.rdfType === 'owl:Class' ? 'class' : 'individual',
       literalProperties: [],
+      annotationProperties: [],
       loc: '0 0'
     };
     
     diagram.model.addNodeData(nodeData);
     diagram.commitTransaction('add node');
-  }, []);
+  }, [allEntities]);
 
   const onLoadFile = useCallback(async (file: File) => {
     setIsLoading(true);
@@ -421,7 +496,7 @@ export const GoJSCanvas = () => {
     
     const node = diagram.findNodeForKey(selectedNode.key);
     if (node) {
-      diagram.model.setDataProperty(node.data, 'literalProperties', properties);
+      diagram.model.setDataProperty(node.data, 'annotationProperties', properties);
     }
     
     diagram.commitTransaction('update node properties');
@@ -500,6 +575,7 @@ export const GoJSCanvas = () => {
         onLoadFile={onLoadFile}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
+        availableEntities={allEntities}
       />
       
       {isLoading && (
@@ -518,21 +594,20 @@ export const GoJSCanvas = () => {
         style={{ backgroundColor: 'hsl(var(--canvas-bg))' }}
       />
 
-      {showLegend && (
-        <NamespaceLegend 
-          className="absolute top-20 right-4 z-10"
-          namespaces={[
-            { name: 'foaf', color: '#f3f0ff', description: 'Friend of a Friend' },
-            { name: 'org', color: '#f0fdf4', description: 'Organization Ontology' },
-            { name: 'rdfs', color: '#fef7ed', description: 'RDF Schema' },
-            { name: 'owl', color: '#eff6ff', description: 'Web Ontology Language' },
-            { name: 'iof', color: '#fdf2f8', description: 'Industrial Ontologies Foundry' },
-            { name: 'rdf', color: '#f0f9ff', description: 'Resource Description Framework' },
-            { name: 'skos', color: '#fefce8', description: 'Simple Knowledge Organization System' },
-            { name: 'dc', color: '#fcf8ff', description: 'Dublin Core' },
-            { name: 'reasoning', color: '#fefce8', description: 'Reasoning Results' }
-          ]}
-        />
+      {false && showLegend && (
+      <NamespaceLegend 
+        className="absolute top-20 right-4 z-10"
+        namespaces={[
+          { name: 'foaf', color: 'hsl(250 75% 60%)', description: 'Friend of a Friend' },
+          { name: 'org', color: 'hsl(160 70% 45%)', description: 'Organization Ontology' },
+          { name: 'rdfs', color: 'hsl(25 85% 65%)', description: 'RDF Schema' },
+          { name: 'owl', color: 'hsl(200 80% 55%)', description: 'Web Ontology Language' },
+          { name: 'rdf', color: 'hsl(190 75% 50%)', description: 'Resource Description Framework' },
+          { name: 'skos', color: 'hsl(40 80% 60%)', description: 'Simple Knowledge Organization System' },
+          { name: 'dc', color: 'hsl(290 70% 60%)', description: 'Dublin Core' },
+          { name: 'reasoning', color: 'hsl(55 90% 85%)', description: 'Reasoning Results' }
+        ]}
+      />
       )}
 
       <ReasoningIndicator onOpenReport={() => setShowReasoningReport(true)} />
@@ -542,10 +617,10 @@ export const GoJSCanvas = () => {
         onOpenChange={setShowReasoningReport}
       />
 
-      <NodePropertyEditor
-        open={showNodeEditor}
-        onOpenChange={setShowNodeEditor}
-        nodeData={selectedNode}
+      <AnnotationPropertyDialog
+        nodeId={selectedNode?.key || ''}
+        availableProperties={allEntities.filter(e => e.rdfType === 'owl:AnnotationProperty')}
+        currentProperties={selectedNode?.annotationProperties || []}
         onSave={handleSaveNodeProperties}
       />
 

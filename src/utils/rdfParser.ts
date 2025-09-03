@@ -9,10 +9,14 @@ export interface ParsedGraph {
 
 export interface GraphNode {
   id: string;
+  uri: string;
   classType: string;
   individualName: string;
   namespace: string;
+  rdfType: string;
+  entityType: 'individual' | 'class' | 'property';
   literalProperties: { key: string; value: string; type?: string }[];
+  annotationProperties: { propertyUri: string; value: string }[];
   position?: { x: number; y: number };
 }
 
@@ -21,8 +25,10 @@ export interface GraphEdge {
   source: string;
   target: string;
   propertyType: string;
+  propertyUri: string;
   label: string;
   namespace: string;
+  rdfType: string;
 }
 
 export class RDFParser {
@@ -77,66 +83,94 @@ export class RDFParser {
   private extractGraph(onProgress?: (progress: number, message: string) => void): ParsedGraph {
     onProgress?.(60, 'Identifying individuals and classes...');
     
-    const individuals = new Map<string, GraphNode>();
+    const entities = new Map<string, GraphNode>();
     const objectProperties = new Map<string, GraphEdge>();
     
-    // Find all individuals and their types
+    // Add base namespace
+    this.namespaces[':'] = ':';
+    this.prefixes[':'] = ':';
+    
+    // Find all entities and their types
     const typeQuads = this.store.getQuads(null, 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', null, null);
     
-    onProgress?.(70, 'Processing class instances...');
+    onProgress?.(70, 'Processing entities...');
     
     typeQuads.forEach((quad, index) => {
       if (quad.subject.termType === 'NamedNode' || quad.subject.termType === 'BlankNode') {
         const subjectUri = quad.subject.value;
-        const classUri = (quad.object as NamedNode).value;
+        const typeUri = (quad.object as NamedNode).value;
         
-        const { namespace, localName } = this.splitUri(classUri);
-        const individualName = this.splitUri(subjectUri).localName;
+        const { namespace: typeNamespace, localName: typeName } = this.splitUri(typeUri);
+        const { namespace: subjectNamespace, localName: subjectName } = this.splitUri(subjectUri);
         
-        if (!individuals.has(subjectUri)) {
-          individuals.set(subjectUri, {
+        // Determine entity type based on rdf:type
+        let entityType: 'individual' | 'class' | 'property' = 'individual';
+        if (typeNamespace === 'owl') {
+          if (typeName === 'Class') entityType = 'class';
+          else if (typeName === 'ObjectProperty' || typeName === 'DatatypeProperty' || typeName === 'AnnotationProperty') entityType = 'property';
+        }
+        
+        if (!entities.has(subjectUri)) {
+          entities.set(subjectUri, {
             id: this.createSafeId(subjectUri),
-            classType: localName,
-            individualName: individualName,
-            namespace: namespace,
+            uri: subjectUri,
+            classType: entityType === 'individual' ? typeName : subjectName,
+            individualName: subjectName,
+            namespace: entityType === 'individual' ? typeNamespace : subjectNamespace,
+            rdfType: `${typeNamespace}:${typeName}`,
+            entityType,
             literalProperties: [],
+            annotationProperties: [],
             position: { x: Math.random() * 800 + 100, y: Math.random() * 600 + 100 }
           });
         }
       }
     });
 
-    onProgress?.(80, 'Processing literal properties...');
+    onProgress?.(80, 'Processing properties...');
     
-    // Find literal properties
-    individuals.forEach((node, subjectUri) => {
-      const literalQuads = this.store.getQuads(subjectUri, null, null, null)
+    // Find literal and annotation properties
+    entities.forEach((node, subjectUri) => {
+      const propertyQuads = this.store.getQuads(subjectUri, null, null, null)
         .filter(quad => quad.object.termType === 'Literal');
       
-      literalQuads.forEach(quad => {
+      propertyQuads.forEach(quad => {
         const propertyUri = (quad.predicate as NamedNode).value;
         const literal = quad.object as Literal;
         const { namespace: propNamespace, localName: propName } = this.splitUri(propertyUri);
         
         // Skip rdf:type as it's handled separately
         if (propertyUri !== 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type') {
-          node.literalProperties.push({
-            key: `${propNamespace}:${propName}`,
-            value: literal.value,
-            type: literal.datatype?.value
-          });
+          // Determine if annotation property or literal property
+          if (propNamespace === 'rdfs' && propName === 'label') {
+            node.annotationProperties.push({
+              propertyUri: `${propNamespace}:${propName}`,
+              value: literal.value
+            });
+          } else if (propNamespace === 'rdfs' || propNamespace === 'dc' || propNamespace === 'dct') {
+            node.annotationProperties.push({
+              propertyUri: `${propNamespace}:${propName}`,
+              value: literal.value
+            });
+          } else {
+            node.literalProperties.push({
+              key: `${propNamespace}:${propName}`,
+              value: literal.value,
+              type: literal.datatype?.value
+            });
+          }
         }
       });
     });
 
     onProgress?.(90, 'Processing object properties...');
     
-    // Find object properties (relationships between individuals)
+    // Find object properties (relationships between entities)
     const objectQuads = this.store.getQuads(null, null, null, null)
       .filter(quad => 
         quad.object.termType === 'NamedNode' && 
-        individuals.has(quad.subject.value) && 
-        individuals.has(quad.object.value) &&
+        entities.has(quad.subject.value) && 
+        entities.has(quad.object.value) &&
         quad.predicate.value !== 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
       );
 
@@ -148,20 +182,27 @@ export class RDFParser {
       
       const edgeId = `${sourceId}-${targetId}-${localName}`;
       
+      // Find rdfs:label for this property
+      const propertyLabelQuads = this.store.getQuads(propertyUri, 'http://www.w3.org/2000/01/rdf-schema#label', null, null);
+      const label = propertyLabelQuads.length > 0 ? 
+        (propertyLabelQuads[0].object as Literal).value : localName;
+      
       objectProperties.set(edgeId, {
         id: edgeId,
         source: sourceId,
         target: targetId,
         propertyType: `${namespace}:${localName}`,
-        label: localName,
-        namespace: namespace
+        propertyUri: propertyUri,
+        label: label,
+        namespace: namespace,
+        rdfType: `${namespace}:${localName}`
       });
     });
 
     onProgress?.(100, 'Graph extraction complete');
 
     return {
-      nodes: Array.from(individuals.values()),
+      nodes: Array.from(entities.values()),
       edges: Array.from(objectProperties.values()),
       namespaces: this.namespaces,
       prefixes: this.prefixes

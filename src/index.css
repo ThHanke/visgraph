@@ -45,29 +45,40 @@
     --ring: 250 55% 70%;
     --radius: 0.75rem;
 
-    /* Canvas Colors - 20+ Pastel Namespace Colors */
-    --ns-lavender: 250 55% 75%;
-    --ns-mint: 160 40% 75%;
-    --ns-peach: 25 85% 80%;
-    --ns-sky: 200 70% 80%;
-    --ns-rose: 330 60% 80%;
-    --ns-sage: 120 30% 75%;
-    --ns-cream: 45 60% 85%;
-    --ns-lilac: 280 45% 80%;
-    --ns-seafoam: 180 35% 75%;
-    --ns-blush: 15 70% 85%;
-    --ns-periwinkle: 220 60% 80%;
-    --ns-coral: 10 75% 80%;
-    --ns-eucalyptus: 140 25% 75%;
-    --ns-champagne: 50 45% 85%;
-    --ns-orchid: 290 50% 80%;
-    --ns-aqua: 190 45% 80%;
-    --ns-apricot: 30 80% 82%;
-    --ns-mauve: 270 35% 80%;
-    --ns-mint-cream: 170 30% 85%;
-    --ns-powder: 240 40% 85%;
-    --ns-honey: 40 70% 85%;
-    --ns-thistle: 260 40% 82%;
+    /* Canvas Colors - Rich Namespace Colors */
+    --ns-foaf: 250 75% 60%;
+    --ns-org: 160 70% 45%;
+    --ns-rdfs: 25 85% 65%;
+    --ns-owl: 200 80% 55%;
+    --ns-rdf: 190 75% 50%;
+    --ns-skos: 40 80% 60%;
+    --ns-dc: 290 70% 60%;
+    --ns-dct: 240 65% 55%;
+    --ns-xsd: 180 60% 50%;
+    --ns-iof: 330 70% 60%;
+    --ns-default: 215 25% 60%;
+    
+    /* Reasoning specific */
+    --ns-reasoning: 55 90% 85%; /* light yellow reserved for reasoning */
+    
+    /* Additional namespace colors */
+    --ns-sage: 120 50% 50%;
+    --ns-cream: 45 70% 70%;
+    --ns-lilac: 280 65% 65%;
+    --ns-seafoam: 180 55% 50%;
+    --ns-blush: 15 80% 70%;
+    --ns-periwinkle: 220 70% 65%;
+    --ns-coral: 10 85% 65%;
+    --ns-eucalyptus: 140 45% 50%;
+    --ns-champagne: 50 65% 70%;
+    --ns-orchid: 290 70% 65%;
+    --ns-aqua: 190 65% 60%;
+    --ns-apricot: 30 90% 67%;
+    --ns-mauve: 270 55% 65%;
+    --ns-mint-cream: 170 50% 70%;
+    --ns-powder: 240 60% 70%;
+    --ns-honey: 40 80% 70%;
+    --ns-thistle: 260 60% 67%;
 
     /* Canvas Specific */
     --canvas-bg: 210 25% 97%;

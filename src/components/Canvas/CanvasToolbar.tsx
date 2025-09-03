@@ -34,19 +34,26 @@ import {
   Network,
 } from 'lucide-react';
 import { useOntologyStore } from '../../stores/ontologyStore';
-import { AutoComplete } from '../ui/AutoComplete';
+import { EntityAutocomplete } from '../ui/EntityAutocomplete';
 
 interface CanvasToolbarProps {
-  onAddNode: (classType: string, namespace: string) => void;
+  onAddNode: (entityUri: string) => void;
   onToggleLegend: () => void;
   showLegend: boolean;
   onExport: (format: 'turtle' | 'owl-xml' | 'json-ld') => void;
   onLoadFile?: (file: File) => void;
   viewMode: 'abox' | 'tbox';
   onViewModeChange: (mode: 'abox' | 'tbox') => void;
+  availableEntities: Array<{
+    uri: string;
+    label: string;
+    namespace: string;
+    rdfType: string;
+    description?: string;
+  }>;
 }
 
-export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onLoadFile, viewMode, onViewModeChange }: CanvasToolbarProps) => {
+export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onLoadFile, viewMode, onViewModeChange, availableEntities }: CanvasToolbarProps) => {
   const [isAddNodeOpen, setIsAddNodeOpen] = useState(false);
   const [isLoadOntologyOpen, setIsLoadOntologyOpen] = useState(false);
   const [ontologyUrl, setOntologyUrl] = useState('');
@@ -68,8 +75,8 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   };
 
   const handleAddNode = () => {
-    if (newNodeClass && newNodeNamespace) {
-      onAddNode(newNodeClass, newNodeNamespace);
+    if (newNodeClass) {
+      onAddNode(newNodeClass);
       setNewNodeClass('');
       setNewNodeNamespace('');
       setIsAddNodeOpen(false);
@@ -116,25 +123,19 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
             </div>
             <div className="space-y-2">
               <Label htmlFor="classType">Class Type</Label>
-              <AutoComplete 
-                options={availableClasses
-                  .filter(cls => !newNodeNamespace || cls.namespace === newNodeNamespace)
-                  .map(cls => ({
-                    value: cls.label,
-                    label: cls.label,
-                    description: cls.uri
-                  }))}
+              <EntityAutocomplete 
+                entities={availableEntities}
                 value={newNodeClass}
                 onValueChange={setNewNodeClass}
-                placeholder="Select class type..."
-                emptyMessage="No classes found. Load an ontology first."
+                placeholder="Select entity..."
+                emptyMessage="No entities found. Load an ontology first."
               />
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setIsAddNodeOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleAddNode} disabled={!newNodeClass || !newNodeNamespace}>
+              <Button onClick={handleAddNode} disabled={!newNodeClass}>
                 Add Node
               </Button>
             </div>

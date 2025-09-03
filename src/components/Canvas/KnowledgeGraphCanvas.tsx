@@ -104,7 +104,7 @@ export const KnowledgeGraphCanvas = () => {
     [setEdges]
   );
 
-  const onAddNode = useCallback((classType: string, namespace: string) => {
+  const onAddNode = useCallback((entityUri: string) => {
     const newNode: Node = {
       id: `node-${Date.now()}`,
       type: 'ontologyNode',
