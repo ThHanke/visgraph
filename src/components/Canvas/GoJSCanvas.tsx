@@ -757,6 +757,8 @@ export const GoJSCanvas = () => {
         onLoadFile={onLoadFile}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
+        onLayoutChange={handleLayoutChange}
+        currentLayout={currentLayout}
         availableEntities={allEntities}
       />
       

@@ -54,7 +54,7 @@ interface CanvasToolbarProps {
   }>;
 }
 
-export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onLoadFile, viewMode, onViewModeChange, availableEntities }: CanvasToolbarProps) => {
+export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onLoadFile, viewMode, onViewModeChange, onLayoutChange, currentLayout = 'force-directed', availableEntities }: CanvasToolbarProps) => {
   const [isAddNodeOpen, setIsAddNodeOpen] = useState(false);
   const [isLoadOntologyOpen, setIsLoadOntologyOpen] = useState(false);
   const [isLoadFileOpen, setIsLoadFileOpen] = useState(false);
