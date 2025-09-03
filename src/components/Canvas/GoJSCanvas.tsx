@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as go from 'gojs';
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { useReasoningStore } from '../../stores/reasoningStore';
@@ -250,53 +250,15 @@ export const GoJSCanvas = () => {
         )
       ),
 
-      // Selection adornment buttons
+      // Double-click to edit
       {
-        selectionAdornmentTemplate:
-          $(go.Adornment, 'Spot',
-            $(go.Panel, 'Auto',
-              $(go.Shape, 'RoundedRectangle',
-                { fill: null, stroke: '#00A9C9', strokeWidth: 2 }),
-              $(go.Placeholder, { padding: 4 })
-            ),
-            $(go.Panel, 'Horizontal',
-              {
-                alignment: go.Spot.TopRight,
-                alignmentFocus: go.Spot.TopRight,
-                margin: new go.Margin(2)
-              },
-              $('Button',
-                {
-                  click: (e, obj) => {
-                    const adornment = obj.part as go.Adornment;
-                    const nodeData = adornment.adornedPart?.data;
-                    console.log('Edit IRI/Type', nodeData);
-                    setSelectedNode(nodeData);
-                    setShowNodeEditor(true);
-                  }
-                },
-                $(go.TextBlock, '✎', { font: '12px sans-serif' })
-              ),
-              $('Button',
-                {
-                  click: (e, obj) => {
-                    const model = obj.diagram.model as go.GraphLinksModel;
-                    const adornment = obj.part as go.Adornment;
-                    const data = adornment.adornedPart?.data;
-                    if (data) {
-                      model.startTransaction('add annotation');
-                      const ann = { key: 'newKey', value: 'newValue' };
-                      const newArr = data.annotations ? data.annotations.slice() : [];
-                      newArr.push(ann);
-                      model.setDataProperty(data, 'annotations', newArr);
-                      model.commitTransaction('add annotation');
-                    }
-                  }
-                },
-                $(go.TextBlock, '+A', { font: '12px sans-serif' })
-              )
-            )
-          )
+        doubleClick: (e, obj) => {
+          const nodeData = obj.part?.data;
+          if (nodeData) {
+            setSelectedNode(nodeData);
+            setShowNodeEditor(true);
+          }
+        }
       },
 
       // Add location binding
@@ -616,13 +578,28 @@ export const GoJSCanvas = () => {
     diagram.commitTransaction('add node');
   }, [allEntities]);
 
-  const onLoadFile = useCallback(async (file: File) => {
+  const onLoadFile = useCallback(async (file: File | any) => {
     setIsLoading(true);
     setLoadingMessage('Reading file...');
     setLoadingProgress(10);
     
     try {
-      const text = await file.text();
+      let text: string;
+      
+      // Handle URL loading
+      if (file.type === 'url' || typeof file === 'string' || file.url) {
+        const url = file.url || file;
+        setLoadingMessage('Fetching from URL...');
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch: ${response.statusText}`);
+        }
+        text = await response.text();
+      } else {
+        // Handle file upload
+        text = await file.text();
+      }
+      
       setLoadingMessage('Parsing RDF...');
       setLoadingProgress(30);
       
@@ -796,11 +773,24 @@ export const GoJSCanvas = () => {
         onOpenChange={setShowReasoningReport}
       />
 
-      <AnnotationPropertyDialog
-        nodeId={selectedNode?.key || ''}
-        availableProperties={allEntities.filter(e => e.rdfType === 'owl:AnnotationProperty')}
-        currentProperties={selectedNode?.annotationProperties || []}
-        onSave={handleSaveNodeProperties}
+      <NodePropertyEditor
+        open={showNodeEditor}
+        onOpenChange={setShowNodeEditor}
+        nodeData={selectedNode}
+        availableEntities={allEntities}
+        onSave={(updatedData) => {
+          if (selectedNode && diagramInstanceRef.current) {
+            const diagram = diagramInstanceRef.current;
+            diagram.startTransaction('update node properties');
+            
+            // Update all node properties
+            Object.keys(updatedData).forEach(key => {
+              diagram.model.setDataProperty(selectedNode, key, updatedData[key]);
+            });
+            
+            diagram.commitTransaction('update node properties');
+          }
+        }}
       />
 
       <LinkPropertyEditor

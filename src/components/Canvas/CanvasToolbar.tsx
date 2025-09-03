@@ -164,7 +164,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                 {Object.entries(loadedOntologies.reduce((acc, ont) => ({ ...acc, ...ont.namespaces }), {} as Record<string, string>)).map(([prefix, namespace]) => (
                   <Button
                     key={namespace}
-                    variant="outline"
+                    variant={ontologyUrl === namespace ? "default" : "outline"}
                     size="sm"
                     className="justify-start text-left h-auto py-2"
                     onClick={() => setOntologyUrl(namespace)}
@@ -180,7 +180,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                 {commonOntologies.map((ont) => (
                   <Button
                     key={ont.url}
-                    variant="outline"
+                    variant={ontologyUrl === ont.url ? "default" : "outline"}
                     size="sm"
                     className="justify-start text-left h-auto py-2"
                     onClick={() => setOntologyUrl(ont.url)}
@@ -279,7 +279,12 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                   if (e.key === 'Enter') {
                     const url = (e.target as HTMLInputElement).value;
                     if (url.trim() && onLoadFile) {
-                      onLoadFile(url.trim() as any);
+                      // Create a mock URL object to trigger URL loading
+                      const mockFile = { 
+                        url: url.trim(),
+                        type: 'url'
+                      };
+                      onLoadFile(mockFile as any);
                     }
                   }
                 }}
