@@ -17,7 +17,7 @@ import { AnnotationPropertyDialog } from './AnnotationPropertyDialog';
 export const GoJSCanvas = () => {
   const diagramRef = useRef<HTMLDivElement>(null);
   const diagramInstanceRef = useRef<go.Diagram | null>(null);
-  const [showLegend, setShowLegend] = useState(true);
+  const [showLegend, setShowLegend] = useState(false);
   const [showReasoningReport, setShowReasoningReport] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -60,8 +60,13 @@ export const GoJSCanvas = () => {
     diagram.startTransaction('update view mode');
     diagram.nodes.each(node => {
       const data = node.data;
-      // T-box: entities with rdf:type from owl namespace
-      const isTBoxEntity = data.rdfType && data.rdfType.startsWith('owl:');
+      // T-box: entities with rdf:type Class, ObjectProperty, AnnotationProperty, or DatatypeProperty
+      const isTBoxEntity = data.rdfType && (
+        data.rdfType.includes('Class') || 
+        data.rdfType.includes('ObjectProperty') || 
+        data.rdfType.includes('AnnotationProperty') || 
+        data.rdfType.includes('DatatypeProperty')
+      );
       const shouldShow = viewMode === 'tbox' ? isTBoxEntity : !isTBoxEntity;
       diagram.model.setDataProperty(data, 'visible', shouldShow);
     });
@@ -89,8 +94,8 @@ export const GoJSCanvas = () => {
       model: new go.GraphLinksModel()
     });
 
-    // Redesigned node template with header and body
-    diagram.nodeTemplate = $(go.Node, 'Vertical',
+    // Redesigned single node template with header and body
+    diagram.nodeTemplate = $(go.Node, 'Auto',
       {
         locationSpot: go.Spot.Center,
         selectionAdornmentTemplate: $(go.Adornment, 'Auto',
@@ -181,7 +186,26 @@ export const GoJSCanvas = () => {
               wrap: go.TextBlock.WrapFit,
               textAlign: 'center'
             },
-            new go.Binding('text', 'uri', (uri) => uri || 'unknown:uri')
+            new go.Binding('text', 'uri', (uri) => {
+              // Shorten URI using base prefix
+              if (uri && uri.startsWith('https://github.com/Mat-O-Lab/IOFMaterialsTutorial/')) {
+                return uri.replace('https://github.com/Mat-O-Lab/IOFMaterialsTutorial/', ':');
+              }
+              // Try other common prefixes
+              const prefixMap = {
+                'http://www.w3.org/1999/02/22-rdf-syntax-ns#': 'rdf:',
+                'http://www.w3.org/2000/01/rdf-schema#': 'rdfs:',
+                'http://www.w3.org/2002/07/owl#': 'owl:',
+                'http://xmlns.com/foaf/0.1/': 'foaf:'
+              };
+              
+              for (const [namespace, prefix] of Object.entries(prefixMap)) {
+                if (uri && uri.startsWith(namespace)) {
+                  return uri.replace(namespace, prefix);
+                }
+              }
+              return uri || 'unknown:uri';
+            })
           ),
           // RDF Type
           $(go.TextBlock,
@@ -193,7 +217,11 @@ export const GoJSCanvas = () => {
               wrap: go.TextBlock.WrapFit,
               textAlign: 'center'
             },
-            new go.Binding('text', 'rdfType', (type) => type || 'unknown:type')
+            new go.Binding('text', 'rdfType', (type) => {
+              // Don't display owl:NamedIndividual in A-Box view
+              if (type === 'owl:NamedIndividual') return '';
+              return type || 'unknown:type';
+            })
           )
         )
       ),
@@ -594,12 +622,13 @@ export const GoJSCanvas = () => {
         style={{ backgroundColor: 'hsl(var(--canvas-bg))' }}
       />
 
-      {false && showLegend && (
-      <NamespaceLegend 
-        className="absolute top-20 right-4 z-10"
-        namespaces={[
-          { name: 'foaf', color: 'hsl(250 75% 60%)', description: 'Friend of a Friend' },
-          { name: 'org', color: 'hsl(160 70% 45%)', description: 'Organization Ontology' },
+      {showLegend && (
+        <NamespaceLegend 
+          className="absolute top-20 right-4 z-10"
+          namespaces={[
+            { name: ':', color: 'hsl(215 50% 60%)', description: 'Base URI (IOF Materials Tutorial)' },
+            { name: 'foaf', color: 'hsl(250 75% 60%)', description: 'Friend of a Friend' },
+            { name: 'org', color: 'hsl(160 70% 45%)', description: 'Organization Ontology' },
           { name: 'rdfs', color: 'hsl(25 85% 65%)', description: 'RDF Schema' },
           { name: 'owl', color: 'hsl(200 80% 55%)', description: 'Web Ontology Language' },
           { name: 'rdf', color: 'hsl(190 75% 50%)', description: 'Resource Description Framework' },

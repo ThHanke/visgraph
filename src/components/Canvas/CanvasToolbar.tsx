@@ -109,26 +109,14 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="namespace">Namespace</Label>
-              <Select value={newNodeNamespace} onValueChange={setNewNodeNamespace}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select namespace" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.from(new Set(availableClasses.map(cls => cls.namespace))).map(ns => (
-                    <SelectItem key={ns} value={ns}>{ns}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="classType">Class Type</Label>
               <EntityAutocomplete 
-                entities={availableEntities}
+                entities={availableEntities.filter(e => e.rdfType === 'owl:Class')}
                 value={newNodeClass}
                 onValueChange={setNewNodeClass}
-                placeholder="Select entity..."
-                emptyMessage="No entities found. Load an ontology first."
+                placeholder="Type to search for classes..."
+                emptyMessage="No OWL classes found. Load an ontology first."
+                className="w-full"
               />
             </div>
             <div className="flex justify-end gap-2">

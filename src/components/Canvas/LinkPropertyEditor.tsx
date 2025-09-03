@@ -30,30 +30,20 @@ export const LinkPropertyEditor = ({
 }: LinkPropertyEditorProps) => {
   const [selectedProperty, setSelectedProperty] = useState(linkData?.propertyType || '');
   
-  const { availableProperties, getCompatibleProperties } = useOntologyStore();
-
-  const getAvailableProperties = () => {
-    if (!sourceNode || !targetNode) return [];
-
-    const sourceClass = `${sourceNode.namespace}:${sourceNode.classType}`;
-    const targetClass = `${targetNode.namespace}:${targetNode.classType}`;
-    
-    // Get properties that are compatible with source and target classes
-    const compatibleProps = getCompatibleProperties(sourceClass, targetClass);
-    
-    // If no compatible properties, show all available properties
-    const propsToShow = compatibleProps.length > 0 ? compatibleProps : availableProperties;
-    
-    return propsToShow.map(prop => ({
+  const { loadedOntologies } = useOntologyStore();
+  
+  // Get all object properties for autocomplete
+  const allObjectProperties = loadedOntologies.flatMap(ont => 
+    ont.properties.filter(prop => prop.uri.includes('ObjectProperty')).map(prop => ({
       value: prop.uri,
       label: prop.label,
-      description: `Domain: ${prop.domain.join(', ') || 'Any'} | Range: ${prop.range.join(', ') || 'Any'}`
-    }));
-  };
+      description: `Object property from ${ont.name}`
+    }))
+  );
 
   const handleSave = () => {
     if (selectedProperty) {
-      const property = availableProperties.find(p => p.uri === selectedProperty);
+      const property = allObjectProperties.find(p => p.value === selectedProperty);
       onSave(selectedProperty, property?.label || selectedProperty);
       onOpenChange(false);
     }
@@ -84,11 +74,12 @@ export const LinkPropertyEditor = ({
           <div className="space-y-2">
             <Label>Relationship Property</Label>
             <AutoComplete
-              options={getAvailableProperties()}
+              options={allObjectProperties}
               value={selectedProperty}
               onValueChange={setSelectedProperty}
-              placeholder="Select property type..."
-              emptyMessage="No compatible properties found. Check domain/range restrictions."
+              placeholder="Type to search for object properties..."
+              emptyMessage="No object properties found. Load an ontology first."
+              className="w-full"
             />
           </div>
 
@@ -97,7 +88,10 @@ export const LinkPropertyEditor = ({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={!selectedProperty}>
+            <Button 
+              onClick={handleSave}
+              disabled={!selectedProperty}
+            >
               Save Connection
             </Button>
           </div>

@@ -45,6 +45,17 @@ export class RDFParser {
   async parseRDF(rdfContent: string, onProgress?: (progress: number, message: string) => void): Promise<ParsedGraph> {
     onProgress?.(20, 'Parsing RDF syntax...');
     
+    // Extract base URI from @prefix : definition
+    const basePrefixMatch = rdfContent.match(/@prefix\s*:\s*<([^>]+)>\s*\./);
+    if (basePrefixMatch) {
+      this.prefixes[':'] = basePrefixMatch[1];
+      this.namespaces[':'] = basePrefixMatch[1];
+    } else {
+      // Default base URI
+      this.prefixes[':'] = 'https://example.org/';
+      this.namespaces[':'] = 'https://example.org/';
+    }
+    
     return new Promise((resolve, reject) => {
       const quads: Quad[] = [];
       
@@ -259,6 +270,16 @@ export class RDFParser {
   private createSafeId(uri: string): string {
     // Create a safe DOM ID from URI
     return uri.replace(/[^a-zA-Z0-9-_]/g, '_');
+  }
+
+  shortenUri(uri: string): string {
+    // Try to match with existing prefixes first
+    for (const [prefix, namespaceUri] of Object.entries(this.prefixes)) {
+      if (uri.startsWith(namespaceUri)) {
+        return `${prefix}${uri.substring(namespaceUri.length)}`;
+      }
+    }
+    return uri;
   }
 }
 
