@@ -45,6 +45,8 @@ interface CanvasToolbarProps {
   onLoadFile?: (file: File) => void;
   viewMode: 'abox' | 'tbox';
   onViewModeChange: (mode: 'abox' | 'tbox') => void;
+  onLayoutChange?: (layoutType: string) => void;
+  currentLayout?: string;
   availableEntities: Array<{
     uri: string;
     label: string;
