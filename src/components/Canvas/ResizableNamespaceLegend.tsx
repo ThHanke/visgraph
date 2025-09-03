@@ -33,8 +33,26 @@ interface ResizableNamespaceLegendProps {
 
 export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNamespaceLegendProps) => {
   const { rdfManager } = useOntologyStore();
-  const [position, setPosition] = useState({ x: Math.max(16, window.innerWidth - 320), y: 16 });
-  const [size, setSize] = useState({ width: 300, height: Math.min(300, window.innerHeight - 100) });
+  
+  // Calculate initial size based on content
+  const calculateInitialSize = () => {
+    const maxWidth = Math.min(400, window.innerWidth * 0.3);
+    const maxHeight = Math.min(500, window.innerHeight * 0.6);
+    const minWidth = 250;
+    const minHeight = 150;
+    
+    // Estimate content height (approx 24px per namespace + header + padding)
+    const namespaceCount = Object.keys(namespaces || rdfManager.getNamespaces()).length;
+    const estimatedHeight = Math.min(maxHeight, Math.max(minHeight, namespaceCount * 28 + 80));
+    
+    return {
+      width: maxWidth,
+      height: estimatedHeight
+    };
+  };
+  
+  const [position, setPosition] = useState({ x: Math.max(16, window.innerWidth - calculateInitialSize().width - 16), y: 16 });
+  const [size, setSize] = useState(calculateInitialSize());
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
