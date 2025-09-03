@@ -4,6 +4,8 @@ import { useOntologyStore } from '../../stores/ontologyStore';
 import { useReasoningStore } from '../../stores/reasoningStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { CanvasToolbar } from './CanvasToolbar';
+import { LayoutToolbar } from './LayoutToolbar';
+import { LayoutManager } from './LayoutManager';
 import { ResizableNamespaceLegend } from './ResizableNamespaceLegend';
 import { ReasoningIndicator } from './ReasoningIndicator';
 import { ReasoningReportModal } from './ReasoningReportModal';
