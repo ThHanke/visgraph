@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
+import { toast } from 'sonner';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -54,86 +55,86 @@ interface NodePropertyEditorProps {
 }
 
 /**
- * Enhanced node property editor that allows changing type and editing annotation properties
+ * Node Property Editor Component
+ * Allows editing of node properties including type, IRI, and annotation properties
  */
 export const NodePropertyEditor = ({ 
   open, 
   onOpenChange, 
   nodeData, 
-  onSave,
+  onSave, 
   availableEntities 
 }: NodePropertyEditorProps) => {
   const [nodeType, setNodeType] = useState('');
   const [nodeIri, setNodeIri] = useState('');
   const [properties, setProperties] = useState<LiteralProperty[]>([]);
-  
-  const { availableClasses } = useOntologyStore();
-  
-  // Memoize classEntities to prevent constant re-creation
+
+  const { availableProperties } = useOntologyStore();
+
+  // Memoize class entities to prevent constant re-renders
   const classEntities = useMemo(() => 
-    availableEntities.filter(e => e.rdfType === 'owl:Class'),
+    availableEntities.filter(entity => entity.rdfType === 'owl:Class'),
     [availableEntities]
   );
 
-  // Initialize form data when dialog opens
+  // Reset form when nodeData changes
   useEffect(() => {
-    if (open && nodeData) {
-      console.log('NodePropertyEditor initializing with nodeData:', nodeData);
-      console.log('Available class entities:', classEntities);
+    if (nodeData && open) {
+      console.log('NodePropertyEditor: Resetting form with nodeData:', nodeData);
       
-      // Handle node type - extract meaningful types (not owl:NamedIndividual)
-      let initialNodeType = '';
-      if (nodeData.rdfTypes && Array.isArray(nodeData.rdfTypes)) {
-        // Filter out owl:NamedIndividual to get meaningful types
-        const meaningfulTypes = nodeData.rdfTypes.filter(type => 
-          type && !type.includes('NamedIndividual')
-        );
-        console.log('Meaningful types found:', meaningfulTypes);
-        
-        // Use the first meaningful type, or displayType as fallback
-        const typeLabel = meaningfulTypes[0] || nodeData.displayType || nodeData.classType || nodeData.type;
-        console.log('Looking for type:', typeLabel);
-        
-        // Try to find the URI for this type label - handle both full URIs and namespace:label format
-        const matchingEntity = classEntities.find(entity => {
-          // Direct match
-          if (entity.label === typeLabel || entity.uri === typeLabel) return true;
-          
-          // Match namespace:label format (e.g., "iof-qual:Length")
-          if (typeLabel.includes(':')) {
-            const [namespace, label] = typeLabel.split(':');
-            return entity.label === label && entity.namespace === namespace;
-          }
-          
-          // Check if entity URI ends with the type label
-          return entity.uri.endsWith(typeLabel) || entity.uri.endsWith(`/${typeLabel}`) || entity.uri.endsWith(`#${typeLabel}`);
-        });
-        console.log('Matching entity found:', matchingEntity);
-        
-        initialNodeType = matchingEntity ? matchingEntity.uri : typeLabel;
-      }
-      console.log('Setting initial node type to:', initialNodeType);
-      setNodeType(initialNodeType);
+      // Set the class type (first non-owl:NamedIndividual type or fall back to iri)
+      const types = nodeData.rdfTypes || [];
+      const classType = types.find((type: string) => !type.includes('NamedIndividual')) || nodeData.iri;
+      setNodeType(classType);
       
-      setNodeIri(nodeData.uri || nodeData.iri || '');
+      setNodeIri(nodeData.iri || '');
       
-      // Convert existing annotation properties to the form format
-      const existingProps: LiteralProperty[] = [];
-      if (nodeData.annotationProperties) {
-        nodeData.annotationProperties.forEach((prop: any) => {
-          existingProps.push({
-            key: prop.property || prop.key,
-            value: prop.value,
-            type: prop.type || 'xsd:string'
-          });
-        });
-      }
-      setProperties(existingProps);
+      // Map annotation properties to our format
+      const existingProps = nodeData.annotationProperties || [];
+      const mappedProps = existingProps.map((prop: any) => ({
+        key: prop.property || prop.key || '',
+        value: prop.value || '',
+        type: prop.type || 'xsd:string'
+      }));
+      
+      setProperties(mappedProps);
     }
-  }, [open, nodeData, classEntities]);
+  }, [nodeData, open]);
 
   /**
-   * Add a new property row
+   * Get available annotation properties for autocomplete
+   */
+  const getAnnotationProperties = () => {
+    const annotationProps = availableProperties
+      .filter(prop => 
+        prop.uri.includes('AnnotationProperty') || 
+        ['http://www.w3.org/2000/01/rdf-schema#label', 
+         'http://www.w3.org/2000/01/rdf-schema#comment',
+         'http://purl.org/dc/elements/1.1/title',
+         'http://purl.org/dc/elements/1.1/description'
+        ].includes(prop.uri)
+      )
+      .map(prop => ({
+        value: prop.uri,
+        label: prop.label || prop.uri.split(/[#\/]/).pop() || prop.uri
+      }));
+
+    // Add common annotation properties if not already present
+    const commonProps = [
+      { value: 'rdfs:label', label: 'rdfs:label' },
+      { value: 'rdfs:comment', label: 'rdfs:comment' },
+      { value: 'dc:title', label: 'dc:title' },
+      { value: 'dc:description', label: 'dc:description' }
+    ];
+
+    const existingUris = new Set(annotationProps.map(p => p.value));
+    const uniqueCommonProps = commonProps.filter(p => !existingUris.has(p.value));
+
+    return [...annotationProps, ...uniqueCommonProps];
+  };
+
+  /**
+   * Add a new property to the list
    */
   const handleAddProperty = (e?: React.MouseEvent) => {
     e?.preventDefault();
@@ -144,9 +145,7 @@ export const NodePropertyEditor = ({
   /**
    * Remove a property by index
    */
-  const handleRemoveProperty = (index: number, e?: React.MouseEvent) => {
-    e?.preventDefault();
-    e?.stopPropagation();
+  const handleRemoveProperty = (index: number) => {
     setProperties(properties.filter((_, i) => i !== index));
   };
 
@@ -161,16 +160,22 @@ export const NodePropertyEditor = ({
   };
 
   /**
+   * Validate form - all properties must have keys
+   */
+  const isFormValid = () => {
+    return properties.every(prop => prop.key.trim() !== '');
+  };
+
+  /**
    * Save changes and close dialog
    */
   const handleSave = (e?: React.MouseEvent) => {
     e?.preventDefault();
     e?.stopPropagation();
     
-    // Validate that all properties have keys
-    const hasEmptyProperties = properties.some(prop => !prop.key.trim());
-    if (hasEmptyProperties) {
-      alert('Please provide a property name for all annotation properties or remove empty ones.');
+    // Validate form before saving
+    if (!isFormValid()) {
+      toast.error('Please provide a property name for all annotation properties or remove empty ones.');
       return;
     }
     
@@ -178,18 +183,17 @@ export const NodePropertyEditor = ({
     const selectedEntity = classEntities.find(entity => entity.uri === nodeType);
     const classTypeLabel = selectedEntity ? selectedEntity.label : nodeType;
     
-    // Preserve existing rdfTypes and update the meaningful type
-    const existingRdfTypes = nodeData.rdfTypes || [];
+    // Build updated rdf:types array
     const updatedRdfTypes = [
-      'owl:NamedIndividual', // Always include this for individuals
-      nodeType // The new/updated meaningful type
-    ];
-    
-    const updatedNodeData = {
+      'owl:NamedIndividual', // Always include NamedIndividual for A-box entities
+      nodeType // The selected class type
+    ].filter(type => type && type.trim() !== '');
+
+    const updatedData = {
       ...nodeData,
       classType: classTypeLabel,
-      type: classTypeLabel,
-      displayType: nodeType, // Save the full URI as displayType
+      displayType: classTypeLabel, // Use the label for display
+      nodeType: nodeType, // Keep URI for internal use
       rdfTypes: updatedRdfTypes, // Update the types array
       uri: nodeIri,
       iri: nodeIri,
@@ -197,102 +201,44 @@ export const NodePropertyEditor = ({
         property: prop.key,
         key: prop.key,
         value: prop.value,
-        type: prop.type
+        type: prop.type || 'xsd:string'
       }))
     };
 
-    onSave(updatedNodeData);
+    console.log('NodePropertyEditor: Saving data:', updatedData);
+    onSave(updatedData);
     onOpenChange(false);
   };
 
-  /**
-   * Get common annotation properties for autocomplete
-   */
-  const getAnnotationProperties = () => {
-    const commonProps = [
-      'rdfs:label',
-      'rdfs:comment',
-      'dc:description',
-      'dc:title',
-      'dc:creator',
-      'dc:date',
-      'dc:identifier',
-      'owl:sameAs',
-      'skos:prefLabel',
-      'skos:altLabel',
-      'skos:definition'
-    ];
-
-    // Add class-specific properties from loaded ontologies
-    const classSpecific = availableClasses
-      .filter(cls => cls.label === nodeType)
-      .flatMap(cls => cls.properties);
-
-    return [...commonProps, ...classSpecific].map(prop => ({
-      value: prop,
-      label: prop
-    }));
-  };
-
-  /**
-   * Get available XSD data types
-   */
-  const getXSDTypes = () => [
-    'xsd:string',
-    'xsd:boolean',
-    'xsd:integer',
-    'xsd:decimal',
-    'xsd:double',
-    'xsd:float',
-    'xsd:date',
-    'xsd:dateTime',
-    'xsd:time',
-    'xsd:anyURI'
-  ];
+  if (!nodeData) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} modal>
-      <DialogContent 
-        className="sm:max-w-2xl max-h-[90vh] max-w-[min(90vw,48rem)] overflow-y-auto"
-        onInteractOutside={(e) => {
-          // Prevent closing when clicking on popover content
-          const target = e.target as Element;
-          if (target.closest('[data-radix-popper-content-wrapper]') || 
-              target.closest('[data-radix-select-content]') ||
-              target.closest('[cmdk-root]') ||
-              target.closest('[data-radix-command]')) {
-            e.preventDefault();
-          }
-        }}
-      >
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Node Properties</DialogTitle>
           <DialogDescription>
-            Change the type, IRI, and annotation properties of this node.
-            In A-box mode, owl:NamedIndividual is automatically maintained.
+            Modify the node's class type, IRI, and annotation properties.
           </DialogDescription>
         </DialogHeader>
         
         <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space-y-6">
           {/* Node Type Selection */}
           <div className="space-y-2">
-            <Label htmlFor="nodeType">Node Type (Meaningful Class)</Label>
+            <Label htmlFor="nodeType">Class Type *</Label>
             <EntityAutocomplete 
               entities={classEntities}
               value={nodeType}
               onValueChange={setNodeType}
-              placeholder="Type to search for classes..."
-              emptyMessage="No OWL classes found. Load an ontology first."
+              placeholder="Select a class type..."
+              emptyMessage="No classes available. Load an ontology first."
               className="w-full"
             />
-            <p className="text-xs text-muted-foreground">
-              owl:NamedIndividual will be automatically preserved for individuals
-            </p>
           </div>
 
           {/* Node IRI */}
           <div className="space-y-2">
-            <Label htmlFor="nodeIri">Node IRI</Label>
+            <Label htmlFor="nodeIri">IRI</Label>
             <Input
               id="nodeIri"
               value={nodeIri}
@@ -348,15 +294,17 @@ export const NodePropertyEditor = ({
                       value={property.type || 'xsd:string'} 
                       onValueChange={(value) => handleUpdateProperty(index, 'type', value)}
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select type..." />
+                      <SelectTrigger className="h-8">
+                        <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {getXSDTypes().map(type => (
-                          <SelectItem key={type} value={type}>
-                            {type}
-                          </SelectItem>
-                        ))}
+                        <SelectItem value="xsd:string">xsd:string</SelectItem>
+                        <SelectItem value="xsd:integer">xsd:integer</SelectItem>
+                        <SelectItem value="xsd:decimal">xsd:decimal</SelectItem>
+                        <SelectItem value="xsd:boolean">xsd:boolean</SelectItem>
+                        <SelectItem value="xsd:date">xsd:date</SelectItem>
+                        <SelectItem value="xsd:dateTime">xsd:dateTime</SelectItem>
+                        <SelectItem value="xsd:anyURI">xsd:anyURI</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -366,8 +314,8 @@ export const NodePropertyEditor = ({
                       type="button"
                       variant="ghost"
                       size="sm"
-                      onClick={(e) => handleRemoveProperty(index, e)}
-                      className="h-9 px-2"
+                      onClick={() => handleRemoveProperty(index)}
+                      className="h-8 w-8 p-0 text-destructive hover:text-destructive"
                     >
                       <X className="h-4 w-4" />
                     </Button>
@@ -376,7 +324,7 @@ export const NodePropertyEditor = ({
               ))}
               
               {properties.length === 0 && (
-                <div className="text-center py-4 text-muted-foreground border-2 border-dashed rounded-lg">
+                <div className="text-center py-4 text-muted-foreground border-2 border-dashed border-border rounded-lg">
                   <p className="text-sm">No annotation properties</p>
                   <p className="text-xs">Click "Add Property" to add annotation properties</p>
                 </div>
@@ -389,7 +337,7 @@ export const NodePropertyEditor = ({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" onClick={(e) => handleSave(e)}>
+            <Button type="submit" onClick={(e) => handleSave(e)} disabled={!isFormValid()}>
               Save Changes
             </Button>
           </div>

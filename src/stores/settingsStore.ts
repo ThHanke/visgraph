@@ -11,7 +11,7 @@ interface Settings {
   ontologies: OntologyConfig[];
   shaclShapesUrl: string;
   autoReasoning: boolean;
-  layoutAlgorithm: 'force' | 'hierarchical' | 'circular';
+  layoutAlgorithm: 'force' | 'hierarchical' | 'circular' | 'grid' | 'tree' | 'layered';
   enableValidation: boolean;
   startupFileUrl: string;
 }
@@ -34,7 +34,7 @@ const defaultSettings: Settings = {
   ],
   shaclShapesUrl: '',
   autoReasoning: true,
-  layoutAlgorithm: 'force',
+  layoutAlgorithm: 'layered',
   enableValidation: true,
   startupFileUrl: 'https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl'
 };
