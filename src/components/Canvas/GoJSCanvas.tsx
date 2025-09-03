@@ -271,7 +271,7 @@ export const GoJSCanvas = () => {
                 return uri || 'unknown:uri';
               })
             ),
-            // RDF Type - show actual type for A-box entities
+            // RDF Type - show meaningful type only
             $(go.TextBlock,
               {
                 font: '8px Inter, sans-serif',
@@ -282,9 +282,29 @@ export const GoJSCanvas = () => {
                 textAlign: 'center'
               },
               new go.Binding('text', '', (data) => {
-                // For A-box view, show the class type (e.g., iof:MeasurementProcess)
-                if (data.entityType === 'individual') {
-                  return data.classType || data.rdfType;
+                // For A-box view, show the actual semantic type (e.g., iof:MeasurementProcess)
+                if (data.entityType === 'individual' && data.rdfTypes) {
+                  // Find the non-owl:NamedIndividual type
+                  const meaningfulType = data.rdfTypes.find((type: string) => 
+                    !type.includes('NamedIndividual')
+                  );
+                  if (meaningfulType) {
+                    // Shorten with prefixes
+                    const prefixMap = {
+                      'https://spec.industrialontologies.org/ontology/core/Core/': 'iof:',
+                      'http://www.w3.org/2002/07/owl#': 'owl:',
+                      'http://www.w3.org/2000/01/rdf-schema#': 'rdfs:',
+                      'http://www.w3.org/1999/02/22-rdf-syntax-ns#': 'rdf:',
+                      'https://github.com/Mat-O-Lab/IOFMaterialsTutorial/': ':'
+                    };
+                    
+                    for (const [namespace, prefix] of Object.entries(prefixMap)) {
+                      if (meaningfulType.startsWith(namespace)) {
+                        return meaningfulType.replace(namespace, prefix);
+                      }
+                    }
+                    return meaningfulType;
+                  }
                 }
                 // For T-box view, show the meta-type
                 return data.rdfType || 'unknown:type';
