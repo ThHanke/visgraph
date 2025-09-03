@@ -1,5 +1,14 @@
+/**
+ * @fileoverview Ontology Store
+ * Manages loaded ontologies, knowledge graphs, and validation for the application.
+ * Provides centralized state management for RDF/OWL data and graph operations.
+ */
+
 import { create } from 'zustand';
 
+/**
+ * Represents an ontology class definition
+ */
 interface OntologyClass {
   uri: string;
   label: string;
@@ -30,18 +39,34 @@ interface ValidationError {
   severity: 'error' | 'warning';
 }
 
+/**
+ * Main ontology store interface with all state and actions
+ */
 interface OntologyStore {
+  /** Currently loaded ontologies */
   loadedOntologies: LoadedOntology[];
+  /** Available classes from all loaded ontologies */
   availableClasses: OntologyClass[];
+  /** Available properties from all loaded ontologies */
   availableProperties: ObjectProperty[];
+  /** Current validation errors */
   validationErrors: ValidationError[];
+  /** Current knowledge graph data */
   currentGraph: { nodes: any[]; edges: any[] };
+  
+  /** Load an ontology from URL */
   loadOntology: (url: string) => Promise<void>;
+  /** Load ontology from RDF content */
   loadOntologyFromRDF: (rdfContent: string, onProgress?: (progress: number, message: string) => void) => Promise<void>;
+  /** Load knowledge graph from source */
   loadKnowledgeGraph: (source: string, options?: { onProgress?: (progress: number, message: string) => void }) => Promise<void>;
+  /** Validate current graph */
   validateGraph: (nodes: any[], edges: any[]) => ValidationError[];
+  /** Get compatible properties between classes */
   getCompatibleProperties: (sourceClass: string, targetClass: string) => ObjectProperty[];
+  /** Clear all ontologies */
   clearOntologies: () => void;
+  /** Set current graph data */
   setCurrentGraph: (nodes: any[], edges: any[]) => void;
 }
 
