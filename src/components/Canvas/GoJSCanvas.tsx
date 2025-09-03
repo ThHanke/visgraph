@@ -739,10 +739,8 @@ export const GoJSCanvas = () => {
           if (selectedNode && diagramInstanceRef.current) {
             const diagram = diagramInstanceRef.current;
             
-            // Temporarily disable diagram listeners to prevent infinite loop
-            const wasModified = diagram.isModified;
-            diagram.addDiagramListener('Modified', () => {}); // Empty listener to block
-            
+            // Use skipsUndoManager to avoid triggering change events
+            diagram.skipsUndoManager = true;
             diagram.startTransaction('update node properties');
             
             // Update all node properties
@@ -751,12 +749,7 @@ export const GoJSCanvas = () => {
             });
             
             diagram.commitTransaction('update node properties');
-            
-            // Restore previous modified state
-            diagram.isModified = wasModified;
-            
-            // Re-enable diagram listeners by removing the empty one and restoring original
-            diagram.removeDiagramListener('Modified', () => {});
+            diagram.skipsUndoManager = false;
           }
         }}
       />

@@ -422,7 +422,9 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     
     // Also update the current graph to reflect changes
     const updatedNodes = currentGraph.nodes.map(node => {
-      if (node.data.uri === entityUri || node.id === entityUri) {
+      // Check if node has data property and matches entityUri
+      const nodeUri = node.data?.uri || node.uri || node.id;
+      if (nodeUri === entityUri) {
         const updatedData = { ...node.data };
         
         if (updates.type) {
@@ -432,7 +434,9 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         }
         
         if (updates.annotationProperties) {
-          updatedData.literalProperties = updates.annotationProperties.map((prop: any) => ({
+          // Update annotation properties (not literalProperties)
+          updatedData.annotationProperties = updates.annotationProperties.map((prop: any) => ({
+            property: prop.propertyUri,
             key: prop.propertyUri,
             value: prop.value,
             type: prop.type || 'xsd:string'
