@@ -87,7 +87,7 @@ export const KnowledgeGraphCanvas = () => {
   const [showReasoningReport, setShowReasoningReport] = useState(false);
   const [viewMode, setViewMode] = useState<'abox' | 'tbox'>('abox');
   
-  const { loadedOntologies } = useOntologyStore();
+  const { loadedOntologies, getRdfManager } = useOntologyStore();
   const { startReasoning } = useReasoningStore();
   const { settings } = useSettingsStore();
 
@@ -151,7 +151,7 @@ export const KnowledgeGraphCanvas = () => {
   useEffect(() => {
     if (settings.autoReasoning && nodes.length > 0) {
       const debounceTimer = setTimeout(() => {
-        startReasoning(nodes, edges);
+        startReasoning(nodes, edges, getRdfManager?.()?.getStore());
       }, 1000); // Debounce reasoning calls
 
       return () => clearTimeout(debounceTimer);

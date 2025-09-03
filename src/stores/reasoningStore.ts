@@ -137,15 +137,126 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
         }
       });
 
-      // Generate inferences
-      if (nodes.length > 1) {
-        inferences.push({
-          type: 'relationship',
-          subject: 'john_doe',
-          predicate: 'rdf:type',
-          object: 'foaf:Agent',
-          confidence: 0.95
+      // Generate inferences from RDF store if available
+      if (rdfStore) {
+        const quads = rdfStore.getQuads(null, null, null, null);
+        console.log('Reasoning with RDF store containing', quads.length, 'triples');
+        
+        // Extract actual inferences from RDF store based on ontology rules
+        const inferredQuads = [];
+        
+        // Apply RDFS inference rules
+        quads.forEach(quad => {
+          // Rule: rdfs:subClassOf transitivity
+          if (quad.predicate.value === 'http://www.w3.org/2000/01/rdf-schema#subClassOf') {
+            // Find transitive subclass relationships
+            const subClasses = quads.filter(q => 
+              q.predicate.value === 'http://www.w3.org/2000/01/rdf-schema#subClassOf' && 
+              q.subject.value === quad.object.value
+            );
+            subClasses.forEach(subClass => {
+              inferredQuads.push({
+                type: 'class',
+                subject: quad.subject.value,
+                predicate: 'rdfs:subClassOf',
+                object: subClass.object.value,
+                confidence: 0.9
+              });
+            });
+          }
+          
+          // Rule: rdfs:domain inference
+          if (quad.predicate.value === 'http://www.w3.org/2000/01/rdf-schema#domain') {
+            const propertyInstances = quads.filter(q => q.predicate.value === quad.subject.value);
+            propertyInstances.forEach(instance => {
+              inferredQuads.push({
+                type: 'class',
+                subject: instance.subject.value,
+                predicate: 'rdf:type',
+                object: quad.object.value,
+                confidence: 0.85
+              });
+            });
+          }
+          
+          // Rule: rdfs:range inference
+          if (quad.predicate.value === 'http://www.w3.org/2000/01/rdf-schema#range') {
+            const propertyInstances = quads.filter(q => q.predicate.value === quad.subject.value);
+            propertyInstances.forEach(instance => {
+              if (instance.object.termType === 'NamedNode') {
+                inferredQuads.push({
+                  type: 'class',
+                  subject: instance.object.value,
+                  predicate: 'rdf:type',
+                  object: quad.object.value,
+                  confidence: 0.85
+                });
+              }
+            });
+          }
         });
+        
+        // Add unique inferences to results
+        const uniqueInferences = new Map();
+        inferredQuads.forEach(inf => {
+          const key = `${inf.subject}|${inf.predicate}|${inf.object}`;
+          if (!uniqueInferences.has(key)) {
+            uniqueInferences.set(key, inf);
+          }
+        });
+        
+        inferences.push(...Array.from(uniqueInferences.values()));
+        
+        // Apply inferences back to RDF store
+        if (inferences.length > 0) {
+          console.log('Adding', inferences.length, 'inferred triples to RDF store');
+          inferences.forEach(inf => {
+            try {
+              const subject = rdfStore.namedNode ? rdfStore.namedNode(inf.subject) : { value: inf.subject };
+              const predicate = rdfStore.namedNode ? rdfStore.namedNode(inf.predicate.includes(':') ? 
+                expandPredicate(inf.predicate) : inf.predicate) : { value: inf.predicate };
+              const object = rdfStore.namedNode ? rdfStore.namedNode(inf.object) : { value: inf.object };
+              
+              // Add inferred triple to store if it doesn't already exist
+              if (rdfStore.add && !rdfStore.has(subject, predicate, object)) {
+                rdfStore.add(rdfStore.quad(subject, predicate, object));
+              }
+            } catch (e) {
+              console.warn('Failed to add inferred triple:', inf, e);
+            }
+          });
+        }
+      } else {
+        console.log('No RDF store provided for reasoning - using basic graph analysis');
+        // Fallback to basic graph analysis when no RDF store is available
+        if (nodes.length > 1) {
+          // Only add meaningful inferences based on actual graph structure
+          nodes.forEach(node => {
+            if (node.classType && node.individualName) {
+              inferences.push({
+                type: 'class',
+                subject: node.uri || node.key,
+                predicate: 'rdf:type',
+                object: node.classType,
+                confidence: 1.0
+              });
+            }
+          });
+        }
+      }
+      
+      // Helper function to expand common prefixes
+      function expandPredicate(prefixed) {
+        const prefixMap = {
+          'rdf:': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
+          'rdfs:': 'http://www.w3.org/2000/01/rdf-schema#',
+          'owl:': 'http://www.w3.org/2002/07/owl#',
+          'foaf:': 'http://xmlns.com/foaf/0.1/',
+          'skos:': 'http://www.w3.org/2004/02/skos/core#'
+        };
+        
+        const prefix = Object.keys(prefixMap).find(p => prefixed.startsWith(p));
+        return prefix ? prefixed.replace(prefix, prefixMap[prefix]) : prefixed;
       }
 
       const completedReasoning: ReasoningResult = {

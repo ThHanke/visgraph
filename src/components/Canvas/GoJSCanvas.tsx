@@ -62,7 +62,7 @@ export const GoJSCanvas = () => {
     setPersistedViewMode(mode);
   }, [setPersistedViewMode]);
   
-  const { loadedOntologies, availableClasses, availableProperties, loadOntologyFromRDF, loadKnowledgeGraph, exportGraph, updateEntity, loadAdditionalOntologies } = useOntologyStore();
+  const { loadedOntologies, availableClasses, availableProperties, loadOntologyFromRDF, loadKnowledgeGraph, exportGraph, updateEntity, loadAdditionalOntologies, getRdfManager } = useOntologyStore();
   
   // Get all entities for autocomplete
   const allEntities = loadedOntologies.flatMap(ontology => [
@@ -476,7 +476,7 @@ export const GoJSCanvas = () => {
       if (settings.autoReasoning) {
         const nodes = diagram.model.nodeDataArray;
         const links = (diagram.model as go.GraphLinksModel).linkDataArray;
-        startReasoning(nodes, links).then((result) => {
+        startReasoning(nodes, links, getRdfManager?.()?.getStore()).then((result) => {
           diagram.startTransaction('update reasoning errors');
           // Clear previous error markings
           nodes.forEach(node => {

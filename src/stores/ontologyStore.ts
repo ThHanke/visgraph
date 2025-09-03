@@ -78,6 +78,8 @@ interface OntologyStore {
   updateEntity: (entityUri: string, updates: any) => void;
   /** Export graph using RDF manager */
   exportGraph: (format: 'turtle' | 'json-ld' | 'rdf-xml') => Promise<string>;
+  /** Get RDF manager instance */
+  getRdfManager: () => RDFManager;
 }
 
 export const useOntologyStore = create<OntologyStore>((set, get) => ({
@@ -547,6 +549,11 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       default:
         throw new Error(`Unsupported format: ${format}`);
     }
+  },
+
+  getRdfManager: () => {
+    const { rdfManager } = get();
+    return rdfManager;
   }
 }));
 
