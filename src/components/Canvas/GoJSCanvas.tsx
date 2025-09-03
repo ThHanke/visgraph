@@ -30,7 +30,7 @@ export const GoJSCanvas = () => {
   const [linkTargetNode, setLinkTargetNode] = useState<any>(null);
   const [viewMode, setViewMode] = useState<'abox' | 'tbox'>('abox');
   
-  const { loadedOntologies, availableClasses, availableProperties, loadOntologyFromRDF, loadKnowledgeGraph, exportGraph } = useOntologyStore();
+  const { loadedOntologies, availableClasses, availableProperties, loadOntologyFromRDF, loadKnowledgeGraph, exportGraph, updateEntity } = useOntologyStore();
   
   // Get all entities for autocomplete
   const allEntities = loadedOntologies.flatMap(ontology => [

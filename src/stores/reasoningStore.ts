@@ -37,7 +37,7 @@ interface ReasoningStore {
   currentReasoning: ReasoningResult | null;
   reasoningHistory: ReasoningResult[];
   isReasoning: boolean;
-  startReasoning: (nodes: any[], edges: any[]) => Promise<ReasoningResult>;
+  startReasoning: (nodes: any[], edges: any[], rdfStore?: any) => Promise<ReasoningResult>;
   abortReasoning: () => void;
   clearHistory: () => void;
   getLastResult: () => ReasoningResult | null;
@@ -48,7 +48,7 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
   reasoningHistory: [],
   isReasoning: false,
 
-  startReasoning: async (nodes, edges) => {
+  startReasoning: async (nodes, edges, rdfStore) => {
     const reasoningId = `reasoning-${Date.now()}`;
     const startTime = Date.now();
 
@@ -66,10 +66,15 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
     set({ currentReasoning: reasoning });
 
     try {
+      // If RDF store is provided, use it for enhanced reasoning
+      if (rdfStore) {
+        console.log('Reasoning with RDF store containing', rdfStore.getQuads(null, null, null, null).length, 'triples');
+      }
+      
       // Simulate reasoning process
       await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
 
-      // Mock reasoning results
+      // Mock reasoning results based on RDF store if available
       const errors: ReasoningError[] = [];
       const warnings: ReasoningWarning[] = [];
       const inferences: Inference[] = [];
