@@ -392,7 +392,7 @@ export const GoJSCanvas = () => {
           name: 'LABEL',
           segmentIndex: 0,
           segmentFraction: 0.5,
-          segmentOffset: new go.Point(0, -15),
+          segmentOffset: new go.Point(0, -10),
           background: 'rgba(255, 255, 255, 0.9)',
           font: '10px Inter, sans-serif',
           stroke: '#1e293b',

@@ -158,8 +158,25 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
             </div>
             
             <div className="space-y-2">
-              <Label>Common Ontologies</Label>
+              <Label>Available Ontologies</Label>
               <div className="grid gap-2">
+                {/* Show ontologies from loaded graph */}
+                {Object.entries(loadedOntologies.reduce((acc, ont) => ({ ...acc, ...ont.namespaces }), {} as Record<string, string>)).map(([prefix, namespace]) => (
+                  <Button
+                    key={namespace}
+                    variant="outline"
+                    size="sm"
+                    className="justify-start text-left h-auto py-2"
+                    onClick={() => setOntologyUrl(namespace)}
+                  >
+                    <div>
+                      <div className="font-medium">{prefix}</div>
+                      <div className="text-xs text-muted-foreground">{namespace}</div>
+                    </div>
+                  </Button>
+                ))}
+                
+                {/* Common ontologies */}
                 {commonOntologies.map((ont) => (
                   <Button
                     key={ont.url}
@@ -234,27 +251,74 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
       </Button>
 
       {/* Load File */}
-      <input
-        type="file"
-        accept=".ttl,.rdf,.owl,.n3"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file && onLoadFile) {
-            onLoadFile(file);
-          }
-        }}
-        className="hidden"
-        id="file-input"
-      />
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => document.getElementById('file-input')?.click()}
-        className="shadow-glass backdrop-blur-sm"
-      >
-        <Upload className="h-4 w-4 mr-2" />
-        Load File
-      </Button>
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shadow-glass backdrop-blur-sm"
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            Load File
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Load RDF File</DialogTitle>
+            <DialogDescription>
+              Load from a file or URL containing RDF/OWL data.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="fileUrl">File URL</Label>
+              <Input
+                id="fileUrl"
+                placeholder="https://example.com/data.ttl"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const url = (e.target as HTMLInputElement).value;
+                    if (url.trim() && onLoadFile) {
+                      onLoadFile(url.trim() as any);
+                    }
+                  }
+                }}
+              />
+            </div>
+            
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">
+                  Or upload file
+                </span>
+              </div>
+            </div>
+
+            <input
+              type="file"
+              accept=".ttl,.rdf,.owl,.n3"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file && onLoadFile) {
+                  onLoadFile(file);
+                }
+              }}
+              className="hidden"
+              id="file-input"
+            />
+            <Button
+              variant="outline"
+              onClick={() => document.getElementById('file-input')?.click()}
+              className="w-full"
+            >
+              Choose File
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Export Options */}
       <DropdownMenu>
