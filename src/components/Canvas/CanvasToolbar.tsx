@@ -74,6 +74,22 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   
   const { loadedOntologies, loadOntology, availableClasses, loadKnowledgeGraph } = useOntologyStore();
 
+  const layoutOptions = [
+    { type: 'force-directed', label: 'Force Directed', icon: Circle, description: 'Nodes repel each other and connected nodes attract' },
+    { type: 'hierarchical', label: 'Hierarchical', icon: TreePine, description: 'Tree-like structure with clear parent-child relationships' },
+    { type: 'circular', label: 'Circular', icon: Circle, description: 'Nodes arranged in a circular pattern' },
+    { type: 'grid', label: 'Grid', icon: Grid, description: 'Nodes arranged in a regular grid pattern' },
+    { type: 'layered-digraph', label: 'Layered Graph', icon: Layers, description: 'Directed graph with nodes in distinct layers' },
+    { type: 'tree', label: 'Tree', icon: TreeDeciduous, description: 'Traditional tree layout with root at top' }
+  ];
+
+  const handleLayoutChange = (layoutType: string) => {
+    onLayoutChange?.(layoutType);
+    toast.success(`Applied ${layoutType} layout`, {
+      description: `Graph reorganized with new layout`
+    });
+  };
+
   const handleLoadOntology = async () => {
     if (ontologyUrl.trim()) {
       try {
