@@ -333,11 +333,11 @@ export const NodePropertyEditor = ({
                   <div className="col-span-2">
                     <Label className="text-xs">Type</Label>
                     <Select 
-                      value={property.type} 
+                      value={property.type || 'xsd:string'} 
                       onValueChange={(value) => handleUpdateProperty(index, 'type', value)}
                     >
                       <SelectTrigger>
-                        <SelectValue />
+                        <SelectValue placeholder="Select type..." />
                       </SelectTrigger>
                       <SelectContent>
                         {getXSDTypes().map(type => (

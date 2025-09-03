@@ -53,30 +53,52 @@ export class RDFManager {
     type?: string; 
     annotationProperties?: { propertyUri: string; value: string; type?: string }[] 
   }): void {
-    // Remove existing type triples for this entity
+    // Get all existing properties for this entity to preserve them
+    const allExistingQuads = this.store.getQuads(namedNode(entityUri), null, null, null);
+    const existingProperties = new Map<string, any[]>();
+    
+    // Group existing properties by predicate
+    allExistingQuads.forEach(quad => {
+      const predicateUri = quad.predicate.value;
+      if (!existingProperties.has(predicateUri)) {
+        existingProperties.set(predicateUri, []);
+      }
+      existingProperties.get(predicateUri)!.push(quad);
+    });
+
+    // Only update/remove the specific properties being modified
     if (updates.type) {
-      const existingTypeQuads = this.store.getQuads(entityUri, 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', null, null);
+      // Remove existing type triples for this entity
+      const typeUri = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
+      const existingTypeQuads = this.store.getQuads(namedNode(entityUri), namedNode(typeUri), null, null);
       existingTypeQuads.forEach(quad => this.store.removeQuad(quad));
       
-      // Add new type
+      // Add owl:NamedIndividual type
       this.store.addQuad(quad(
         namedNode(entityUri),
-        namedNode('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'),
+        namedNode(typeUri),
+        namedNode('http://www.w3.org/2002/07/owl#NamedIndividual')
+      ));
+      
+      // Add the specified type
+      this.store.addQuad(quad(
+        namedNode(entityUri),
+        namedNode(typeUri),
         namedNode(this.expandPrefix(updates.type))
       ));
     }
 
-    // Update annotation properties
+    // Update only the specified annotation properties, preserve others
     if (updates.annotationProperties) {
       updates.annotationProperties.forEach(prop => {
-        // Remove existing property values
+        // Remove existing values for this specific property
         const propertyUri = this.expandPrefix(prop.propertyUri);
-        const existingQuads = this.store.getQuads(entityUri, propertyUri, null, null);
+        const existingQuads = this.store.getQuads(namedNode(entityUri), namedNode(propertyUri), null, null);
         existingQuads.forEach(quad => this.store.removeQuad(quad));
         
         // Add new property value
         const literalValue = prop.type ? 
-          literal(prop.value, namedNode(prop.type)) : 
+          literal(prop.value, namedNode(this.expandPrefix(prop.type))) : 
           literal(prop.value);
           
         this.store.addQuad(quad(
