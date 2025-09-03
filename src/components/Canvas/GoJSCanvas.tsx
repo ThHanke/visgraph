@@ -716,7 +716,10 @@ export const GoJSCanvas = () => {
 
       <NodePropertyEditor
         open={showNodeEditor}
-        onOpenChange={setShowNodeEditor}
+        onOpenChange={(open) => {
+          console.log('GoJSCanvas: NodePropertyEditor onOpenChange called with:', open);
+          setShowNodeEditor(open);
+        }}
         nodeData={selectedNode}
         availableEntities={allEntities}
         onSave={(updatedData) => {

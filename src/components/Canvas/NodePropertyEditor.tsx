@@ -238,8 +238,20 @@ export const NodePropertyEditor = ({
   ];
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] max-w-[min(90vw,48rem)] overflow-y-auto">
+    <Dialog open={open} onOpenChange={onOpenChange} modal>
+      <DialogContent 
+        className="sm:max-w-2xl max-h-[90vh] max-w-[min(90vw,48rem)] overflow-y-auto"
+        onInteractOutside={(e) => {
+          // Prevent closing when clicking on popover content
+          const target = e.target as Element;
+          if (target.closest('[data-radix-popper-content-wrapper]') || 
+              target.closest('[data-radix-select-content]') ||
+              target.closest('[cmdk-root]') ||
+              target.closest('[data-radix-command]')) {
+            e.preventDefault();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Edit Node Properties</DialogTitle>
           <DialogDescription>

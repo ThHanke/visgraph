@@ -63,7 +63,12 @@ export const EntityAutocomplete = ({
           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-full p-0 bg-card border border-border z-50" align="start">
+      <PopoverContent 
+        className="w-full p-0 bg-card border border-border" 
+        align="start" 
+        sideOffset={4}
+        style={{ zIndex: 9999 }}
+      >
         <Command>
           <CommandInput 
             placeholder={`Search ${placeholder.toLowerCase()}...`}
