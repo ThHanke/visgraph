@@ -67,6 +67,7 @@ export const NodePropertyEditor = ({
   const [properties, setProperties] = useState<LiteralProperty[]>([]);
   
   const { availableClasses } = useOntologyStore();
+  const classEntities = availableEntities.filter(e => e.rdfType === 'owl:Class');
 
   // Initialize form data when dialog opens
   useEffect(() => {
@@ -179,7 +180,6 @@ export const NodePropertyEditor = ({
     'xsd:anyURI'
   ];
 
-  const classEntities = availableEntities.filter(e => e.rdfType === 'owl:Class');
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
