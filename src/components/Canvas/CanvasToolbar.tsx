@@ -32,10 +32,8 @@ import {
   Download,
   Palette,
   Network,
-  LayoutGrid,
 } from 'lucide-react';
 import { useOntologyStore } from '../../stores/ontologyStore';
-import { useSettingsStore } from '../../stores/settingsStore';
 import { EntityAutocomplete } from '../ui/EntityAutocomplete';
 
 interface CanvasToolbarProps {
@@ -46,7 +44,6 @@ interface CanvasToolbarProps {
   onLoadFile?: (file: File) => void;
   viewMode: 'abox' | 'tbox';
   onViewModeChange: (mode: 'abox' | 'tbox') => void;
-  onLayoutChange?: (layout: 'force' | 'hierarchical' | 'circular' | 'grid' | 'tree' | 'layered') => void;
   availableEntities: Array<{
     uri: string;
     label: string;
@@ -56,7 +53,7 @@ interface CanvasToolbarProps {
   }>;
 }
 
-export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onLoadFile, viewMode, onViewModeChange, onLayoutChange, availableEntities }: CanvasToolbarProps) => {
+export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onLoadFile, viewMode, onViewModeChange, availableEntities }: CanvasToolbarProps) => {
   const [isAddNodeOpen, setIsAddNodeOpen] = useState(false);
   const [isLoadOntologyOpen, setIsLoadOntologyOpen] = useState(false);
   const [isLoadFileOpen, setIsLoadFileOpen] = useState(false);
@@ -66,7 +63,6 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   const [fileSource, setFileSource] = useState('');
   
   const { loadedOntologies, loadOntology, availableClasses, loadKnowledgeGraph } = useOntologyStore();
-  const { settings, updateSettings } = useSettingsStore();
 
   const handleLoadOntology = async () => {
     if (ontologyUrl.trim()) {
@@ -365,72 +361,6 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => onExport('json-ld')}>
             JSON-LD (.jsonld)
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {/* Layout Algorithm Selector */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="shadow-glass backdrop-blur-sm">
-            <LayoutGrid className="h-4 w-4 mr-2" />
-            Layout
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuItem 
-            onClick={() => {
-              updateSettings({ layoutAlgorithm: 'force' });
-              onLayoutChange?.('force');
-            }}
-            className={settings.layoutAlgorithm === 'force' ? 'bg-accent' : ''}
-          >
-            Force Directed
-          </DropdownMenuItem>
-          <DropdownMenuItem 
-            onClick={() => {
-              updateSettings({ layoutAlgorithm: 'layered' });
-              onLayoutChange?.('layered');
-            }}
-            className={settings.layoutAlgorithm === 'layered' ? 'bg-accent' : ''}
-          >
-            Layered Digraph
-          </DropdownMenuItem>
-          <DropdownMenuItem 
-            onClick={() => {
-              updateSettings({ layoutAlgorithm: 'hierarchical' });
-              onLayoutChange?.('hierarchical');
-            }}
-            className={settings.layoutAlgorithm === 'hierarchical' ? 'bg-accent' : ''}
-          >
-            Hierarchical
-          </DropdownMenuItem>
-          <DropdownMenuItem 
-            onClick={() => {
-              updateSettings({ layoutAlgorithm: 'tree' });
-              onLayoutChange?.('tree');
-            }}
-            className={settings.layoutAlgorithm === 'tree' ? 'bg-accent' : ''}
-          >
-            Tree Layout
-          </DropdownMenuItem>
-          <DropdownMenuItem 
-            onClick={() => {
-              updateSettings({ layoutAlgorithm: 'circular' });
-              onLayoutChange?.('circular');
-            }}
-            className={settings.layoutAlgorithm === 'circular' ? 'bg-accent' : ''}
-          >
-            Circular
-          </DropdownMenuItem>
-          <DropdownMenuItem 
-            onClick={() => {
-              updateSettings({ layoutAlgorithm: 'grid' });
-              onLayoutChange?.('grid');
-            }}
-            className={settings.layoutAlgorithm === 'grid' ? 'bg-accent' : ''}
-          >
-            Grid Layout
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

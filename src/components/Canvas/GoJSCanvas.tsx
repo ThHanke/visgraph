@@ -50,72 +50,7 @@ export const GoJSCanvas = () => {
     }))
   ]);
   const { startReasoning } = useReasoningStore();
-  const { settings, updateSettings, isHydrated } = useSettingsStore();
-
-  // Helper function to get GoJS layout by type
-  const getLayoutByType = useCallback((layoutType: string) => {
-    const $ = go.GraphObject.make;
-    
-    switch (layoutType) {
-      case 'force':
-        return $(go.ForceDirectedLayout, {
-          defaultSpringLength: 120,
-          defaultElectricalCharge: 200,
-          maxIterations: 200,
-          epsilonDistance: 0.5,
-          infinityDistance: 1000
-        });
-      case 'layered':
-        return $(go.LayeredDigraphLayout, {
-          direction: 0,
-          layerSpacing: 50,
-          columnSpacing: 20
-        });
-      case 'hierarchical':
-        return $(go.TreeLayout, {
-          angle: 90,
-          layerSpacing: 50,
-          nodeSpacing: 20
-        });
-      case 'tree':
-        return $(go.TreeLayout, {
-          angle: 0,
-          layerSpacing: 50,
-          nodeSpacing: 20
-        });
-      case 'circular':
-        return $(go.CircularLayout, {
-          radius: 200,
-          spacing: 50
-        });
-      case 'grid':
-        return $(go.GridLayout, {
-          cellSize: new go.Size(200, 150),
-          spacing: new go.Size(10, 10)
-        });
-      default:
-        return $(go.ForceDirectedLayout, {
-          defaultSpringLength: 120,
-          defaultElectricalCharge: 200,
-          maxIterations: 200
-        });
-    }
-  }, []);
-
-  // Function to change layout and save to settings
-  const changeLayout = useCallback((layoutType: 'force' | 'hierarchical' | 'circular' | 'grid' | 'tree' | 'layered') => {
-    const diagram = diagramInstanceRef.current;
-    if (!diagram) return;
-
-    // Save to settings
-    updateSettings({ layoutAlgorithm: layoutType });
-
-    // Apply layout to diagram
-    diagram.startTransaction('change layout');
-    diagram.layout = getLayoutByType(layoutType);
-    diagram.commitTransaction('change layout');
-    diagram.layoutDiagram(true);
-  }, [getLayoutByType, updateSettings]);
+  const { settings } = useSettingsStore();
 
   // Initialize with proper filtering
   useEffect(() => {
@@ -148,24 +83,24 @@ export const GoJSCanvas = () => {
     diagram.commitTransaction('update view mode');
   }, [viewMode]);
 
-  // Initialize GoJS diagram - wait for settings to be hydrated  
+  // Initialize GoJS diagram
   useEffect(() => {
-    if (!diagramRef.current || !isHydrated) {
-      console.log('Waiting for diagram ref or settings hydration...', { hasRef: !!diagramRef.current, isHydrated });
-      return;
-    }
+    if (!diagramRef.current) return;
 
     const $ = go.GraphObject.make;
-    
-    const layoutAlgorithm = settings.layoutAlgorithm || 'layered';
-    console.log(`Initializing diagram with layout: ${layoutAlgorithm}`);
     
     const diagram = $(go.Diagram, diagramRef.current, {
       'undoManager.isEnabled': true,
       'toolManager.hoverDelay': 100,
       'animationManager.isEnabled': false,
       initialContentAlignment: go.Spot.Center,
-      layout: getLayoutByType(layoutAlgorithm),
+      layout: $(go.ForceDirectedLayout, {
+        defaultSpringLength: 120,
+        defaultElectricalCharge: 200,
+        maxIterations: 200,
+        epsilonDistance: 0.5,
+        infinityDistance: 1000
+      }),
       model: new go.GraphLinksModel()
     });
 
@@ -529,7 +464,7 @@ export const GoJSCanvas = () => {
     return () => {
       diagram.div = null;
     };
-  }, [isHydrated, settings.layoutAlgorithm, getLayoutByType]);
+  }, []);
 
   // Update diagram when currentGraph changes
   useEffect(() => {
@@ -751,7 +686,6 @@ export const GoJSCanvas = () => {
         onLoadFile={onLoadFile}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
-        onLayoutChange={changeLayout}
         availableEntities={allEntities}
       />
       
