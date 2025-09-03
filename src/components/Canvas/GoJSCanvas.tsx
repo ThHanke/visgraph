@@ -157,18 +157,17 @@ export const GoJSCanvas = () => {
 
     const $ = go.GraphObject.make;
     
-    try {
-      const layoutAlgorithm = settings.layoutAlgorithm || 'layered';
-      console.log(`Initializing diagram with layout: ${layoutAlgorithm}`);
-      
-      const diagram = $(go.Diagram, diagramRef.current, {
-        'undoManager.isEnabled': true,
-        'toolManager.hoverDelay': 100,
-        'animationManager.isEnabled': false,
-        initialContentAlignment: go.Spot.Center,
-        layout: getLayoutByType(layoutAlgorithm),
-        model: new go.GraphLinksModel()
-      });
+    const layoutAlgorithm = settings.layoutAlgorithm || 'layered';
+    console.log(`Initializing diagram with layout: ${layoutAlgorithm}`);
+    
+    const diagram = $(go.Diagram, diagramRef.current, {
+      'undoManager.isEnabled': true,
+      'toolManager.hoverDelay': 100,
+      'animationManager.isEnabled': false,
+      initialContentAlignment: go.Spot.Center,
+      layout: getLayoutByType(layoutAlgorithm),
+      model: new go.GraphLinksModel()
+    });
 
     // Helper function to get namespace color
     const getNamespaceColor = (namespace: string) => {
