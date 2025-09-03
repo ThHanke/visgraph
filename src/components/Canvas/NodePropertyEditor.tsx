@@ -4,7 +4,7 @@
  * Handles multiple rdf:types correctly for A-box individuals
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -68,7 +68,12 @@ export const NodePropertyEditor = ({
   const [properties, setProperties] = useState<LiteralProperty[]>([]);
   
   const { availableClasses } = useOntologyStore();
-  const classEntities = availableEntities.filter(e => e.rdfType === 'owl:Class');
+  
+  // Memoize classEntities to prevent constant re-creation
+  const classEntities = useMemo(() => 
+    availableEntities.filter(e => e.rdfType === 'owl:Class'),
+    [availableEntities]
+  );
 
   // Initialize form data when dialog opens
   useEffect(() => {
