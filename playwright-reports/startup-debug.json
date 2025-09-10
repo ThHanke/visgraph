@@ -1,0 +1,3998 @@
+{
+  "url": "http://localhost:8080/?vg_debug=1",
+  "startTime": "2025-09-10T05:34:22.803Z",
+  "settledTime": "2025-09-10T05:35:00.884Z",
+  "loadDurationMs": 38081,
+  "consoleEntries": [
+    {
+      "ts": "2025-09-10T05:34:22.812Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/?vg_debug=1",
+        "method": "GET",
+        "resourceType": "document"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.825Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/@vite/client",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.825Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/main.tsx?t=1757482455257",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.826Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/?vg_debug=1"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.827Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/@react-refresh",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.865Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/main.tsx?t=1757482455257"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.867Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/@vite/client"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.873Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.873Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/react-dom_client.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.873Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/App.tsx?t=1757482455257",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.873Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/index.css?t=1757482455257",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.874Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/@xyflow/react/dist/style.css",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.874Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/reactflow/dist/style.css",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.874Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/utils/theme.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.874Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/vite/dist/client/env.mjs",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.906Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/@react-refresh"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.909Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/reactflow/dist/style.css"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.912Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/react-dom_client.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.912Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-WPQCFWW4.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.912Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-3TFVT2CW.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.912Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-4MBMRILA.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.912Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.914Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/utils/theme.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.914Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/vite/dist/client/env.mjs"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.917Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[vite] connecting..."
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.929Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/@xyflow/react/dist/style.css"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.931Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[vite] connected."
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.932Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-4MBMRILA.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.933Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/App.tsx?t=1757482455257"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.935Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/react.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.935Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/toaster.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.935Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/sonner.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.935Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/tooltip.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.935Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@tanstack_react-query.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.935Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/react-router-dom.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.935Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/pages/Index.tsx?t=1757482455257",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.935Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/pages/NotFound.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.935Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/stores/appConfigStore.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.938Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/index.css?t=1757482455257"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.938Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-3TFVT2CW.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.942Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/react.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.945Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/toaster.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.946Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/hooks/use-toast.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.946Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/toast.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.946Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/sonner.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.947Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/next-themes.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.947Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/sonner.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.947Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/helpers/sonnerHelpers.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.950Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/tooltip.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.951Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.951Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/lib/utils.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.955Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@tanstack_react-query.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.955Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-S77I6LSE.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.956Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/pages/Index.tsx?t=1757482455257"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.957Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/ReactFlowCanvas.tsx?t=1757482455257",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.958Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/pages/NotFound.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.959Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/stores/appConfigStore.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.959Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/zustand.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.959Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/zustand_middleware.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.964Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/hooks/use-toast.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.964Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/toast.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.966Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-WPQCFWW4.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.966Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-toast.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.966Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/class-variance-authority.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.966Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/lucide-react.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.967Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/react-router-dom.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.969Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/next-themes.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.970Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/helpers/sonnerHelpers.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.970Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/sonner.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.972Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/lib/utils.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.972Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/clsx.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.972Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/tailwind-merge.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.972Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.974Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-BUBRZ22J.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.974Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-XAWNLNBV.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.974Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-ONX5ZNSS.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.974Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TCWE3O42.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.975Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-C3JZLKPW.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.975Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TAQL6DHY.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.975Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-ZYGNQE3I.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.975Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-2V3IRYIZ.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.975Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-CRJU5EXN.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.975Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-PLT6GTVM.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.975Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-FJOIDGJK.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.975Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JFWPD3MN.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.975Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-S77I6LSE.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.978Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/zustand.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.981Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/class-variance-authority.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.982Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-U7P2NEEE.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.982Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/zustand_middleware.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.983Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-toast.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.983Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-M4KOH2MN.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.984Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/ReactFlowCanvas.tsx?t=1757482455257"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.986Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@xyflow_react.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.986Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/n3.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.987Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/lib/canonicalId.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.987Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/hooks/useCanvasState.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/stores/ontologyStore.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/stores/reasoningStore.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/stores/settingsStore.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/CanvasToolbar.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/ResizableNamespaceLegend.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/ReasoningIndicator.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/ReasoningReportModal.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/NodePropertyEditor.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/LinkPropertyEditor.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/progress.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/core/nodeDisplay.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/core/namespacePalette.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/helpers/graphMappingHelpers.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/helpers/namespaceHelpers.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/utils/startupDebug.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/CustomOntologyNode.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/FloatingEdge.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/FloatingConnectionLine.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:22.999Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/clsx.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.000Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-XAWNLNBV.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.001Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-BUBRZ22J.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.002Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/tailwind-merge.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.004Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-ONX5ZNSS.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.005Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TCWE3O42.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.007Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-C3JZLKPW.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.011Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TAQL6DHY.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.011Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-ZYGNQE3I.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.011Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-2V3IRYIZ.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.011Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-CRJU5EXN.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.016Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-PLT6GTVM.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.016Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-FJOIDGJK.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.016Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-U7P2NEEE.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.016Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JFWPD3MN.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.017Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-M4KOH2MN.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.025Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/lib/canonicalId.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.026Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/hooks/useCanvasState.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.026Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/n3.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.026Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-SQZ5VJUH.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.027Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/stores/reasoningStore.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.041Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/stores/settingsStore.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.046Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/ResizableNamespaceLegend.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.048Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/ReasoningIndicator.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.048Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/LinkPropertyEditor.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.048Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/progress.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.048Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/core/nodeDisplay.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.048Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/helpers/graphMappingHelpers.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.053Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/core/namespacePalette.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.053Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/ReasoningReportModal.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.053Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@xyflow_react.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.054Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/helpers/namespaceHelpers.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.054Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/stores/ontologyStore.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.058Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/NodePropertyEditor.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.059Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/FloatingConnectionLine.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.059Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/FloatingEdge.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.059Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/CustomOntologyNode.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/CanvasToolbar.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/badge.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/utils/startupDebug.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/button.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/AutoComplete.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/label.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/dialog.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-progress.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/tabs.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/scroll-area.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/card.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/utils/rdfManager.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/input.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/select.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/EntityAutocomplete.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/popover.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/helpers/nodePropertyHelpers.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.062Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/floatingInitialElements.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.064Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/dropdown-menu.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.064Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/ConfigurationPanel.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.065Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-SQZ5VJUH.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.068Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/badge.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.071Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/lucide-react.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.071Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/badgeVariants.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.071Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/button.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.072Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/AutoComplete.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.072Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/label.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.072Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/dialog.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.075Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-progress.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.075Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/tabs.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.075Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/scroll-area.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.075Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/card.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.075Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/input.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.075Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/select.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.075Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/popover.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.075Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/helpers/nodePropertyHelpers.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.078Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/EntityAutocomplete.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.078Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/floatingInitialElements.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.078Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slot.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.078Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/buttonVariants.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.078Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/command.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.078Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-label.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.078Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/dropdown-menu.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.079Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dialog.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.079Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tabs.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.082Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-scroll-area.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.082Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-select.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.082Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/utils/rdfManager.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.082Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-popover.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.082Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/ConfigurationPanel.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.082Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/badgeVariants.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.083Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dropdown-menu.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.083Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/switch.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.083Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/slider.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.083Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slot.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.083Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/buttonVariants.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.083Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-label.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dialog.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-VWH4K6JT.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-LPDIDIQE.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/command.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/cmdk.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-scroll-area.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-6ZMM2PAV.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-HGJTK426.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tabs.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-QMJ2RG4G.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.089Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-popover.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.089Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/switch.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.089Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-select.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.089Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-switch.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.089Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-QH7Y6EI7.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.089Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dropdown-menu.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.089Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/slider.tsx"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.090Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slider.js?v=15e115bb",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.090Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-VWH4K6JT.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.090Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-LPDIDIQE.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.091Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/cmdk.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.091Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-6ZMM2PAV.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.091Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-HGJTK426.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.091Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-QMJ2RG4G.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.091Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-switch.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.091Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-QH7Y6EI7.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.092Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slider.js?v=15e115bb"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.123Z",
+      "kind": "console",
+      "payload": {
+        "type": "info",
+        "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.251Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] reactflow.mapped {nodeIds: Array(0), edgeSamples: Array(0)} utils/startupDebug.ts:285"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.256Z",
+      "kind": "request",
+      "payload": {
+        "url": "https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl",
+        "method": "GET",
+        "resourceType": "fetch"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.257Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] reactflow.reasoning.fp {fingerprint: ||, nodeCount: 0, edgeCount: 0} 2025-09-10T05:34:23.250Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.257Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] reactflow.displayedCounts {viewMode: abox, nodes: 0, displayedNodes: 0, edges: 0, displayedEdges: 0} utils/startupDebug.ts:285"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.257Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG] displayed counts {viewMode: abox, nodes: 0, displayedNodes: 0, edges: 0, displayedEdges: 0}"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.257Z",
+      "kind": "console",
+      "payload": {
+        "type": "warning",
+        "text": "⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition."
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.257Z",
+      "kind": "console",
+      "payload": {
+        "type": "warning",
+        "text": "⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath."
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.450Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.451Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/utils/rdfParser.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.452Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/utils/rdfParser.ts"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.453Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] rdf.load.start {id: load-1757482463451-wsei97, key: len:3015, graphName: https://raw.githubusercontent.com/Mat-O-Lab/IOFMat…alsTutorial/refs/heads/main/LengthMeasurement.ttl, contentLen: 3216, mimeType: undefined} 2025-09-10T05:34:23.451Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.458Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] rdf.load.summary {id: load-1757482463451-wsei97, key: len:3015, graphName: https://raw.githubusercontent.com/Mat-O-Lab/IOFMat…alsTutorial/refs/heads/main/LengthMeasurement.ttl, added: 62, newCount: 62} 2025-09-10T05:34:23.456Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.458Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] rdf.load.end {id: load-1757482463451-wsei97, key: len:3015, graphName: https://raw.githubusercontent.com/Mat-O-Lab/IOFMat…alsTutorial/refs/heads/main/LengthMeasurement.ttl, added: 62, newCount: 62} 2025-09-10T05:34:23.457Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.462Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] rdfManager.parsedNode.quads {uri: https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen, quads: Array(4)} utils/startupDebug.ts:285"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.463Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] rdfManager.parsedNode.quads {uri: https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength, quads: Array(3)} utils/startupDebug.ts:285"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.463Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] rdfManager.parsedNode.quads {uri: https://spec.industrialontologies.org/ontology/materials/Materials/Specimen, quads: Array(2)} utils/startupDebug.ts:285"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.481Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] reactflow.mapped {nodeIds: Array(26), edgeSamples: Array(8)} utils/startupDebug.ts:285"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.492Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] reactflow.reasoning.fp {fingerprint: http://purl.org/dc/terms/abstract|http://purl.org/…alontologies.org/ontology/core/Core/hasCapability, nodeCount: 26, edgeCount: 8} 2025-09-10T05:34:23.489Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.493Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] reactflow.displayedCounts {viewMode: abox, nodes: 26, displayedNodes: 7, edges: 8, displayedEdges: 8} utils/startupDebug.ts:285"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.493Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG] displayed counts {viewMode: abox, nodes: 26, displayedNodes: 7, edges: 8, displayedEdges: 8}"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.501Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] CustomOntologyNode.displayInfo {uri: https://github.com/Mat-O-Lab/IOFMaterialsTutorial/, classType: Ontology, rdfTypes: Array(1), displayType: undefined} 2025-09-10T05:34:23.499Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.504Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] CustomOntologyNode.displayInfo {uri: https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen, classType: NamedIndividual, rdfTypes: Array(2), displayType: undefined} 2025-09-10T05:34:23.500Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.504Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] CustomOntologyNode.displayInfo {uri: https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength, classType: NamedIndividual, rdfTypes: Array(2), displayType: undefined} 2025-09-10T05:34:23.500Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.504Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] CustomOntologyNode.displayInfo {uri: https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess, classType: NamedIndividual, rdfTypes: Array(2), displayType: undefined} 2025-09-10T05:34:23.500Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.507Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] CustomOntologyNode.displayInfo {uri: https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData, classType: NamedIndividual, rdfTypes: Array(2), displayType: undefined} 2025-09-10T05:34:23.501Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.508Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] CustomOntologyNode.displayInfo {uri: https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper, classType: NamedIndividual, rdfTypes: Array(2), displayType: undefined} 2025-09-10T05:34:23.501Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.508Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] CustomOntologyNode.displayInfo {uri: https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability, classType: NamedIndividual, rdfTypes: Array(2), displayType: undefined} 2025-09-10T05:34:23.501Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.547Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] reactflow.reasoning.fp {fingerprint: http://purl.org/dc/terms/abstract|http://purl.org/…alontologies.org/ontology/core/Core/hasCapability, nodeCount: 26, edgeCount: 8} 2025-09-10T05:34:23.542Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.547Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] reactflow.displayedCounts {viewMode: abox, nodes: 26, displayedNodes: 7, edges: 8, displayedEdges: 8} utils/startupDebug.ts:285"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:23.547Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG] displayed counts {viewMode: abox, nodes: 26, displayedNodes: 7, edges: 8, displayedEdges: 8}"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:33.973Z",
+      "kind": "console",
+      "payload": {
+        "type": "warning",
+        "text": "ui.layout.apply.no_initial_rebuild_observed"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:34.087Z",
+      "kind": "console",
+      "payload": {
+        "type": "info",
+        "text": "ui.layout.capture.before /home/hanke/visgraph/playwright-reports/layout-before.png"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:34.131Z",
+      "kind": "console",
+      "payload": {
+        "type": "info",
+        "text": "ui.layout.apply.via_hook force-directed"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:34.139Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] reactflow.reasoning.fp {fingerprint: http://purl.org/dc/terms/abstract|http://purl.org/…alontologies.org/ontology/core/Core/hasCapability, nodeCount: 26, edgeCount: 8} 2025-09-10T05:34:34.136Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:34.139Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] reactflow.displayedCounts {viewMode: abox, nodes: 26, displayedNodes: 7, edges: 8, displayedEdges: 8} utils/startupDebug.ts:285"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:34.139Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG] displayed counts {viewMode: abox, nodes: 26, displayedNodes: 7, edges: 8, displayedEdges: 8}"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:34.395Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] reactflow.reasoning.scheduled {fingerprint: http://purl.org/dc/terms/abstract|http://purl.org/…alontologies.org/ontology/core/Core/hasCapability} 2025-09-10T05:34:34.392Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:34.396Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] reactflow.reasoning.start {fingerprint: http://purl.org/dc/terms/abstract|http://purl.org/…alontologies.org/ontology/core/Core/hasCapability, nodes: 26, edges: 8} 2025-09-10T05:34:34.393Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:34.396Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] reactflow.reasoning.invoke {nodes: 26, edges: 8} 2025-09-10T05:34:34.393Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:34.397Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] reactflow.reasoning.payload {nodes: 26, edges: 8} 2025-09-10T05:34:34.394Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:35.769Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] reactflow.reasoning.result {errorCount: 0} 2025-09-10T05:34:35.767Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:35.770Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] reactflow.reasoning.complete {fingerprint: http://purl.org/dc/terms/abstract|http://purl.org/…alontologies.org/ontology/core/Core/hasCapability} 2025-09-10T05:34:35.767Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:35.777Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] reactflow.reasoning.fp {fingerprint: http://purl.org/dc/terms/abstract|http://purl.org/…alontologies.org/ontology/core/Core/hasCapability, nodeCount: 26, edgeCount: 8} 2025-09-10T05:34:35.775Z"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:35.780Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG_LOG] reactflow.displayedCounts {viewMode: abox, nodes: 26, displayedNodes: 7, edges: 8, displayedEdges: 8} utils/startupDebug.ts:285"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:35.781Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "[VG] displayed counts {viewMode: abox, nodes: 26, displayedNodes: 7, edges: 8, displayedEdges: 8}"
+      }
+    },
+    {
+      "ts": "2025-09-10T05:34:59.379Z",
+      "kind": "console",
+      "payload": {
+        "type": "warning",
+        "text": "ui.layout.apply.attempted force-directed (no confirmation in logs)"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "ts": "2025-09-10T05:34:22.812Z",
+      "url": "http://localhost:8080/?vg_debug=1",
+      "method": "GET",
+      "resourceType": "document"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.825Z",
+      "url": "http://localhost:8080/@vite/client",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.825Z",
+      "url": "http://localhost:8080/src/main.tsx?t=1757482455257",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.827Z",
+      "url": "http://localhost:8080/@react-refresh",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.873Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.873Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/react-dom_client.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.873Z",
+      "url": "http://localhost:8080/src/App.tsx?t=1757482455257",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.873Z",
+      "url": "http://localhost:8080/src/index.css?t=1757482455257",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.874Z",
+      "url": "http://localhost:8080/node_modules/@xyflow/react/dist/style.css",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.874Z",
+      "url": "http://localhost:8080/node_modules/reactflow/dist/style.css",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.874Z",
+      "url": "http://localhost:8080/src/utils/theme.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.874Z",
+      "url": "http://localhost:8080/node_modules/vite/dist/client/env.mjs",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.912Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-WPQCFWW4.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.912Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-3TFVT2CW.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.912Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-4MBMRILA.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.935Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/react.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.935Z",
+      "url": "http://localhost:8080/src/components/ui/toaster.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.935Z",
+      "url": "http://localhost:8080/src/components/ui/sonner.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.935Z",
+      "url": "http://localhost:8080/src/components/ui/tooltip.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.935Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@tanstack_react-query.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.935Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/react-router-dom.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.935Z",
+      "url": "http://localhost:8080/src/pages/Index.tsx?t=1757482455257",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.935Z",
+      "url": "http://localhost:8080/src/pages/NotFound.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.935Z",
+      "url": "http://localhost:8080/src/stores/appConfigStore.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.946Z",
+      "url": "http://localhost:8080/src/hooks/use-toast.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.946Z",
+      "url": "http://localhost:8080/src/components/ui/toast.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.947Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/next-themes.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.947Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/sonner.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.947Z",
+      "url": "http://localhost:8080/src/components/ui/helpers/sonnerHelpers.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.951Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.951Z",
+      "url": "http://localhost:8080/src/lib/utils.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.955Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-S77I6LSE.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.957Z",
+      "url": "http://localhost:8080/src/components/Canvas/ReactFlowCanvas.tsx?t=1757482455257",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.959Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/zustand.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.959Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/zustand_middleware.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.966Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-toast.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.966Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/class-variance-authority.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.966Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/lucide-react.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.972Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/clsx.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.972Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/tailwind-merge.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.974Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-BUBRZ22J.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.974Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-XAWNLNBV.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.974Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-ONX5ZNSS.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.974Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TCWE3O42.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.975Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-C3JZLKPW.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.975Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TAQL6DHY.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.975Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-ZYGNQE3I.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.975Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-2V3IRYIZ.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.975Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-CRJU5EXN.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.975Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-PLT6GTVM.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.975Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-FJOIDGJK.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.975Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JFWPD3MN.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.982Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-U7P2NEEE.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.983Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-M4KOH2MN.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.985Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@xyflow_react.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.986Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/n3.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.987Z",
+      "url": "http://localhost:8080/src/lib/canonicalId.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.987Z",
+      "url": "http://localhost:8080/src/hooks/useCanvasState.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "url": "http://localhost:8080/src/stores/ontologyStore.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "url": "http://localhost:8080/src/stores/reasoningStore.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "url": "http://localhost:8080/src/stores/settingsStore.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "url": "http://localhost:8080/src/components/Canvas/CanvasToolbar.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "url": "http://localhost:8080/src/components/Canvas/ResizableNamespaceLegend.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "url": "http://localhost:8080/src/components/Canvas/ReasoningIndicator.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "url": "http://localhost:8080/src/components/Canvas/ReasoningReportModal.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "url": "http://localhost:8080/src/components/Canvas/NodePropertyEditor.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "url": "http://localhost:8080/src/components/Canvas/LinkPropertyEditor.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "url": "http://localhost:8080/src/components/ui/progress.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "url": "http://localhost:8080/src/components/Canvas/core/nodeDisplay.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "url": "http://localhost:8080/src/components/Canvas/core/namespacePalette.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "url": "http://localhost:8080/src/components/Canvas/helpers/graphMappingHelpers.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "url": "http://localhost:8080/src/components/Canvas/helpers/namespaceHelpers.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "url": "http://localhost:8080/src/utils/startupDebug.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "url": "http://localhost:8080/src/components/Canvas/CustomOntologyNode.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "url": "http://localhost:8080/src/components/Canvas/FloatingEdge.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.988Z",
+      "url": "http://localhost:8080/src/components/Canvas/FloatingConnectionLine.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.026Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-SQZ5VJUH.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "url": "http://localhost:8080/src/components/ui/badge.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "url": "http://localhost:8080/src/components/ui/button.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "url": "http://localhost:8080/src/components/ui/AutoComplete.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "url": "http://localhost:8080/src/components/ui/label.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "url": "http://localhost:8080/src/components/ui/dialog.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-progress.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "url": "http://localhost:8080/src/components/ui/tabs.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "url": "http://localhost:8080/src/components/ui/scroll-area.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "url": "http://localhost:8080/src/components/ui/card.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "url": "http://localhost:8080/src/utils/rdfManager.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "url": "http://localhost:8080/src/components/ui/input.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "url": "http://localhost:8080/src/components/ui/select.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "url": "http://localhost:8080/src/components/ui/EntityAutocomplete.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "url": "http://localhost:8080/src/components/ui/popover.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "url": "http://localhost:8080/src/components/Canvas/helpers/nodePropertyHelpers.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.062Z",
+      "url": "http://localhost:8080/src/components/Canvas/floatingInitialElements.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.064Z",
+      "url": "http://localhost:8080/src/components/ui/dropdown-menu.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.064Z",
+      "url": "http://localhost:8080/src/components/Canvas/ConfigurationPanel.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.071Z",
+      "url": "http://localhost:8080/src/components/ui/badgeVariants.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.078Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slot.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.078Z",
+      "url": "http://localhost:8080/src/components/ui/buttonVariants.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.078Z",
+      "url": "http://localhost:8080/src/components/ui/command.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.078Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-label.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.079Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dialog.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.079Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tabs.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.082Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-scroll-area.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.082Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-select.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.082Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-popover.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.083Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dropdown-menu.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.083Z",
+      "url": "http://localhost:8080/src/components/ui/switch.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.083Z",
+      "url": "http://localhost:8080/src/components/ui/slider.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-VWH4K6JT.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-LPDIDIQE.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/cmdk.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-6ZMM2PAV.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-HGJTK426.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-QMJ2RG4G.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.089Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-switch.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.089Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-QH7Y6EI7.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.090Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slider.js?v=15e115bb",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.256Z",
+      "url": "https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl",
+      "method": "GET",
+      "resourceType": "fetch"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.451Z",
+      "url": "http://localhost:8080/src/utils/rdfParser.ts",
+      "method": "GET",
+      "resourceType": "script"
+    }
+  ],
+  "requestFinished": [
+    {
+      "ts": "2025-09-10T05:34:22.826Z",
+      "url": "http://localhost:8080/?vg_debug=1"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.865Z",
+      "url": "http://localhost:8080/src/main.tsx?t=1757482455257"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.867Z",
+      "url": "http://localhost:8080/@vite/client"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.906Z",
+      "url": "http://localhost:8080/@react-refresh"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.909Z",
+      "url": "http://localhost:8080/node_modules/reactflow/dist/style.css"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.912Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/react-dom_client.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.912Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.914Z",
+      "url": "http://localhost:8080/src/utils/theme.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.914Z",
+      "url": "http://localhost:8080/node_modules/vite/dist/client/env.mjs"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.929Z",
+      "url": "http://localhost:8080/node_modules/@xyflow/react/dist/style.css"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.932Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-4MBMRILA.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.933Z",
+      "url": "http://localhost:8080/src/App.tsx?t=1757482455257"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.938Z",
+      "url": "http://localhost:8080/src/index.css?t=1757482455257"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.938Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-3TFVT2CW.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.942Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/react.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.945Z",
+      "url": "http://localhost:8080/src/components/ui/toaster.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.946Z",
+      "url": "http://localhost:8080/src/components/ui/sonner.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.950Z",
+      "url": "http://localhost:8080/src/components/ui/tooltip.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.955Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@tanstack_react-query.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.956Z",
+      "url": "http://localhost:8080/src/pages/Index.tsx?t=1757482455257"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.958Z",
+      "url": "http://localhost:8080/src/pages/NotFound.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.959Z",
+      "url": "http://localhost:8080/src/stores/appConfigStore.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.964Z",
+      "url": "http://localhost:8080/src/hooks/use-toast.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.964Z",
+      "url": "http://localhost:8080/src/components/ui/toast.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.966Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-WPQCFWW4.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.967Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/react-router-dom.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.969Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/next-themes.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.970Z",
+      "url": "http://localhost:8080/src/components/ui/helpers/sonnerHelpers.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.970Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/sonner.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.971Z",
+      "url": "http://localhost:8080/src/lib/utils.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.972Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.975Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-S77I6LSE.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.978Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/zustand.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.981Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/class-variance-authority.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.982Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/zustand_middleware.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.983Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-toast.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.984Z",
+      "url": "http://localhost:8080/src/components/Canvas/ReactFlowCanvas.tsx?t=1757482455257"
+    },
+    {
+      "ts": "2025-09-10T05:34:22.999Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/clsx.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.000Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-XAWNLNBV.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.001Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-BUBRZ22J.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.002Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/tailwind-merge.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.004Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-ONX5ZNSS.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.005Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TCWE3O42.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.007Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-C3JZLKPW.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.011Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TAQL6DHY.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.011Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-ZYGNQE3I.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.011Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-2V3IRYIZ.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.011Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-CRJU5EXN.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.016Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-PLT6GTVM.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.016Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-FJOIDGJK.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.016Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-U7P2NEEE.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.016Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JFWPD3MN.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.017Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-M4KOH2MN.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.025Z",
+      "url": "http://localhost:8080/src/lib/canonicalId.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.026Z",
+      "url": "http://localhost:8080/src/hooks/useCanvasState.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.026Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/n3.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.027Z",
+      "url": "http://localhost:8080/src/stores/reasoningStore.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.041Z",
+      "url": "http://localhost:8080/src/stores/settingsStore.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.046Z",
+      "url": "http://localhost:8080/src/components/Canvas/ResizableNamespaceLegend.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.048Z",
+      "url": "http://localhost:8080/src/components/Canvas/ReasoningIndicator.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.048Z",
+      "url": "http://localhost:8080/src/components/Canvas/LinkPropertyEditor.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.048Z",
+      "url": "http://localhost:8080/src/components/ui/progress.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.048Z",
+      "url": "http://localhost:8080/src/components/Canvas/core/nodeDisplay.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.048Z",
+      "url": "http://localhost:8080/src/components/Canvas/helpers/graphMappingHelpers.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.053Z",
+      "url": "http://localhost:8080/src/components/Canvas/core/namespacePalette.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.053Z",
+      "url": "http://localhost:8080/src/components/Canvas/ReasoningReportModal.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.053Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@xyflow_react.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.054Z",
+      "url": "http://localhost:8080/src/components/Canvas/helpers/namespaceHelpers.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.054Z",
+      "url": "http://localhost:8080/src/stores/ontologyStore.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.058Z",
+      "url": "http://localhost:8080/src/components/Canvas/NodePropertyEditor.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.059Z",
+      "url": "http://localhost:8080/src/components/Canvas/FloatingConnectionLine.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.059Z",
+      "url": "http://localhost:8080/src/components/Canvas/FloatingEdge.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.059Z",
+      "url": "http://localhost:8080/src/components/Canvas/CustomOntologyNode.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.060Z",
+      "url": "http://localhost:8080/src/components/Canvas/CanvasToolbar.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.061Z",
+      "url": "http://localhost:8080/src/utils/startupDebug.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.065Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-SQZ5VJUH.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.068Z",
+      "url": "http://localhost:8080/src/components/ui/badge.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.070Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/lucide-react.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.071Z",
+      "url": "http://localhost:8080/src/components/ui/button.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.072Z",
+      "url": "http://localhost:8080/src/components/ui/AutoComplete.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.072Z",
+      "url": "http://localhost:8080/src/components/ui/label.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.072Z",
+      "url": "http://localhost:8080/src/components/ui/dialog.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.075Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-progress.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.075Z",
+      "url": "http://localhost:8080/src/components/ui/tabs.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.075Z",
+      "url": "http://localhost:8080/src/components/ui/scroll-area.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.075Z",
+      "url": "http://localhost:8080/src/components/ui/card.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.075Z",
+      "url": "http://localhost:8080/src/components/ui/input.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.075Z",
+      "url": "http://localhost:8080/src/components/ui/select.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.075Z",
+      "url": "http://localhost:8080/src/components/ui/popover.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.075Z",
+      "url": "http://localhost:8080/src/components/Canvas/helpers/nodePropertyHelpers.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.078Z",
+      "url": "http://localhost:8080/src/components/ui/EntityAutocomplete.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.078Z",
+      "url": "http://localhost:8080/src/components/Canvas/floatingInitialElements.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.078Z",
+      "url": "http://localhost:8080/src/components/ui/dropdown-menu.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.082Z",
+      "url": "http://localhost:8080/src/utils/rdfManager.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.082Z",
+      "url": "http://localhost:8080/src/components/Canvas/ConfigurationPanel.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.082Z",
+      "url": "http://localhost:8080/src/components/ui/badgeVariants.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.083Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slot.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.083Z",
+      "url": "http://localhost:8080/src/components/ui/buttonVariants.ts"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.083Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-label.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dialog.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "url": "http://localhost:8080/src/components/ui/command.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-scroll-area.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.087Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tabs.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.089Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-popover.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.089Z",
+      "url": "http://localhost:8080/src/components/ui/switch.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.089Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-select.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.089Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dropdown-menu.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.089Z",
+      "url": "http://localhost:8080/src/components/ui/slider.tsx"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.090Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-VWH4K6JT.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.090Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-LPDIDIQE.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.091Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/cmdk.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.091Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-6ZMM2PAV.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.091Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-HGJTK426.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.091Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-QMJ2RG4G.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.091Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-switch.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.091Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-QH7Y6EI7.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.092Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slider.js?v=15e115bb"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.450Z",
+      "url": "https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl"
+    },
+    {
+      "ts": "2025-09-10T05:34:23.452Z",
+      "url": "http://localhost:8080/src/utils/rdfParser.ts"
+    }
+  ],
+  "requestFailed": [],
+  "vgSummary": {
+    "startedAt": "2025-09-10T05:34:23.247Z",
+    "logs": [
+      {
+        "ts": "2025-09-10T05:34:23.247Z",
+        "level": "debug",
+        "event": "reactflow.mapped",
+        "meta": {
+          "nodeIds": [],
+          "edgeSamples": []
+        },
+        "caller": "utils/startupDebug.ts:285"
+      },
+      {
+        "ts": "2025-09-10T05:34:23.250Z",
+        "level": "debug",
+        "event": "reactflow.reasoning.fp",
+        "meta": {
+          "fingerprint": "||",
+          "nodeCount": 0,
+          "edgeCount": 0
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:23.251Z",
+        "level": "debug",
+        "event": "reactflow.displayedCounts",
+        "meta": {
+          "viewMode": "abox",
+          "nodes": 0,
+          "displayedNodes": 0,
+          "edges": 0,
+          "displayedEdges": 0,
+          "sampleEdge": null
+        },
+        "caller": "utils/startupDebug.ts:285"
+      },
+      {
+        "ts": "2025-09-10T05:34:23.451Z",
+        "level": "debug",
+        "event": "rdf.load.start",
+        "meta": {
+          "id": "load-1757482463451-wsei97",
+          "key": "len:3015",
+          "graphName": "https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl",
+          "contentLen": 3216
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:23.456Z",
+        "level": "debug",
+        "event": "rdf.load.summary",
+        "meta": {
+          "id": "load-1757482463451-wsei97",
+          "key": "len:3015",
+          "graphName": "https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl",
+          "added": 62,
+          "newCount": 62,
+          "durationMs": 5
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:23.457Z",
+        "level": "debug",
+        "event": "rdf.load.end",
+        "meta": {
+          "id": "load-1757482463451-wsei97",
+          "key": "len:3015",
+          "graphName": "https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl",
+          "added": 62,
+          "newCount": 62,
+          "durationMs": 5
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:23.461Z",
+        "level": "debug",
+        "event": "rdfManager.parsedNode.quads",
+        "meta": {
+          "uri": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen",
+          "quads": [
+            {
+              "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+              "object": "http://www.w3.org/2002/07/owl#NamedIndividual"
+            },
+            {
+              "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+              "object": "https://spec.industrialontologies.org/ontology/materials/Materials/Specimen"
+            },
+            {
+              "predicate": "https://spec.industrialontologies.org/ontology/core/Core/hasQuality",
+              "object": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength"
+            },
+            {
+              "predicate": "https://spec.industrialontologies.org/ontology/core/Core/isInputOf",
+              "object": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess"
+            }
+          ]
+        },
+        "caller": "utils/startupDebug.ts:285"
+      },
+      {
+        "ts": "2025-09-10T05:34:23.461Z",
+        "level": "debug",
+        "event": "rdfManager.parsedNode.quads",
+        "meta": {
+          "uri": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength",
+          "quads": [
+            {
+              "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+              "object": "http://www.w3.org/2002/07/owl#NamedIndividual"
+            },
+            {
+              "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+              "object": "https://spec.industrialontologies.org/ontology/qualities/Length"
+            },
+            {
+              "predicate": "https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime",
+              "object": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper"
+            }
+          ]
+        },
+        "caller": "utils/startupDebug.ts:285"
+      },
+      {
+        "ts": "2025-09-10T05:34:23.462Z",
+        "level": "debug",
+        "event": "rdfManager.parsedNode.quads",
+        "meta": {
+          "uri": "https://spec.industrialontologies.org/ontology/materials/Materials/Specimen",
+          "quads": [
+            {
+              "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+              "object": "http://www.w3.org/2002/07/owl#Class"
+            },
+            {
+              "predicate": "http://www.w3.org/2000/01/rdf-schema#label",
+              "object": "Specimen"
+            }
+          ]
+        },
+        "caller": "utils/startupDebug.ts:285"
+      },
+      {
+        "ts": "2025-09-10T05:34:23.480Z",
+        "level": "debug",
+        "event": "reactflow.mapped",
+        "meta": {
+          "nodeIds": [
+            "http://purl.org/dc/terms/abstract",
+            "http://purl.org/dc/terms/creator",
+            "http://purl.org/dc/terms/license",
+            "http://www.w3.org/2000/01/rdf-schema#label",
+            "http://www.w3.org/2002/07/owl#versionInfo",
+            "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/",
+            "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen",
+            "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength",
+            "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess",
+            "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData",
+            "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper",
+            "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability",
+            "https://spec.industrialontologies.org/ontology/core/Core/hasQuality",
+            "https://spec.industrialontologies.org/ontology/core/Core/isInputOf",
+            "https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time",
+            "https://spec.industrialontologies.org/ontology/core/Core/hasCapability",
+            "https://spec.industrialontologies.org/ontology/core/Core/hasOutput",
+            "https://spec.industrialontologies.org/ontology/core/Core/isAbout",
+            "https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime",
+            "https://spec.industrialontologies.org/ontology/core/Core/realizes",
+            "https://spec.industrialontologies.org/ontology/materials/Materials/Specimen",
+            "https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity",
+            "https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess",
+            "https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability",
+            "https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice",
+            "https://spec.industrialontologies.org/ontology/qualities/Length"
+          ],
+          "edgeSamples": [
+            {
+              "id": "https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-hasQuality",
+              "source": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen",
+              "target": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength"
+            },
+            {
+              "id": "https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-isInputOf",
+              "source": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen",
+              "target": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess"
+            },
+            {
+              "id": "https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-masuredByAtSomeTime",
+              "source": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength",
+              "target": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper"
+            },
+            {
+              "id": "https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-has_participant_at_some_time",
+              "source": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess",
+              "target": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper"
+            },
+            {
+              "id": "https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthData-hasOutput",
+              "source": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess",
+              "target": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData"
+            },
+            {
+              "id": "https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasureCapability-realizes",
+              "source": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess",
+              "target": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability"
+            },
+            {
+              "id": "https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthData-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-isAbout",
+              "source": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData",
+              "target": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength"
+            },
+            {
+              "id": "https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasureCapability-hasCapability",
+              "source": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper",
+              "target": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability"
+            }
+          ]
+        },
+        "caller": "utils/startupDebug.ts:285"
+      },
+      {
+        "ts": "2025-09-10T05:34:23.489Z",
+        "level": "debug",
+        "event": "reactflow.reasoning.fp",
+        "meta": {
+          "fingerprint": "http://purl.org/dc/terms/abstract|http://purl.org/dc/terms/abstract|http://www.w3.org/2002/07/owl#AnnotationProperty|0:0;http://purl.org/dc/terms/creator|http://purl.org/dc/terms/creator|http://www.w3.org/2002/07/owl#AnnotationProperty|220:0;http://purl.org/dc/terms/license|http://purl.org/dc/terms/license|http://www.w3.org/2002/07/owl#AnnotationProperty|440:0;http://www.w3.org/2000/01/rdf-schema#label|http://www.w3.org/2000/01/rdf-schema#label|http://www.w3.org/2002/07/owl#AnnotationProperty|660:0;http://www.w3.org/2002/07/owl#versionInfo|http://www.w3.org/2002/07/owl#versionInfo|http://www.w3.org/2002/07/owl#AnnotationProperty|0:140;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/|http://www.w3.org/2002/07/owl#Ontology|220:140;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|440:140;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/qualities/Length|660:140;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|0:280;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|220:280;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|440:280;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|660:280;https://spec.industrialontologies.org/ontology/core/Core/hasQuality|https://spec.industrialontologies.org/ontology/core/Core/hasQuality|http://www.w3.org/2002/07/owl#ObjectProperty|0:420;https://spec.industrialontologies.org/ontology/core/Core/isInputOf|https://spec.industrialontologies.org/ontology/core/Core/isInputOf|http://www.w3.org/2002/07/owl#ObjectProperty|220:420;https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time|https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time|http://www.w3.org/2002/07/owl#ObjectProperty|440:420;https://spec.industrialontologies.org/ontology/core/Core/hasCapability|https://spec.industrialontologies.org/ontology/core/Core/hasCapability|http://www.w3.org/2002/07/owl#ObjectProperty|660:420;https://spec.industrialontologies.org/ontology/core/Core/hasOutput|https://spec.industrialontologies.org/ontology/core/Core/hasOutput|http://www.w3.org/2002/07/owl#ObjectProperty|0:560;https://spec.industrialontologies.org/ontology/core/Core/isAbout|https://spec.industrialontologies.org/ontology/core/Core/isAbout|http://www.w3.org/2002/07/owl#ObjectProperty|220:560;https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime|https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime|http://www.w3.org/2002/07/owl#ObjectProperty|440:560;https://spec.industrialontologies.org/ontology/core/Core/realizes|https://spec.industrialontologies.org/ontology/core/Core/realizes|http://www.w3.org/2002/07/owl#ObjectProperty|660:560;https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|http://www.w3.org/2002/07/owl#Class|0:700;https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|http://www.w3.org/2002/07/owl#Class|220:700;https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|http://www.w3.org/2002/07/owl#Class|440:700;https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|http://www.w3.org/2002/07/owl#Class|660:700;https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|http://www.w3.org/2002/07/owl#Class|0:840;https://spec.industrialontologies.org/ontology/qualities/Length|https://spec.industrialontologies.org/ontology/qualities/Length|http://www.w3.org/2002/07/owl#Class|220:840||https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-hasQuality|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://spec.industrialontologies.org/ontology/core/Core/hasQuality;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-isInputOf|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://spec.industrialontologies.org/ontology/core/Core/isInputOf;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-masuredByAtSomeTime|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-has_participant_at_some_time|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthData-hasOutput|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://spec.industrialontologies.org/ontology/core/Core/hasOutput;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasureCapability-realizes|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://spec.industrialontologies.org/ontology/core/Core/realizes;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthData-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-isAbout|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://spec.industrialontologies.org/ontology/core/Core/isAbout;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasureCapability-hasCapability|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://spec.industrialontologies.org/ontology/core/Core/hasCapability",
+          "nodeCount": 26,
+          "edgeCount": 8
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:23.490Z",
+        "level": "debug",
+        "event": "reactflow.displayedCounts",
+        "meta": {
+          "viewMode": "abox",
+          "nodes": 26,
+          "displayedNodes": 7,
+          "edges": 8,
+          "displayedEdges": 8,
+          "sampleEdge": {
+            "id": "https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-hasQuality",
+            "source": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen",
+            "target": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength",
+            "type": "default",
+            "data": {
+              "key": "https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-hasQuality",
+              "from": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen",
+              "to": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength",
+              "propertyUri": "https://spec.industrialontologies.org/ontology/core/Core/hasQuality",
+              "propertyType": "iof:hasQuality",
+              "label": "has quality",
+              "namespace": "iof",
+              "rdfType": "iof:hasQuality"
+            }
+          }
+        },
+        "caller": "utils/startupDebug.ts:285"
+      },
+      {
+        "ts": "2025-09-10T05:34:23.499Z",
+        "level": "debug",
+        "event": "CustomOntologyNode.displayInfo",
+        "meta": {
+          "uri": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/",
+          "classType": "Ontology",
+          "rdfTypes": [
+            "http://www.w3.org/2002/07/owl#Ontology"
+          ]
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:23.500Z",
+        "level": "debug",
+        "event": "CustomOntologyNode.displayInfo",
+        "meta": {
+          "uri": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen",
+          "classType": "NamedIndividual",
+          "rdfTypes": [
+            "http://www.w3.org/2002/07/owl#NamedIndividual",
+            "https://spec.industrialontologies.org/ontology/materials/Materials/Specimen"
+          ]
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:23.500Z",
+        "level": "debug",
+        "event": "CustomOntologyNode.displayInfo",
+        "meta": {
+          "uri": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength",
+          "classType": "NamedIndividual",
+          "rdfTypes": [
+            "http://www.w3.org/2002/07/owl#NamedIndividual",
+            "https://spec.industrialontologies.org/ontology/qualities/Length"
+          ]
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:23.500Z",
+        "level": "debug",
+        "event": "CustomOntologyNode.displayInfo",
+        "meta": {
+          "uri": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess",
+          "classType": "NamedIndividual",
+          "rdfTypes": [
+            "http://www.w3.org/2002/07/owl#NamedIndividual",
+            "https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess"
+          ]
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:23.501Z",
+        "level": "debug",
+        "event": "CustomOntologyNode.displayInfo",
+        "meta": {
+          "uri": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData",
+          "classType": "NamedIndividual",
+          "rdfTypes": [
+            "http://www.w3.org/2002/07/owl#NamedIndividual",
+            "https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity"
+          ]
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:23.501Z",
+        "level": "debug",
+        "event": "CustomOntologyNode.displayInfo",
+        "meta": {
+          "uri": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper",
+          "classType": "NamedIndividual",
+          "rdfTypes": [
+            "http://www.w3.org/2002/07/owl#NamedIndividual",
+            "https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice"
+          ]
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:23.501Z",
+        "level": "debug",
+        "event": "CustomOntologyNode.displayInfo",
+        "meta": {
+          "uri": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability",
+          "classType": "NamedIndividual",
+          "rdfTypes": [
+            "http://www.w3.org/2002/07/owl#NamedIndividual",
+            "https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability"
+          ]
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:23.542Z",
+        "level": "debug",
+        "event": "reactflow.reasoning.fp",
+        "meta": {
+          "fingerprint": "http://purl.org/dc/terms/abstract|http://purl.org/dc/terms/abstract|http://www.w3.org/2002/07/owl#AnnotationProperty|0:0;http://purl.org/dc/terms/creator|http://purl.org/dc/terms/creator|http://www.w3.org/2002/07/owl#AnnotationProperty|220:0;http://purl.org/dc/terms/license|http://purl.org/dc/terms/license|http://www.w3.org/2002/07/owl#AnnotationProperty|440:0;http://www.w3.org/2000/01/rdf-schema#label|http://www.w3.org/2000/01/rdf-schema#label|http://www.w3.org/2002/07/owl#AnnotationProperty|660:0;http://www.w3.org/2002/07/owl#versionInfo|http://www.w3.org/2002/07/owl#versionInfo|http://www.w3.org/2002/07/owl#AnnotationProperty|0:140;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/|http://www.w3.org/2002/07/owl#Ontology|220:140;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|440:140;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/qualities/Length|660:140;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|0:280;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|220:280;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|440:280;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|660:280;https://spec.industrialontologies.org/ontology/core/Core/hasQuality|https://spec.industrialontologies.org/ontology/core/Core/hasQuality|http://www.w3.org/2002/07/owl#ObjectProperty|0:420;https://spec.industrialontologies.org/ontology/core/Core/isInputOf|https://spec.industrialontologies.org/ontology/core/Core/isInputOf|http://www.w3.org/2002/07/owl#ObjectProperty|220:420;https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time|https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time|http://www.w3.org/2002/07/owl#ObjectProperty|440:420;https://spec.industrialontologies.org/ontology/core/Core/hasCapability|https://spec.industrialontologies.org/ontology/core/Core/hasCapability|http://www.w3.org/2002/07/owl#ObjectProperty|660:420;https://spec.industrialontologies.org/ontology/core/Core/hasOutput|https://spec.industrialontologies.org/ontology/core/Core/hasOutput|http://www.w3.org/2002/07/owl#ObjectProperty|0:560;https://spec.industrialontologies.org/ontology/core/Core/isAbout|https://spec.industrialontologies.org/ontology/core/Core/isAbout|http://www.w3.org/2002/07/owl#ObjectProperty|220:560;https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime|https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime|http://www.w3.org/2002/07/owl#ObjectProperty|440:560;https://spec.industrialontologies.org/ontology/core/Core/realizes|https://spec.industrialontologies.org/ontology/core/Core/realizes|http://www.w3.org/2002/07/owl#ObjectProperty|660:560;https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|http://www.w3.org/2002/07/owl#Class|0:700;https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|http://www.w3.org/2002/07/owl#Class|220:700;https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|http://www.w3.org/2002/07/owl#Class|440:700;https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|http://www.w3.org/2002/07/owl#Class|660:700;https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|http://www.w3.org/2002/07/owl#Class|0:840;https://spec.industrialontologies.org/ontology/qualities/Length|https://spec.industrialontologies.org/ontology/qualities/Length|http://www.w3.org/2002/07/owl#Class|220:840||https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-hasQuality|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://spec.industrialontologies.org/ontology/core/Core/hasQuality;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-isInputOf|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://spec.industrialontologies.org/ontology/core/Core/isInputOf;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-masuredByAtSomeTime|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-has_participant_at_some_time|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthData-hasOutput|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://spec.industrialontologies.org/ontology/core/Core/hasOutput;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasureCapability-realizes|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://spec.industrialontologies.org/ontology/core/Core/realizes;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthData-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-isAbout|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://spec.industrialontologies.org/ontology/core/Core/isAbout;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasureCapability-hasCapability|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://spec.industrialontologies.org/ontology/core/Core/hasCapability",
+          "nodeCount": 26,
+          "edgeCount": 8
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:23.542Z",
+        "level": "debug",
+        "event": "reactflow.displayedCounts",
+        "meta": {
+          "viewMode": "abox",
+          "nodes": 26,
+          "displayedNodes": 7,
+          "edges": 8,
+          "displayedEdges": 8,
+          "sampleEdge": {
+            "id": "https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-hasQuality",
+            "source": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen",
+            "target": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength",
+            "type": "default",
+            "data": {
+              "key": "https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-hasQuality",
+              "from": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen",
+              "to": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength",
+              "propertyUri": "https://spec.industrialontologies.org/ontology/core/Core/hasQuality",
+              "propertyType": "iof:hasQuality",
+              "label": "has quality",
+              "namespace": "iof",
+              "rdfType": "iof:hasQuality"
+            }
+          }
+        },
+        "caller": "utils/startupDebug.ts:285"
+      },
+      {
+        "ts": "2025-09-10T05:34:34.136Z",
+        "level": "debug",
+        "event": "reactflow.reasoning.fp",
+        "meta": {
+          "fingerprint": "http://purl.org/dc/terms/abstract|http://purl.org/dc/terms/abstract|http://www.w3.org/2002/07/owl#AnnotationProperty|0:0;http://purl.org/dc/terms/creator|http://purl.org/dc/terms/creator|http://www.w3.org/2002/07/owl#AnnotationProperty|200:120;http://purl.org/dc/terms/license|http://purl.org/dc/terms/license|http://www.w3.org/2002/07/owl#AnnotationProperty|400:240;http://www.w3.org/2000/01/rdf-schema#label|http://www.w3.org/2000/01/rdf-schema#label|http://www.w3.org/2002/07/owl#AnnotationProperty|600:360;http://www.w3.org/2002/07/owl#versionInfo|http://www.w3.org/2002/07/owl#versionInfo|http://www.w3.org/2002/07/owl#AnnotationProperty|800:480;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/|http://www.w3.org/2002/07/owl#Ontology|1000:0;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|1200:120;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/qualities/Length|1400:240;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|1600:360;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|1800:480;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|2000:0;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|2200:120;https://spec.industrialontologies.org/ontology/core/Core/hasQuality|https://spec.industrialontologies.org/ontology/core/Core/hasQuality|http://www.w3.org/2002/07/owl#ObjectProperty|2400:240;https://spec.industrialontologies.org/ontology/core/Core/isInputOf|https://spec.industrialontologies.org/ontology/core/Core/isInputOf|http://www.w3.org/2002/07/owl#ObjectProperty|2600:360;https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time|https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time|http://www.w3.org/2002/07/owl#ObjectProperty|2800:480;https://spec.industrialontologies.org/ontology/core/Core/hasCapability|https://spec.industrialontologies.org/ontology/core/Core/hasCapability|http://www.w3.org/2002/07/owl#ObjectProperty|3000:0;https://spec.industrialontologies.org/ontology/core/Core/hasOutput|https://spec.industrialontologies.org/ontology/core/Core/hasOutput|http://www.w3.org/2002/07/owl#ObjectProperty|3200:120;https://spec.industrialontologies.org/ontology/core/Core/isAbout|https://spec.industrialontologies.org/ontology/core/Core/isAbout|http://www.w3.org/2002/07/owl#ObjectProperty|3400:240;https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime|https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime|http://www.w3.org/2002/07/owl#ObjectProperty|3600:360;https://spec.industrialontologies.org/ontology/core/Core/realizes|https://spec.industrialontologies.org/ontology/core/Core/realizes|http://www.w3.org/2002/07/owl#ObjectProperty|3800:480;https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|http://www.w3.org/2002/07/owl#Class|4000:0;https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|http://www.w3.org/2002/07/owl#Class|4200:120;https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|http://www.w3.org/2002/07/owl#Class|4400:240;https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|http://www.w3.org/2002/07/owl#Class|4600:360;https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|http://www.w3.org/2002/07/owl#Class|4800:480;https://spec.industrialontologies.org/ontology/qualities/Length|https://spec.industrialontologies.org/ontology/qualities/Length|http://www.w3.org/2002/07/owl#Class|5000:0||https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-hasQuality|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://spec.industrialontologies.org/ontology/core/Core/hasQuality;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-isInputOf|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://spec.industrialontologies.org/ontology/core/Core/isInputOf;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-masuredByAtSomeTime|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-has_participant_at_some_time|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthData-hasOutput|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://spec.industrialontologies.org/ontology/core/Core/hasOutput;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasureCapability-realizes|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://spec.industrialontologies.org/ontology/core/Core/realizes;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthData-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-isAbout|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://spec.industrialontologies.org/ontology/core/Core/isAbout;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasureCapability-hasCapability|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://spec.industrialontologies.org/ontology/core/Core/hasCapability",
+          "nodeCount": 26,
+          "edgeCount": 8
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:34.137Z",
+        "level": "debug",
+        "event": "reactflow.displayedCounts",
+        "meta": {
+          "viewMode": "abox",
+          "nodes": 26,
+          "displayedNodes": 7,
+          "edges": 8,
+          "displayedEdges": 8,
+          "sampleEdge": {
+            "id": "https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-hasQuality",
+            "source": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen",
+            "target": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength",
+            "type": "default",
+            "data": {
+              "key": "https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-hasQuality",
+              "from": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen",
+              "to": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength",
+              "propertyUri": "https://spec.industrialontologies.org/ontology/core/Core/hasQuality",
+              "propertyType": "iof:hasQuality",
+              "label": "has quality",
+              "namespace": "iof",
+              "rdfType": "iof:hasQuality"
+            }
+          }
+        },
+        "caller": "utils/startupDebug.ts:285"
+      },
+      {
+        "ts": "2025-09-10T05:34:34.392Z",
+        "level": "debug",
+        "event": "reactflow.reasoning.scheduled",
+        "meta": {
+          "fingerprint": "http://purl.org/dc/terms/abstract|http://purl.org/dc/terms/abstract|http://www.w3.org/2002/07/owl#AnnotationProperty|0:0;http://purl.org/dc/terms/creator|http://purl.org/dc/terms/creator|http://www.w3.org/2002/07/owl#AnnotationProperty|200:120;http://purl.org/dc/terms/license|http://purl.org/dc/terms/license|http://www.w3.org/2002/07/owl#AnnotationProperty|400:240;http://www.w3.org/2000/01/rdf-schema#label|http://www.w3.org/2000/01/rdf-schema#label|http://www.w3.org/2002/07/owl#AnnotationProperty|600:360;http://www.w3.org/2002/07/owl#versionInfo|http://www.w3.org/2002/07/owl#versionInfo|http://www.w3.org/2002/07/owl#AnnotationProperty|800:480;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/|http://www.w3.org/2002/07/owl#Ontology|1000:0;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|1200:120;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/qualities/Length|1400:240;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|1600:360;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|1800:480;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|2000:0;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|2200:120;https://spec.industrialontologies.org/ontology/core/Core/hasQuality|https://spec.industrialontologies.org/ontology/core/Core/hasQuality|http://www.w3.org/2002/07/owl#ObjectProperty|2400:240;https://spec.industrialontologies.org/ontology/core/Core/isInputOf|https://spec.industrialontologies.org/ontology/core/Core/isInputOf|http://www.w3.org/2002/07/owl#ObjectProperty|2600:360;https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time|https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time|http://www.w3.org/2002/07/owl#ObjectProperty|2800:480;https://spec.industrialontologies.org/ontology/core/Core/hasCapability|https://spec.industrialontologies.org/ontology/core/Core/hasCapability|http://www.w3.org/2002/07/owl#ObjectProperty|3000:0;https://spec.industrialontologies.org/ontology/core/Core/hasOutput|https://spec.industrialontologies.org/ontology/core/Core/hasOutput|http://www.w3.org/2002/07/owl#ObjectProperty|3200:120;https://spec.industrialontologies.org/ontology/core/Core/isAbout|https://spec.industrialontologies.org/ontology/core/Core/isAbout|http://www.w3.org/2002/07/owl#ObjectProperty|3400:240;https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime|https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime|http://www.w3.org/2002/07/owl#ObjectProperty|3600:360;https://spec.industrialontologies.org/ontology/core/Core/realizes|https://spec.industrialontologies.org/ontology/core/Core/realizes|http://www.w3.org/2002/07/owl#ObjectProperty|3800:480;https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|http://www.w3.org/2002/07/owl#Class|4000:0;https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|http://www.w3.org/2002/07/owl#Class|4200:120;https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|http://www.w3.org/2002/07/owl#Class|4400:240;https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|http://www.w3.org/2002/07/owl#Class|4600:360;https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|http://www.w3.org/2002/07/owl#Class|4800:480;https://spec.industrialontologies.org/ontology/qualities/Length|https://spec.industrialontologies.org/ontology/qualities/Length|http://www.w3.org/2002/07/owl#Class|5000:0||https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-hasQuality|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://spec.industrialontologies.org/ontology/core/Core/hasQuality;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-isInputOf|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://spec.industrialontologies.org/ontology/core/Core/isInputOf;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-masuredByAtSomeTime|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-has_participant_at_some_time|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthData-hasOutput|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://spec.industrialontologies.org/ontology/core/Core/hasOutput;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasureCapability-realizes|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://spec.industrialontologies.org/ontology/core/Core/realizes;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthData-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-isAbout|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://spec.industrialontologies.org/ontology/core/Core/isAbout;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasureCapability-hasCapability|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://spec.industrialontologies.org/ontology/core/Core/hasCapability"
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:34.393Z",
+        "level": "debug",
+        "event": "reactflow.reasoning.start",
+        "meta": {
+          "fingerprint": "http://purl.org/dc/terms/abstract|http://purl.org/dc/terms/abstract|http://www.w3.org/2002/07/owl#AnnotationProperty|0:0;http://purl.org/dc/terms/creator|http://purl.org/dc/terms/creator|http://www.w3.org/2002/07/owl#AnnotationProperty|200:120;http://purl.org/dc/terms/license|http://purl.org/dc/terms/license|http://www.w3.org/2002/07/owl#AnnotationProperty|400:240;http://www.w3.org/2000/01/rdf-schema#label|http://www.w3.org/2000/01/rdf-schema#label|http://www.w3.org/2002/07/owl#AnnotationProperty|600:360;http://www.w3.org/2002/07/owl#versionInfo|http://www.w3.org/2002/07/owl#versionInfo|http://www.w3.org/2002/07/owl#AnnotationProperty|800:480;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/|http://www.w3.org/2002/07/owl#Ontology|1000:0;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|1200:120;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/qualities/Length|1400:240;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|1600:360;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|1800:480;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|2000:0;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|2200:120;https://spec.industrialontologies.org/ontology/core/Core/hasQuality|https://spec.industrialontologies.org/ontology/core/Core/hasQuality|http://www.w3.org/2002/07/owl#ObjectProperty|2400:240;https://spec.industrialontologies.org/ontology/core/Core/isInputOf|https://spec.industrialontologies.org/ontology/core/Core/isInputOf|http://www.w3.org/2002/07/owl#ObjectProperty|2600:360;https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time|https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time|http://www.w3.org/2002/07/owl#ObjectProperty|2800:480;https://spec.industrialontologies.org/ontology/core/Core/hasCapability|https://spec.industrialontologies.org/ontology/core/Core/hasCapability|http://www.w3.org/2002/07/owl#ObjectProperty|3000:0;https://spec.industrialontologies.org/ontology/core/Core/hasOutput|https://spec.industrialontologies.org/ontology/core/Core/hasOutput|http://www.w3.org/2002/07/owl#ObjectProperty|3200:120;https://spec.industrialontologies.org/ontology/core/Core/isAbout|https://spec.industrialontologies.org/ontology/core/Core/isAbout|http://www.w3.org/2002/07/owl#ObjectProperty|3400:240;https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime|https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime|http://www.w3.org/2002/07/owl#ObjectProperty|3600:360;https://spec.industrialontologies.org/ontology/core/Core/realizes|https://spec.industrialontologies.org/ontology/core/Core/realizes|http://www.w3.org/2002/07/owl#ObjectProperty|3800:480;https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|http://www.w3.org/2002/07/owl#Class|4000:0;https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|http://www.w3.org/2002/07/owl#Class|4200:120;https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|http://www.w3.org/2002/07/owl#Class|4400:240;https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|http://www.w3.org/2002/07/owl#Class|4600:360;https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|http://www.w3.org/2002/07/owl#Class|4800:480;https://spec.industrialontologies.org/ontology/qualities/Length|https://spec.industrialontologies.org/ontology/qualities/Length|http://www.w3.org/2002/07/owl#Class|5000:0||https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-hasQuality|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://spec.industrialontologies.org/ontology/core/Core/hasQuality;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-isInputOf|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://spec.industrialontologies.org/ontology/core/Core/isInputOf;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-masuredByAtSomeTime|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-has_participant_at_some_time|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthData-hasOutput|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://spec.industrialontologies.org/ontology/core/Core/hasOutput;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasureCapability-realizes|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://spec.industrialontologies.org/ontology/core/Core/realizes;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthData-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-isAbout|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://spec.industrialontologies.org/ontology/core/Core/isAbout;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasureCapability-hasCapability|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://spec.industrialontologies.org/ontology/core/Core/hasCapability",
+          "nodes": 26,
+          "edges": 8
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:34.393Z",
+        "level": "debug",
+        "event": "reactflow.reasoning.invoke",
+        "meta": {
+          "nodes": 26,
+          "edges": 8
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:34.394Z",
+        "level": "debug",
+        "event": "reactflow.reasoning.payload",
+        "meta": {
+          "nodes": 26,
+          "edges": 8
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:35.767Z",
+        "level": "debug",
+        "event": "reactflow.reasoning.result",
+        "meta": {
+          "errorCount": 0
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:35.767Z",
+        "level": "debug",
+        "event": "reactflow.reasoning.complete",
+        "meta": {
+          "fingerprint": "http://purl.org/dc/terms/abstract|http://purl.org/dc/terms/abstract|http://www.w3.org/2002/07/owl#AnnotationProperty|0:0;http://purl.org/dc/terms/creator|http://purl.org/dc/terms/creator|http://www.w3.org/2002/07/owl#AnnotationProperty|200:120;http://purl.org/dc/terms/license|http://purl.org/dc/terms/license|http://www.w3.org/2002/07/owl#AnnotationProperty|400:240;http://www.w3.org/2000/01/rdf-schema#label|http://www.w3.org/2000/01/rdf-schema#label|http://www.w3.org/2002/07/owl#AnnotationProperty|600:360;http://www.w3.org/2002/07/owl#versionInfo|http://www.w3.org/2002/07/owl#versionInfo|http://www.w3.org/2002/07/owl#AnnotationProperty|800:480;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/|http://www.w3.org/2002/07/owl#Ontology|1000:0;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|1200:120;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/qualities/Length|1400:240;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|1600:360;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|1800:480;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|2000:0;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|2200:120;https://spec.industrialontologies.org/ontology/core/Core/hasQuality|https://spec.industrialontologies.org/ontology/core/Core/hasQuality|http://www.w3.org/2002/07/owl#ObjectProperty|2400:240;https://spec.industrialontologies.org/ontology/core/Core/isInputOf|https://spec.industrialontologies.org/ontology/core/Core/isInputOf|http://www.w3.org/2002/07/owl#ObjectProperty|2600:360;https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time|https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time|http://www.w3.org/2002/07/owl#ObjectProperty|2800:480;https://spec.industrialontologies.org/ontology/core/Core/hasCapability|https://spec.industrialontologies.org/ontology/core/Core/hasCapability|http://www.w3.org/2002/07/owl#ObjectProperty|3000:0;https://spec.industrialontologies.org/ontology/core/Core/hasOutput|https://spec.industrialontologies.org/ontology/core/Core/hasOutput|http://www.w3.org/2002/07/owl#ObjectProperty|3200:120;https://spec.industrialontologies.org/ontology/core/Core/isAbout|https://spec.industrialontologies.org/ontology/core/Core/isAbout|http://www.w3.org/2002/07/owl#ObjectProperty|3400:240;https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime|https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime|http://www.w3.org/2002/07/owl#ObjectProperty|3600:360;https://spec.industrialontologies.org/ontology/core/Core/realizes|https://spec.industrialontologies.org/ontology/core/Core/realizes|http://www.w3.org/2002/07/owl#ObjectProperty|3800:480;https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|http://www.w3.org/2002/07/owl#Class|4000:0;https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|http://www.w3.org/2002/07/owl#Class|4200:120;https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|http://www.w3.org/2002/07/owl#Class|4400:240;https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|http://www.w3.org/2002/07/owl#Class|4600:360;https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|http://www.w3.org/2002/07/owl#Class|4800:480;https://spec.industrialontologies.org/ontology/qualities/Length|https://spec.industrialontologies.org/ontology/qualities/Length|http://www.w3.org/2002/07/owl#Class|5000:0||https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-hasQuality|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://spec.industrialontologies.org/ontology/core/Core/hasQuality;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-isInputOf|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://spec.industrialontologies.org/ontology/core/Core/isInputOf;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-masuredByAtSomeTime|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-has_participant_at_some_time|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthData-hasOutput|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://spec.industrialontologies.org/ontology/core/Core/hasOutput;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasureCapability-realizes|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://spec.industrialontologies.org/ontology/core/Core/realizes;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthData-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-isAbout|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://spec.industrialontologies.org/ontology/core/Core/isAbout;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasureCapability-hasCapability|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://spec.industrialontologies.org/ontology/core/Core/hasCapability"
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:35.775Z",
+        "level": "debug",
+        "event": "reactflow.reasoning.fp",
+        "meta": {
+          "fingerprint": "http://purl.org/dc/terms/abstract|http://purl.org/dc/terms/abstract|http://www.w3.org/2002/07/owl#AnnotationProperty|0:0;http://purl.org/dc/terms/creator|http://purl.org/dc/terms/creator|http://www.w3.org/2002/07/owl#AnnotationProperty|200:120;http://purl.org/dc/terms/license|http://purl.org/dc/terms/license|http://www.w3.org/2002/07/owl#AnnotationProperty|400:240;http://www.w3.org/2000/01/rdf-schema#label|http://www.w3.org/2000/01/rdf-schema#label|http://www.w3.org/2002/07/owl#AnnotationProperty|600:360;http://www.w3.org/2002/07/owl#versionInfo|http://www.w3.org/2002/07/owl#versionInfo|http://www.w3.org/2002/07/owl#AnnotationProperty|800:480;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/|http://www.w3.org/2002/07/owl#Ontology|1000:0;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|1200:120;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/qualities/Length|1400:240;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|1600:360;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|1800:480;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|2000:0;https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|http://www.w3.org/2002/07/owl#NamedIndividual|https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|2200:120;https://spec.industrialontologies.org/ontology/core/Core/hasQuality|https://spec.industrialontologies.org/ontology/core/Core/hasQuality|http://www.w3.org/2002/07/owl#ObjectProperty|2400:240;https://spec.industrialontologies.org/ontology/core/Core/isInputOf|https://spec.industrialontologies.org/ontology/core/Core/isInputOf|http://www.w3.org/2002/07/owl#ObjectProperty|2600:360;https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time|https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time|http://www.w3.org/2002/07/owl#ObjectProperty|2800:480;https://spec.industrialontologies.org/ontology/core/Core/hasCapability|https://spec.industrialontologies.org/ontology/core/Core/hasCapability|http://www.w3.org/2002/07/owl#ObjectProperty|3000:0;https://spec.industrialontologies.org/ontology/core/Core/hasOutput|https://spec.industrialontologies.org/ontology/core/Core/hasOutput|http://www.w3.org/2002/07/owl#ObjectProperty|3200:120;https://spec.industrialontologies.org/ontology/core/Core/isAbout|https://spec.industrialontologies.org/ontology/core/Core/isAbout|http://www.w3.org/2002/07/owl#ObjectProperty|3400:240;https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime|https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime|http://www.w3.org/2002/07/owl#ObjectProperty|3600:360;https://spec.industrialontologies.org/ontology/core/Core/realizes|https://spec.industrialontologies.org/ontology/core/Core/realizes|http://www.w3.org/2002/07/owl#ObjectProperty|3800:480;https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|https://spec.industrialontologies.org/ontology/materials/Materials/Specimen|http://www.w3.org/2002/07/owl#Class|4000:0;https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|https://spec.industrialontologies.org/ontology/core/Core/MeasurementInformationContentEntity|http://www.w3.org/2002/07/owl#Class|4200:120;https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|https://spec.industrialontologies.org/ontology/core/Core/MeasurementProcess|http://www.w3.org/2002/07/owl#Class|4400:240;https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|https://spec.industrialontologies.org/ontology/materials/Materials/DistanceMeasurementCapability|http://www.w3.org/2002/07/owl#Class|4600:360;https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice|http://www.w3.org/2002/07/owl#Class|4800:480;https://spec.industrialontologies.org/ontology/qualities/Length|https://spec.industrialontologies.org/ontology/qualities/Length|http://www.w3.org/2002/07/owl#Class|5000:0||https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-hasQuality|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://spec.industrialontologies.org/ontology/core/Core/hasQuality;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-isInputOf|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://spec.industrialontologies.org/ontology/core/Core/isInputOf;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-masuredByAtSomeTime|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://spec.industrialontologies.org/ontology/core/Core/masuredByAtSomeTime;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-has_participant_at_some_time|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/has_participant_at_some_time;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthData-hasOutput|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://spec.industrialontologies.org/ontology/core/Core/hasOutput;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasurementProcess-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasureCapability-realizes|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasurementProcess|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://spec.industrialontologies.org/ontology/core/Core/realizes;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthData-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-isAbout|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthData|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength|https://spec.industrialontologies.org/ontology/core/Core/isAbout;https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Caliper-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_LengthMeasureCapability-hasCapability|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Caliper|https://github.com/Mat-O-Lab/IOFMaterialsTutorial/LengthMeasureCapability|https://spec.industrialontologies.org/ontology/core/Core/hasCapability",
+          "nodeCount": 26,
+          "edgeCount": 8
+        }
+      },
+      {
+        "ts": "2025-09-10T05:34:35.775Z",
+        "level": "debug",
+        "event": "reactflow.displayedCounts",
+        "meta": {
+          "viewMode": "abox",
+          "nodes": 26,
+          "displayedNodes": 7,
+          "edges": 8,
+          "displayedEdges": 8,
+          "sampleEdge": {
+            "id": "https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-hasQuality",
+            "source": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen",
+            "target": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength",
+            "type": "default",
+            "data": {
+              "key": "https_github_com_Mat-O-Lab_IOFMaterialsTutorial_Specimen-https_github_com_Mat-O-Lab_IOFMaterialsTutorial_SpecimenLength-hasQuality",
+              "from": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/Specimen",
+              "to": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength",
+              "propertyUri": "https://spec.industrialontologies.org/ontology/core/Core/hasQuality",
+              "propertyType": "iof:hasQuality",
+              "label": "has quality",
+              "namespace": "iof",
+              "rdfType": "iof:hasQuality",
+              "hasReasoningError": false
+            }
+          }
+        },
+        "caller": "utils/startupDebug.ts:285"
+      }
+    ],
+    "milestones": [],
+    "counters": {
+      "rdfLoads": 1,
+      "totalTriplesAdded": 62
+    },
+    "anomalies": [],
+    "fallbacks": []
+  },
+  "serverPid": 4027818,
+  "screenshotPath": "/home/hanke/visgraph/playwright-reports/layout-applied.png"
+}

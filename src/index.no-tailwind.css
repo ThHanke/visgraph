@@ -1,0 +1,126 @@
+:root {
+  --background: 210 20% 98%;
+  --foreground: 215 25% 27%;
+  --card: 0 0% 100%;
+  --card-foreground: 215 25% 27%;
+  --primary: 250 55% 70%;
+  --primary-foreground: 0 0% 100%;
+  --muted: 210 20% 95%;
+  --border: 210 15% 88%;
+  --canvas-bg: 210 25% 97%;
+  --canvas-grid: 210 15% 90%;
+  --node-bg: 0 0% 100%;
+  --node-foreground: 215 25% 27%;
+  --node-border: 210 15% 88%;
+  --node-muted: 210 15% 92%;
+  --node-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  --edge-default: 215 20% 60%;
+  --edge-selected: 250 55% 60%;
+  --node-leftbar-width: 8px;
+  --radius: 0.75rem;
+  --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Basic page styles */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* React Flow node baseline styles (minimal, no Tailwind) */
+.react-flow__node {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  vertical-align: top;
+  font-family: inherit;
+  background: hsl(var(--node-bg));
+  color: hsl(var(--node-foreground));
+  border: 1px solid hsl(var(--node-border));
+  border-radius: calc(var(--radius) - 0.25rem);
+  box-shadow: var(--node-shadow);
+  transition: var(--transition-smooth);
+  position: relative;
+  overflow: hidden;
+  padding: 8px 12px;
+}
+
+/* Left namespace color bar */
+.react-flow__node::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--node-leftbar-width);
+  background: var(--node-leftbar-color, transparent);
+  transition: background 0.2s ease;
+}
+
+/* Edge defaults */
+.react-flow__edge-path {
+  stroke: hsl(var(--edge-default));
+  stroke-width: 2px;
+  opacity: 1;
+  transition: var(--transition-smooth);
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: hsl(var(--edge-selected));
+}
+
+/* Handles */
+.react-flow__handle {
+  background: hsl(var(--primary));
+  border: 2px solid hsl(var(--primary-foreground));
+  width: 12px;
+  height: 12px;
+  transition: var(--transition-smooth);
+}
+
+/* Controls */
+.react-flow__controls {
+  z-index: 60;
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  pointer-events: auto;
+}
+
+.react-flow__control {
+  background: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 8px 32px rgba(0,0,0,0.06);
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+
+/* Small utility: ensure canvas container occupies full height */
+.knowledge-graph-canvas, .w-full.h-full {
+  height: calc(100vh - 64px);
+}
+
+/* Ensure React Flow edge SVGs do not clip custom edge paths rendered outside their box.
+   Make the edges SVG fill available area and allow visible overflow so long edges are not cut off. */
+.react-flow__edges svg {
+  overflow: visible;
+  width: 100%;
+  height: 100%;
+}
+
+/* Safeguard: ensure React Flow root does not clip overflowing SVG content */
+.react-flow {
+  overflow: visible;
+}

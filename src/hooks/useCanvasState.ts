@@ -1,0 +1,178 @@
+/**
+ * @fileoverview Canvas state management hook
+ * Provides centralized state management for the knowledge graph canvas,
+ * including view modes, loading states, and UI component visibility.
+ */
+
+import { useState, useCallback } from 'react';
+import { CanvasState, CanvasActions, NodeData, LinkData } from '../types/canvas';
+
+/**
+ * Custom hook for managing canvas state and actions
+ * 
+ * @returns Object containing canvas state and action functions
+ * 
+ * @example
+ * ```tsx
+ * const { state, actions } = useCanvasState();
+ * 
+ * // Change view mode
+ * actions.setViewMode('tbox');
+ * 
+ * // Show loading state
+ * actions.setLoading(true, 50, 'Loading ontology...');
+ * ```
+ */
+export const useCanvasState = () => {
+  // Core canvas state
+  const [viewMode, setViewMode] = useState<'abox' | 'tbox'>('abox');
+  const [showLegend, setShowLegend] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingMessage, setLoadingMessage] = useState('');
+  
+  // Editor states
+  const [selectedNode, setSelectedNode] = useState<NodeData | null>(null);
+  const [selectedLink, setSelectedLink] = useState<LinkData | null>(null);
+  const [showNodeEditor, setShowNodeEditor] = useState(false);
+  const [showLinkEditor, setShowLinkEditor] = useState(false);
+  const [showReasoningReport, setShowReasoningReport] = useState(false);
+
+  /**
+   * Toggle the namespace legend visibility
+   */
+  const toggleLegend = useCallback(() => {
+    setShowLegend(prev => !prev);
+  }, []);
+
+  /**
+   * Set loading state with optional progress and message
+   * 
+   * @param loading - Whether currently loading
+   * @param progress - Loading progress (0-100)
+   * @param message - Loading message to display
+   */
+  const handleSetLoading = useCallback((
+    loading: boolean, 
+    progress = 0, 
+    message = ''
+  ) => {
+    setIsLoading(loading);
+    setLoadingProgress(progress);
+    setLoadingMessage(message);
+  }, []);
+
+  /**
+   * Set the selected node and optionally open the editor
+   * 
+   * @param node - Node data to select (null to deselect)
+   * @param openEditor - Whether to open the node editor
+   */
+  const handleSetSelectedNode = useCallback((
+    node: NodeData | null, 
+    openEditor = false
+  ) => {
+    setSelectedNode(node);
+    if (openEditor && node) {
+      setShowNodeEditor(true);
+    }
+  }, []);
+
+  /**
+   * Set the selected link and optionally open the editor
+   * 
+   * @param link - Link data to select (null to deselect)
+   * @param openEditor - Whether to open the link editor
+   */
+  const handleSetSelectedLink = useCallback((
+    link: LinkData | null, 
+    openEditor = false
+  ) => {
+    setSelectedLink(link);
+    if (openEditor && link) {
+      setShowLinkEditor(true);
+    }
+  }, []);
+
+  /**
+   * Toggle node editor visibility
+   * 
+   * @param show - Whether to show the editor
+   */
+  const toggleNodeEditor = useCallback((show: boolean) => {
+    setShowNodeEditor(show);
+    // Clear selection when closing editor
+    if (!show) {
+      setSelectedNode(null);
+    }
+  }, []);
+
+  /**
+   * Toggle link editor visibility
+   * 
+   * @param show - Whether to show the editor
+   */
+  const toggleLinkEditor = useCallback((show: boolean) => {
+    setShowLinkEditor(show);
+    // Clear selection when closing editor
+    if (!show) {
+      setSelectedLink(null);
+    }
+  }, []);
+
+  /**
+   * Toggle reasoning report visibility
+   * 
+   * @param show - Whether to show the report
+   */
+  const toggleReasoningReport = useCallback((show: boolean) => {
+    setShowReasoningReport(show);
+  }, []);
+
+  /**
+   * Clear all selections and close all editors
+   */
+  const clearSelections = useCallback(() => {
+    setSelectedNode(null);
+    setSelectedLink(null);
+    setShowNodeEditor(false);
+    setShowLinkEditor(false);
+  }, []);
+
+  // Aggregate state object
+  const state: CanvasState = {
+    viewMode,
+    showLegend,
+    isLoading,
+    loadingProgress,
+    loadingMessage,
+    selectedNode,
+    selectedLink,
+    showNodeEditor,
+    showLinkEditor,
+    showReasoningReport,
+  };
+
+  // Aggregate actions object
+  const actions: CanvasActions = {
+    setViewMode,
+    toggleLegend,
+    setLoading: handleSetLoading,
+    setSelectedNode: handleSetSelectedNode,
+    setSelectedLink: handleSetSelectedLink,
+    toggleNodeEditor,
+    toggleLinkEditor,
+    toggleReasoningReport,
+  };
+
+  return {
+    state,
+    actions,
+    clearSelections,
+  };
+};
+
+/**
+ * Type for the return value of useCanvasState hook
+ */
+export type UseCanvasStateReturn = ReturnType<typeof useCanvasState>;
