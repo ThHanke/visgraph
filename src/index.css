@@ -160,7 +160,14 @@
   }
 }
 
+.react-flow__edges svg {
+  overflow: inherit;
+}
 
+.react-flow .react-flow__edges {
+	overflow: visible;
+	position: absolute;
+}
 /* Node-level styling that consumes the new theme tokens.
    These rules provide a default presentation for React Flow nodes.
    Individual node renderers (TemplateManager / components) may still set inline styles
@@ -210,6 +217,13 @@
 .react-flow__node:hover {
   box-shadow: 0 8px 24px hsla(var(--node-outline), var(--node-overlay-alpha));
   transform: translateY(-2px);
+}
+.edge-label-renderer__custom-edge {
+  position: absolute;
+  transition: var(--transition-smooth);
+}
+.react-flow__marker {
+  position: absolute;
 }
 
 /* Selected node */
@@ -322,49 +336,12 @@
   pointer-events: auto;
 }
 
-/* Style individual control buttons so they are visible on light/dark themes */
-.react-flow__control {
-  background: hsl(var(--card));
-  color: hsl(var(--card-foreground));
+
+.react-flow__controls-button {
+	border: none;
+	color:  hsl(var(--muted-foreground) / var(--tw-text-opacity, 1));
   border: 1px solid hsl(var(--border));
-  box-shadow: var(--glass-shadow);
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  margin-bottom: 6px;
-  transition: transform 0.12s ease, background 0.12s ease;
-}
-
-.react-flow__control:hover {
-  transform: translateY(-2px);
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
-}
-
-/* Make React Flow control icons larger and more legible.
-   Some builds render the control SVGs quite small; explicitly size the SVGs,
-   increase stroke where applicable, and slightly scale the control group so the
-   viewport controls are easier to target on high-DPI displays.
-   These rules are safe fallbacks while we ensure the upstream styles are loaded.
-*/
-.react-flow__controls {
-  transform: scale(1.15);
-  transform-origin: left bottom;
-}
-
-.react-flow__control svg {
-  width: 20px;
-  height: 20px;
-  display: block;
-  stroke-width: 1.5;
-  fill: currentColor;
-}
-
-/* Ensure control buttons have no extra internal padding that would reduce icon size */
-.react-flow__control > * {
-  margin: 0;
-  padding: 0;
-}
+  border-bottom: 1px solid hsl(var(--background) / 1) !important;
+  --tw-bg-opacity: 1;
+  background-color: hsl(var(--muted) / var(--tw-bg-opacity, 1)) !important;
+  }

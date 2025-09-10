@@ -32,6 +32,14 @@ export class RDFManager {
   private changeCounter = 0;
   private changeSubscribers = new Set<(count: number) => void>();
 
+  // Subject-level change notification (emits unique subject IRIs that were affected).
+  // Consumers can subscribe via onSubjectsChange/offSubjectsChange to receive an array
+  // of subject IRIs that have had triples added/removed. Emission is debounced inside
+  // the RDFManager to coalesce bursts of quad operations.
+  private subjectChangeSubscribers = new Set<(subjects: string[]) => void>();
+  private subjectChangeBuffer: Set<string> = new Set();
+  private subjectFlushTimer: number | null = null;
+
   constructor() {
     this.store = new Store();
     this.parser = new Parser();
@@ -131,6 +139,53 @@ export class RDFManager {
         try { cb(this.changeCounter); } catch (_) { /* ignore individual subscriber errors */ }
       }
     } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
+
+  }
+
+  // Subject-level subscription API ------------------------------------------------
+  public onSubjectsChange(cb: (subjects: string[]) => void): void {
+    if (typeof cb !== 'function') return;
+    this.subjectChangeSubscribers.add(cb);
+  }
+
+  public offSubjectsChange(cb: (subjects: string[]) => void): void {
+    this.subjectChangeSubscribers.delete(cb);
+  }
+
+  private scheduleSubjectFlush(delay = 50) {
+    try {
+      if (this.subjectFlushTimer) {
+        window.clearTimeout(this.subjectFlushTimer);
+      }
+      this.subjectFlushTimer = window.setTimeout(() => {
+        try {
+          if (this.subjectChangeBuffer.size === 0) {
+            this.subjectFlushTimer = null;
+            return;
+          }
+          const subjects = Array.from(this.subjectChangeBuffer);
+          this.subjectChangeBuffer.clear();
+          this.subjectFlushTimer = null;
+          for (const cb of Array.from(this.subjectChangeSubscribers)) {
+            try { cb(subjects); } catch (_) { /* ignore individual subscriber errors */ }
+          }
+        } catch (e) {
+          try { if (typeof fallback === "function") { fallback("rdf.subjectFlush.failed", { error: String(e) }); } } catch (_) { /* ignore */ }
+        }
+      }, delay);
+    } catch (e) {
+      try { if (typeof fallback === "function") { fallback("rdf.scheduleSubjectFlush.failed", { error: String(e) }); } } catch (_) { /* ignore */ }
+    }
+  }
+
+  private bufferSubjectFromQuad(q: Quad | null | undefined) {
+    try {
+      if (!q || !q.subject || !q.subject.value) return;
+      this.subjectChangeBuffer.add(String((q.subject as any).value));
+      this.scheduleSubjectFlush();
+    } catch (e) {
+      try { if (typeof fallback === "function") { fallback("rdf.bufferSubject.failed", { error: String(e) }); } } catch (_) { /* ignore */ }
+    }
   }
 
   // ---------- Loading / parsing / applying RDF ----------
