@@ -458,7 +458,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                   value={[tempLayoutSpacing]}
                   onValueChange={([v]) => setTempLayoutSpacing(v)}
                   min={50}
-                  max={300}
+                  max={500}
                   step={10}
                   className="w-full"
                 />

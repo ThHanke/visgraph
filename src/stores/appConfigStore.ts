@@ -116,11 +116,11 @@ export const useAppConfigStore = create<AppConfigStore>()(
         }));
       },
 
-      setLayoutSpacing: (spacing: number) => {
+            setLayoutSpacing: (spacing: number) => {
         set((state) => ({
           config: {
             ...state.config,
-            layoutSpacing: Math.max(50, Math.min(300, spacing)) // Clamp between 50-300
+            layoutSpacing: Math.max(50, Math.min(500, spacing)) // Clamp between 50-500
           }
         }));
       },
