@@ -5,6 +5,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useOntologyStore } from '../../stores/ontologyStore';
+import { FIXTURES } from '../fixtures/rdfFixtures';
 
 describe('OntologyStore - Graph Preservation', () => {
   beforeEach(() => {
@@ -65,17 +66,16 @@ describe('OntologyStore - Graph Preservation', () => {
     expect(state.currentGraph.nodes[0].data.literalProperties).toHaveLength(2);
 
     // Create mock RDF content for additional ontology
-    const additionalRdfContent = `
-      @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-      @prefix ex: <http://example.com/new/> .
-      
-      ex:newPerson a foaf:Person ;
-        foaf:name "Jane Smith" ;
-        foaf:email "jane@example.com" .
-        
-      ex:newOrg a foaf:Organization ;
-        foaf:name "New Company" .
-    `;
+    const additionalRdfContent = FIXTURES['foaf_test_data'] + `
+@prefix ex: <http://example.com/new/> .
+
+ex:newPerson a foaf:Person ;
+  foaf:name "Jane Smith" ;
+  foaf:email "jane@example.com" .
+
+ex:newOrg a foaf:Organization ;
+  foaf:name "New Company" .
+`;
 
     // Load additional ontology with preservation enabled
     await store.loadOntologyFromRDF(additionalRdfContent, undefined, true);
@@ -146,13 +146,12 @@ describe('OntologyStore - Graph Preservation', () => {
     store.setCurrentGraph([testNode], []);
 
     // Load additional ontology - this should preserve the changes
-    const additionalRdf = `
-      @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-      @prefix ex: <http://example.com/> .
-      
-      ex:anotherPerson a foaf:Person ;
-        foaf:name "Another Person" .
-    `;
+    const additionalRdf = FIXTURES['foaf_test_data'] + `
+@prefix ex: <http://example.com/> .
+
+ex:anotherPerson a foaf:Person ;
+  foaf:name "Another Person" .
+`;
 
     await store.loadOntologyFromRDF(additionalRdf, undefined, true);
 
@@ -182,16 +181,15 @@ describe('OntologyStore - Graph Preservation', () => {
     store.setCurrentGraph(initialNodes, []);
 
     // Load ontology that contains the same entity
-    const rdfContent = `
-      @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-      @prefix ex: <http://example.com/> .
-      
-      ex:person1 a foaf:Person ;
-        foaf:name "John Doe" .
-        
-      ex:person2 a foaf:Person ;
-        foaf:name "Jane Doe" .
-    `;
+    const rdfContent = FIXTURES['foaf_test_data'] + `
+@prefix ex: <http://example.com/> .
+
+ex:person1 a foaf:Person ;
+  foaf:name "John Doe" .
+
+ex:person2 a foaf:Person ;
+  foaf:name "Jane Doe" .
+`;
 
     await store.loadOntologyFromRDF(rdfContent, undefined, true);
 

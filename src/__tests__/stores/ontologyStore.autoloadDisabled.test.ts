@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { useAppConfigStore } from '../../stores/appConfigStore';
+import { FIXTURES } from '../fixtures/rdfFixtures';
 
 describe('ontology auto-load respect disabled list', () => {
   beforeEach(() => {
@@ -16,13 +17,12 @@ describe('ontology auto-load respect disabled list', () => {
     useAppConfigStore.getState().addDisabledOntology(foaf);
 
     // Simple TTL that references foaf prefix (should trigger additional ontology detection)
-    const ttl = `
-      @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-      @prefix ex: <http://example.org/> .
+    const ttl = FIXTURES['foaf_test_data'] + `
+@prefix ex: <http://example.org/> .
 
-      ex:alice a foaf:Person ;
-        foaf:name "Alice" .
-    `;
+ex:alice a foaf:Person ;
+  foaf:name "Alice" .
+`;
 
     // Load as a knowledge graph (pass the TTL as the source string; loadKnowledgeGraph uses raw content)
     await useOntologyStore.getState().loadKnowledgeGraph(ttl, { onProgress: () => {} });

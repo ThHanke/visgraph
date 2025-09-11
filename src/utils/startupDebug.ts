@@ -116,7 +116,7 @@ function safeConsole(level: 'debug'|'info'|'warn'|'error', ...args: any[]) {
   }
 }
 
-function shortCaller(stackLimit = 5): string | null {
+function shortCaller(stackLimit = 2): string | null {
   try {
     const err = new Error();
     if (!err.stack) return null;

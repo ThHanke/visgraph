@@ -260,7 +260,24 @@ export class RDFManager {
             parser.on('data', (quadItem: any) => {
               try {
                 const exists = this.store.countQuads(quadItem.subject, quadItem.predicate, quadItem.object, quadItem.graph) > 0;
-                if (!exists) this.store.addQuad(quadItem);
+                if (!exists) {
+                  try {
+                    // Validate parser-produced quad before adding to the store.
+                    if (quadItem && quadItem.subject && quadItem.predicate && quadItem.object) {
+                      // Minimal debug info to help identify problematic terms.
+                      // eslint-disable-next-line no-console
+                      console.debug('[VG_RDF_ADD] xml', (quadItem as any)?.subject?.value, (quadItem as any)?.predicate?.value, (quadItem as any)?.object?.value);
+                      this.store.addQuad(quadItem);
+                      // Buffer subject for subject-level change notifications.
+                      try { this.bufferSubjectFromQuad(quadItem); } catch (_) { /* ignore */ }
+                    } else {
+                      // eslint-disable-next-line no-console
+                      console.warn('[VG_RDF_ADD_SKIPPED] invalid quadItem in xml parser', quadItem);
+                    }
+                  } catch (innerErr) {
+                    try { this.store.addQuad(quadItem); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
+                  }
+                }
               } catch (e) {
                 try { this.store.addQuad(quadItem); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
               }
@@ -269,7 +286,24 @@ export class RDFManager {
               try { prefixesCollected[prefix] = iri; } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
             });
             parser.on('end', () => finalize(prefixesCollected));
-            parser.on('error', (err: any) => { try { rejectFn(err); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } } });
+            parser.on('error', (err: any) => {
+              try {
+                // Expose structured parse error for UI consumption (XML parser path)
+                try {
+                  if (typeof window !== 'undefined') {
+                    try { (window as any).__VG_LAST_RDF = rdfContent; } catch (_) { /* ignore */ }
+                    const lines = String(rdfContent || '').split(/\r?\n/);
+                    const snippet = lines.slice(0, Math.min(lines.length, 40)).join('\n');
+                    const errMsg = String(err);
+                    try { (window as any).__VG_LAST_RDF_ERROR = { message: errMsg, snippet }; } catch (_) { /* ignore */ }
+                    try { window.dispatchEvent(new CustomEvent('vg:rdf-parse-error', { detail: { message: errMsg, snippet } })); } catch (_) { /* ignore */ }
+                    // eslint-disable-next-line no-console
+                    console.error('[VG_RDF_PARSE_ERROR]', errMsg.slice(0, 200), 'snippet:', snippet.slice(0, 1000));
+                  }
+                } catch (_) { /* ignore structured logging failures */ }
+              } catch (_) { /* ignore outer */ }
+              try { rejectFn(err); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
+            });
 
             parser.write(rdfContent);
             parser.end();
@@ -278,8 +312,41 @@ export class RDFManager {
         } catch (e) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(e) }); } } catch (_) { /* ignore */ } }
       }
 
+      // If the content uses common prefixed names but does not declare them,
+      // prepend any known namespace declarations from this.namespaces so the
+      // parser won't error on "Undefined prefix".
+      try {
+        const used = Array.from(new Set(((rdfContent.match(/\b([A-Za-z][\w-]*)\s*:/g) || []).map(m => m.replace(/:.*/, '')))));
+        const declared = Array.from(new Set(((rdfContent.match(/@prefix\s+([A-Za-z][\w-]*):/g) || []).map(m => m.replace(/@prefix\s+([A-Za-z][\w-]*):.*/, '$1')))));
+        const missing = used.filter(p => !declared.includes(p) && this.namespaces[p]);
+        if (missing.length > 0) {
+          const adds = missing.map(p => `@prefix ${p}: <${this.namespaces[p]}> .`).join('\n') + '\n';
+          rdfContent = adds + rdfContent;
+        }
+      } catch (_) { /* ignore */ }
+
+      rdfContent = rdfContent.replace(/^\s+/, '');
       this.parser.parse(rdfContent, (error, quadItem, prefixes) => {
         if (error) {
+          try {
+            // Expose the last RDF content to the browser runtime for quick inspection in devtools.
+            if (typeof window !== 'undefined') {
+              try { (window as any).__VG_LAST_RDF = rdfContent; } catch (_) { /* ignore */ }
+              // Build a concise snippet for UI/console consumption (first ~40 lines)
+              try {
+                const lines = String(rdfContent || '').split(/\r?\n/);
+                const snippet = lines.slice(0, Math.min(lines.length, 40)).join('\n');
+                const errMsg = String(error);
+                // Expose structured parse error so UI can consume it deterministically
+                try { (window as any).__VG_LAST_RDF_ERROR = { message: errMsg, snippet }; } catch (_) { /* ignore */ }
+                // Dispatch a DOM event so any listeners may react (optional)
+                try { window.dispatchEvent(new CustomEvent('vg:rdf-parse-error', { detail: { message: errMsg, snippet } })); } catch (_) { /* ignore */ }
+                // Log a concise console line for developers
+                // eslint-disable-next-line no-console
+                console.error('[VG_RDF_PARSE_ERROR]', errMsg.slice(0, 200), 'snippet:', snippet.slice(0, 1000));
+              } catch (_) { /* ignore snippet logging failures */ }
+            }
+          } catch (_) { /* ignore outer logging failures */ }
           try { rejectFn(error); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
           return;
         }
@@ -288,7 +355,19 @@ export class RDFManager {
           try {
             const exists = this.store.countQuads(quadItem.subject, quadItem.predicate, quadItem.object, quadItem.graph) > 0;
             if (!exists) {
-              this.store.addQuad(quadItem);
+              try {
+                if (quadItem && quadItem.subject && quadItem.predicate && quadItem.object) {
+                  // eslint-disable-next-line no-console
+                  console.debug('[VG_RDF_ADD] parse', (quadItem as any)?.subject?.value, (quadItem as any)?.predicate?.value, (quadItem as any)?.object?.value);
+                  this.store.addQuad(quadItem);
+                  try { this.bufferSubjectFromQuad(quadItem); } catch (_) { /* ignore */ }
+                } else {
+                  // eslint-disable-next-line no-console
+                  console.warn('[VG_RDF_ADD_SKIPPED] invalid quadItem from parser', quadItem);
+                }
+              } catch (inner) {
+                try { this.store.addQuad(quadItem); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
+              }
             }
           } catch (e) {
             try { this.store.addQuad(quadItem); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
@@ -382,7 +461,21 @@ export class RDFManager {
             parser.on('data', (quadItem: any) => {
               try {
                 const exists = this.store.countQuads(quadItem.subject, quadItem.predicate, quadItem.object, g) > 0;
-                if (!exists) this.store.addQuad(quad(quadItem.subject, quadItem.predicate, quadItem.object, g));
+                if (!exists) {
+                  try {
+                    if (quadItem && quadItem.subject && quadItem.predicate && quadItem.object) {
+                      // eslint-disable-next-line no-console
+                      console.debug('[VG_RDF_ADD] xml.graph', (quadItem as any)?.subject?.value, (quadItem as any)?.predicate?.value, (quadItem as any)?.object?.value, 'graph:', g.value);
+                      this.store.addQuad(quad(quadItem.subject, quadItem.predicate, quadItem.object, g));
+                      try { this.bufferSubjectFromQuad(quad(quadItem.subject, quadItem.predicate, quadItem.object, g)); } catch (_) { /* ignore */ }
+                    } else {
+                      // eslint-disable-next-line no-console
+                      console.warn('[VG_RDF_ADD_SKIPPED] invalid quadItem in xml parser for graph', quadItem);
+                    }
+                  } catch (innerErr) {
+                    try { this.store.addQuad(quad(quadItem.subject, quadItem.predicate, quadItem.object, g)); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
+                  }
+                }
               } catch (e) {
                 try { this.store.addQuad(quad(quadItem.subject, quadItem.predicate, quadItem.object, g)); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
               }
@@ -391,7 +484,24 @@ export class RDFManager {
               try { prefixesCollected[prefix] = iri; } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
             });
             parser.on('end', () => finalize(prefixesCollected));
-            parser.on('error', (err: any) => { try { rejectFn(err); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } } });
+            parser.on('error', (err: any) => {
+              try {
+                // Expose structured parse error for UI consumption (XML parser path into graph)
+                try {
+                  if (typeof window !== 'undefined') {
+                    try { (window as any).__VG_LAST_RDF = rdfContent; } catch (_) { /* ignore */ }
+                    const lines = String(rdfContent || '').split(/\r?\n/);
+                    const snippet = lines.slice(0, Math.min(lines.length, 40)).join('\n');
+                    const errMsg = String(err);
+                    try { (window as any).__VG_LAST_RDF_ERROR = { message: errMsg, snippet }; } catch (_) { /* ignore */ }
+                    try { window.dispatchEvent(new CustomEvent('vg:rdf-parse-error', { detail: { message: errMsg, snippet } })); } catch (_) { /* ignore */ }
+                    // eslint-disable-next-line no-console
+                    console.error('[VG_RDF_PARSE_ERROR]', errMsg.slice(0, 200), 'snippet:', snippet.slice(0, 1000));
+                  }
+                } catch (_) { /* ignore structured logging failures */ }
+              } catch (_) { /* ignore outer */ }
+              try { rejectFn(err); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
+            });
 
             parser.write(rdfContent);
             parser.end();
@@ -401,8 +511,41 @@ export class RDFManager {
       }
 
       const g = namedNode(graphName);
+        // If the content uses common prefixed names but does not declare them,
+        // prepend any known namespace declarations from this.namespaces so the
+        // parser won't error on "Undefined prefix".
+        try {
+          const used = Array.from(new Set(((rdfContent.match(/\b([A-Za-z][\w-]*)\s*:/g) || []).map(m => m.replace(/:.*/, '')))));
+          const declared = Array.from(new Set(((rdfContent.match(/@prefix\s+([A-Za-z][\w-]*):/g) || []).map(m => m.replace(/@prefix\s+([A-Za-z][\w-]*):.*/, '$1')))));
+          const missing = used.filter(p => !declared.includes(p) && this.namespaces[p]);
+          if (missing.length > 0) {
+            const adds = missing.map(p => `@prefix ${p}: <${this.namespaces[p]}> .`).join('\n') + '\n';
+            rdfContent = adds + rdfContent;
+          }
+        } catch (_) { /* ignore */ }
+
+      rdfContent = rdfContent.replace(/^\s+/, '');
       this.parser.parse(rdfContent, (error, quadItem, prefixes) => {
         if (error) {
+          try {
+            // Expose the last RDF content to the browser runtime for quick inspection in devtools.
+            if (typeof window !== 'undefined') {
+              try { (window as any).__VG_LAST_RDF = rdfContent; } catch (_) { /* ignore */ }
+              // Build a concise snippet for UI/console consumption (first ~40 lines)
+              try {
+                const lines = String(rdfContent || '').split(/\r?\n/);
+                const snippet = lines.slice(0, Math.min(lines.length, 40)).join('\n');
+                const errMsg = String(error);
+                // Expose structured parse error so UI can consume it deterministically
+                try { (window as any).__VG_LAST_RDF_ERROR = { message: errMsg, snippet }; } catch (_) { /* ignore */ }
+                // Dispatch a DOM event so any listeners may react (optional)
+                try { window.dispatchEvent(new CustomEvent('vg:rdf-parse-error', { detail: { message: errMsg, snippet } })); } catch (_) { /* ignore */ }
+                // Log a concise console line for developers
+                // eslint-disable-next-line no-console
+                console.error('[VG_RDF_PARSE_ERROR]', errMsg.slice(0, 200), 'snippet:', snippet.slice(0, 1000));
+              } catch (_) { /* ignore snippet logging failures */ }
+            }
+          } catch (_) { /* ignore outer logging failures */ }
           try { rejectFn(error); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
           return;
         }
@@ -411,7 +554,19 @@ export class RDFManager {
           try {
             const exists = this.store.countQuads(quadItem.subject, quadItem.predicate, quadItem.object, g) > 0;
             if (!exists) {
-              this.store.addQuad(quad(quadItem.subject, quadItem.predicate, quadItem.object, g));
+              try {
+                if (quadItem && quadItem.subject && quadItem.predicate && quadItem.object) {
+                  // eslint-disable-next-line no-console
+                  console.debug('[VG_RDF_ADD] parse.graph', (quadItem as any)?.subject?.value, (quadItem as any)?.predicate?.value, (quadItem as any)?.object?.value, 'graph:', g.value);
+                  this.store.addQuad(quad(quadItem.subject, quadItem.predicate, quadItem.object, g));
+                  try { this.bufferSubjectFromQuad(quad(quadItem.subject, quadItem.predicate, quadItem.object, g)); } catch (_) { /* ignore */ }
+                } else {
+                  // eslint-disable-next-line no-console
+                  console.warn('[VG_RDF_ADD_SKIPPED] invalid quadItem from parser for graph', quadItem);
+                }
+              } catch (inner) {
+                try { this.store.addQuad(quad(quadItem.subject, quadItem.predicate, quadItem.object, g)); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
+              }
             }
           } catch (e) {
             try { this.store.addQuad(quad(quadItem.subject, quadItem.predicate, quadItem.object, g)); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
@@ -454,10 +609,20 @@ export class RDFManager {
           try {
             const typeStr = typeof t === 'string' ? String(t) : String(t);
             const expanded = this.expandPrefix ? this.expandPrefix(typeStr) : typeStr;
-            if (!existingTypeSet.has(expanded)) {
-              this.store.addQuad(quad(namedNode(entityUri), namedNode(rdfTypePredicate), namedNode(expanded)));
-              existingTypeSet.add(expanded);
-            }
+              if (!existingTypeSet.has(expanded)) {
+                try {
+                  const s = namedNode(entityUri);
+                  const p = namedNode(rdfTypePredicate);
+                  const o = namedNode(expanded);
+                  // eslint-disable-next-line no-console
+                  console.debug('[VG_RDF_ADD] updateNode.type', s?.value, p?.value, o?.value);
+                  this.store.addQuad(quad(s, p, o));
+                  try { this.bufferSubjectFromQuad(quad(s, p, o)); } catch (_) { /* ignore */ }
+                  existingTypeSet.add(expanded);
+                } catch (e) {
+                  try { fallback('console.warn', { args: [`Failed to add rdf:type quad for ${String(t)}`, String(e)] }, { level: 'warn' }); } catch (_) { /* ignore */ }
+                }
+              }
           } catch (e) {
             try { fallback('console.warn', { args: [`Failed to add rdf:type quad for ${String(t)}`, String(e)] }, { level: 'warn' }); } catch (_) { /* ignore */ }
           }
@@ -470,7 +635,17 @@ export class RDFManager {
         try {
           const expandedType = this.expandPrefix ? this.expandPrefix(String(updates.type)) : String(updates.type);
           if (!existingTypeSet.has(expandedType)) {
-            this.store.addQuad(quad(namedNode(entityUri), namedNode(typePredicate), namedNode(expandedType)));
+            try {
+              const s = namedNode(entityUri);
+              const p = namedNode(typePredicate);
+              const o = namedNode(expandedType);
+              // eslint-disable-next-line no-console
+              console.debug('[VG_RDF_ADD] updateNode.singleType', s?.value, p?.value, o?.value);
+              this.store.addQuad(quad(s, p, o));
+              try { this.bufferSubjectFromQuad(quad(s, p, o)); } catch (_) { /* ignore */ }
+            } catch (e) {
+              try { fallback('console.warn', { args: ['Failed to add rdf:type quad:', String(e)] }, { level: 'warn' }); } catch (_) { /* ignore */ }
+            }
           }
         } catch (e) {
           try { fallback('console.warn', { args: ['Failed to add rdf:type quad:', String(e)] }, { level: 'warn' }); } catch (_) { /* ignore */ }
@@ -519,7 +694,14 @@ export class RDFManager {
                 const obj = q.object as any;
                 const isLiteral = obj && (obj.termType === 'Literal' || (typeof obj.value === 'string' && !obj.id));
                 if (isLiteral) {
-                  try { this.store.removeQuad(q); } catch (_) { /* ignore removal failures */ }
+                  try {
+                    // Validate quad before removal and log it for debugging.
+                    // eslint-disable-next-line no-console
+                    console.debug('[VG_RDF_REMOVE] updateNode.removeLiteral', (q as any)?.subject?.value, (q as any)?.predicate?.value, (q as any)?.object?.value);
+                    this.store.removeQuad(q);
+                  } catch (remErr) {
+                    try { /* ignore removal failures */ } catch (_) { /* ignore */ }
+                  }
                 }
               } catch (_) { /* ignore individual quad processing errors */ }
             });
@@ -535,7 +717,17 @@ export class RDFManager {
             // Only add if an identical triple does not already exist
             const exists = this.store.countQuads(namedNode(entityUri), namedNode(propertyFull), literalValue, null) > 0;
             if (!exists) {
-              this.store.addQuad(quad(namedNode(entityUri), namedNode(propertyFull), literalValue));
+              try {
+                const s = namedNode(entityUri);
+                const p = namedNode(propertyFull);
+                const o = literalValue;
+                // eslint-disable-next-line no-console
+                console.debug('[VG_RDF_ADD] updateNode.annotation', s?.value, p?.value, (o as any)?.value);
+                this.store.addQuad(quad(s, p, o));
+                try { this.bufferSubjectFromQuad(quad(s, p, o)); } catch (_) { /* ignore */ }
+              } catch (e) {
+                try { fallback('console.warn', { args: ['Failed to add annotation quad:', String(e)] }, { level: 'warn' }); } catch (_) { /* ignore */ }
+              }
             }
           } catch (e) {
             try { fallback('console.warn', { args: ['Failed to add annotation quad:', String(e)] }, { level: 'warn' }); } catch (_) { /* ignore */ }
@@ -596,34 +788,65 @@ export class RDFManager {
     const candidateUrls = url.startsWith('http://') ? [url.replace(/^http:\/\//, 'https://'), url] : [url];
 
     // Primary attempt: direct browser fetch
-    for (const candidate of candidateUrls) {
-      try {
-        const response = await doFetch(candidate, timeoutMs);
-        if (!response) continue;
-
-        const contentTypeHeader = response.headers.get('content-type') || '';
-        const mimeType = contentTypeHeader.split(';')[0].trim() || null;
-        const content = await response.text();
-
-        // Debug: record small or suspicious fetches to help diagnose why content is tiny
-        if (content.length < 200) {
-          try { debugLog('rdf.fetch.small', { url: candidate, len: content.length, mimeType }); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
-        }
-
-        // If content looks like RDF, accept it. If it's HTML or clearly not RDF, skip to proxy fallback.
-        const mimeIndicatesHtml = mimeType && mimeType.includes('html');
-        if (!mimeIndicatesHtml && looksLikeRdf(content)) {
-          return { content, mimeType };
-        }
-
-        // otherwise continue to next candidate or fall through to proxy
-      } catch (err) {
-        // typical CORS / network errors will be caught here; we'll try the proxy fallback next
+      let lastDirectSnippet = '';
+      for (const candidate of candidateUrls) {
         try {
-          fallback('rdf.fetch.directFailed', { url: candidate, error: (err && (err as any).message) ? (err as any).message : String(err) }, { level: 'warn', captureStack: false });
-        } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
+          const response = await doFetch(candidate, timeoutMs);
+          if (!response) continue;
+
+          const contentTypeHeader = response.headers.get('content-type') || '';
+          const mimeType = contentTypeHeader.split(';')[0].trim() || null;
+          const content = await response.text();
+
+          // Debug: record small or suspicious fetches to help diagnose why content is tiny
+          if (content.length < 200) {
+            try { debugLog('rdf.fetch.small', { url: candidate, len: content.length, mimeType }); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
+          }
+
+          // If content looks like RDF, accept it. If it's HTML or clearly not RDF, skip to proxy fallback.
+          const mimeIndicatesHtml = mimeType && mimeType.includes('html');
+          if (!mimeIndicatesHtml && looksLikeRdf(content)) {
+            return { content, mimeType };
+          }
+
+          // Capture non-RDF content so we can provide a helpful snippet to the UI if proxy fallback fails.
+          try { lastDirectSnippet = String(content || '').slice(0, 1000); } catch (_) { lastDirectSnippet = ''; }
+
+          // otherwise continue to next candidate or fall through to proxy
+        } catch (err) {
+          // typical CORS / network errors will be caught here; we'll try the proxy fallback next
+          try {
+            const errMsg = (err && (err as any).message) ? (err as any).message : String(err);
+            fallback('rdf.fetch.directFailed', { url: candidate, error: errMsg }, { level: 'warn', captureStack: false });
+            // Expose a structured, developer-friendly error immediately so the UI can show a snippet
+            if (typeof window !== 'undefined') {
+              try {
+                (window as any).__VG_LAST_RDF_ERROR = {
+                  message: `Direct fetch failed for ${candidate}: ${errMsg}`,
+                  url: String(candidate),
+                  snippet: String(errMsg).slice(0, 1000)
+                };
+                try { window.dispatchEvent(new CustomEvent('vg:rdf-parse-error', { detail: (window as any).__VG_LAST_RDF_ERROR })); } catch (_) { /* ignore dispatch failures */ }
+              } catch (_) { /* ignore structured error attach failures */ }
+            }
+          } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
+        }
       }
-    }
+
+      // If direct fetch returned non-RDF content (but not an error), pre-populate a helpful snippet
+      // so the UI can show why the direct fetch path didn't yield RDF before we attempt the proxy.
+      try {
+        if (lastDirectSnippet && typeof window !== 'undefined') {
+          try {
+            (window as any).__VG_LAST_RDF_ERROR = {
+              message: `Direct fetch returned non-RDF content for ${url}`,
+              url: String(url),
+              snippet: lastDirectSnippet
+            };
+            try { window.dispatchEvent(new CustomEvent('vg:rdf-parse-error', { detail: (window as any).__VG_LAST_RDF_ERROR })); } catch (_) { /* ignore */ }
+          } catch (_) { /* ignore */ }
+        }
+      } catch (_) { /* ignore */ }
 
     // Fallback: use dev server proxy at /__external (configured in vite.config.ts) to bypass CORS/redirect issues.
     try {
@@ -646,17 +869,66 @@ export class RDFManager {
             // proxy returned content that's not clearly RDF -> still return content so parser can attempt, but record a fallback
             try { fallback('rdf.fetch.proxyNonRdf', { url, len: content.length, mimeType }, { level: 'warn' }); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
             return { content, mimeType };
-          } else {
+            } else {
             const status = proxyResponse ? proxyResponse.status : 'no-response';
+            // Attempt to read response body to provide a helpful snippet for debugging (dev proxy may include HTML error pages)
+            let bodySnippet = '';
+            try {
+              if (proxyResponse) {
+                const text = await proxyResponse.text();
+                bodySnippet = String(text || '').slice(0, 1000);
+              }
+            } catch (_) { /* ignore body read failures */ }
+
+            try {
+              if (typeof window !== 'undefined') {
+                const fallbackSnippet = bodySnippet || `Proxy fetch failed (status: ${status}) for ${url}`;
+                (window as any).__VG_LAST_RDF_ERROR = {
+                  message: `Proxy fetch failed (status: ${status}) for ${url}`,
+                  url: String(url),
+                  snippet: fallbackSnippet
+                };
+                try { window.dispatchEvent(new CustomEvent('vg:rdf-parse-error', { detail: (window as any).__VG_LAST_RDF_ERROR })); } catch (_) { /* ignore dispatch failures */ }
+              }
+            } catch (_) { /* ignore structured error attach failures */ }
+
             throw new Error(`Proxy fetch failed (status: ${status}) for ${url}`);
           }
         } catch (proxyErr) {
           try { fallback('rdf.fetch.proxyFailed', { url, error: String(proxyErr) }, { level: 'warn', captureStack: true }); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
+          // If we have an exception (network error), attach a concise message for UI consumption
+          try {
+            if (typeof window !== 'undefined') {
+              const prev = (window as any).__VG_LAST_RDF_ERROR || {};
+              (window as any).__VG_LAST_RDF_ERROR = {
+                message: String(proxyErr) || prev.message || `Proxy fetch failed for ${url}`,
+                url: String(url),
+                snippet: (prev && prev.snippet) ? prev.snippet : (String(proxyErr && (proxyErr as any).message || String(proxyErr)).slice(0, 1000))
+              };
+              try { window.dispatchEvent(new CustomEvent('vg:rdf-parse-error', { detail: (window as any).__VG_LAST_RDF_ERROR })); } catch (_) { /* ignore */ }
+            }
+          } catch (_) { /* ignore */ }
           throw proxyErr;
         }
       }
     } catch (e) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(e) }); } } catch (_) { /* ignore */ } }
 
+    try {
+      // Ensure a structured error is available to the UI/runtime when both direct and proxy fetch attempts fail.
+      // This helps distinguish network/load errors from parser errors in the UI and developer tooling.
+      if (typeof window !== 'undefined') {
+        try {
+          (window as any).__VG_LAST_RDF_ERROR = {
+            message: `Failed to fetch ${url} (direct fetch and proxy fallback both unsuccessful)`,
+            url: String(url),
+            snippet: ''
+          };
+        } catch (_) { /* ignore */ }
+        try {
+          window.dispatchEvent(new CustomEvent('vg:rdf-parse-error', { detail: (window as any).__VG_LAST_RDF_ERROR }));
+        } catch (_) { /* ignore */ }
+      }
+    } catch (_) { /* ignore */ }
     throw new Error(`Failed to fetch ${url} (direct fetch and proxy fallback both unsuccessful)`);
   }
 
@@ -738,9 +1010,41 @@ export class RDFManager {
 
   /**
    * Add a new namespace
+   *
+   * When a new prefix is registered at runtime we asynchronously show a UI toast
+   * so users get immediate feedback that a namespace/prefix was added. Use a
+   * dynamic import so this utility code does not create a hard dependency cycle
+   * with UI modules at load time.
    */
   addNamespace(prefix: string, uri: string): void {
-    this.namespaces[prefix] = uri;
+    try {
+      const existed = Object.prototype.hasOwnProperty.call(this.namespaces, prefix) || Object.values(this.namespaces).includes(uri);
+      // Always set/overwrite the mapping so callers can update URIs for a prefix.
+      this.namespaces[prefix] = uri;
+
+      // Only notify when this is a newly added mapping (not a noop/overwrite of same value).
+      if (!existed) {
+        // Dynamic import so we don't create a hard runtime dependency on the UI layer.
+        // Fire-and-forget the toast; failures to import or show the toast should not
+        // break RDF processing.
+        try {
+          import('../components/ui/use-toast').then(mod => {
+            try {
+              if (mod && typeof mod.toast === 'function') {
+                mod.toast({
+                  title: `Prefix added: ${prefix}`,
+                  description: String(uri),
+                  // keep the toast short-lived but visible
+                  duration: 4000
+                } as any);
+              }
+            } catch (_) { /* ignore toast failures */ }
+          }).catch(() => { /* ignore dynamic import errors */ });
+        } catch (_) { /* ignore */ }
+      }
+    } catch (e) {
+      try { if (typeof fallback === "function") { fallback("rdf.addNamespace.failed", { prefix, namespace: uri, error: String(e) }); } } catch (_) { /* ignore */ }
+    }
   }
 
   /**
@@ -890,10 +1194,14 @@ export class RDFManager {
   applyParsedNamespaces(namespaces: Record<string, string> | undefined | null): void {
     if (!namespaces || typeof namespaces !== 'object') return;
     try {
+      // Use addNamespace for each entry so we get consistent behavior and UI notification
+      // for newly added prefixes (addNamespace will handle idempotency and toast notification).
       Object.entries(namespaces).forEach(([p, ns]) => {
-        if (p && ns) {
-          this.namespaces[p] = ns;
-        }
+        try {
+          if (p && ns) {
+            this.addNamespace(String(p), String(ns));
+          }
+        } catch (_) { /* ignore per-entry failures */ }
       });
     } catch (e) {
       ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } } console.warn(...__vg_args);})('applyParsedNamespaces failed:', e);

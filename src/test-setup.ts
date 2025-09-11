@@ -102,62 +102,14 @@ if (typeof (globalThis as any).window?.matchMedia !== 'function') {
  // @ts-expect-error - dynamic import may resolve to a types-only declaration in some environments
 void import('@testing-library/jest-dom').catch(() => { /* intentionally ignore import failures in some runtimes */ });
 
-// --- existing fixture-based fetch mocking (kept) ---
+/*
+  Use centralized RDF fixtures from src/__tests__/fixtures/rdfFixtures.ts
+  to avoid duplicating inline TTL across tests. This keeps fixtures
+  in one place and makes them easy to update.
+*/
+import { FIXTURES as FIXTURE_SOURCE } from './__tests__/fixtures/rdfFixtures';
 
-const fixtures: Record<string, string> = {
-  'http://xmlns.com/foaf/0.1/': `
-    @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-    @prefix : <http://example.org/> .
-
-    foaf:Person a rdfs:Class .
-    foaf:Organization a rdfs:Class .
-    foaf:name a rdfs:Property .
-  `,
-  'https://www.w3.org/TR/vocab-org/': `
-    @prefix org: <https://www.w3.org/TR/vocab-org/> .
-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-    @prefix : <http://example.org/> .
-
-    org:Organization a rdfs:Class .
-  `,
-  // IOF core and materials fixtures to cover tests that reference those prefixes/URLs
-  'https://spec.industrialontologies.org/ontology/core/Core/': `
-    @prefix iof: <https://spec.industrialontologies.org/ontology/core/Core/> .
-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-    iof:MeasurementProcess a rdfs:Class ;
-        rdfs:label "Measurement Process" .
-  `,
-  'https://spec.industrialontologies.org/ontology/materials/Materials/': `
-    @prefix iof-mat: <https://spec.industrialontologies.org/ontology/materials/Materials/> .
-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-    iof-mat:MeasurementDevice a rdfs:Class ;
-        rdfs:label "Measurement Device" .
-  `,
-  'https://spec.industrialontologies.org/ontology/qualities/': `
-    @prefix iof-qual: <https://spec.industrialontologies.org/ontology/qualities/> .
-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-    iof-qual:Length a rdfs:Class .
-  `,
-  // Demo graph entries used by tests (github IOF materials tutorial) and startupFileUrl variants
-  'https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/main/example.ttl': `
-    @prefix iof-qual: <https://spec.industrialontologies.org/ontology/qualities/> .
-    @prefix : <https://github.com/Mat-O-Lab/IOFMaterialsTutorial/> .
-    :SpecimenLength a iof-qual:Length .
-    :Caliper a <https://spec.industrialontologies.org/ontology/materials/Materials/MeasurementDevice> .
-  `,
-  'https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl': `
-    @prefix : <https://github.com/Mat-O-Lab/IOFMaterialsTutorial/> .
-    @prefix iof-qual: <https://spec.industrialontologies.org/ontology/qualities/> .
-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-    :SpecimenLength a iof-qual:Length ;
-        rdfs:label "Specimen Length" .
-  `
-};
+const fixtures: Record<string, string> = { ...FIXTURE_SOURCE };
 
 // Duplicate http->https variants so loadOntology's https-first candidate URL will match fixtures
 Object.keys(fixtures).forEach((k) => {

@@ -8,7 +8,7 @@ import {
 } from '@xyflow/react';
 import { Badge } from '../ui/badge';
 import { debug } from '../../utils/startupDebug';
-import { getEdgeParams } from './floatingInitialElements';
+import { getEdgeParams } from './EdgeParams';
 
 /**
  * FloatingEdge (docs-style)

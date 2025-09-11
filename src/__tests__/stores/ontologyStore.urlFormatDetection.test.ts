@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { useOntologyStore } from '../../stores/ontologyStore';
+import { FIXTURES } from '../fixtures/rdfFixtures';
 
 describe('OntologyStore URL format detection and RDF loading', () => {
   it('loads Turtle from IOF-like URL and persists triples (count increases)', async () => {
@@ -8,12 +9,7 @@ describe('OntologyStore URL format detection and RDF loading', () => {
 
     const url = 'https://spec.industrialontologies.org/iof/ontology/core/Core/';
 
-    const ttl = `
-@prefix iof: <https://spec.industrialontologies.org/iof/ontology/core/Core/> .
-@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-
-<http://example.com/subject> rdf:type iof:Specimen .
-`;
+    const ttl = FIXTURES['https://spec.industrialontologies.org/iof/ontology/core/Core/'];
 
     const mockFetch = vi.fn(async (input: any, init?: any) => {
       return {

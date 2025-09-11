@@ -5,6 +5,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useOntologyStore } from '../../stores/ontologyStore';
+import { FIXTURES } from '../fixtures/rdfFixtures';
 
 describe('OntologyStore - Entity Property Preservation Bug', () => {
   beforeEach(() => {
@@ -17,18 +18,7 @@ describe('OntologyStore - Entity Property Preservation Bug', () => {
     const store = useOntologyStore.getState();
 
     // Step 1: Load initial demo dataset (simulating the length measurement tutorial)
-    const demoDatasetRdf = `
-      @prefix : <https://github.com/Mat-O-Lab/IOFMaterialsTutorial/> .
-      @prefix iof: <https://spec.industrialontologies.org/ontology/core/Core/> .
-      @prefix iof-qual: <https://spec.industrialontologies.org/ontology/qualities/> .
-      @prefix iof-mat: <https://spec.industrialontologies.org/ontology/materials/Materials/> .
-      @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-      :SpecimenLength a iof-qual:Length ;
-          iof:masuredByAtSomeTime :Caliper .
-
-      :Caliper a iof-mat:MeasurementDevice .
-    `;
+    const demoDatasetRdf = FIXTURES['https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/main/specimen.ttl'];
 
     await store.loadOntologyFromRDF(demoDatasetRdf, undefined, false);
 
@@ -60,21 +50,7 @@ describe('OntologyStore - Entity Property Preservation Bug', () => {
     expect(labelQuadsBefore[0].object.value).toBe('Specimen Length Property');
 
     // Step 3: Load IOF ontology (should preserve existing graph changes)
-    const iofOntologyRdf = `
-      @prefix iof: <https://spec.industrialontologies.org/ontology/core/Core/> .
-      @prefix iof-mat: <https://spec.industrialontologies.org/ontology/materials/Materials/> .
-      @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-      @prefix owl: <http://www.w3.org/2002/07/owl#> .
-
-      iof:MeasurementProcess a owl:Class ;
-          rdfs:label "Measurement Process" .
-
-      iof-mat:MeasurementDevice a owl:Class ;
-          rdfs:label "Measurement Device" .
-
-      iof:hasOutput a owl:ObjectProperty ;
-          rdfs:label "has output" .
-    `;
+    const iofOntologyRdf = FIXTURES['https://spec.industrialontologies.org/ontology/core/Core/'];
     await store.loadOntologyFromRDF(iofOntologyRdf, undefined, true);
 
     // Verify rdfs:label is still present in the RDF store after ontology load
@@ -147,13 +123,13 @@ describe('OntologyStore - Entity Property Preservation Bug', () => {
     });
 
     // Load new ontology with preservation
-    const newOntologyRdf = `
-      @prefix ex: <http://example.com/new/> .
-      @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+    const newOntologyRdf = FIXTURES['foaf_test_data'] + `
+@prefix ex: <http://example.com/new/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
-      ex:newEntity a ex:NewClass ;
-          rdfs:label "New Entity" .
-    `;
+ex:newEntity a ex:NewClass ;
+  rdfs:label "New Entity" .
+`;
     await store.loadOntologyFromRDF(newOntologyRdf, undefined, true);
 
     // Verify original entity still has all its properties in the RDF store

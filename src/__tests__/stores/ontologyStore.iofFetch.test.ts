@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { useOntologyStore } from '../../stores/ontologyStore';
+import { FIXTURES } from '../fixtures/rdfFixtures';
 
 describe('IOF ontology fetch and RDF persistence', () => {
   it('fetches IOF ontology with correct Accept header and loads triples into RDF store', async () => {
@@ -9,12 +10,7 @@ describe('IOF ontology fetch and RDF persistence', () => {
     const url = 'https://spec.industrialontologies.org/ontology/core/Core/';
 
     // Minimal Turtle that defines a class instance using the IOF namespace
-    const ttl = `
-@prefix iof: <https://spec.industrialontologies.org/ontology/core/Core/> .
-@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-
-<http://example.com/subject> rdf:type iof:Specimen .
-`;
+    const ttl = FIXTURES['https://spec.industrialontologies.org/ontology/core/Core/'];
 
     // Mock global.fetch to return Turtle and capture headers
     const mockFetch = vi.fn(async (input: any, init?: any) => {

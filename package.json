@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "stop": "node server.stop.js",
-    "dev": "VITE_VG_DEBUG=true vite",
+    "dev": "VITE_VG_DEBUG=true VITE_STARTUP_URL=https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl vite",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",

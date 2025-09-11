@@ -59,6 +59,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useOntologyStore } from '../../stores/ontologyStore';
+import { FIXTURES } from '../fixtures/rdfFixtures';
 
 describe('Demo flow: single triple change on annotation addition', () => {
   beforeEach(() => {
@@ -69,15 +70,8 @@ describe('Demo flow: single triple change on annotation addition', () => {
   it('creates exactly one new triple when adding an annotation property to a demo node', async () => {
     const store = useOntologyStore.getState();
 
-    // Demo TTL (minimal)
-    const demoTtl = `
-      @prefix : <https://github.com/Mat-O-Lab/IOFMaterialsTutorial/> .
-      @prefix iof-qual: <https://spec.industrialontologies.org/ontology/qualities/> .
-      @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-      @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-
-      :SpecimenLength a iof-qual:Length .
-    `;
+    // Demo TTL (centralized fixture)
+    const demoTtl = FIXTURES['https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/main/example.ttl'];
 
     // Step 1: load demo RDF (parsing + store population)
     await store.loadOntologyFromRDF(demoTtl, undefined, false);

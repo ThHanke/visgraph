@@ -6,6 +6,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { RDFManager } from '../../utils/rdfManager';
+import { FIXTURES } from '../fixtures/rdfFixtures';
+import { useReasoningStore } from '../../stores/reasoningStore';
 
 describe('RDF Store Workflow Integration Tests', () => {
   beforeEach(() => {
@@ -18,14 +20,8 @@ describe('RDF Store Workflow Integration Tests', () => {
     it('should update RDF store when entity properties are modified via NodePropertyEditor', async () => {
       const store = useOntologyStore.getState();
 
-      // Load initial dataset
-      const initialRdf = `
-        @prefix : <https://github.com/Mat-O-Lab/IOFMaterialsTutorial/> .
-        @prefix iof-qual: <https://spec.industrialontologies.org/ontology/qualities/> .
-        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-        :SpecimenLength a iof-qual:Length .
-      `;
+      // Load initial dataset (centralized fixture)
+      const initialRdf = FIXTURES['https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/main/example.ttl'];
 
       await store.loadOntologyFromRDF(initialRdf, undefined, false);
 
@@ -97,14 +93,7 @@ describe('RDF Store Workflow Integration Tests', () => {
       const store = useOntologyStore.getState();
 
       // Step 1: Load initial dataset
-      const initialRdf = `
-        @prefix : <https://github.com/Mat-O-Lab/IOFMaterialsTutorial/> .
-        @prefix iof-qual: <https://spec.industrialontologies.org/ontology/qualities/> .
-        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-        :SpecimenLength a iof-qual:Length .
-        :Caliper a :MeasurementDevice .
-      `;
+      const initialRdf = FIXTURES['https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/main/example.ttl'];
 
       await store.loadOntologyFromRDF(initialRdf, undefined, false);
 
@@ -118,13 +107,7 @@ describe('RDF Store Workflow Integration Tests', () => {
       });
 
       // Step 3: Load additional IOF ontology
-      const iofOntologyRdf = `
-        @prefix iof: <https://spec.industrialontologies.org/ontology/core/Core/> .
-        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-        iof:MeasurementProcess a <http://www.w3.org/2002/07/owl#Class> ;
-            rdfs:label "Measurement Process" .
-      `;
+      const iofOntologyRdf = FIXTURES['https://spec.industrialontologies.org/ontology/core/Core/'];
 
       await store.loadOntologyFromRDF(iofOntologyRdf, undefined, true);
 
@@ -151,24 +134,7 @@ describe('RDF Store Workflow Integration Tests', () => {
       const store = useOntologyStore.getState();
 
       // Mock the loadOntology to use actual RDF content
-      const mockOntologyRdf = `
-        @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-        @prefix owl: <http://www.w3.org/2002/07/owl#> .
-
-        foaf:Person a owl:Class ;
-            rdfs:label "Person" ;
-            rdfs:comment "A person." .
-
-        foaf:Organization a owl:Class ;
-            rdfs:label "Organization" ;
-            rdfs:comment "An organization." .
-
-        foaf:name a owl:DatatypeProperty ;
-            rdfs:label "name" ;
-            rdfs:domain foaf:Person ;
-            rdfs:range <http://www.w3.org/2001/XMLSchema#string> .
-      `;
+      const mockOntologyRdf = FIXTURES['foaf_test_data'];
 
       // Simulate loadOntology by loading RDF content
       await store.loadOntologyFromRDF(mockOntologyRdf, undefined, false);
@@ -255,20 +221,18 @@ describe('RDF Store Workflow Integration Tests', () => {
     it('should maintain prefix mappings in exports', async () => {
       const store = useOntologyStore.getState();
 
-      const rdfWithPrefixes = `
-        @prefix ex: <http://example.com/> .
-        @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-        @prefix dc: <http://purl.org/dc/elements/1.1/> .
-        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+      const rdfWithPrefixes = FIXTURES['foaf_test_data'] + `
+@prefix ex: <http://example.com/> .
+@prefix dc: <http://purl.org/dc/elements/1.1/> .
 
-        ex:person1 a foaf:Person ;
-            foaf:name "John Doe" ;
-            dc:description "A test person" ;
-            rdfs:label "John" .
-      `;
+ex:person1 a foaf:Person ;
+  foaf:name "John Doe" ;
+  dc:description "A test person" ;
+  rdfs:label "John" .
+`;
 
       await store.loadOntologyFromRDF(rdfWithPrefixes, undefined, false);
-
+      
       const exported = await store.exportGraph('turtle');
 
       // Check that prefixes are preserved
@@ -289,18 +253,7 @@ describe('RDF Store Workflow Integration Tests', () => {
       const store = useOntologyStore.getState();
 
       // Load ontology with domain/range restrictions
-      const ontologyRdf = `
-        @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-        @prefix owl: <http://www.w3.org/2002/07/owl#> .
-
-        foaf:Person a owl:Class .
-        foaf:Organization a owl:Class .
-        
-        foaf:memberOf a owl:ObjectProperty ;
-            rdfs:domain foaf:Person ;
-            rdfs:range foaf:Organization .
-      `;
+      const ontologyRdf = FIXTURES['foaf_test_data'];
 
       await store.loadOntologyFromRDF(ontologyRdf, undefined, false);
 
@@ -318,6 +271,11 @@ describe('RDF Store Workflow Integration Tests', () => {
           { propertyUri: 'foaf:name', value: 'ACME Corp', type: 'xsd:string' }
         ]
       });
+
+      // Trigger reasoning explicitly so derived information (from domain/range rules)
+      // is computed and applied into the RDF store before assertions. Some test
+      // environments disable automatic reasoning, so run it here to ensure parity.
+      await useReasoningStore.getState().startReasoning([], [], store.rdfManager.getStore());
 
       // Verify reasoner can access the RDF store data
       const rdfStore = store.rdfManager.getStore();

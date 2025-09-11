@@ -1,6 +1,6 @@
 import React from 'react';
 import { getBezierPath } from '@xyflow/react';
-import { getEdgeParams } from './floatingInitialElements';
+import { getEdgeParams } from './EdgeParams';
 
 interface Props {
   toX?: number;

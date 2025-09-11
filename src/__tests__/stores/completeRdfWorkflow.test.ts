@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { RDFManager } from '../../utils/rdfManager';
+import { FIXTURES } from '../fixtures/rdfFixtures';
 
 describe('Complete RDF Workflow', () => {
   beforeEach(() => {
@@ -18,14 +19,7 @@ describe('Complete RDF Workflow', () => {
     it('should load demo file entities into RDF store', async () => {
       const store = useOntologyStore.getState();
 
-      const demoRdf = `
-        @prefix : <https://github.com/Mat-O-Lab/IOFMaterialsTutorial/> .
-        @prefix iof-qual: <https://spec.industrialontologies.org/ontology/qualities/> .
-        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-        :SpecimenLength a iof-qual:Length .
-        :Caliper a :MeasurementDevice .
-      `;
+      const demoRdf = FIXTURES['https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/main/example.ttl'];
 
       await store.loadOntologyFromRDF(demoRdf, undefined, false);
 
@@ -64,13 +58,7 @@ describe('Complete RDF Workflow', () => {
       const store = useOntologyStore.getState();
 
       // Load initial data
-      const initialRdf = `
-        @prefix : <https://github.com/Mat-O-Lab/IOFMaterialsTutorial/> .
-        @prefix iof-qual: <https://spec.industrialontologies.org/ontology/qualities/> .
-        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-        :SpecimenLength a iof-qual:Length .
-      `;
+      const initialRdf = FIXTURES['https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/main/example.ttl'];
 
       await store.loadOntologyFromRDF(initialRdf, undefined, false);
 
@@ -131,13 +119,7 @@ describe('Complete RDF Workflow', () => {
       const store = useOntologyStore.getState();
 
       // Step 1: Load initial dataset
-      const initialRdf = `
-        @prefix : <https://github.com/Mat-O-Lab/IOFMaterialsTutorial/> .
-        @prefix iof-qual: <https://spec.industrialontologies.org/ontology/qualities/> .
-        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-        :SpecimenLength a iof-qual:Length .
-      `;
+      const initialRdf = FIXTURES['https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/main/example.ttl'];
 
       await store.loadOntologyFromRDF(initialRdf, undefined, false);
 
@@ -169,17 +151,7 @@ describe('Complete RDF Workflow', () => {
       store.setCurrentGraph(updatedNodes, currentGraph.edges);
 
       // Step 3: Load additional ontology (simulating "Load Ontology" button)
-      const additionalOntologyRdf = `
-        @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-        @prefix owl: <http://www.w3.org/2002/07/owl#> .
-
-        foaf:Person a owl:Class ;
-            rdfs:label "Person" .
-        
-        foaf:name a owl:DatatypeProperty ;
-            rdfs:label "name" .
-      `;
+      const additionalOntologyRdf = FIXTURES['foaf_test_data'];
 
       await store.loadOntologyFromRDF(additionalOntologyRdf, undefined, true);
 
@@ -215,14 +187,7 @@ describe('Complete RDF Workflow', () => {
       const store = useOntologyStore.getState();
 
       // Load demo data
-      const demoRdf = `
-        @prefix : <https://github.com/Mat-O-Lab/IOFMaterialsTutorial/> .
-        @prefix iof-qual: <https://spec.industrialontologies.org/ontology/qualities/> .
-        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-        :SpecimenLength a iof-qual:Length .
-        :Caliper a :MeasurementDevice .
-      `;
+      const demoRdf = FIXTURES['https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/main/example.ttl'];
 
       await store.loadOntologyFromRDF(demoRdf, undefined, false);
 
@@ -236,14 +201,7 @@ describe('Complete RDF Workflow', () => {
       });
 
       // Load additional ontology
-      const foafOntology = `
-        @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-        @prefix owl: <http://www.w3.org/2002/07/owl#> .
-        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-        foaf:Person a owl:Class ;
-            rdfs:label "Person" .
-      `;
+      const foafOntology = FIXTURES['foaf_test_data'];
 
       await store.loadOntologyFromRDF(foafOntology, undefined, true);
 
