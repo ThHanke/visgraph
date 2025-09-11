@@ -12,7 +12,7 @@ interface Settings {
   ontologies: OntologyConfig[];
   shaclShapesUrl: string;
   autoReasoning: boolean;
-  layoutAlgorithm: 'force' | 'hierarchical' | 'circular';
+  layoutAlgorithm: 'horizontal' | 'vertical';
   enableValidation: boolean;
   startupFileUrl: string;
 }
@@ -35,7 +35,7 @@ const defaultSettings: Settings = {
   ],
   shaclShapesUrl: '',
   autoReasoning: false,
-  layoutAlgorithm: 'force',
+  layoutAlgorithm: 'horizontal',
   enableValidation: true,
   startupFileUrl: ''
 };

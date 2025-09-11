@@ -316,7 +316,7 @@ export interface DiagramEventHandlers {
  */
 export interface GraphLayoutConfig {
   /** Layout type */
-  type: 'force' | 'hierarchical' | 'circular' | 'grid';
+  type: 'horizontal' | 'vertical';
   /** Layout-specific options */
   options: Record<string, any>;
   /** Whether to animate layout changes */
@@ -324,13 +324,3 @@ export interface GraphLayoutConfig {
   /** Animation duration in milliseconds */
   animationDuration: number;
 }
-
-/**
- * Backwards-compatible aliases (temporary)
- *
- * These keep existing imports that referenced `NodeData` / `LinkData`
- * working until all references are renamed. They will be removed as part of
- * the purge sweep.
- */
-export type NodeData = NodeData;
-export type LinkData = LinkData;

@@ -70,7 +70,7 @@ const getLayoutIcon = (iconName: string) => {
 export const LayoutToolbar = ({ layoutManager, onLayoutChange, disabled = false }: LayoutToolbarProps) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
-  const [currentLayout, setCurrentLayout] = useState<LayoutType>('force-directed');
+  const [currentLayout, setCurrentLayout] = useState<LayoutType>('horizontal');
   const [layoutOptions, setLayoutOptions] = useState<LayoutOptions>({
     animationDuration: 500,
     animated: true,
@@ -93,7 +93,7 @@ export const LayoutToolbar = ({ layoutManager, onLayoutChange, disabled = false 
         description: `Graph reorganized with ${finalOptions.animated ? 'smooth' : 'instant'} transition`
       });
     } catch (error) {
-      ((...__vg_args)=>{try{fallback('console.error',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'error', captureStack:true})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.error(...__vg_args);})('Layout application failed:', error);
+      console.error('Layout application failed:', error);
       toast.error('Failed to apply layout', {
         description: error instanceof Error ? error.message : 'Unknown error occurred'
       });

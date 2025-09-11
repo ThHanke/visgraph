@@ -130,8 +130,59 @@ function CustomOntologyNodeInner(props: NodeProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeData.uri, nodeData.individualName]);
 
+  // Measure DOM size and report back to the canvas so dagre can use real node sizes.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const lastMeasuredRef = useRef<{ w: number; h: number } | null>(null);
+
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+
+    const report = (w: number, h: number) => {
+      try {
+        const cb = (data as any)?.onSizeMeasured;
+        const last = lastMeasuredRef.current;
+        if (last && Math.abs(last.w - w) < 2 && Math.abs(last.h - h) < 2) {
+          return;
+        }
+        lastMeasuredRef.current = { w, h };
+        if (typeof cb === 'function') {
+          try { cb(Math.round(w), Math.round(h)); } catch (_) { /* ignore callback errors */ }
+        }
+      } catch (_) { /* ignore */ }
+    };
+
+    // Initial report
+    report(el.offsetWidth, el.offsetHeight);
+
+    // Use ResizeObserver to detect size changes
+    let ro: ResizeObserver | null = null;
+    try {
+      ro = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const cr = entry.contentRect;
+          report(cr.width, cr.height);
+        }
+      });
+      ro.observe(el);
+    } catch (_) {
+      // ResizeObserver might not be available in some environments; fallback to window resize
+      const onWin = () => report(el.offsetWidth, el.offsetHeight);
+      window.addEventListener('resize', onWin);
+      return () => {
+        window.removeEventListener('resize', onWin);
+      };
+    }
+
+    return () => {
+      try { ro && ro.disconnect(); } catch (_) { /* ignore */ }
+    };
+    // Intentionally exclude data.onSizeMeasured from deps to avoid reattaching observer
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rootRef]);
+
   return (
-    <div className={cn('inline-flex overflow-hidden', selected && 'ring-2 ring-primary')}>
+    <div ref={rootRef} className={cn('inline-flex overflow-hidden', selected && 'ring-2 ring-primary')}>
       {/* Main body (autosize). Left color bar is provided by the outer React Flow node wrapper via CSS variable (--node-leftbar-color). */}
       <div className="px-4 py-3 min-w-0 flex-1 w-auto" style={{ background: themeBg }}>
         {/* Header */}

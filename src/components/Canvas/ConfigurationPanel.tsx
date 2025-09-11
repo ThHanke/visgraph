@@ -29,6 +29,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Settings, Download, Upload, RotateCcw } from 'lucide-react';
 import { useAppConfigStore } from '../../stores/appConfigStore';
 import { useOntologyStore } from '../../stores/ontologyStore';
+import { fallback } from '../../utils/startupDebug';
 import { toast } from 'sonner';
 
 /**
@@ -204,12 +205,8 @@ export const ConfigurationPanel = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="force-directed">Force Directed</SelectItem>
-                      <SelectItem value="hierarchical">Hierarchical</SelectItem>
-                      <SelectItem value="circular">Circular</SelectItem>
-                      <SelectItem value="grid">Grid</SelectItem>
-                      <SelectItem value="layered-digraph">Layered Graph</SelectItem>
-                      <SelectItem value="tree">Tree</SelectItem>
+                      <SelectItem value="horizontal">Horizontal (Dagre)</SelectItem>
+                      <SelectItem value="vertical">Vertical (Dagre)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

@@ -1,10 +1,4 @@
-export type LayoutType =
-  | 'force-directed'
-  | 'hierarchical'
-  | 'circular'
-  | 'grid'
-  | 'layered-digraph'
-  | 'tree';
+export type LayoutType = 'horizontal' | 'vertical';
 
 export interface LayoutOptions {
   animationDuration?: number;
@@ -45,20 +39,26 @@ export class LayoutManager {
 
   // Return a conservative set of supported layouts for the UI
   getAvailableLayouts(): LayoutConfig[] {
+    // Reduced set: provide two explicit dagre-driven layouts exposed to the UI.
     return [
-      { type: 'force-directed', label: 'Force Directed', description: 'Evenly distributes nodes using a force model', icon: 'GitBranch' },
-      { type: 'hierarchical', label: 'Hierarchical', description: 'Top-down layered layout', icon: 'TreePine' },
-      { type: 'circular', label: 'Circular', description: 'Arrange nodes in concentric circles', icon: 'Circle' },
-      { type: 'grid', label: 'Grid', description: 'Place nodes on a regular grid', icon: 'Grid3X3' },
-      { type: 'layered-digraph', label: 'Layered Digraph', description: 'Layered directed graph layout', icon: 'Layers' },
-      { type: 'tree', label: 'Tree', description: 'Tree-like layout', icon: 'TreeDeciduous' },
+      {
+        type: 'horizontal',
+        label: 'Horizontal (Dagre)',
+        description: 'Left-to-right layered layout using dagre',
+        icon: 'Layers',
+      },
+      {
+        type: 'vertical',
+        label: 'Vertical (Dagre)',
+        description: 'Top-to-bottom layered layout using dagre',
+        icon: 'TreePine',
+      },
     ];
   }
 
   suggestOptimalLayout(): LayoutType {
-    // Conservative default: force-directed for medium/small graphs.
-    // Callers may override with specialized logic.
-    return 'force-directed';
+    // Conservative default: prefer the horizontal dagre layout for most graphs.
+    return 'horizontal';
   }
 
   restoreLastPositions(): void {
@@ -100,9 +100,9 @@ export class LayoutManager {
     return { type: this.suggestOptimalLayout(), options: {} };
   }
 
+  // Import dagre-based helper lazily to avoid introducing a hard runtime dependency
+  // when this module is used in non-ReactFlow contexts.
   async applyLayout(layoutType: LayoutType, options: LayoutOptions = {}): Promise<void> {
-    // Hard removal strategy: no  usage. Provide an async, best-effort implementation
-    // that updates a generic diagram object if present, otherwise acts as a no-op.
     try {
       // Capture current positions if available
       if (this.diagram) {
@@ -113,8 +113,8 @@ export class LayoutManager {
           } else if (Array.isArray(this.diagram.nodes)) {
             const snapshot: Record<string, { x: number; y: number }> = {};
             for (const n of this.diagram.nodes) {
-              const pos = n.position || n.position || { x: NaN, y: NaN };
-              snapshot[n.id] = { x: pos.x || 0, y: pos.y || 0 };
+              const pos = (n && n.position) || { x: NaN, y: NaN };
+              snapshot[n.id] = { x: (pos.x as number) || 0, y: (pos.y as number) || 0 };
             }
             this.lastPositions.push(snapshot);
           }
@@ -129,27 +129,51 @@ export class LayoutManager {
           await Promise.resolve(this.diagram.applyLayout(layoutType, options));
           return;
         }
-        // Otherwise, attempt to set positions using simple heuristics for known layout types.
-        if (Array.isArray(this.diagram.nodes)) {
-          const n = this.diagram.nodes.length;
-          const updated = this.diagram.nodes.map((node: any, i: number) => {
-            let pos = { x: node.position?.x ?? 0, y: node.position?.y ?? 0 };
-            if (layoutType === 'grid') {
-              const cols = Math.ceil(Math.sqrt(Math.max(1, n)));
-              pos = { x: (i % cols) * (options.nodeSpacing ?? 160), y: Math.floor(i / cols) * (options.nodeSpacing ?? 120) };
-            } else if (layoutType === 'circular') {
-              const r = 200 + Math.floor(i / 8) * 80;
-              const angle = (i / Math.max(1, n)) * Math.PI * 2;
-              pos = { x: Math.round(400 + r * Math.cos(angle)), y: Math.round(300 + r * Math.sin(angle)) };
-            } else if (layoutType === 'tree' || layoutType === 'hierarchical' || layoutType === 'layered-digraph') {
-              pos = { x: i * (options.nodeSpacing ?? 160), y: (i % 5) * (options.nodeSpacing ?? 120) };
-            } else {
-              // force-directed / fallback: simple horizontal spread
-              pos = { x: i * (options.nodeSpacing ?? 160), y: (i % 5) * (options.nodeSpacing ?? 120) };
+
+        // Handle dagre-driven layouts: horizontal / vertical
+        if (Array.isArray(this.diagram.nodes) && (layoutType === 'horizontal' || layoutType === 'vertical')) {
+          try {
+            // Import the dagre helper relative to this module.
+            // Use dynamic import to keep the module lightweight unless needed.
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const { applyDagreLayout } = await import('./layout/dagreLayout');
+
+            const direction = layoutType === 'horizontal' ? 'LR' : 'TB';
+            const nodeSep = options.nodeSpacing ?? (options.layoutSpecific && options.layoutSpecific.nodeSep) ?? 60;
+            const rankSep = (options.layoutSpecific && options.layoutSpecific.rankSep) ?? 60;
+
+            const positioned = applyDagreLayout(this.diagram.nodes, this.diagram.edges || [], {
+              direction: direction as any,
+              nodeSep,
+              rankSep,
+            });
+
+            // Attempt to hand updated positions back to the diagram
+            if (typeof this.diagram.setNodePositions === 'function') {
+              await Promise.resolve(this.diagram.setNodePositions(positioned));
+              return;
             }
-            return { ...node, position: pos };
+            // Generic fallback: replace nodes array with positioned nodes
+            this.diagram.nodes = positioned;
+            return;
+          } catch (err) {
+            // swallow dagre/layout failures — this manager is intentionally lightweight
+          }
+        }
+
+        // Generic fallback: place nodes on a regular grid using provided spacing.
+        if (Array.isArray(this.diagram.nodes)) {
+          const total = this.diagram.nodes.length;
+          const cols = Math.ceil(Math.sqrt(Math.max(1, total)));
+          const spacingX = options.nodeSpacing ?? 160;
+          const spacingY = (options.layoutSpecific && options.layoutSpecific.rankSep) ?? (options.nodeSpacing ?? 120);
+
+          const updated = this.diagram.nodes.map((node: any, i: number) => {
+            const x = (i % cols) * spacingX;
+            const y = Math.floor(i / cols) * spacingY;
+            return { ...node, position: { x, y } };
           });
-          // Assign back if diagram supports it
+
           try {
             if (typeof this.diagram.setNodePositions === 'function') {
               await Promise.resolve(this.diagram.setNodePositions(updated));

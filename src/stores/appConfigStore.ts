@@ -74,7 +74,7 @@ interface AppConfigStore {
     }
 
 const defaultConfig: AppConfig = {
-  currentLayout: 'layered-digraph',
+  currentLayout: 'horizontal',
   layoutAnimations: true,
   layoutSpacing: 120,
   showLegend: false,
@@ -85,7 +85,7 @@ const defaultConfig: AppConfig = {
   debugRdfLogging: true,
   maxVisibleNodes: 1000,
   recentOntologies: [],
-  recentLayouts: ['force-directed'],
+  recentLayouts: ['horizontal'],
   additionalOntologies: [],
   disabledAdditionalOntologies: []
 };
@@ -266,7 +266,7 @@ export const useAppConfigStore = create<AppConfigStore>()(
           };
           set({ config: validatedConfig });
         } catch (error) {
-          ((...__vg_args)=>{try{fallback('console.error',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'error', captureStack:true})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.error(...__vg_args);})('Failed to import config:', error);
+          console.error('Failed to import config:', error);
           throw new Error('Invalid configuration format');
         }
       }

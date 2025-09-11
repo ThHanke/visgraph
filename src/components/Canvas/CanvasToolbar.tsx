@@ -16,6 +16,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from '../ui/dropdown-menu';
 import {
   Select,
@@ -38,12 +39,15 @@ import {
   Circle,
   Grid3X3,
   Layers,
-  TreeDeciduous
+  TreeDeciduous,
+  Sparkles,
 } from 'lucide-react';
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { useAppConfigStore } from '../../stores/appConfigStore';
 import { EntityAutocomplete } from '../ui/EntityAutocomplete';
 import { fallback } from '../../utils/startupDebug';
+import { LayoutManager } from './LayoutManager';
+import { WELL_KNOWN_PREFIXES } from '../../utils/wellKnownOntologies';
 import { ConfigurationPanel } from './ConfigurationPanel';
 import { toast } from 'sonner';
 
@@ -55,7 +59,7 @@ interface CanvasToolbarProps {
   onLoadFile?: (file: File) => void;
   viewMode: 'abox' | 'tbox';
   onViewModeChange: (mode: 'abox' | 'tbox') => void;
-  onLayoutChange?: (layoutType: string) => void;
+  onLayoutChange?: (layoutType: string, force?: boolean) => void;
   currentLayout?: string;
   // New: allow CanvasToolbar to display and toggle programmatic layout application
   layoutEnabled?: boolean;
@@ -69,7 +73,7 @@ interface CanvasToolbarProps {
   }>;
 }
 
-export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onLoadFile, viewMode, onViewModeChange, onLayoutChange, currentLayout = 'force-directed', availableEntities, layoutEnabled = false, onToggleLayoutEnable }: CanvasToolbarProps) => {
+export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onLoadFile, viewMode, onViewModeChange, onLayoutChange, currentLayout = 'horizontal', availableEntities, layoutEnabled = false, onToggleLayoutEnable }: CanvasToolbarProps) => {
   const [isAddNodeOpen, setIsAddNodeOpen] = useState(false);
   const [isLoadOntologyOpen, setIsLoadOntologyOpen] = useState(false);
   const [isLoadFileOpen, setIsLoadFileOpen] = useState(false);
@@ -87,17 +91,27 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   const rdfManagerNamespaces = (getRdfManager && typeof getRdfManager === 'function') ? (getRdfManager()?.getNamespaces?.() || {}) : {};
   const mergedNamespaces = { ...namespacesFromLoaded, ...rdfManagerNamespaces };
 
-  const layoutOptions = [
-    { type: 'force-directed', label: 'Force Directed', icon: Circle, description: 'Nodes repel each other and connected nodes attract' },
-    { type: 'hierarchical', label: 'Hierarchical', icon: TreePine, description: 'Tree-like structure with clear parent-child relationships' },
-    { type: 'circular', label: 'Circular', icon: Circle, description: 'Nodes arranged in a circular pattern' },
-    { type: 'grid', label: 'Grid', icon: Grid3X3, description: 'Nodes arranged in a regular grid pattern' },
-    { type: 'layered-digraph', label: 'Layered Graph', icon: Layers, description: 'Directed graph with nodes in distinct layers' },
-    { type: 'tree', label: 'Tree', icon: TreeDeciduous, description: 'Traditional tree layout with root at top' }
-  ];
+  // Centralized: ask LayoutManager for available layouts (keeps single source of truth).
+  const layoutManager = new LayoutManager();
+  const layoutOptions = layoutManager.getAvailableLayouts();
+
+  const getLayoutIcon = (iconName?: string) => {
+    const icons = {
+      GitBranch,
+      TreePine,
+      Circle,
+      Grid3X3,
+      Layers,
+      TreeDeciduous,
+    } as Record<string, any>;
+    return (iconName && (icons[iconName] || icons[iconName as keyof typeof icons])) || Layout;
+  };
 
   const handleLayoutChange = (layoutType: string) => {
-    onLayoutChange?.(layoutType);
+    // Always request layout application when the user selects from the UI dropdown.
+    // The consumer may choose to respect or ignore the layoutEnabled toggle; we pass
+    // `force=true` so the selection always triggers a layout run.
+    onLayoutChange?.(layoutType, true);
     toast.success(`Applied ${layoutType} layout`, {
       description: `Graph reorganized with new layout`
     });
@@ -132,12 +146,8 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
     }
   };
 
-  const commonOntologies = [
-    { url: 'http://xmlns.com/foaf/0.1/', name: 'FOAF (Friend of a Friend)' },
-    { url: 'https://www.w3.org/TR/vocab-org/', name: 'Organization Ontology' },
-    { url: 'http://purl.org/dc/elements/1.1/', name: 'Dublin Core' },
-    { url: 'http://www.w3.org/2004/02/skos/core#', name: 'SKOS Core' },
-  ];
+  // Use centralized well-known ontologies list
+  const commonOntologies = WELL_KNOWN_PREFIXES.map((p) => ({ url: p.url, name: p.name }));
 
   return (
     <div className="absolute top-4 left-4 z-10 flex flex-wrap gap-2">
@@ -350,7 +360,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-64 bg-popover border z-50">
           {layoutOptions.map((layout) => {
-            const IconComponent = layout.icon;
+            const IconComponent = getLayoutIcon(layout.icon as any);
             return (
               <DropdownMenuItem
                 key={layout.type}
@@ -372,6 +382,35 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
               </DropdownMenuItem>
             );
           })}
+
+          <DropdownMenuSeparator />
+                <DropdownMenuItem
+            onClick={() => {
+              try {
+                const suggested = layoutManager.suggestOptimalLayout();
+                // Prefer the programmatic apply hook which bypasses the UI toggle if necessary.
+                if (typeof (window as any).__VG_APPLY_LAYOUT === 'function') {
+                  try {
+                    (window as any).__VG_APPLY_LAYOUT(suggested);
+                  } catch (err) {
+                    // fallback to toggling layout and calling the prop
+                    onToggleLayoutEnable?.(true);
+                    onLayoutChange?.(suggested, true);
+                  }
+                } else {
+                  // Best-effort fallback for environments without the global hook
+                  onToggleLayoutEnable?.(true);
+                  onLayoutChange?.(suggested, true);
+                }
+              } catch (e) {
+                console.warn('Auto layout selection failed', e);
+              }
+            }}
+            className="flex items-center gap-2 p-3 cursor-pointer hover:bg-accent"
+          >
+            <Sparkles className="h-4 w-4" />
+            Auto Select Layout
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 

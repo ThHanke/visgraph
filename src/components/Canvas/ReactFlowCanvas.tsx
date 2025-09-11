@@ -112,7 +112,8 @@ export const ReactFlowCanvas: React.FC = () => {
   const [viewMode, setViewMode] = useState(config.viewMode);
   const [showLegend, setShowLegendState] = useState(config.showLegend);
   const [currentLayout, setCurrentLayoutState] = useState(config.currentLayout);
-  const [layoutEnabled, setLayoutEnabled] = useState(false);
+  // Enable programmatic/layout toggle on by default per user request.
+  const [layoutEnabled, setLayoutEnabled] = useState(true);
 
   useEffect(() => {
     setViewMode(config.viewMode);
@@ -441,11 +442,34 @@ export const ReactFlowCanvas: React.FC = () => {
           ? String(nodeData.color)
           : `hsl(var(--ns-${nsKeyForVar}))`;
 
+        // Attach a size-measurement callback into node.data so rendered nodes can report
+        // their DOM width/height back to the React Flow state. The CustomOntologyNode
+        // component observes its DOM size and invokes this callback; dagre layout will
+        // then consume the measured sizes from node.__rf.width / node.__rf.height.
         diagramNodes.push({
           id,
           type: "ontology",
           position: { x: pos.x, y: pos.y },
-          data: nodeData,
+          data: {
+            ...nodeData,
+            onSizeMeasured: (w: number, h: number) => {
+              try {
+                setNodes((nds) =>
+                  nds.map((n) =>
+                    n.id === id
+                      ? {
+                          ...n,
+                          // preserve any existing __rf metadata and update width/height
+                          __rf: { ...(n as any).__rf, width: w, height: h },
+                        }
+                      : n,
+                  ),
+                );
+              } catch (_) {
+                /* ignore measurement update failures */
+              }
+            },
+          },
           // set CSS variable on the node so global CSS (./index.css) can pick up the left bar color
           style: { ["--node-leftbar-color" as any]: leftBarVarValue },
         });
@@ -591,6 +615,52 @@ export const ReactFlowCanvas: React.FC = () => {
         } catch (_) {
           /* ignore */
         }
+      }
+
+      // After mapping completes (e.g. after a knowledge graph load), always apply the currently selected
+      // layout from the config/dropdown. This enforces the user's selected layout immediately regardless
+      // of the programmatic layout toggle (the toolbar dropdown selection should always reflow).
+      try {
+        const layoutToApply = (typeof config !== 'undefined' && config.currentLayout) ? config.currentLayout : currentLayout;
+        if (layoutToApply === 'horizontal' || layoutToApply === 'vertical') {
+          const dir = layoutToApply === 'vertical' ? 'TB' : 'LR';
+          // Use the dagre helper directly to lay out the freshly computed diagram nodes/edges.
+          // We run this as a microtask to ensure React state updates settle first.
+          setTimeout(() => {
+            try {
+              setNodes((nds) => {
+                try {
+                  const positioned = applyDagreLayout(nds, diagramEdges as any, {
+                    direction: dir,
+                    nodeSep: 60,
+                    rankSep: 60,
+                  });
+                  return positioned;
+                } catch (_) {
+                  return nds;
+                }
+              });
+              try {
+                setCurrentLayoutState(layoutToApply);
+                setCurrentLayout(layoutToApply);
+              } catch (_) {
+                /* ignore */
+              }
+              try {
+                const inst = reactFlowInstance.current;
+                if (inst && typeof (inst as any).fitView === "function") {
+                  (inst as any).fitView();
+                }
+              } catch (_) {
+                /* ignore */
+              }
+            } catch (_) {
+              /* ignore */
+            }
+          }, 0);
+        }
+      } catch (_) {
+        /* ignore layout-on-load failures */
       }
     } catch (e) {
       try {
@@ -1421,63 +1491,28 @@ export const ReactFlowCanvas: React.FC = () => {
         return false;
       }
 
+      // Only support Dagre-driven layouts: 'horizontal' and 'vertical'.
+      if (layoutType !== "horizontal" && layoutType !== "vertical") {
+        toast.error(`Unsupported layout: ${layoutType}`);
+        return false;
+      }
+
       try {
-        // Delegate to dagre for graph-style layout types
-        if (
-          layoutType === "layered-digraph" ||
-          layoutType === "dagre" ||
-          layoutType === "hierarchical"
-        ) {
-          setNodes((nds) => {
-            try {
-              const positioned = applyDagreLayout(nds, edges as any, {
-                direction: "LR",
-                nodeSep: 60,
-                rankSep: 60,
-              });
-              // When using React Flow, positions are set directly on nodes
-              return positioned;
-            } catch (err) {
-              // fallback to previous positions on failure
-              return nds;
-            }
-          });
-        } else if (
-          layoutType === "circular" ||
-          layoutType === "grid" ||
-          layoutType === "force-directed" ||
-          layoutType === "tree"
-        ) {
-          // simple built-in layouts preserved
-          setNodes((nds) => {
-            const updated = nds.map((n, i) => {
-              if (layoutType === "circular") {
-                const r = 240 + Math.floor(i / 8) * 80;
-                const angle = (i / Math.max(1, nds.length)) * Math.PI * 2;
-                return {
-                  ...n,
-                  position: {
-                    x: Math.round(400 + r * Math.cos(angle)),
-                    y: Math.round(300 + r * Math.sin(angle)),
-                  },
-                };
-              } else if (layoutType === "grid") {
-                const pos = nodeGridPosition(i);
-                return { ...n, position: { x: pos.x, y: pos.y } };
-              } else if (layoutType === "tree") {
-                return { ...n, position: { x: i * 200, y: (i % 5) * 120 } };
-              } else {
-                // force-directed / fallback: simple horizontal spread
-                return { ...n, position: { x: i * 200, y: (i % 5) * 120 } };
-              }
+        const dir = layoutType === "vertical" ? "TB" : "LR";
+        setNodes((nds) => {
+          try {
+            const positioned = applyDagreLayout(nds, edges as any, {
+              direction: dir,
+              nodeSep: 60,
+              rankSep: 60,
             });
-            return updated;
-          });
-        } else {
-          // unknown layout: no-op
-          toast.error(`Unknown layout: ${layoutType}`);
-          return false;
-        }
+            // When using React Flow, positions are set directly on nodes
+            return positioned;
+          } catch (err) {
+            // fallback to previous positions on failure
+            return nds;
+          }
+        });
 
         setCurrentLayoutState(layoutType);
         setCurrentLayout(layoutType);
@@ -2112,6 +2147,7 @@ export const ReactFlowCanvas: React.FC = () => {
           nodeTypes={{ ontology: OntologyNode }}
           edgeTypes={{ floating: FloatingEdge }}
           connectionLineComponent={FloatingConnectionLine}
+          minZoom={0.1}
           className="knowledge-graph-canvas bg-canvas-bg"
         >
           <Controls

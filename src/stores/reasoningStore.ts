@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import { DataFactory } from 'n3';
 const { namedNode, literal, quad } = DataFactory;
+import { WELL_KNOWN } from '../utils/wellKnownOntologies';
+import { fallback } from '../utils/startupDebug';
+
+// Helper used by inline debug wrappers to safely stringify arguments that may be
+// strings or objects with a .message property.
+const __vg_safe = (a: any) => (a && (a as any).message) ? (a as any).message : String(a);
 
 interface ReasoningResult {
   id: string;
@@ -235,15 +241,15 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
                   } else if (typeof (rdfStore as any).add === 'function' && typeof (rdfStore as any).quad === 'function') {
                     (rdfStore as any).add((rdfStore as any).quad(subjTerm, predTerm, objTerm, g));
                   } else {
-                    ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})('Cannot persist inferred triple, unsupported rdfStore API:', inf);
+                    console.warn('Cannot persist inferred triple, unsupported rdfStore API:', inf);
                   }
                 }
               } catch (e) {
-                ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})('Failed to process inferred item:', inf, e);
+                console.warn('Failed to process inferred item:', inf, e);
               }
             }
           } catch (e) {
-            ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})('Failed to apply inferences to RDF store:', e);
+            console.warn('Failed to apply inferences to RDF store:', e);
           }
         }
       } else {
@@ -264,18 +270,23 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
         }
       }
       
-      // Helper function to expand common prefixes
-      function expandPredicate(prefixed) {
-        const prefixMap = {
-          'rdf:': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
-          'rdfs:': 'http://www.w3.org/2000/01/rdf-schema#',
-          'owl:': 'http://www.w3.org/2002/07/owl#',
-          'foaf:': 'http://xmlns.com/foaf/0.1/',
-          'skos:': 'http://www.w3.org/2004/02/skos/core#'
-        };
-        
-        const prefix = Object.keys(prefixMap).find(p => prefixed.startsWith(p));
-        return prefix ? prefixed.replace(prefix, prefixMap[prefix]) : prefixed;
+      // Helper function to expand prefixed names using the centralized well-known prefixes.
+      // Falls back to the original value if no matching prefix is found.
+      function expandPredicate(prefixed: string) {
+        try {
+          if (!prefixed || typeof prefixed !== 'string') return prefixed;
+          // WELL_KNOWN.prefixes has shape { rdf: 'http://...#', rdfs: 'http://...#', ... }
+          const prefixes = (WELL_KNOWN && (WELL_KNOWN as any).prefixes) || {};
+          // Find matching prefix + colon (e.g. 'rdf:')
+          const match = Object.keys(prefixes).find((p) => prefixed.startsWith(p + ':'));
+          if (match) {
+            return prefixed.replace(new RegExp(`^${match}:`), prefixes[match]);
+          }
+          // No known prefix found — return original
+          return prefixed;
+        } catch (_) {
+          return prefixed;
+        }
       }
 
       const completedReasoning: ReasoningResult = {
