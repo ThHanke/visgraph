@@ -21,14 +21,20 @@ import { WELL_KNOWN } from '../utils/wellKnownOntologies';
  */
 const inFlightLoads = new Map<string, Promise<void>>();
 
-// Register global well-known prefixes idempotently so other modules can rely on them.
-// This avoids inventing synthetic TTL and ensures prefixes such as owl/rdfs/skos/dcterms
-// are available for parsing, short-names and exports.
-try {
-  Object.entries(WELL_KNOWN.prefixes || {}).forEach(([p, uri]) => {
-    try { rdfManager.addNamespace(p, uri); } catch (_) { /* ignore individual failures */ }
-  });
-} catch (_) { /* ignore registration failures */ }
+/*
+  Deferred namespace registration:
+
+  Do NOT eagerly register all WELL_KNOWN prefixes at startup. Prefix registration
+  is best-effort and should be performed opportunistically when an ontology or
+  RDF content is actually loaded. Registering everything upfront populates the
+  RDF manager with prefixes that may never be used and pollutes UI components
+  that rely on the RDF manager as the single source of truth.
+
+  Registration will occur on-demand via ensureNamespacesPresent(...) at the
+  points where we already add parsed namespaces or when a well-known ontology
+  entry is explicitly recognized during load. This keeps the RDF manager's
+  namespace map aligned with actual usage.
+*/
 
 // Opt-in debug logging for call-graph / instrumentation.
 // Enable via environment variable VG_CALL_GRAPH_LOGGING=true or via the app config
@@ -36,20 +42,19 @@ try {
 function shouldLogCallGraph(): boolean {
   try {
     if (typeof process !== 'undefined' && process.env && process.env.VG_CALL_GRAPH_LOGGING === 'true') return true;
-  } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
+  } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
 
   try {
     const cfg = useAppConfigStore.getState();
     if (cfg && (cfg as any).callGraphLogging) return true;
-  } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
+  } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
 
   return false;
 }
 
 function logCallGraph(...args: any[]) {
   if (shouldLogCallGraph()) {
-    // Keep logs lightweight and consistent
-    ((...__vg_args)=>{try{debug('console.debug',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.debug(...__vg_args);})('[vg-call-graph]', ...args);
+    ((...__vg_args)=>{try{debug('console.debug',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } } console.debug(...__vg_args);})('[vg-call-graph]', ...args);
   }
 }
 
@@ -167,26 +172,16 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
       const wkEntry = WELL_KNOWN.ontologies[url as keyof typeof WELL_KNOWN.ontologies];
       if (wkEntry) {
-        // For well-known ontology URLs we avoid inventing mock classes/properties.
-        // Instead ensure the relevant namespace prefixes are registered in the RDF manager
-        // so UI shortnames and exports work consistently even if we don't fetch real ontology triples.
         try {
           const nsMap = wkEntry && wkEntry.namespaces ? wkEntry.namespaces : {};
-          // Ensure common ontology prefixes are present (idempotent)
-          ensureNamespacesPresent(rdfManager, {
-            rdfs: 'http://www.w3.org/2000/01/rdf-schema#',
-            owl: 'http://www.w3.org/2002/07/owl#',
-            skos: 'http://www.w3.org/2004/02/skos/core#',
-            dcterms: 'http://purl.org/dc/terms/',
-            ...nsMap
-          });
+          ensureNamespacesPresent(rdfManager, nsMap);
         } catch (e) {
           try { fallback('rdf.addNamespace.failed', { error: String(e) }, { level: 'warn' }); } catch (_) { /* ignore */ }
         }
 
         const loadedOntology: LoadedOntology = {
           url,
-          name: wkEntry.name || getOntologyName(url),
+          name: wkEntry.name || deriveOntologyName(url),
           classes: [],
           properties: [],
           namespaces: rdfManager.getNamespaces()
@@ -198,7 +193,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           availableProperties: [...state.availableProperties]
         }));
 
-        // Persist a "recent ontology" entry so the UI can surface recently loaded ontologies.
         try {
           const appCfg = useAppConfigStore.getState();
           if (appCfg && typeof appCfg.addRecentOntology === 'function') {
@@ -214,16 +208,14 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       // Centralized fetch & mime detection via RDFManager helper
       try {
         const { rdfManager } = get();
-        const { content, mimeType } = await rdfManager.loadFromUrl(url, { timeoutMs: 15000, onProgress: (p: number, m: string) => {/* no-op or forward */} });
+        const { content } = await rdfManager.loadFromUrl(url, { timeoutMs: 15000, onProgress: (p: number, m: string) => {/* no-op or forward */} });
         const { parseRDFFile } = await import('../utils/rdfParser');
         const parsed = await parseRDFFile(content);
 
-        // Match parsed namespaces to canonical well-known ontologies (idempotent metadata only).
         try {
           const parsedNamespaces = parsed.namespaces || {};
           const canonicalByNs: Record<string, string> = {};
 
-          // Build reverse lookup from known ontology namespace URIs -> canonical ontology URL
           Object.entries(WELL_KNOWN.ontologies || {}).forEach(([ontUrl, meta]: any) => {
             if (meta && meta.namespaces) {
               Object.values(meta.namespaces).forEach((nsUri: any) => {
@@ -232,16 +224,12 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             }
           });
 
-          // Also consider WELL_KNOWN.prefixes where an ontology URL might match a prefix URI
           Object.values(WELL_KNOWN.prefixes || {}).forEach((nsUri: any) => {
             try {
               if (WELL_KNOWN.ontologies[String(nsUri)]) canonicalByNs[String(nsUri)] = String(nsUri);
             } catch (_) { /* ignore */ }
           });
 
-          // For each parsed namespace, if it maps back to a canonical ontology URL,
-          // add a LoadedOntology metadata entry (if not already present). Do not alter
-          // the RDF store contents beyond applying parsed namespaces.
           Object.entries(parsedNamespaces).forEach(([p, nsUri]) => {
             try {
               const canonical = canonicalByNs[String(nsUri)];
@@ -262,21 +250,17 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           });
         } catch (e) { try { fallback('wellknown.match.failed', { error: String(e) }, { level: 'warn' }); } catch (_) { /* ignore */ } }
 
-
         const ontologyClasses: OntologyClass[] = [];
         const ontologyProperties: ObjectProperty[] = [];
 
         const classGroups = new Map<string, any[]>();
         parsed.nodes.forEach(node => {
           const updates: any = {};
-          // Collect all rdf type candidates, preferring rdfTypes array when present
           const allTypes = (node as any).rdfTypes && (node as any).rdfTypes.length > 0
             ? (node as any).rdfTypes.slice()
             : ((node as any).rdfType ? [(node as any).rdfType] : []);
-          // Prefer non-NamedIndividual types as "meaningful". If none found, preserve whatever types exist.
           const meaningful = allTypes.filter((t: string) => t && !String(t).includes('NamedIndividual'));
           if (meaningful.length > 0) {
-            // Provide the full list of meaningful types so the RDF manager can preserve them.
             updates.rdfTypes = meaningful;
           } else if (allTypes.length > 0) {
             updates.rdfTypes = allTypes;
@@ -302,8 +286,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           const hasLiterals = node.literalProperties && node.literalProperties.length > 0;
           if ((isIndividual || hasLiterals) && Object.keys(updates).length > 0) {
             rdfManager.updateNode(node.uri, updates);
-            // lightweight log for debug when running focused tests
-            // ((...__vg_args)=>{try{debug('console.debug',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.debug(...__vg_args);})(`Loaded entity ${node.uri} into RDF store with type ${updates.type}`);
           }
 
           const classKey = `${node.namespace}:${node.classType}`;
@@ -354,7 +336,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
         const loadedOntology: LoadedOntology = {
           url,
-          name: getOntologyName(url),
+          name: deriveOntologyName(url),
           classes: ontologyClasses,
           properties: ontologyProperties,
           namespaces: parsed.namespaces
@@ -366,7 +348,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             rdfManager.addNamespace(prefix, ns);
           });
         } catch (nsErr) {
-          try { fallback('rdf.namespaces.add.failed', { error: String(nsErr) }, { level: 'warn' }); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
+          try { fallback('rdf.namespaces.add.failed', { error: String(nsErr) }, { level: 'warn' }); } catch (_) { /* ignore */ }
         }
 
         set((state) => ({
@@ -375,7 +357,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           availableProperties: [...state.availableProperties, ...ontologyProperties]
         }));
 
-        // Persist a "recent ontology" entry so the UI can surface recently loaded ontologies.
         try {
           const appCfg = useAppConfigStore.getState();
           if (appCfg && typeof appCfg.addRecentOntology === 'function') {
@@ -383,15 +364,12 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             try { norm = new URL(String(url)).toString(); } catch { norm = String(url).replace(/\/+$/, ''); }
             appCfg.addRecentOntology(norm);
           }
-        } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
+        } catch (_) { /* ignore */ }
 
-        // Update currentGraph (respect preserveGraph param) and merge parsed graph nodes/edges
+        // Merge parsed graph into currentGraph (preserveGraph behavior)
         try {
           const nodes = (parsed.nodes || []).map((n: any) => {
             const nodeId = n.id || n.uri || n.iri || `${n.namespace}:${n.classType}` || String(Math.random());
-            // Prefer a meaningful (non-NamedIndividual) rdf:type when deciding the node's
-            // classType/namespace for the diagram. This ensures UI badges show the actual
-            // class (e.g. iof-mat:Specimen) rather than the generic owl:NamedIndividual.
             const allTypes = (n as any).rdfTypes && (n as any).rdfTypes.length > 0
               ? (n as any).rdfTypes.slice()
               : ((n as any).rdfType ? [(n as any).rdfType] : []);
@@ -409,7 +387,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                   computedNamespace = chosenStr.substring(0, idx);
                   computedClassType = chosenStr.substring(idx + 1);
                 } else if (/^https?:\/\//i.test(chosenStr)) {
-                  // Try to map full URI back to a known prefix via rdfManager if available
                   try {
                     const mgr = get().rdfManager;
                     const nsMap = (mgr && typeof mgr.getNamespaces === 'function') ? mgr.getNamespaces() : {};
@@ -423,7 +400,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                       }
                     }
                     if (!matched) {
-                      // fallback to short local name from the URI
                       const parts = chosenStr.split(/[#/]/).filter(Boolean);
                       computedClassType = parts.length ? parts[parts.length - 1] : chosenStr;
                     }
@@ -437,7 +413,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                 }
               }
             } catch {
-              // ignore and fall back to parser-provided classType/namespace
+              // ignore
             }
 
             return {
@@ -461,177 +437,61 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             data: e
           }));
 
-          if (!preserveGraph) {
-            set({ currentGraph: { nodes, edges } });
-          } else {
-            const existing = get().currentGraph;
-            const mergedNodes: any[] = [...existing.nodes];
-            const existingUris = new Set<string>();
-            existing.nodes.forEach((m: any) => {
-              const mid = (m && m.data && ((m.data.uri as string) || (m.data.iri as string) || (m.data.individualName as string) || (m.data.id as string))) || m.uri || m.id;
-              if (mid) existingUris.add(String(mid));
-            });
-
-            (parsed.nodes || []).forEach((n: any) => {
-              const nIds = [n.uri, n.id, (n.data && n.data.uri), (n.data && n.data.iri), (n.data && n.data.individualName), (n.data && n.data.id)];
-              const exists = nIds.some((id) => id && existingUris.has(String(id)));
-              if (!exists) {
-                const nodeObj = {
-                  id: n.id || n.uri || n.iri || `${n.namespace}:${n.classType}` || String(Math.random()),
-                  uri: n.uri || n.iri,
-                  data: {
-                    individualName: n.individualName || (n.uri ? n.uri.split('/').pop() : (n.id || '')),
-                    classType: n.classType,
-                    namespace: n.namespace,
-                    uri: n.uri || n.iri,
-                    literalProperties: n.literalProperties || [],
-                    annotationProperties: n.annotationProperties || []
-                  }
-                };
-                mergedNodes.push(nodeObj);
-                nIds.forEach(id => { if (id) existingUris.add(String(id)); });
-              }
-            });
-
-            const mergedEdges: any[] = [...existing.edges];
-            (parsed.edges || []).forEach((e: any) => {
-              const edgeId = e.id || `${e.source}-${e.target}-${e.propertyType}`;
-              if (!mergedEdges.find((me: any) => me.id === edgeId)) {
-                mergedEdges.push({
-                  id: edgeId,
-                  source: e.source,
-                  target: e.target,
-                  data: e
-                });
-              }
-            });
-
-            set({ currentGraph: { nodes: mergedNodes, edges: mergedEdges } });
-          }
-        } catch (mergeErr) {
-          ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})('Failed to update currentGraph from parsed RDF:', mergeErr);
-        }
-
-        // Centralized: merge namespaces and apply parsed nodes idempotently via RDFManager helpers.
-        try {
-          const { rdfManager } = get();
-          rdfManager.applyParsedNamespaces(parsed.namespaces || {});
-          rdfManager.applyParsedNodes(parsed.nodes || [], { preserveExistingLiterals: true });
-
-          // Also ensure object property triples (edges) are persisted into the RDF store so
-          // downstream components (reasoner, exporters) can rely on them. Map parsed edge
-          // source/target ids back to node URIs and add named-node triples idempotently.
-          try {
-            const store = rdfManager.getStore();
-            (parsed.edges || []).forEach((e: any) => {
-              try {
-                // Find source and target nodes to obtain real IRIs
-                const s = (parsed.nodes || []).find((n: any) => n.id === e.source);
-                const t = (parsed.nodes || []).find((n: any) => n.id === e.target);
-                if (!s || !t || !s.uri || !t.uri) return;
-
-                const subj = s.uri;
-                const obj = t.uri;
-                const pred = e.propertyUri || e.propertyType;
-
-                // Expand predicate to full IRI using rdfManager and avoid duplicate quads by checking existence first
-                const predFull = rdfManager && typeof rdfManager.expandPrefix === 'function' ? rdfManager.expandPrefix(pred) : pred;
-                try {
-                  const existing = store.getQuads(namedNode(subj), namedNode(predFull), namedNode(obj), null);
-                    if (!existing || existing.length === 0) {
-                    try {
-                      store.addQuad(quad(namedNode(subj), namedNode(predFull), namedNode(obj)));
-                    } catch (addErr) {
-                      // best-effort: ignore if adding fails
-                      try { fallback('rdf.addQuad.objectProperty.failed', { subj, pred: predFull, obj, error: String(addErr) }, { level: 'warn' }); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
-                    }
-                  }
-                } catch (e) {
-                  // If getQuads with namedNode throws for any reason, fallback to best-effort add with expanded predicate
-                  try {
-                    store.addQuad(quad(namedNode(subj), namedNode(predFull), namedNode(obj)));
-                  } catch (addErr) {
-                    ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})('Failed to add object property quad (fallback) for', subj, predFull, obj, addErr);
-                  }
-                }
-              } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
-            });
-          } catch (edgeErr) {
-            try { fallback('rdf.persist.edges.failed', { error: String(edgeErr) }, { level: 'warn' }); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
-          }
-
-          // Keep compatibility: also ensure the in-memory graph reflects parsed rdfTypes where present.
-          (parsed.nodes || []).forEach((node: any) => {
-            try {
-              const allTypes = (node as any).rdfTypes && (node as any).rdfTypes.length > 0
-                ? (node as any).rdfTypes.slice()
-                : ((node as any).rdfType ? [(node as any).rdfType] : []);
-              if (allTypes && allTypes.length > 0) {
-                try { (get().updateNode as any)(node.uri, { rdfTypes: allTypes }); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
-              }
-            } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
+          // Merge into existing graph preserving previous nodes/edges
+          const existing = get().currentGraph;
+          const mergedNodes: any[] = [...existing.nodes];
+          const existingUris = new Set<string>();
+          existing.nodes.forEach((m: any) => {
+            const mid = (m && m.data && ((m.data.uri as string) || (m.data.iri as string) || (m.data.individualName as string) || (m.data.id as string))) || m.uri || m.id;
+            if (mid) existingUris.add(String(mid));
           });
-        } catch (reapplyErr) {
-          try { fallback('rdf.reapply.failed', { error: String(reapplyErr) }, { level: 'warn' }); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
-        }
 
-        // Add a loaded ontology meta entry
-        try {
-          const loadedOntology: LoadedOntology = {
-            url: 'parsed-rdf',
-            name: 'Parsed RDF Graph',
-            classes: [],
-            properties: [],
-            namespaces: parsed.namespaces || {}
-          };
-          set((state) => ({
-            loadedOntologies: [...state.loadedOntologies, loadedOntology]
-          }));
-        } catch (metaErr) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(metaErr) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
+          (parsed.nodes || []).forEach((n: any) => {
+            const nIds = [n.uri, n.id, (n.data && n.data.uri), (n.data && n.data.iri), (n.data && n.data.individualName), (n.data && n.data.id)];
+            const exists = nIds.some((id) => id && existingUris.has(String(id)));
+            if (!exists) {
+              const nodeObj = {
+                id: n.id || n.uri || n.iri || `${n.namespace}:${n.classType}` || String(Math.random()),
+                uri: n.uri || n.iri,
+                data: {
+                  individualName: n.individualName || (n.uri ? n.uri.split('/').pop() : (n.id || '')),
+                  classType: n.classType,
+                  namespace: n.namespace,
+                  uri: n.uri || n.iri,
+                  literalProperties: n.literalProperties || [],
+                  annotationProperties: n.annotationProperties || []
+                }
+              };
+              mergedNodes.push(nodeObj);
+              nIds.forEach(id => { if (id) existingUris.add(String(id)); });
+            }
+          });
+
+          const mergedEdges: any[] = [...existing.edges];
+          (parsed.edges || []).forEach((e: any) => {
+            const edgeId = e.id || `${e.source}-${e.target}-${e.propertyType}`;
+            if (!mergedEdges.find((me: any) => me.id === edgeId)) {
+              mergedEdges.push({
+                id: edgeId,
+                source: e.source,
+                target: e.target,
+                data: e
+              });
+            }
+          });
+
+          set({ currentGraph: { nodes: mergedNodes, edges: mergedEdges } });
+        } catch (mergeErr) {
+          try { fallback('graph.merge.failed', { error: String(mergeErr) }, { level: 'warn' }); } catch (_) { /* ignore */ }
+        }
 
         return;
       } catch (fetchOrParseError) {
-        warn('ontology.fetch.parse.failed', { url, error: (fetchOrParseError && (fetchOrParseError as Error).message) ? (fetchOrParseError as Error).message : String(fetchOrParseError) }, { caller: true });
-        // No fallback — per policy do not register synthetic ontology metadata on fetch/parse failure.
+        warn('ontology.fetch.parse.failed', { url, error: (fetchOrParseError && (fetchOrParseError as any).message) ? (fetchOrParseError as any).message : String(fetchOrParseError) }, { caller: true });
         return;
       }
-
-      // In cases where fetching/parsing the remote ontology failed we still register
-      // the URL as a loaded ontology entry but do not invent classes/properties.
-      try {
-        ensureNamespacesPresent(rdfManager, {
-          rdfs: 'http://www.w3.org/2000/01/rdf-schema#',
-          owl: 'http://www.w3.org/2002/07/owl#',
-          skos: 'http://www.w3.org/2004/02/skos/core#',
-          dcterms: 'http://purl.org/dc/terms/'
-        });
-      } catch (_) { /* ignore */ }
-
-      const mockOntology: LoadedOntology = {
-        url,
-        name: getOntologyName(url),
-        classes: [],
-        properties: [],
-        namespaces: rdfManager.getNamespaces()
-      };
-
-      set((state) => ({
-        loadedOntologies: [...state.loadedOntologies, mockOntology],
-        availableClasses: [...state.availableClasses],
-        availableProperties: [...state.availableProperties]
-      }));
-
-      // Persist recent ontology entry for user convenience
-      try {
-        const appCfg = useAppConfigStore.getState();
-        if (appCfg && typeof appCfg.addRecentOntology === 'function') {
-          let norm = url;
-          try { norm = new URL(String(url)).toString(); } catch { norm = String(url).replace(/\/+$/, ''); }
-          appCfg.addRecentOntology(norm);
-        }
-      } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* ignore */ } }
-    } catch (error) {
-      ((...__vg_args)=>{try{fallback('console.error',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'error', captureStack:true})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.error(...__vg_args);})('Failed to load ontology:', error);
+    } catch (error: any) {
+      ((...__vg_args)=>{try{fallback('console.error',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'error', captureStack:true})}catch (_) { /* ignore */ } console.error('Failed to load ontology:', error);})()
       throw error;
     }
   },
@@ -702,9 +562,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
   },
 
   loadOntologyFromRDF: async (rdfContent: string, onProgress?: (progress: number, message: string) => void, preserveGraph: boolean = true, graphName?: string) => {
-    // Parse raw RDF content and merge into the RDF manager + currentGraph.
-    // This function accepts raw RDF (Turtle/JSON-LD/RDF/XML) and must not treat the
-    // content as a URL (unlike loadOntology).
     logCallGraph?.('loadOntologyFromRDF:start', { length: (rdfContent || '').length });
     try {
       const { parseRDFFile } = await import('../utils/rdfParser');
@@ -712,114 +569,58 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
       onProgress?.(10, 'Starting RDF parsing...');
 
-      // Best-effort: populate rdfManager directly from raw content first so any triples
-      // (including annotation properties like dc:description and domain/range on properties)
-      // are present in the RDFManager's store for downstream consumers (reasoner/exporter).
-      // Keep this wrapped in try/catch because some RDF inputs may be malformed for the N3 parser
-      // or this environment; parsed graph helpers below remain authoritative and idempotent.
       try {
-        // Await intentionally so the store is populated before further processing.
-        // applyParsedNodes is idempotent so duplicates are avoided.
         await rdfManager.loadRDFIntoGraph(rdfContent, graphName);
       } catch (loadErr) {
-        // best-effort - log and continue with parsed application which will also ensure data is persisted
-        warn('rdfManager.loadIntoGraph.failed', { error: (loadErr && (loadErr as Error).message) ? (loadErr as Error).message : String(loadErr) }, { caller: true });
+        warn('rdfManager.loadIntoGraph.failed', { error: (loadErr && (loadErr as any).message) ? (loadErr as any).message : String(loadErr) }, { caller: true });
       }
-
-      // Diagnostics: report whether the expected dc:description triple exists immediately after loadRDF.
-      try {
-        const store = rdfManager.getStore();
-        const totalQuads = store.getQuads(null, null, null, null).length;
-        const dcFull = rdfManager.expandPrefix('dc:description');
-        const hasDc = store.getQuads(null, null, null, null).some((q: any) => (q.predicate && q.predicate.value) === dcFull);
-      } catch (diagErr) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(diagErr) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
 
       const parsed = await parseRDFFile(rdfContent, onProgress);
 
-      // Diagnostic: if parsed nodes include 'Specimen' (or other interesting URIs), dump quads for inspection.
-      try {
-        const store = rdfManager.getStore();
-        (parsed.nodes || []).forEach((n: any) => {
-          if (n && n.uri && typeof n.uri === 'string' && (n.uri.includes('Specimen') || n.uri.includes('SpecimenLength'))) {
-            const all = store.getQuads(null, null, null, null) || [];
-            const subjectQuads = all.filter((q: any) => q.subject && q.subject.value === n.uri);
-            debug('rdfManager.parsedNode.quads', { uri: n.uri, quads: subjectQuads.map((q: any) => ({
-              predicate: q.predicate && q.predicate.value,
-              object: q.object && (q.object.value || (q.object && q.object.id) || null)
-            })) }, { caller: true });
-          }
-        });
-      } catch (diagErr) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(diagErr) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
-
-      // Add parsed namespaces to RDF manager and apply parsed nodes via helpers
       try {
         const { rdfManager } = get();
         rdfManager.applyParsedNamespaces(parsed.namespaces || {});
         rdfManager.applyParsedNodes(parsed.nodes || [], { preserveExistingLiterals: true });
 
-        // Also ensure object property triples (edges) are persisted into the RDF store so
-        // downstream components (reasoner, exporters) can rely on them. Map parsed edge
-        // source/target ids back to node URIs and add named-node triples idempotently.
         try {
           const store = rdfManager.getStore();
           (parsed.edges || []).forEach((e: any) => {
             try {
-              // Find source and target nodes to obtain real IRIs
               const s = (parsed.nodes || []).find((n: any) => n.id === e.source);
               const t = (parsed.nodes || []).find((n: any) => n.id === e.target);
               if (!s || !t || !s.uri || !t.uri) return;
-
               const subj = s.uri;
               const obj = t.uri;
               const pred = e.propertyUri || e.propertyType;
-
-              // Avoid duplicate quads by checking existence first
-              const existing = store.getQuads(subj, pred, obj, null);
+              const existing = store.getQuads(namedNode(subj), namedNode(pred), namedNode(obj), null);
               if (!existing || existing.length === 0) {
                 try {
                   store.addQuad(quad(namedNode(subj), namedNode(pred), namedNode(obj)));
                 } catch (addErr) {
-                  // best-effort: ignore if adding fails
-                  ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})('Failed to add object property quad for', subj, pred, obj, addErr);
+                  /* ignore */
                 }
               }
-            } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
+            } catch (_) { /* ignore */ }
           });
-        } catch (edgeErr) {
-          ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})('Failed to persist parsed edges into RDF store:', edgeErr);
-        }
+        } catch (_) { /* ignore */ }
 
-        // Keep compatibility: also ensure the in-memory graph reflects parsed rdfTypes where present.
         (parsed.nodes || []).forEach((node: any) => {
           try {
             const allTypes = (node as any).rdfTypes && (node as any).rdfTypes.length > 0
               ? (node as any).rdfTypes.slice()
               : ((node as any).rdfType ? [(node as any).rdfType] : []);
             if (allTypes && allTypes.length > 0) {
-              try { (get().updateNode as any)(node.uri, { rdfTypes: allTypes }); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
+              try { (get().updateNode as any)(node.uri, { rdfTypes: allTypes }); } catch (_) { /* ignore */ }
             }
-          } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
-        });
-        // Keep compatibility: also ensure the in-memory graph reflects parsed rdfTypes where present.
-        (parsed.nodes || []).forEach((node: any) => {
-          try {
-            const allTypes = (node as any).rdfTypes && (node as any).rdfTypes.length > 0
-              ? (node as any).rdfTypes.slice()
-              : ((node as any).rdfType ? [(node as any).rdfType] : []);
-            if (allTypes && allTypes.length > 0) {
-              try { (get().updateNode as any)(node.uri, { rdfTypes: allTypes }); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
-            }
-          } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
+          } catch (_) { /* ignore */ }
         });
       } catch (reapplyErr) {
-        ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})('reapply annotations failed:', reapplyErr);
+        /* ignore */
       }
 
-      // Build diagram-friendly nodes/edges and merge into currentGraph according to preserveGraph
       try {
         const nodesForDiagram = (parsed.nodes || []).map((n: any) => {
           const nodeId = n.id || n.uri || n.iri || `${n.namespace}:${n.classType}` || String(Math.random());
-          // Derive a meaningful classType/namespace for diagram nodes preferring non-NamedIndividual rdf:types.
           const allTypes = (n as any).rdfTypes && (n as any).rdfTypes.length > 0
             ? (n as any).rdfTypes.slice()
             : ((n as any).rdfType ? [(n as any).rdfType] : []);
@@ -863,7 +664,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
               }
             }
           } catch {
-            // ignore and fall back to parser-provided values
+            // ignore
           }
 
           return {
@@ -887,60 +688,53 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           data: e
         }));
 
-        if (!preserveGraph) {
-          set({ currentGraph: { nodes: nodesForDiagram, edges: edgesForDiagram } });
-        } else {
-          const existing = get().currentGraph;
-          const mergedNodes: any[] = [...existing.nodes];
-          const existingUris = new Set<string>();
-          existing.nodes.forEach((m: any) => {
-            const mid = (m && m.data && ((m.data.uri as string) || (m.data.iri as string) || (m.data.individualName as string) || (m.data.id as string))) || m.uri || m.id;
-            if (mid) existingUris.add(String(mid));
-          });
+        const existing = get().currentGraph;
+        const mergedNodes: any[] = [...existing.nodes];
+        const existingUris = new Set<string>();
+        existing.nodes.forEach((m: any) => {
+          const mid = (m && m.data && ((m.data.uri as string) || (m.data.iri as string) || (m.data.individualName as string) || (m.data.id as string))) || m.uri || m.id;
+          if (mid) existingUris.add(String(mid));
+        });
 
-          (parsed.nodes || []).forEach((n: any) => {
-            const nIds = [n.uri, n.id, (n.data && n.data.uri), (n.data && n.data.iri), (n.data && n.data.individualName), (n.data && n.data.id)];
-            const exists = nIds.some((id) => id && existingUris.has(String(id)));
-            if (!exists) {
-              const nodeObj = {
-                id: n.id || n.uri || n.iri || `${n.namespace}:${n.classType}` || String(Math.random()),
+        (parsed.nodes || []).forEach((n: any) => {
+          const nIds = [n.uri, n.id, (n.data && n.data.uri), (n.data && n.data.iri), (n.data && n.data.individualName), (n.data && n.data.id)];
+          const exists = nIds.some((id) => id && existingUris.has(String(id)));
+          if (!exists) {
+            const nodeObj = {
+              id: n.id || n.uri || n.iri || `${n.namespace}:${n.classType}` || String(Math.random()),
+              uri: n.uri || n.iri,
+              data: {
+                individualName: n.individualName || (n.uri ? n.uri.split('/').pop() : (n.id || '')),
+                classType: n.classType,
+                namespace: n.namespace,
                 uri: n.uri || n.iri,
-                data: {
-                  individualName: n.individualName || (n.uri ? n.uri.split('/').pop() : (n.id || '')),
-                  classType: n.classType,
-                  namespace: n.namespace,
-                  uri: n.uri || n.iri,
-                  literalProperties: n.literalProperties || [],
-                  annotationProperties: n.annotationProperties || []
-                }
-              };
-              mergedNodes.push(nodeObj);
-              nIds.forEach(id => { if (id) existingUris.add(String(id)); });
-            }
-          });
+                literalProperties: n.literalProperties || [],
+                annotationProperties: n.annotationProperties || []
+              }
+            };
+            mergedNodes.push(nodeObj);
+            nIds.forEach(id => { if (id) existingUris.add(String(id)); });
+          }
+        });
 
-          const mergedEdges: any[] = [...existing.edges];
-          (parsed.edges || []).forEach((e: any) => {
-            const edgeId = e.id || `${e.source}-${e.target}-${e.propertyType}`;
-            if (!mergedEdges.find((me: any) => me.id === edgeId)) {
-              mergedEdges.push({
-                id: edgeId,
-                source: e.source,
-                target: e.target,
-                data: e
-              });
-            }
-          });
+        const mergedEdges: any[] = [...existing.edges];
+        (parsed.edges || []).forEach((e: any) => {
+          const edgeId = e.id || `${e.source}-${e.target}-${e.propertyType}`;
+          if (!mergedEdges.find((me: any) => me.id === edgeId)) {
+            mergedEdges.push({
+              id: edgeId,
+              source: e.source,
+              target: e.target,
+              data: e
+            });
+          }
+        });
 
-          set({ currentGraph: { nodes: mergedNodes, edges: mergedEdges } });
-        }
-        } catch (mergeErr) {
-          try { fallback('graph.merge.failed', { error: String(mergeErr) }, { level: 'warn', captureStack: true }); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
-        }
+        set({ currentGraph: { nodes: mergedNodes, edges: mergedEdges } });
+      } catch (_) { /* ignore */ }
 
-      return;
-    } catch (error) {
-      ((...__vg_args)=>{try{fallback('console.error',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'error', captureStack:true})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.error(...__vg_args);})('Failed to load ontology from RDF:', error);
+    } catch (error: any) {
+      ((...__vg_args)=>{try{fallback('console.error',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'error', captureStack:true})}catch (_) { /* ignore */ } console.error('Failed to load ontology from RDF:', error);})()
       throw error;
     }
   },
@@ -954,11 +748,8 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
       if (source.startsWith('http://') || source.startsWith('https://')) {
         options?.onProgress?.(10, 'Fetching RDF from URL...');
-        // Delegate fetching and CORS/proxy handling to rdfManager.loadFromUrl so that
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => {
-          controller.abort();
-        }, timeout);
+        const timeoutId = setTimeout(() => { controller.abort(); }, timeout);
 
         try {
           const candidateUrls = source.startsWith('http://') ? [source.replace(/^http:\/\//, 'https://'), source] : [source];
@@ -968,27 +759,17 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             try {
               response = await fetch(candidate, {
                 signal: controller.signal,
-                headers: {
-                  'Accept': 'text/turtle, application/rdf+xml, application/ld+json, */*'
-                }
+                headers: { 'Accept': 'text/turtle, application/rdf+xml, application/ld+json, */*' }
               });
               break;
             } catch (err) {
               lastFetchError = err;
-              ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})(`Fetch failed for ${candidate}:`, err);
+              try { fallback('console.warn', { args: [`Fetch failed for ${candidate}:`, String(err)] }, { level: 'warn' }); } catch (_) { /* ignore */ }
             }
           }
 
-
-
           if (!response || !response.ok) {
             const fetchErr = lastFetchError || new Error(`Failed to fetch RDF from ${source}`);
-            try {
-              if (typeof window !== 'undefined') {
-                try { (window as any).__VG_LAST_RDF_ERROR = { message: String(fetchErr), url: source, snippet: '' }; } catch (_) { /* ignore */ }
-                try { window.dispatchEvent(new CustomEvent('vg:rdf-parse-error', { detail: (window as any).__VG_LAST_RDF_ERROR })); } catch (_) { /* ignore */ }
-              }
-            } catch (_) { /* ignore */ }
             throw fetchErr;
           }
 
@@ -1000,11 +781,12 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           rdfContent = await response.text();
           options?.onProgress?.(20, 'RDF content downloaded');
         } catch (error: any) {
-
           if (error.name === 'AbortError') {
             throw new Error(`Request timed out after ${timeout / 1000} seconds. The file might be too large.`);
           }
           throw error;
+        } finally {
+          clearTimeout(timeoutId);
         }
       } else {
         rdfContent = source;
@@ -1015,10 +797,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       options?.onProgress?.(90, 'Checking for additional ontologies...');
       const extractedOntologies = extractReferencedOntologies(rdfContent);
 
-      // Only auto-load additional ontologies that are explicitly configured by the user
-      // (app config `additionalOntologies`). Detecting prefixes in incoming RDF is still
-      // useful for namespace recognition, but should not trigger network loads unless the
-      // ontology is configured for auto-load.
       if (extractedOntologies.length > 0) {
         try {
           const appCfg = useAppConfigStore.getState();
@@ -1026,13 +804,8 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             ? appCfg.config.additionalOntologies
             : [];
 
-          // Normalize helper to match the normalization used elsewhere in this file.
           function normalizeUri(u: string): string {
-            try {
-              return new URL(String(u)).toString();
-            } catch {
-              return typeof u === 'string' ? u.replace(/\/+$/, '') : u;
-            }
+            try { return new URL(String(u)).toString(); } catch { return typeof u === 'string' ? u.replace(/\/+$/, '') : u; }
           }
 
           const configuredNorm = new Set(configured.map((u: string) => normalizeUri(u)));
@@ -1044,44 +817,32 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             options?.onProgress?.(100, 'No configured additional ontologies referenced; skipping auto-load');
           }
         } catch (e) {
-          // Preserve previous behavior of best-effort but avoid throwing from this optional step.
-          ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})('Failed while computing configured additional ontologies to auto-load:', e);
+          try { fallback('console.warn', { args: ['Failed while computing configured additional ontologies to auto-load:', String(e)] }, { level: 'warn' }); } catch (_) { /* ignore */ }
         }
       }
-    } catch (error) {
-
-      ((...__vg_args)=>{try{fallback('console.error',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'error', captureStack:true})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.error(...__vg_args);})('Failed to load knowledge graph:', error);
+    } catch (error: any) {
+      try { fallback('console.error', { args: ['Failed to load knowledge graph:', String(error)] }, { level: 'error' }); } catch (_) { /* ignore */ }
       throw error;
     }
   },
 
-    loadAdditionalOntologies: async (ontologyUris: string[], onProgress?: (progress: number, message: string) => void) => {
+  loadAdditionalOntologies: async (ontologyUris: string[], onProgress?: (progress: number, message: string) => void) => {
     logCallGraph?.('loadAdditionalOntologies:start', ontologyUris && ontologyUris.length);
     const { loadedOntologies } = get();
     const alreadyLoaded = new Set(loadedOntologies.map(o => o.url));
 
-    // Helper: normalize URLs to a canonical form for reliable comparisons
     function normalizeUri(u: string): string {
-      try {
-        return new URL(u).toString();
-      } catch {
-        // fallback: trim trailing slash for simple normalization
-        return typeof u === 'string' ? u.replace(/\/+$/, '') : u;
-      }
+      try { return new URL(String(u)).toString(); } catch { return typeof u === 'string' ? u.replace(/\/+$/, '') : u; }
     }
 
-    // Respect user-disabled ontologies so a removed entry isn't re-loaded when referenced by a graph.
-    // Use normalized URL comparisons for both already-loaded and disabled lists to avoid mismatch.
     const appCfg = useAppConfigStore.getState();
     const disabled = (appCfg && appCfg.config && Array.isArray(appCfg.config.disabledAdditionalOntologies)) ? appCfg.config.disabledAdditionalOntologies : [];
-    const disabledNorm = disabled.map(d => normalizeUri(d));
-
-    // Normalize alreadyLoaded URLs as well for reliable comparison.
+    const disabledNorm = new Set(disabled.map(d => normalizeUri(d)));
     const alreadyLoadedNorm = new Set(Array.from(alreadyLoaded).map(u => normalizeUri(String(u))));
 
     const toLoad = ontologyUris.filter(uri => {
       const norm = normalizeUri(uri);
-      return !alreadyLoadedNorm.has(norm) && !disabledNorm.includes(norm);
+      return !alreadyLoadedNorm.has(norm) && !disabledNorm.has(norm);
     });
 
     if (toLoad.length === 0) {
@@ -1091,27 +852,17 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
     onProgress?.(95, `Loading ${toLoad.length} additional ontologies...`);
 
-    const wellKnownOntologies = WELL_KNOWN.ontologies;
-
-    const appConfigStore = useAppConfigStore.getState();
-
     for (let i = 0; i < toLoad.length; i++) {
       const uri = toLoad[i];
-          const wkEntry = WELL_KNOWN.ontologies[uri as keyof typeof WELL_KNOWN.ontologies];
-          const ontologyName = wkEntry ? wkEntry.name : undefined;
+      const wkEntry = WELL_KNOWN.ontologies[uri as keyof typeof WELL_KNOWN.ontologies];
+      const ontologyName = wkEntry ? wkEntry.name : undefined;
 
       try {
-        onProgress?.(95 + (i / toLoad.length) * 5, `Loading ${ontologyName || uri}...`);
+        onProgress?.(95 + Math.floor((i / toLoad.length) * 5), `Loading ${ontologyName || uri}...`);
 
         if (wkEntry) {
           try {
             ensureNamespacesPresent(get().rdfManager, wkEntry.namespaces || {});
-            ensureNamespacesPresent(get().rdfManager, {
-              rdfs: 'http://www.w3.org/2000/01/rdf-schema#',
-              owl: 'http://www.w3.org/2002/07/owl#',
-              skos: 'http://www.w3.org/2004/02/skos/core#',
-              dcterms: 'http://purl.org/dc/terms/'
-            });
           } catch (_) { /* ignore */ }
 
           const mockOntology: LoadedOntology = {
@@ -1126,43 +877,52 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             availableClasses: [...state.availableClasses],
             availableProperties: [...state.availableProperties]
           }));
-        } else {
-          if (uri.startsWith('http://') || uri.startsWith('https://')) {
+          continue;
+        }
+
+        if (uri.startsWith('http://') || uri.startsWith('https://')) {
+          const candidateUrls = uri.startsWith('http://') ? [uri.replace(/^http:\/\//, 'https://'), uri] : [uri];
+          let fetched = false;
+          let lastFetchError: any = null;
+
+          for (const candidate of candidateUrls) {
             try {
-              const candidateUrls = uri.startsWith('http://') ? [uri.replace(/^http:\/\//, 'https://'), uri] : [uri];
-              let response: Response | null = null;
-              let lastFetchError: any = null;
-              for (const candidate of candidateUrls) {
-                try {
-                  response = await fetch(candidate, {
-                    headers: { 'Accept': 'text/turtle, application/rdf+xml, application/ld+json, */*' },
-                    signal: AbortSignal.timeout(10000)
-                  });
-                  break;
-                } catch (err) {
-                  lastFetchError = err;
-                  ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})(`Failed to fetch ontology ${candidate}:`, err);
-                }
+              const response = await fetch(candidate, {
+                headers: { 'Accept': 'text/turtle, application/rdf+xml, application/ld+json, */*' },
+                signal: AbortSignal.timeout(10000)
+              });
+
+              if (response && response.ok) {
+                const content = await response.text();
+                await get().loadOntologyFromRDF(content, undefined, true, uri);
+                fetched = true;
+                break;
+              } else {
+                lastFetchError = lastFetchError || new Error(`HTTP ${response ? response.status : 'NO_RESPONSE'}`);
               }
-                if (response && response.ok) {
-                  const content = await response.text();
-                  await get().loadOntologyFromRDF(content, undefined, true, uri);
-                } else {
-                  ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})(`Could not fetch ontology from ${uri}:`, lastFetchError);
-                  // Do not register synthetic ontology metadata on fetch failure per policy.
-                  ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } console.warn(...__vg_args);})(`Skipping synthetic ontology metadata for ${uri} due to fetch failure`, lastFetchError);
-                  continue;
-                }
-            } catch (fetchError) {
-              ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})(`Could not fetch ontology from ${uri}:`, fetchError);
-              // Do not register synthetic ontology metadata on fetch error per policy.
-              ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } console.warn(...__vg_args);})(`Skipping synthetic ontology metadata for ${uri} due to fetch error`, fetchError);
-              continue;
+            } catch (err) {
+              lastFetchError = err;
+              try { fallback('console.warn', { args: [`Failed to fetch ontology ${candidate}:`, String(err)] }, { level: 'warn' }); } catch (_) { /* ignore */ }
             }
           }
+
+          if (!fetched) {
+            try { fallback('console.warn', { args: [`Could not fetch ontology from ${uri}:`, String(lastFetchError)] }, { level: 'warn' }); } catch (_) { /* ignore */ }
+            // Per policy: do not register synthetic ontology metadata on fetch failure.
+            continue;
+          }
+        } else {
+          // If it's not an http(s) URI, we treat it as inline RDF content and attempt to parse it.
+          try {
+            await get().loadOntologyFromRDF(uri, undefined, true, uri);
+          } catch (e) {
+            try { fallback('console.warn', { args: [`Failed to parse non-http ontology content for ${uri}:`, String(e)] }, { level: 'warn' }); } catch (_) { /* ignore */ }
+            continue;
+          }
         }
-      } catch (error) {
-        ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})(`Failed to load additional ontology ${uri}:`, error);
+      } catch (error: any) {
+        try { fallback('console.warn', { args: [`Failed to load additional ontology ${uri}:`, String(error)] }, { level: 'warn' }); } catch (_) { /* ignore */ }
+        continue;
       }
     }
 
@@ -1185,35 +945,21 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     });
   },
 
-  /**
-   * Remove a previously loaded ontology by URL.
-   * This will:
-   *  - remove the ontology meta entry from loadedOntologies
-   *  - remove classes/properties contributed by that ontology from available lists
-   *  - remove the named graph that stores that ontology's triples from the RDF store
-   *  - remove the ontology from app config additionalOntologies so it won't be auto-loaded on startup
-   *
-   * This is best-effort and idempotent.
-   */
   removeLoadedOntology: (url: string) => {
     try {
       const appConfigStore = useAppConfigStore.getState();
       const { rdfManager, loadedOntologies } = get();
-
-      // Immediately persist the disabled flag to prevent any concurrent auto-loads
-      // from re-loading this ontology while removal proceeds. Use a normalized form.
       try {
         if (appConfigStore && typeof appConfigStore.addDisabledOntology === 'function') {
           let norm = url;
           try { norm = new URL(String(url)).toString(); } catch { norm = String(url).replace(/\/+$/, ''); }
           appConfigStore.addDisabledOntology(norm);
         }
-      } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
+      } catch (_) { /* ignore */ }
 
       const remainingOntologies = (loadedOntologies || []).filter(o => o.url !== url);
       const removed = (loadedOntologies || []).filter(o => o.url === url);
 
-      // Remove classes/properties contributed by removed ontologies
       const remainingClasses = (get().availableClasses || []).filter(c => !removed.some(r => r.classes.some(rc => rc.uri === c.uri)));
       const remainingProperties = (get().availableProperties || []).filter(p => !removed.some(r => r.properties.some(rp => rp.uri === p.uri)));
 
@@ -1223,46 +969,24 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         availableProperties: remainingProperties
       });
 
-      // Remove the named graph(s) that correspond to the removed ontologies.
-      // We rely on per-source named graphs for deterministic removal. Additionally,
-      // remove any declared namespace prefixes for the ontology so UI/export code
-      // no longer presents those prefixes. We avoid broad namespace sweeps, but
-      // when an ontology provided explicit prefixes we remove the prefix mapping
-      // and any triples matching that namespace as a best-effort cleanup for
-      // content that may have been added into the default graph.
       removed.forEach(o => {
-        try {
-          // Remove the named graph that was used to store this ontology's triples (exact)
-          try { rdfManager.removeGraph(o.url); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
-
-          // Remove declared namespace prefixes for this ontology and any triples
-          // that reference them (best-effort). This handles cases where the
-          // ontology's content was previously loaded into the default graph.
-          Object.entries(o.namespaces || {}).forEach(([p, ns]) => {
-            try { rdfManager.removeNamespaceAndQuads(ns); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
-          });
-        } catch (e) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(e) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
+        try { rdfManager.removeGraph(o.url); } catch (_) { /* ignore */ }
+        Object.entries(o.namespaces || {}).forEach(([p, ns]) => {
+          try { rdfManager.removeNamespaceAndQuads(ns); } catch (_) { /* ignore */ }
+        });
       });
 
-      // Also remove from persisted app config additionalOntologies if present and mark as disabled
-      // so the app won't auto-load it again if the ontology is referenced by a loaded graph.
       try {
         if (appConfigStore && typeof appConfigStore.removeAdditionalOntology === 'function') {
-          // Remove both raw and normalized forms from additionalOntologies to avoid mismatches
-          try { appConfigStore.removeAdditionalOntology(url); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
+          try { appConfigStore.removeAdditionalOntology(url); } catch (_) { /* ignore */ }
           let norm = url;
           try { norm = new URL(String(url)).toString(); } catch { norm = String(url).replace(/\/+$/, ''); }
-          try { appConfigStore.removeAdditionalOntology(norm); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
-
-          try {
-            if (typeof appConfigStore.addDisabledOntology === 'function') {
-              appConfigStore.addDisabledOntology(norm);
-            }
-          } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
+          try { appConfigStore.removeAdditionalOntology(norm); } catch (_) { /* ignore */ }
+          try { if (typeof appConfigStore.addDisabledOntology === 'function') appConfigStore.addDisabledOntology(norm); } catch (_) { /* ignore */ }
         }
-      } catch (e) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(e) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
-      } catch (err) {
-      try { fallback('ontology.removeLoaded.failed', { error: String(err) }, { level: 'warn' }); } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
+      } catch (_) { /* ignore */ }
+    } catch (err) {
+      try { fallback('ontology.removeLoaded.failed', { error: String(err) }, { level: 'warn' }); } catch (_) { /* ignore */ }
     }
   },
 
@@ -1285,7 +1009,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           }
         });
       } catch (e) {
-        ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})('Failed to ensure namespaces for annotationProperties:', e);
+        try { fallback('console.warn', { args: ['Failed to ensure namespaces for annotationProperties:', String(e)] }, { level: 'warn' }); } catch (_) { /* ignore */ }
       }
     }
 
@@ -1297,17 +1021,12 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       if (nodeUri === entityUri) {
         const updatedData = { ...nodeData };
 
-        // If rdfTypes were provided in the update, prefer the first meaningful (non-NamedIndividual)
-        // type as the node's visible class. This ensures nodes display the real class prefix
-        // instead of retaining stale values like "owl" from classType when only NamedIndividual
-        // was present previously.
         if (updates.rdfTypes && Array.isArray(updates.rdfTypes) && updates.rdfTypes.length > 0) {
           try {
             const nonNamed = updates.rdfTypes.find((t: any) => t && !String(t).includes('NamedIndividual'));
             const chosen = nonNamed || updates.rdfTypes[0];
             if (chosen) {
               const chosenStr = String(chosen);
-              // prefixed form: prefix:LocalName
               if (chosenStr.includes(':') && !/^https?:\/\//i.test(chosenStr)) {
                 const idx = chosenStr.indexOf(':');
                 updatedData.namespace = chosenStr.substring(0, idx);
@@ -1315,7 +1034,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                 updatedData.type = chosenStr.substring(idx + 1);
                 updatedData.type_namespace = updatedData.namespace;
               } else if (/^https?:\/\//i.test(chosenStr)) {
-                // full URI -> attempt to map back to a known prefix via rdfManager
                 try {
                   const mgr = get().rdfManager;
                   const nsMap = (mgr && typeof mgr.getNamespaces === 'function') ? mgr.getNamespaces() : {};
@@ -1331,11 +1049,9 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                     }
                   }
                   if (!matched) {
-                    // fallback to local name
                     const parts = chosenStr.split(/[#\/]/).filter(Boolean);
                     updatedData.classType = parts.length ? parts[parts.length - 1] : chosenStr;
                     updatedData.type = updatedData.classType;
-                    // leave namespace as-is (do not overwrite with "http" or similar)
                     updatedData.type_namespace = updatedData.type_namespace || updatedData.namespace || '';
                   }
                 } catch {
@@ -1344,7 +1060,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                   updatedData.type = updatedData.classType;
                 }
               } else {
-                // fallback short label
                 const parts = chosenStr.split(/[#\/]/).filter(Boolean);
                 updatedData.classType = parts.length ? parts[parts.length - 1] : chosenStr;
                 updatedData.type = updatedData.classType;
@@ -1352,7 +1067,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
               }
             }
           } catch {
-            // ignore and keep existing nodeData values
+            /* ignore */
           }
         }
 
@@ -1398,13 +1113,11 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           annotationProperties: updatedData.annotationProperties,
           literalProperties: updatedData.literalProperties,
           namespace: updatedData.namespace,
-          // Preserve the original node id if present; fall back to updatedData.id or nodeUri.
           id: (node as any).id || updatedData.id || nodeUri,
           position: updatedData.position,
           data: {
             ...((node as any).data || {}),
             ...updatedData,
-            // Ensure data.id is preserved so downstream code can still find nodes by id
             id: (node as any).id || updatedData.id || nodeUri,
             iri: updatedData.iri,
             type: updatedData.type || updatedData.classType || '',
@@ -1453,7 +1166,7 @@ function extractReferencedOntologies(rdfContent: string): string[] {
     /"@context"[^}]*"([^"]+)"/g
   ];
 
-    const wellKnownOntologies = Object.keys(WELL_KNOWN.ontologies);
+  const wellKnownOntologies = Object.keys(WELL_KNOWN.ontologies);
 
   namespacePatterns.forEach(pattern => {
     let match;
@@ -1465,33 +1178,85 @@ function extractReferencedOntologies(rdfContent: string): string[] {
     }
   });
 
-  const prefixUsage = [
-    /\bfoaf:/g,
-    /\bowl:/g,
-    /\brdfs:/g,
-    /\biof:/g,
-    /\borg:/g,
-    /\bskos:/g
-  ];
+  try {
+    const prefixToOntUrls = new Map<string, string[]>();
+    const wkPrefixes = WELL_KNOWN.prefixes || {};
+    const wkOnt = WELL_KNOWN.ontologies || {};
 
-  prefixUsage.forEach((pattern, index) => {
-    if (pattern.test(rdfContent)) {
-      ontologyUris.add(wellKnownOntologies[index]);
+    Object.entries(wkPrefixes).forEach(([prefix, nsUri]) => {
+      const urls: string[] = [];
+      try {
+        if ((wkOnt as any)[nsUri]) urls.push(nsUri);
+      } catch (_) { /* ignore */ }
+
+      Object.entries(wkOnt).forEach(([ontUrl, meta]) => {
+        try {
+          const m = meta as any;
+          if (m && m.namespaces && m.namespaces[prefix] === nsUri) {
+            if (!urls.includes(ontUrl)) urls.push(ontUrl);
+          }
+          if (m && m.aliases && Array.isArray(m.aliases) && m.aliases.includes(nsUri)) {
+            if (!urls.includes(ontUrl)) urls.push(ontUrl);
+          }
+        } catch (_) { /* ignore per-entry errors */ }
+      });
+
+      if (urls.length > 0) prefixToOntUrls.set(prefix, urls);
+    });
+
+    for (const [prefix, urls] of prefixToOntUrls.entries()) {
+      const safe = prefix.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+      const re = new RegExp(`\\b${safe}:`, 'g');
+      if (re.test(rdfContent)) {
+        urls.forEach(u => ontologyUris.add(u));
+      }
     }
-  });
+  } catch (_) { /* best-effort only */ }
 
   return Array.from(ontologyUris);
 }
 
-// Helper functions for mock data
-function getOntologyName(url: string): string {
-  const names: Record<string, string> = {
-    'http://xmlns.com/foaf/0.1/': 'FOAF',
-    'https://www.w3.org/TR/vocab-org/': 'Organization',
-    'http://purl.org/dc/elements/1.1/': 'Dublin Core',
-    'http://www.w3.org/2004/02/skos/core#': 'SKOS'
-  };
-  return names[url] || 'Custom Ontology';
+/**
+ * Derive a user-friendly ontology name.
+ */
+function deriveOntologyName(url: string): string {
+  try {
+    const wkOnt = (WELL_KNOWN && (WELL_KNOWN as any).ontologies) || {};
+    if (wkOnt[url] && wkOnt[url].name) return wkOnt[url].name;
+    for (const [ontUrl, meta] of Object.entries(wkOnt)) {
+      try {
+        const m = meta as any;
+        if (m && m.aliases && Array.isArray(m.aliases) && m.aliases.includes(url)) {
+          return m.name || String(ontUrl);
+        }
+      } catch (_) { /* ignore */ }
+    }
+  } catch (_) { /* ignore */ }
+
+  try {
+    let label = '';
+    try {
+      const u = new URL(String(url));
+      const fragment = u.hash ? u.hash.replace(/^#/, '') : '';
+      const pathSeg = (u.pathname || '').split('/').filter(Boolean).pop() || '';
+      label = fragment || pathSeg || u.hostname || String(url);
+    } catch (_) {
+      const parts = String(url).split(/[#/]/).filter(Boolean);
+      label = parts.length ? parts[parts.length - 1] : String(url);
+    }
+
+    label = label.replace(/\.(owl|rdf|ttl|jsonld|json)$/i, '');
+    label = label.replace(/[-_.]+v?\d+(\.\d+)*$/i, '').replace(/\d{4}-\d{2}-\d{2}$/i, '');
+    label = decodeURIComponent(label);
+    label = label.replace(/[_\-\+\.]/g, ' ');
+    label = label.replace(/([a-z])([A-Z])/g, '$1 $2');
+    label = label.replace(/\s+/g, ' ').trim();
+    if (!label) return 'Custom Ontology';
+    label = label.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    return label || 'Custom Ontology';
+  } catch (_) {
+    return 'Custom Ontology';
+  }
 }
 
 /**
@@ -1503,7 +1268,6 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
     const existing = rdfMgr && typeof rdfMgr.getNamespaces === 'function' ? rdfMgr.getNamespaces() : {};
     Object.entries(nsMap).forEach(([p, ns]) => {
       try {
-        // If neither the prefix nor the namespace URI exists, add it.
         if (!existing[p] && !Object.values(existing).includes(ns)) {
           try { rdfMgr.addNamespace(p, ns); } catch (e) { try { if (typeof fallback === "function") { fallback("rdf.addNamespace.failed", { prefix: p, namespace: ns, error: String(e) }, { level: 'warn' }); } } catch (_) { /* ignore */ } }
         }

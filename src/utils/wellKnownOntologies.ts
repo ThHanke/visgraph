@@ -22,7 +22,7 @@ export const WELL_KNOWN_PREFIXES = [
   { prefix: 'dc', url: 'http://purl.org/dc/elements/1.1/', name: 'Dublin Core' },
   { prefix: 'foaf', url: 'http://xmlns.com/foaf/0.1/', name: 'FOAF' },
   { prefix: 'org', url: 'https://www.w3.org/TR/vocab-org/', name: 'Organization' },
-  { prefix: 'iof', url: 'https://spec.industrialontologies.org/ontology/core/Core/', name: 'IOF Core' },
+  { prefix: 'iof-core', url: 'https://spec.industrialontologies.org/ontology/core/Core/', name: 'IOF Core' },
   { prefix: 'iof-mat', url: 'https://spec.industrialontologies.org/ontology/materials/Materials/', name: 'IOF Materials' },
   { prefix: 'iof-qual', url: 'https://spec.industrialontologies.org/ontology/qualities/', name: 'IOF Qualities' }
 ] as const;
@@ -46,12 +46,12 @@ export const WELL_KNOWN = {
   prefixes: Object.fromEntries(WELL_KNOWN_PREFIXES.map(p => [p.prefix, p.url])) as Record<string, string>,
   // ontologies: map known ontology URL -> metadata (name + namespaces)
   ontologies: (() => {
-    const out: Record<string, { name: string; namespaces?: Record<string, string> }> = {};
+    const out: Record<string, { name: string; namespaces?: Record<string, string>; aliases?: string[] }> = {};
     for (const p of WELL_KNOWN_PREFIXES) {
       // If the prefix's url looks like an ontology URL (ends with / or #) we add an entry.
       // Use the namespace URI itself as the ontology key.
       if (!out[p.url]) {
-        out[p.url] = { name: p.name, namespaces: {} };
+        out[p.url] = { name: p.name, namespaces: {}, aliases: [p.url] };
       }
       out[p.url].namespaces = { ...(out[p.url].namespaces || {}), [p.prefix]: p.url };
     }
