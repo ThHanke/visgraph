@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
+import { Slider } from '../ui/slider';
 import {
   Dialog,
   DialogContent,
@@ -34,6 +35,7 @@ import {
   Palette,
   Network,
   Layout,
+  Settings,
   GitBranch,
   TreePine,
   Circle,
@@ -49,6 +51,7 @@ import { fallback } from '../../utils/startupDebug';
 import { LayoutManager } from './LayoutManager';
 import { WELL_KNOWN_PREFIXES } from '../../utils/wellKnownOntologies';
 import { ConfigurationPanel } from './ConfigurationPanel';
+import { Popover, PopoverTrigger, PopoverContent } from '../ui/popover';
 import { toast } from 'sonner';
 
 interface CanvasToolbarProps {
@@ -59,11 +62,9 @@ interface CanvasToolbarProps {
   onLoadFile?: (file: File) => void;
   viewMode: 'abox' | 'tbox';
   onViewModeChange: (mode: 'abox' | 'tbox') => void;
-  onLayoutChange?: (layoutType: string, force?: boolean) => void;
+  onLayoutChange?: (layoutType: string, force?: boolean, options?: { nodeSpacing?: number }) => void;
   currentLayout?: string;
-  // New: allow CanvasToolbar to display and toggle programmatic layout application
-  layoutEnabled?: boolean;
-  onToggleLayoutEnable?: (enabled: boolean) => void;
+  // New: allow CanvasToolbar to display programmatic layout application (control removed)
   availableEntities: Array<{
     uri: string;
     label: string;
@@ -73,7 +74,7 @@ interface CanvasToolbarProps {
   }>;
 }
 
-export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onLoadFile, viewMode, onViewModeChange, onLayoutChange, currentLayout = 'horizontal', availableEntities, layoutEnabled = false, onToggleLayoutEnable }: CanvasToolbarProps) => {
+export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onLoadFile, viewMode, onViewModeChange, onLayoutChange, currentLayout = 'horizontal', availableEntities }: CanvasToolbarProps) => {
   const [isAddNodeOpen, setIsAddNodeOpen] = useState(false);
   const [isLoadOntologyOpen, setIsLoadOntologyOpen] = useState(false);
   const [isLoadFileOpen, setIsLoadFileOpen] = useState(false);
@@ -94,6 +95,14 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   // Centralized: ask LayoutManager for available layouts (keeps single source of truth).
   const layoutManager = new LayoutManager();
   const layoutOptions = layoutManager.getAvailableLayouts();
+
+  // Persistent layout spacing (single source of truth) — toolbar exposes a compact control.
+  const { config, setLayoutSpacing } = useAppConfigStore();
+  const [tempLayoutSpacing, setTempLayoutSpacing] = useState<number>(config.layoutSpacing ?? 120);
+  // Keep slider in sync when value changes elsewhere
+  React.useEffect(() => {
+    setTempLayoutSpacing(config.layoutSpacing ?? 120);
+  }, [config.layoutSpacing]);
 
   const getLayoutIcon = (iconName?: string) => {
     const icons = {
@@ -350,81 +359,164 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
         Legend
       </Button>
 
-      {/* Layout Selector */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="shadow-glass backdrop-blur-sm">
-            <Layout className="h-4 w-4 mr-2" />
-            Layout
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-64 bg-popover border z-50">
-          {layoutOptions.map((layout) => {
-            const IconComponent = getLayoutIcon(layout.icon as any);
-            return (
-              <DropdownMenuItem
-                key={layout.type}
-                onClick={() => handleLayoutChange(layout.type)}
-                className="flex items-start gap-3 p-3 cursor-pointer hover:bg-accent"
-              >
-                <IconComponent className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{layout.label}</span>
-                    {currentLayout === layout.type && (
-                      <Badge variant="secondary" className="text-xs">Active</Badge>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                    {layout.description}
-                  </p>
-                </div>
-              </DropdownMenuItem>
-            );
-          })}
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-card/80 border border-border shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary/40"
+            aria-expanded="false"
+          >
+            <Layout className="h-4 w-4" />
+            <span className="sr-only">Layout</span>
+          </button>
+        </PopoverTrigger>
 
-          <DropdownMenuSeparator />
-                <DropdownMenuItem
-            onClick={() => {
-              try {
-                const suggested = layoutManager.suggestOptimalLayout();
-                // Prefer the programmatic apply hook which bypasses the UI toggle if necessary.
-                if (typeof (window as any).__VG_APPLY_LAYOUT === 'function') {
-                  try {
+        <PopoverContent align="start" sideOffset={6} className="w-80 rounded-lg border bg-popover p-4 shadow-lg">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-medium">Layouts</div>
+            <button
+              type="button"
+              className="text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                // no-op: PopoverContent will close when trigger toggles or on outside click
+              }}
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {layoutOptions.map((layout) => {
+              const IconComponent = getLayoutIcon(layout.icon as any);
+              return (
+                <button
+                  key={layout.type}
+                  onClick={() => {
+                    try {
+                      onLayoutChange?.(layout.type, true, { nodeSpacing: config.layoutSpacing });
+                    } catch (_) { /* ignore */ }
+                  }}
+                  className="w-full text-left flex items-start gap-3 p-2 rounded hover:bg-accent"
+                >
+                  <IconComponent className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm">{layout.label}</div>
+                    <div className="text-xs text-muted-foreground">{layout.description}</div>
+                  </div>
+                  {currentLayout === layout.type && (
+                    <Badge variant="secondary" className="text-xs">Active</Badge>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="space-y-3 mb-2 pt-2">
+            <div className="text-sm font-medium">Spacing</div>
+            <div
+              className="flex items-center gap-2 px-2 py-1 bg-card/80 border border-border rounded-md"
+              onPointerUp={() => {
+                try {
+                  setTimeout(() => {
+                    try {
+                      const v = tempLayoutSpacing;
+                      setLayoutSpacing(v);
+                      onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: v });
+                      toast.success(`Saved spacing: ${v}px`);
+                    } catch (_) { /* ignore */ }
+                  }, 0);
+                } catch (_) { /* ignore */ }
+              }}
+              onTouchEnd={() => {
+                try {
+                  setTimeout(() => {
+                    try {
+                      const v = tempLayoutSpacing;
+                      setLayoutSpacing(v);
+                      onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: v });
+                      toast.success(`Saved spacing: ${v}px`);
+                    } catch (_) { /* ignore */ }
+                  }, 0);
+                } catch (_) { /* ignore */ }
+              }}
+              onMouseUp={() => {
+                try {
+                  setTimeout(() => {
+                    try {
+                      const v = tempLayoutSpacing;
+                      setLayoutSpacing(v);
+                      onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: v });
+                      toast.success(`Saved spacing: ${v}px`);
+                    } catch (_) { /* ignore */ }
+                  }, 0);
+                } catch (_) { /* ignore */ }
+              }}
+            >
+              <div className="text-xs text-muted-foreground">Spacing</div>
+              <div className="w-56">
+                <Slider
+                  value={[tempLayoutSpacing]}
+                  onValueChange={([v]) => setTempLayoutSpacing(v)}
+                  min={50}
+                  max={300}
+                  step={10}
+                  className="w-full"
+                />
+              </div>
+              <div className="text-xs font-medium">{tempLayoutSpacing}px</div>
+            </div>
+          </div>
+
+          <div className="mt-3 pt-2 border-t flex gap-2">
+            <button
+              type="button"
+              className="flex-1 px-2 py-1 rounded bg-primary text-white text-sm"
+              onClick={() => {
+                try {
+                  const suggested = layoutManager.suggestOptimalLayout();
+                  if (typeof (window as any).__VG_APPLY_LAYOUT === 'function') {
                     (window as any).__VG_APPLY_LAYOUT(suggested);
-                  } catch (err) {
-                    // fallback to toggling layout and calling the prop
-                    onToggleLayoutEnable?.(true);
+                  } else {
                     onLayoutChange?.(suggested, true);
                   }
-                } else {
-                  // Best-effort fallback for environments without the global hook
-                  onToggleLayoutEnable?.(true);
-                  onLayoutChange?.(suggested, true);
-                }
-              } catch (e) {
-                console.warn('Auto layout selection failed', e);
-              }
-            }}
-            className="flex items-center gap-2 p-3 cursor-pointer hover:bg-accent"
-          >
-            <Sparkles className="h-4 w-4" />
-            Auto Select Layout
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+                } catch (_) { /* ignore */ }
+              }}
+            >
+              Auto
+            </button>
+            <button
+              type="button"
+              className="flex-1 px-2 py-1 rounded bg-muted text-sm"
+              onClick={() => {
+                try {
+                  if (typeof (window as any).__VG_APPLY_LAYOUT === 'function') {
+                    (window as any).__VG_APPLY_LAYOUT(currentLayout || 'horizontal');
+                  } else {
+                    onLayoutChange?.(currentLayout || 'horizontal', true);
+                  }
+                } catch (_) { /* ignore */ }
+              }}
+            >
+              Apply
+            </button>
+            <button
+              type="button"
+              className="flex-1 px-2 py-1 rounded bg-muted text-sm"
+              onClick={() => {
+                try {
+                  useAppConfigStore.getState().setLayoutSpacing(120);
+                  onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: 120 });
+                  toast.success('Reset spacing to 120px');
+                } catch (_) { /* ignore */ }
+              }}
+            >
+              Reset
+            </button>
+          </div>
+        </PopoverContent>
+      </Popover>
 
-      {/* Programmatic layout toggle (guards automatic application) */}
-      <Button
-        variant={layoutEnabled ? 'default' : 'outline'}
-        size="sm"
-        onClick={() => onToggleLayoutEnable?.(!layoutEnabled)}
-        className="shadow-glass backdrop-blur-sm"
-        title={layoutEnabled ? 'Disable programmatic layout' : 'Enable programmatic layout'}
-      >
-        <Layout className="h-4 w-4 mr-2" />
-        {layoutEnabled ? 'Layout: On' : 'Layout: Off'}
-      </Button>
+
 
       {/* Load File */}
       <Dialog open={isLoadFileOpen} onOpenChange={setIsLoadFileOpen}>
@@ -608,8 +700,9 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Configuration Panel */}
-      <ConfigurationPanel />
+      <div className="ml-auto flex items-center">
+        <ConfigurationPanel triggerVariant="inline-icon" />
+      </div>
     </div>
   );
 };

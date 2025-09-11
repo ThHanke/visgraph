@@ -78,7 +78,7 @@ function logCallGraph(...args: any[]) {
     ((...__vg_args) => {
       try {
         debug("console.debug", {
-          args: __vg_args.map((a) => (a && a.message ? a.message : String(a))),
+          args: __vg_args.map((a: any) => ((a && (a as any).message) ? (a as any).message : String(a))),
         });
       } catch (_) {
         try {
@@ -737,8 +737,8 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           fallback(
             "console.error",
             {
-              args: __vg_args.map((a) =>
-                a && a.message ? a.message : String(a),
+              args: __vg_args.map((a: any) =>
+                (a && (a as any).message) ? (a as any).message : String(a),
               ),
             },
             { level: "error", captureStack: true },
@@ -1097,8 +1097,8 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           fallback(
             "console.error",
             {
-              args: __vg_args.map((a) =>
-                a && a.message ? a.message : String(a),
+              args: __vg_args.map((a: any) =>
+                (a && (a as any).message) ? (a as any).message : String(a),
               ),
             },
             { level: "error", captureStack: true },

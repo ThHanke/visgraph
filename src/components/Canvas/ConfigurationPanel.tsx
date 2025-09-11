@@ -3,7 +3,7 @@
  * Provides UI for managing and testing persistent app configurations
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
@@ -127,10 +127,14 @@ const RecentOntologiesDisplay = () => {
   );
 };
 
-export const ConfigurationPanel = () => {
+export interface ConfigurationPanelProps {
+  triggerVariant?: 'default' | 'none' | 'fixed-icon' | 'inline-icon';
+}
+
+export const ConfigurationPanel = ({ triggerVariant = 'default' }: ConfigurationPanelProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [importText, setImportText] = useState('');
-  
+
   const {
     config,
     setCurrentLayout,
@@ -144,6 +148,7 @@ export const ConfigurationPanel = () => {
     importConfig,
     removeAdditionalOntology
   } = useAppConfigStore();
+
 
   const handleExportConfig = () => {
     const configJson = exportConfig();
@@ -168,12 +173,41 @@ export const ConfigurationPanel = () => {
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="shadow-glass backdrop-blur-sm">
-          <Settings className="h-4 w-4 mr-2" />
-          Config
-        </Button>
-      </DialogTrigger>
+      {triggerVariant === 'fixed-icon' ? (
+        <div className="fixed top-4 right-4 z-50">
+          <DialogTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="p-2 rounded-full bg-card/90 border border-border shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary/40"
+              aria-label="Open configuration"
+            >
+              <Settings className="h-4 w-4" />
+              <span className="sr-only">Configuration</span>
+            </Button>
+          </DialogTrigger>
+        </div>
+      ) : triggerVariant === 'inline-icon' ? (
+        <DialogTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="p-2 rounded-md bg-card/90 border border-border shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-primary/20"
+            aria-label="Open configuration"
+            title="Open configuration"
+          >
+            <Settings className="h-4 w-4" />
+            <span className="sr-only">Configuration</span>
+          </Button>
+        </DialogTrigger>
+      ) : triggerVariant === 'none' ? null : (
+        <DialogTrigger asChild>
+          <Button variant="outline" size="sm" className="shadow-glass backdrop-blur-sm">
+            <Settings className="h-4 w-4 mr-2" />
+            Config
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Application Configuration</DialogTitle>
@@ -220,17 +254,6 @@ export const ConfigurationPanel = () => {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Node Spacing: {config.layoutSpacing}px</Label>
-                  <Slider
-                    value={[config.layoutSpacing]}
-                    onValueChange={([value]) => setLayoutSpacing(value)}
-                    min={50}
-                    max={300}
-                    step={10}
-                    className="w-full"
-                  />
-                </div>
 
                 <div className="space-y-2">
                   <Label>Recent Layouts</Label>

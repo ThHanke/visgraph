@@ -18,6 +18,7 @@ describe('Specimen  node mapping', () => {
 
     const src = {
       uri: 'https://example.org/instances/specimen1',
+      iri: 'https://example.org/instances/specimen1',
       rdfTypes: [
         'http://www.w3.org/2002/07/owl#NamedIndividual',
         'https://spec.industrialontologies.org/ontology/materials/Specimen'

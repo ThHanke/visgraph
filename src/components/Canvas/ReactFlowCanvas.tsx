@@ -626,38 +626,38 @@ export const ReactFlowCanvas: React.FC = () => {
           const dir = layoutToApply === 'vertical' ? 'TB' : 'LR';
           // Use the dagre helper directly to lay out the freshly computed diagram nodes/edges.
           // We run this as a microtask to ensure React state updates settle first.
-          setTimeout(() => {
-            try {
-              setNodes((nds) => {
+              setTimeout(() => {
                 try {
-                  const positioned = applyDagreLayout(nds, diagramEdges as any, {
-                    direction: dir,
-                    nodeSep: 60,
-                    rankSep: 60,
+                  setNodes((nds) => {
+                    try {
+                      const positioned = applyDagreLayout(nds, diagramEdges as any, {
+                        direction: dir,
+                        nodeSep: config.layoutSpacing,
+                        rankSep: config.layoutSpacing,
+                      });
+                      return positioned;
+                    } catch (_) {
+                      return nds;
+                    }
                   });
-                  return positioned;
+                  try {
+                    setCurrentLayoutState(layoutToApply);
+                    setCurrentLayout(layoutToApply);
+                  } catch (_) {
+                    /* ignore */
+                  }
+                  try {
+                    const inst = reactFlowInstance.current;
+                    if (inst && typeof (inst as any).fitView === "function") {
+                      (inst as any).fitView();
+                    }
+                  } catch (_) {
+                    /* ignore */
+                  }
                 } catch (_) {
-                  return nds;
+                  /* ignore */
                 }
-              });
-              try {
-                setCurrentLayoutState(layoutToApply);
-                setCurrentLayout(layoutToApply);
-              } catch (_) {
-                /* ignore */
-              }
-              try {
-                const inst = reactFlowInstance.current;
-                if (inst && typeof (inst as any).fitView === "function") {
-                  (inst as any).fitView();
-                }
-              } catch (_) {
-                /* ignore */
-              }
-            } catch (_) {
-              /* ignore */
-            }
-          }, 0);
+              }, 0);
         }
       } catch (_) {
         /* ignore layout-on-load failures */
@@ -1454,12 +1454,12 @@ export const ReactFlowCanvas: React.FC = () => {
 
   // Basic layout handler: computes deterministic positions and updates nodes.
   const handleLayoutChange = useCallback(
-    async (layoutType: string, force = false) => {
+    async (layoutType: string, force = false, options?: { nodeSpacing?: number }) => {
       if (DEBUG) {
         try {
           debug(
             "reactflow.layout.request",
-            { layoutType, force, layoutEnabled },
+            { layoutType, force, layoutEnabled, options },
             { caller: true },
           );
         } catch (_) {
@@ -1497,56 +1497,59 @@ export const ReactFlowCanvas: React.FC = () => {
         return false;
       }
 
-      try {
-        const dir = layoutType === "vertical" ? "TB" : "LR";
-        setNodes((nds) => {
-          try {
-            const positioned = applyDagreLayout(nds, edges as any, {
-              direction: dir,
-              nodeSep: 60,
-              rankSep: 60,
-            });
-            // When using React Flow, positions are set directly on nodes
-            return positioned;
-          } catch (err) {
-            // fallback to previous positions on failure
-            return nds;
-          }
-        });
+        try {
+          const dir = layoutType === "vertical" ? "TB" : "LR";
+          const nodeSep = options && typeof options.nodeSpacing === 'number' ? options.nodeSpacing : config.layoutSpacing;
+          const rankSep = nodeSep;
 
-        setCurrentLayoutState(layoutType);
-        setCurrentLayout(layoutType);
-        if (DEBUG) {
+          setNodes((nds) => {
+            try {
+              const positioned = applyDagreLayout(nds, edges as any, {
+                direction: dir,
+                nodeSep,
+                rankSep,
+              });
+              // When using React Flow, positions are set directly on nodes
+              return positioned;
+            } catch (err) {
+              // fallback to previous positions on failure
+              return nds;
+            }
+          });
+
+          setCurrentLayoutState(layoutType);
+          setCurrentLayout(layoutType);
+          if (DEBUG) {
+            try {
+              debug(
+                "reactflow.layout.applied",
+                { layoutType, nodeCount: nodes.length, edgeCount: edges.length },
+                { caller: true },
+              );
+            } catch (_) {
+              /* ignore */
+            }
+          }
+          toast.success(`Applied ${layoutType} layout`, {
+            description: `Graph reorganized with new layout`,
+          });
+          // try to fit view after layout
           try {
-            debug(
-              "reactflow.layout.applied",
-              { layoutType, nodeCount: nodes.length, edgeCount: edges.length },
-              { caller: true },
-            );
+            if (current && typeof (current as any).fitView === "function") {
+              (current as any).fitView();
+            }
           } catch (_) {
             /* ignore */
           }
-        }
-        toast.success(`Applied ${layoutType} layout`, {
-          description: `Graph reorganized with new layout`,
-        });
-        // try to fit view after layout
-        try {
-          if (current && typeof (current as any).fitView === "function") {
-            (current as any).fitView();
-          }
-        } catch (_) {
-          /* ignore */
-        }
-        return true;
-      } catch (e) {
+          return true;
+        } catch (e) {
         toast.error(
           `Layout failed: ${e && (e as Error).message ? (e as Error).message : String(e)}`,
         );
         return false;
       }
     },
-    [setNodes, setCurrentLayout, setCurrentLayoutState, edges, layoutEnabled],
+    [setNodes, setCurrentLayout, setCurrentLayoutState, edges, layoutEnabled, config.layoutSpacing],
   );
 
   // Expose programmatic apply layout hook (queue until ready)
@@ -1610,7 +1613,36 @@ export const ReactFlowCanvas: React.FC = () => {
         /* ignore */
       }
     };
-  }, [handleLayoutChange, DEBUG]);
+    }, [handleLayoutChange, DEBUG]);
+
+  // When the persisted layout spacing changes (committed from the ConfigurationPanel),
+  // trigger a single re-layout using the currently selected layout. Debounced to avoid
+  // rapid repeated reflows during quick successive writes.
+  useEffect(() => {
+    let timer: number | null = null;
+    try {
+      // Only trigger when programmatic layout is enabled and when the canvas instance is ready.
+      if (!layoutEnabled) return;
+      timer = window.setTimeout(() => {
+        try {
+          if (reactFlowInstance.current) {
+            void handleLayoutChange(config.currentLayout, true);
+          }
+        } catch (_) {
+          /* ignore layout trigger failures */
+        }
+      }, 150);
+    } catch (_) {
+      /* ignore debounce setup errors */
+    }
+    return () => {
+      try {
+        if (timer) window.clearTimeout(timer);
+      } catch (_) {
+        /* ignore clearTimeout errors */
+      }
+    };
+  }, [config.layoutSpacing, config.currentLayout, layoutEnabled, handleLayoutChange]);
 
   // Process queue after instance is ready
    
@@ -2105,14 +2137,6 @@ export const ReactFlowCanvas: React.FC = () => {
         onLayoutChange={handleLayoutChange}
         currentLayout={currentLayout}
         availableEntities={allEntities}
-        layoutEnabled={layoutEnabled}
-        onToggleLayoutEnable={(enabled: boolean) => {
-          setLayoutEnabled(enabled);
-          if (enabled) {
-            // apply current layout immediately when enabling
-            void handleLayoutChange(currentLayout, true);
-          }
-        }}
       />
 
       {canvasState.isLoading && (

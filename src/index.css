@@ -159,9 +159,9 @@
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
 }
-
 .react-flow__edges svg {
-  overflow: inherit;
+  overflow: visible;
+  position: absolute;
 }
 
 .react-flow .react-flow__edges {

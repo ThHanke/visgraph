@@ -1,14 +1,21 @@
 import { useLocation } from "react-router-dom";
 import { useEffect } from "react";
+import { fallback } from "../utils/startupDebug";
 
 const NotFound = () => {
   const location = useLocation();
 
   useEffect(() => {
-    ((...__vg_args)=>{try{fallback('console.error',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'error', captureStack:true})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.error(...__vg_args);})(
-      "404 Error: User attempted to access non-existent route:",
-      location.pathname
-    );
+    try {
+      fallback(
+        "console.error",
+        { args: [`404 Error: User attempted to access non-existent route: ${location.pathname}`] },
+        { level: "error", captureStack: true }
+      );
+    } catch (_) {
+      // best-effort only
+    }
+    console.error("404 Error: User attempted to access non-existent route:", location.pathname);
   }, [location.pathname]);
 
   return (

@@ -42,12 +42,12 @@ describe('Ontology store export (rdfManager-backed)', () => {
       parsedAsJson = false;
     }
 
-    if (parsedAsJson) {
+      if (parsedAsJson) {
       expect(parsedJsonLd['@context']).toBeDefined();
       expect(parsedJsonLd['@graph']).toBeInstanceOf(Array);
     } else {
       // Accept Turtle-like fallback string: ensure prefixes or foaf content present
-      expect(jsonld).toContain('@prefix' || 'foaf:');
+      expect(jsonld.includes('@prefix') || jsonld.includes('foaf:')).toBe(true);
       expect(jsonld).toContain('foaf:memberOf');
     }
 

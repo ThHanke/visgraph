@@ -46,9 +46,10 @@ export function findPrefixForUri(fullUri: string, rdfManager?: { getNamespaces?:
   if (!fullUri) return undefined;
   const nsMap = typeof rdfManager === 'function' ? undefined : (rdfManager as any)?.getNamespaces ? (rdfManager as any).getNamespaces() : (rdfManager as Record<string,string> | undefined);
   if (!nsMap) return undefined;
-  for (const [prefix, uri] of Object.entries(nsMap || {})) {
+  for (const [prefix, uri] of Object.entries(nsMap as Record<string, string> || {})) {
     if (!uri) continue;
-    if (fullUri.startsWith(uri)) return prefix === ':' ? '' : prefix;
+    const uriStr = String(uri);
+    if (fullUri.startsWith(uriStr)) return prefix === ':' ? '' : prefix;
   }
   return undefined;
 }

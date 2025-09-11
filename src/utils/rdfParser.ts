@@ -1,4 +1,5 @@
 import { Parser, Store, Quad, NamedNode, Literal, BlankNode, DataFactory } from 'n3';
+import { fallback } from './startupDebug';
 
 export interface ParsedGraph {
   nodes: GraphNode[];
