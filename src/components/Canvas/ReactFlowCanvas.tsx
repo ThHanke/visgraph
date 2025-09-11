@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 import React, {
   useCallback,
   useEffect,
@@ -152,30 +153,51 @@ export const ReactFlowCanvas: React.FC = () => {
     if (typeof window === "undefined") return;
     const handler = (ev: any) => {
       try {
-        const detail = ev && ev.detail ? ev.detail : (window as any).__VG_LAST_RDF_ERROR;
-        const message = detail && detail.message ? String(detail.message) : "RDF parse error";
-        const snippet = detail && detail.snippet ? String(detail.snippet).trim() : (typeof (window as any).__VG_LAST_RDF === "string" ? String((window as any).__VG_LAST_RDF).slice(0, 500) : "");
-        const truncated = snippet.length > 500 ? snippet.slice(0, 500) + "…" : snippet;
+        const detail =
+          ev && ev.detail ? ev.detail : (window as any).__VG_LAST_RDF_ERROR;
+        const message =
+          detail && detail.message ? String(detail.message) : "RDF parse error";
+        const snippet =
+          detail && detail.snippet
+            ? String(detail.snippet).trim()
+            : typeof (window as any).__VG_LAST_RDF === "string"
+              ? String((window as any).__VG_LAST_RDF).slice(0, 500)
+              : "";
+        const truncated =
+          snippet.length > 500 ? snippet.slice(0, 500) + "…" : snippet;
         const uiDesc = `${message}${truncated ? "\n\nsnippet:\n" + truncated : ""}`;
         try {
           toast.error("RDF parse failed", { description: uiDesc });
-        } catch (_) { /* ignore toast failures */ }
+        } catch (_) {
+          /* ignore toast failures */
+        }
         // Also keep a clear developer console record
         try {
-          // eslint-disable-next-line no-console
-          console.error("[VG] vg:rdf-parse-error received", { message, snippet });
-        } catch (_) { /* ignore */ }
-      } catch (_) { /* ignore handler errors */ }
+
+          console.error("[VG] vg:rdf-parse-error received", {
+            message,
+            snippet,
+          });
+        } catch (_) {
+          /* ignore */
+        }
+      } catch (_) {
+        /* ignore handler errors */
+      }
     };
     try {
       window.addEventListener("vg:rdf-parse-error", handler as any);
-    } catch (_) { /* ignore */ }
+    } catch (_) {
+      /* ignore */
+    }
 
     // Cleanup
     return () => {
       try {
         window.removeEventListener("vg:rdf-parse-error", handler as any);
-      } catch (_) { /* ignore */ }
+      } catch (_) {
+        /* ignore */
+      }
     };
   }, []);
 
@@ -238,6 +260,7 @@ export const ReactFlowCanvas: React.FC = () => {
   const reasoningTimerRef = useRef<number | null>(null);
 
   // Simple deterministic mapping: currentGraph -> nodes & edges
+   
   useEffect(() => {
     // Skip the initial mount mapping; mapping will run when rdfChangeSignal changes (or manual trigger).
     if (initialMapRef.current) {
@@ -584,7 +607,6 @@ export const ReactFlowCanvas: React.FC = () => {
       setNodes([]);
       setEdges([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentGraph, loadedOntologies, availableClasses, viewMode]);
 
   // Auto-load demo file and additional ontologies on component mount (mirrors Canvas behavior)
@@ -663,11 +685,13 @@ export const ReactFlowCanvas: React.FC = () => {
         // Allow configuring the dev/demo startup URL via Vite dev script by setting VITE_STARTUP_URL.
         // This keeps the canonical demo URL configurable from the npm run dev invocation without
         // requiring code edits or manual window flags.
-        (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.VITE_STARTUP_URL)
+        typeof import.meta !== "undefined" &&
+        (import.meta as any).env &&
+        (import.meta as any).env.VITE_STARTUP_URL
           ? String((import.meta as any).env.VITE_STARTUP_URL)
-          : (settingsStoreState && settingsStoreState.settings
+          : settingsStoreState && settingsStoreState.settings
             ? settingsStoreState.settings.startupFileUrl
-            : settings && settings.startupFileUrl);
+            : settings && settings.startupFileUrl;
       const startupTtl =
         typeof window !== "undefined" && (window as any).__VG_STARTUP_TTL
           ? String((window as any).__VG_STARTUP_TTL)
@@ -1491,6 +1515,7 @@ export const ReactFlowCanvas: React.FC = () => {
   );
 
   // Expose programmatic apply layout hook (queue until ready)
+   
   useEffect(() => {
     if (typeof window === "undefined") return;
     const queueName = "__VG_APPLY_LAYOUT_QUEUE";
@@ -1553,6 +1578,7 @@ export const ReactFlowCanvas: React.FC = () => {
   }, [handleLayoutChange, DEBUG]);
 
   // Process queue after instance is ready
+   
   useEffect(() => {
     try {
       const q = (window as any).__VG_APPLY_LAYOUT_QUEUE;
@@ -1658,6 +1684,7 @@ export const ReactFlowCanvas: React.FC = () => {
   );
 
   // React Flow init
+   
   const onInit = useCallback(
     (instance: RFInstance) => {
       reactFlowInstance.current = instance;
@@ -1680,9 +1707,12 @@ export const ReactFlowCanvas: React.FC = () => {
           try {
             // Use canonical demo URL fixture (keeps dev demo content in a single source and avoids
             // embedding TTL that can become stale). The URL is provided via Vite dev env (VITE_STARTUP_URL).
-            const startupUrlDev = (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.VITE_STARTUP_URL)
-              ? String((import.meta as any).env.VITE_STARTUP_URL)
-              : '';
+            const startupUrlDev =
+              typeof import.meta !== "undefined" &&
+              (import.meta as any).env &&
+              (import.meta as any).env.VITE_STARTUP_URL
+                ? String((import.meta as any).env.VITE_STARTUP_URL)
+                : "";
 
             if (startupUrlDev && typeof loadKnowledgeGraph === "function") {
               try {
@@ -1718,20 +1748,34 @@ export const ReactFlowCanvas: React.FC = () => {
                 }
               } catch (err) {
                 try {
-                  const errMsg = err && (err as Error).message ? (err as Error).message : String(err);
+                  const errMsg =
+                    err && (err as Error).message
+                      ? (err as Error).message
+                      : String(err);
                   // Prefer structured parse error exposed by rdfManager
                   let uiDesc = errMsg;
                   try {
                     const lastErr = (window as any).__VG_LAST_RDF_ERROR;
                     if (lastErr && lastErr.message) {
-                      const snippet = String(lastErr.snippet || '').trim();
-                      const truncated = snippet.length > 500 ? snippet.slice(0, 500) + '…' : snippet;
+                      const snippet = String(lastErr.snippet || "").trim();
+                      const truncated =
+                        snippet.length > 500
+                          ? snippet.slice(0, 500) + "…"
+                          : snippet;
                       uiDesc = `${String(lastErr.message)}\n\nsnippet:\n${truncated}`;
-                    } else if (typeof window !== "undefined" && (window as any).__VG_LAST_RDF) {
-                      const s = String((window as any).__VG_LAST_RDF).slice(0, 500);
+                    } else if (
+                      typeof window !== "undefined" &&
+                      (window as any).__VG_LAST_RDF
+                    ) {
+                      const s = String((window as any).__VG_LAST_RDF).slice(
+                        0,
+                        500,
+                      );
                       uiDesc = `${errMsg}\n\nsnippet:\n${s}`;
                     }
-                  } catch (_) { /* ignore structured-snippet retrieval failures */ }
+                  } catch (_) {
+                    /* ignore structured-snippet retrieval failures */
+                  }
 
                   // Show a user-facing toast with the parser message + short snippet
                   try {
@@ -1742,10 +1786,21 @@ export const ReactFlowCanvas: React.FC = () => {
 
                   // Log full structured error for developers (keep toast concise)
                   try {
-                    const fullStructured = (window as any).__VG_LAST_RDF_ERROR || {};
-                    const fullSnippet = (window as any).__VG_LAST_RDF || fullStructured.snippet || '';
-                    // eslint-disable-next-line no-console
-                    console.error("[VG] loadKnowledgeGraph failed", errMsg, "VG_RDF_PARSE_ERROR:", fullStructured, "VG_RDF_PARSE_SNIPPET_FULL:", String(fullSnippet).slice(0, 2000));
+                    const fullStructured =
+                      (window as any).__VG_LAST_RDF_ERROR || {};
+                    const fullSnippet =
+                      (window as any).__VG_LAST_RDF ||
+                      fullStructured.snippet ||
+                      "";
+
+                    console.error(
+                      "[VG] loadKnowledgeGraph failed",
+                      errMsg,
+                      "VG_RDF_PARSE_ERROR:",
+                      fullStructured,
+                      "VG_RDF_PARSE_SNIPPET_FULL:",
+                      String(fullSnippet).slice(0, 2000),
+                    );
                   } catch (_) {
                     /* ignore console logging failures */
                   }
@@ -1817,6 +1872,7 @@ export const ReactFlowCanvas: React.FC = () => {
   }, [edges, nodes, viewMode]);
 
   // Debugging: record counts in startupDebug and console to help diagnose "no edges" issue
+   
   useEffect(() => {
     try {
       const payload = {
@@ -2080,7 +2136,7 @@ export const ReactFlowCanvas: React.FC = () => {
             triggerReasoning(nodes, edges);
           } catch (e) {
             // UI-level safeguard: do not throw from click handler
-            // eslint-disable-next-line no-console
+
             console.warn("manual reasoning trigger failed", e);
           }
         }}

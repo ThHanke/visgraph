@@ -1,14 +1,14 @@
-import React, { memo } from 'react';
+import React, { memo } from "react";
 import {
   getBezierPath,
   EdgeLabelRenderer,
   EdgeProps,
   BaseEdge,
   useInternalNode,
-} from '@xyflow/react';
-import { Badge } from '../ui/badge';
-import { debug } from '../../utils/startupDebug';
-import { getEdgeParams } from './EdgeParams';
+} from "@xyflow/react";
+import { Badge } from "../ui/badge";
+import { debug } from "../../utils/startupDebug";
+import { getEdgeParams } from "./EdgeParams";
 
 /**
  * FloatingEdge (docs-style)
@@ -24,25 +24,20 @@ import { getEdgeParams } from './EdgeParams';
  */
 
 const FloatingEdge = memo((props: EdgeProps) => {
-  const {
-    id,
-    source,
-    target,
-    markerEnd,
-    style,
-    data,
-  } = props;
+  const { id, source, target, markerEnd, style, data } = props;
 
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
-
 
   // Wait until React Flow has measured the nodes and provided internals.
   if (!sourceNode || !targetNode) {
     return null;
   }
 
-  const { sx, sy, tx, ty, sourcePos, targetPos } = getEdgeParams(sourceNode, targetNode);
+  const { sx, sy, tx, ty, sourcePos, targetPos } = getEdgeParams(
+    sourceNode,
+    targetNode,
+  );
 
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX: sx,
@@ -53,7 +48,11 @@ const FloatingEdge = memo((props: EdgeProps) => {
     targetPosition: targetPos as any,
     curvature: 0.25,
   });
-  const badgeText = (props as any)?.label || (data as any)?.label || (data as any)?.propertyType || '';
+  const badgeText =
+    (props as any)?.label ||
+    (data as any)?.label ||
+    (data as any)?.propertyType ||
+    "";
 
   return (
     <>
@@ -66,7 +65,10 @@ const FloatingEdge = memo((props: EdgeProps) => {
           className="edge-label-renderer__custom-edge nodrag nopan"
         >
           {badgeText ? (
-            <Badge variant="secondary" className="text-xs px-2 py-1 shadow-md border">
+            <Badge
+              variant="secondary"
+              className="text-xs px-2 py-1 shadow-md border"
+            >
               {badgeText}
             </Badge>
           ) : null}
@@ -76,6 +78,6 @@ const FloatingEdge = memo((props: EdgeProps) => {
   );
 });
 
-FloatingEdge.displayName = 'FloatingEdge';
+FloatingEdge.displayName = "FloatingEdge";
 
 export default FloatingEdge;

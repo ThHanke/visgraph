@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useTheme } from "next-themes"
 import { Toaster as Sonner } from "sonner"
 import { toast } from "./helpers/sonnerHelpers"

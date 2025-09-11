@@ -1,4 +1,4 @@
-import { Position, MarkerType } from '@xyflow/react';
+import { Position, MarkerType } from "@xyflow/react";
 
 // this helper function returns the intersection point
 // of the line between the center of the intersectionNode and the target node
@@ -75,7 +75,7 @@ export function initialElements() {
   const edges = [];
   const center = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
 
-  nodes.push({ id: 'target', data: { label: 'Target' }, position: center });
+  nodes.push({ id: "target", data: { label: "Target" }, position: center });
 
   for (let i = 0; i < 8; i++) {
     const degrees = i * (360 / 8);
@@ -83,13 +83,13 @@ export function initialElements() {
     const x = 250 * Math.cos(radians) + center.x;
     const y = 250 * Math.sin(radians) + center.y;
 
-    nodes.push({ id: `${i}`, data: { label: 'Source' }, position: { x, y } });
+    nodes.push({ id: `${i}`, data: { label: "Source" }, position: { x, y } });
 
     edges.push({
       id: `edge-${i}`,
-      target: 'target',
+      target: "target",
       source: `${i}`,
-      type: 'floating',
+      type: "floating",
       markerEnd: {
         type: MarkerType.Arrow,
       },

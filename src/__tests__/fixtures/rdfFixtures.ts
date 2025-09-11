@@ -4,7 +4,7 @@
  */
 
 export const FIXTURES: Record<string, string> = {
-  'foaf_test_data': `
+  foaf_test_data: `
     @prefix foaf: <http://xmlns.com/foaf/0.1/> .
     @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
     @prefix owl: <http://www.w3.org/2002/07/owl#> .
@@ -25,7 +25,7 @@ export const FIXTURES: Record<string, string> = {
         rdfs:range foaf:Organization .
   `,
 
-  'https://www.w3.org/TR/vocab-org/': `
+  "https://www.w3.org/TR/vocab-org/": `
     @prefix org: <https://www.w3.org/TR/vocab-org/> .
     @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
     @prefix : <http://example.org/> .
@@ -34,7 +34,7 @@ export const FIXTURES: Record<string, string> = {
   `,
 
   // IOF core and materials fixtures to cover tests that reference those prefixes/URLs
-  'https://spec.industrialontologies.org/ontology/core/Core/': `
+  "https://spec.industrialontologies.org/ontology/core/Core/": `
     @prefix iof: <https://spec.industrialontologies.org/ontology/core/Core/> .
     @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
     @prefix owl: <http://www.w3.org/2002/07/owl#> .
@@ -49,14 +49,14 @@ export const FIXTURES: Record<string, string> = {
   `,
 
   // IOF URL variant used in some tests (contains a specimen triple)
-  'https://spec.industrialontologies.org/iof/ontology/core/Core/': `
+  "https://spec.industrialontologies.org/iof/ontology/core/Core/": `
     @prefix iof: <https://spec.industrialontologies.org/iof/ontology/core/Core/> .
     @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 
     <http://example.com/subject> rdf:type iof:Specimen .
   `,
 
-  'https://spec.industrialontologies.org/ontology/materials/Materials/': `
+  "https://spec.industrialontologies.org/ontology/materials/Materials/": `
     @prefix iof-mat: <https://spec.industrialontologies.org/ontology/materials/Materials/> .
     @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
@@ -64,7 +64,7 @@ export const FIXTURES: Record<string, string> = {
         rdfs:label "Measurement Device" .
   `,
 
-  'https://spec.industrialontologies.org/ontology/qualities/': `
+  "https://spec.industrialontologies.org/ontology/qualities/": `
     @prefix iof-qual: <https://spec.industrialontologies.org/ontology/qualities/> .
     @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
@@ -72,7 +72,7 @@ export const FIXTURES: Record<string, string> = {
   `,
 
   // Demo graph entries used by tests (github IOF materials tutorial) and startupFileUrl variants
-  'https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/main/example.ttl': `
+  "https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/main/example.ttl": `
     @prefix iof-qual: <https://spec.industrialontologies.org/ontology/qualities/> .
     @prefix : <https://github.com/Mat-O-Lab/IOFMaterialsTutorial/> .
     :SpecimenLength a iof-qual:Length .
@@ -80,7 +80,7 @@ export const FIXTURES: Record<string, string> = {
   `,
 
   // Additional demo snippet used by some tests (contains :Specimen subject)
-  'https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/main/specimen.ttl': `
+  "https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/main/specimen.ttl": `
     @prefix : <https://github.com/Mat-O-Lab/IOFMaterialsTutorial/> .
     @prefix iof: <https://spec.industrialontologies.org/ontology/core/Core/> .
     @prefix iof-mat: <https://spec.industrialontologies.org/ontology/materials/Materials/> .
@@ -99,7 +99,7 @@ export const FIXTURES: Record<string, string> = {
         rdfs:label "Specimen Length" .
   `,
 
-  'https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl': `
+  "https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl": `
     @prefix : <https://github.com/Mat-O-Lab/IOFMaterialsTutorial/> .
     @prefix iof-qual: <https://spec.industrialontologies.org/ontology/qualities/> .
     @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
@@ -109,7 +109,7 @@ export const FIXTURES: Record<string, string> = {
   `,
 
   // Local/example fixtures used by many tests
-  'http://example.com/basic/john': `
+  "http://example.com/basic/john": `
     @prefix ex: <http://example.com/> .
     @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
@@ -117,14 +117,14 @@ export const FIXTURES: Record<string, string> = {
         rdfs:label "John Doe" .
   `,
 
-  'http://example.com/initial/entity1': `
+  "http://example.com/initial/entity1": `
     @prefix ex: <http://example.com/> .
     @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
     ex:entity1 a ex:TestClass .
   `,
 
-  'http://example.com/additional/thing': `
+  "http://example.com/additional/thing": `
     @prefix owl: <http://www.w3.org/2002/07/owl#> .
     @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
@@ -132,7 +132,7 @@ export const FIXTURES: Record<string, string> = {
         rdfs:label "Thing" .
   `,
 
-  'http://example.com/new-org': `
+  "http://example.com/new-org": `
     @prefix foaf: <http://xmlns.com/foaf/0.1/> .
     @prefix ex: <http://example.com/> .
 
@@ -142,5 +142,5 @@ export const FIXTURES: Record<string, string> = {
 
     ex:newOrg a foaf:Organization ;
       foaf:name "New Company" .
-  `
+  `,
 };

@@ -101,7 +101,7 @@ export const ReasoningIndicator = memo(({ onOpenReport, onRunReason }: Reasoning
             if (typeof onRunReason === 'function') onRunReason();
           } catch (e) {
             // swallow UI-level failures
-            // eslint-disable-next-line no-console
+             
             console.warn('Failed to invoke run reasoning', e);
           }
         }}

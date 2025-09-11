@@ -57,33 +57,38 @@
  *
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
-import { useOntologyStore } from '../../stores/ontologyStore';
-import { FIXTURES } from '../fixtures/rdfFixtures';
+import { describe, it, expect, beforeEach } from "vitest";
+import { useOntologyStore } from "../../stores/ontologyStore";
+import { FIXTURES } from "../fixtures/rdfFixtures";
 
-describe('Demo flow: single triple change on annotation addition', () => {
+describe("Demo flow: single triple change on annotation addition", () => {
   beforeEach(() => {
     const store = useOntologyStore.getState();
     store.clearOntologies();
   });
 
-  it('creates exactly one new triple when adding an annotation property to a demo node', async () => {
+  it("creates exactly one new triple when adding an annotation property to a demo node", async () => {
     const store = useOntologyStore.getState();
 
     // Demo TTL (centralized fixture)
-    const demoTtl = FIXTURES['https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/main/example.ttl'];
+    const demoTtl =
+      FIXTURES[
+        "https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/main/example.ttl"
+      ];
 
     // Step 1: load demo RDF (parsing + store population)
     await store.loadOntologyFromRDF(demoTtl, undefined, false);
 
-    const entityUri = 'https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength';
+    const entityUri =
+      "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/SpecimenLength";
     const rdfManager = store.rdfManager;
     const rdfStore = rdfManager.getStore();
 
     // Snapshot before: serialize quads minimally as "sub|pred|obj"
-    const before = rdfStore.getQuads(null, null, null, null).map(q => {
+    const before = rdfStore.getQuads(null, null, null, null).map((q) => {
       const subj = (q.subject && (q.subject as any).value) || String(q.subject);
-      const pred = (q.predicate && (q.predicate as any).value) || String(q.predicate);
+      const pred =
+        (q.predicate && (q.predicate as any).value) || String(q.predicate);
       const obj = (q.object && (q.object as any).value) || String(q.object);
       return `${subj}|${pred}|${obj}`;
     });
@@ -91,39 +96,45 @@ describe('Demo flow: single triple change on annotation addition', () => {
     // Step 2: simulate NodePropertyEditor saving a new annotation property (rdfs:label)
     store.updateNode(entityUri, {
       annotationProperties: [
-        { propertyUri: 'rdfs:label', value: 'Specimen Length Property', type: 'xsd:string' }
-      ]
+        {
+          propertyUri: "rdfs:label",
+          value: "Specimen Length Property",
+          type: "xsd:string",
+        },
+      ],
     });
 
     // Step 3: update currentGraph to reflect the edit (typical canvas behavior)
     const currentGraph = store.currentGraph;
-    const updatedNodes = currentGraph.nodes.map(node => {
+    const updatedNodes = currentGraph.nodes.map((node) => {
       const nodeData = (node as any).data || node;
-      const nodeUri = nodeData.uri || nodeData.iri || (node as any).uri || (node as any).id;
+      const nodeUri =
+        nodeData.uri || nodeData.iri || (node as any).uri || (node as any).id;
       if (nodeUri === entityUri) {
         const literalProperties = (nodeData.literalProperties || []).slice();
         literalProperties.push({
-          key: 'rdfs:label',
-          value: 'Specimen Length Property',
-          type: 'xsd:string'
+          key: "rdfs:label",
+          value: "Specimen Length Property",
+          type: "xsd:string",
         });
-        return { ...node, data: { ...(nodeData), literalProperties } };
+        return { ...node, data: { ...nodeData, literalProperties } };
       }
       return node;
     });
     store.setCurrentGraph(updatedNodes, currentGraph.edges);
 
     // Step 4: snapshot after update
-    const after = rdfStore.getQuads(null, null, null, null).map(q => {
+    const after = rdfStore.getQuads(null, null, null, null).map((q) => {
       const subj = (q.subject && (q.subject as any).value) || String(q.subject);
-      const pred = (q.predicate && (q.predicate as any).value) || String(q.predicate);
+      const pred =
+        (q.predicate && (q.predicate as any).value) || String(q.predicate);
       const obj = (q.object && (q.object as any).value) || String(q.object);
       return `${subj}|${pred}|${obj}`;
     });
 
     // Compute diff: values present in after but not in before
     const beforeSet = new Set(before);
-    const added = after.filter(x => !beforeSet.has(x));
+    const added = after.filter((x) => !beforeSet.has(x));
 
     // Expect exactly one new triple
     expect(added.length).toBe(1);
@@ -131,12 +142,12 @@ describe('Demo flow: single triple change on annotation addition', () => {
     // Check that the added triple is the expected rdfs:label literal
     const addedTriple = added[0];
     expect(addedTriple).toContain(entityUri);
-    expect(addedTriple).toContain('http://www.w3.org/2000/01/rdf-schema#label');
-    expect(addedTriple).toContain('Specimen Length Property');
+    expect(addedTriple).toContain("http://www.w3.org/2000/01/rdf-schema#label");
+    expect(addedTriple).toContain("Specimen Length Property");
 
     // Export Turtle and confirm the label appears in exported output
-    const exported = await store.exportGraph('turtle');
-    expect(exported).toContain('Specimen Length Property');
-    expect(exported).toContain('rdfs:label');
+    const exported = await store.exportGraph("turtle");
+    expect(exported).toContain("Specimen Length Property");
+    expect(exported).toContain("rdfs:label");
   });
 });

@@ -70,7 +70,7 @@ describe('React Flow edge persistence', () => {
 
     // Snapshot before: ensure no triple exists
     const pred = 'http://www.w3.org/2000/01/rdf-schema#seeAlso';
-    let foundBefore = rdfStore.getQuads(namedNode(nodeAUri), namedNode(pred), namedNode(nodeBUri), null) || [];
+    const foundBefore = rdfStore.getQuads(namedNode(nodeAUri), namedNode(pred), namedNode(nodeBUri), null) || [];
     expect(foundBefore.length).toBe(0);
 
     // Persist the new edge as the canvas code does: add quad(subject, predicate, object)

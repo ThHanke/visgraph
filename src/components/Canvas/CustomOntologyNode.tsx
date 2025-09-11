@@ -62,10 +62,11 @@ function CustomOntologyNodeInner(props: NodeProps) {
 
   // debug fingerprint - emit only on meaningful changes and avoid duplicates
   const lastFp = useRef<string | null>(null);
+  const rdfTypesKey = Array.isArray(nodeData.rdfTypes) ? nodeData.rdfTypes.join('|') : '';
   useEffect(() => {
     try {
       const uri = (nodeData.uri || nodeData.iri || '') as string;
-      const types = Array.isArray(nodeData.rdfTypes) ? nodeData.rdfTypes.join('|') : '';
+      const types = rdfTypesKey;
       const fp = `${uri}|${String(nodeData.classType ?? '')}|${types}|${String(nodeData.displayType ?? '')}`;
 
       if (lastFp.current === fp) return;
@@ -85,7 +86,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
         try { debug('CustomOntologyNode.displayInfo', payload); } catch (_) { /* ignore */ }
       }
     } catch (_) { /* ignore */ }
-  }, [nodeData.uri, nodeData.iri, nodeData.classType, (nodeData.rdfTypes || []).join('|'), nodeData.displayType]);
+  }, [nodeData.uri, nodeData.iri, nodeData.classType, rdfTypesKey, nodeData.displayType, nodeData.rdfTypes]);
 
   // computed short type text (badge)
   const displayedTypeShort = computeBadgeText(nodeData as unknown as Record<string, unknown>, rdfManager, availableClasses);

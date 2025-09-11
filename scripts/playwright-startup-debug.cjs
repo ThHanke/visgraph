@@ -279,7 +279,7 @@ async function run() {
       const hookResult = await page.evaluate(async (l) => {
         try {
           // runtime check for a hook exposed by the app
-          // eslint-disable-next-line no-undef
+           
           if (typeof window !== 'undefined' && window.__VG_APPLY_LAYOUT && typeof window.__VG_APPLY_LAYOUT === 'function') {
             return await window.__VG_APPLY_LAYOUT(l);
           }

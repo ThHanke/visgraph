@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * @fileoverview Enhanced Node Property Editor
  * Allows editing of node type, IRI, and annotation properties with proper XSD type support
@@ -5,6 +6,7 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
+import { debug, fallback } from '../../utils/startupDebug';
 import { computeDisplayInfoMemo, clearDisplayInfoCache, computeBadgeText } from './core/nodeDisplay';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -399,7 +401,7 @@ export const NodePropertyEditor = ({
 
       setProperties(existingProps);
     }
-  }, [open, nodeData, classEntities]);
+  }, [open, nodeData, classEntities, getRdfManager]);
 
   /**
    * Add a new property row

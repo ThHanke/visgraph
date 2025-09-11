@@ -5239,9 +5239,7 @@
         "meta": {
           "uri": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/",
           "classType": "Ontology",
-          "rdfTypes": [
-            "http://www.w3.org/2002/07/owl#Ontology"
-          ]
+          "rdfTypes": ["http://www.w3.org/2002/07/owl#Ontology"]
         }
       },
       {

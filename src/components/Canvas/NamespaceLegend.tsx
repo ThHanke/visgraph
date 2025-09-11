@@ -10,16 +10,16 @@ import { useOntologyStore } from "@/stores/ontologyStore";
 
 // Color palette for namespace prefixes
 const NAMESPACE_COLORS = [
-  'hsl(var(--primary))',
-  'hsl(var(--secondary))',
-  'hsl(200, 100%, 50%)',
-  'hsl(120, 100%, 40%)',
-  'hsl(45, 100%, 50%)',
-  'hsl(300, 100%, 50%)',
-  'hsl(15, 100%, 50%)',
-  'hsl(270, 100%, 50%)',
-  'hsl(180, 100%, 40%)',
-  'hsl(330, 100%, 50%)'
+  "hsl(var(--primary))",
+  "hsl(var(--secondary))",
+  "hsl(200, 100%, 50%)",
+  "hsl(120, 100%, 40%)",
+  "hsl(45, 100%, 50%)",
+  "hsl(300, 100%, 50%)",
+  "hsl(15, 100%, 50%)",
+  "hsl(270, 100%, 50%)",
+  "hsl(180, 100%, 40%)",
+  "hsl(330, 100%, 50%)",
 ];
 
 function getNamespaceColor(prefix: string, index: number): string {
@@ -35,7 +35,10 @@ interface NamespaceLegendProps {
  * Helper: returns set of used namespace URIs by scanning store quads.
  * Stops early if all candidate URIs are discovered.
  */
-function computeUsedNamespaceUris(store: any, candidateUris: string[]): Set<string> {
+function computeUsedNamespaceUris(
+  store: any,
+  candidateUris: string[],
+): Set<string> {
   const used = new Set<string>();
   if (!store || !candidateUris || candidateUris.length === 0) return used;
 
@@ -46,7 +49,7 @@ function computeUsedNamespaceUris(store: any, candidateUris: string[]): Set<stri
       const q = quads[i];
       const terms = [q.subject, q.predicate, q.object];
       for (const t of terms) {
-        if (!t || typeof t.value !== 'string') continue;
+        if (!t || typeof t.value !== "string") continue;
         const val = t.value;
         for (const ns of candidateUris) {
           if (!used.has(ns) && val.startsWith(ns)) {
@@ -64,27 +67,37 @@ function computeUsedNamespaceUris(store: any, candidateUris: string[]): Set<stri
 
 export const NamespaceLegend = ({ namespaces }: NamespaceLegendProps) => {
   // Subscribe to rdfManager and currentGraph so we re-render when store changes.
-  const rdfManager = useOntologyStore(state => state.rdfManager);
+  const rdfManager = useOntologyStore((state) => state.rdfManager);
   // currentGraph changes indicate new nodes/edges may have been merged into the store
-  const currentGraph = useOntologyStore(state => state.currentGraph);
+  const currentGraph = useOntologyStore((state) => state.currentGraph);
 
   // Obtain the registered namespaces; prefer explicit prop if provided.
   const registeredNamespaces = useMemo(() => {
     try {
-      return namespaces && Object.keys(namespaces).length > 0 ? namespaces : (rdfManager && typeof rdfManager.getNamespaces === 'function' ? rdfManager.getNamespaces() : {});
+      return namespaces && Object.keys(namespaces).length > 0
+        ? namespaces
+        : rdfManager && typeof rdfManager.getNamespaces === "function"
+          ? rdfManager.getNamespaces()
+          : {};
     } catch (_) {
       return namespaces || {};
     }
   }, [namespaces, rdfManager]);
 
-  const registeredEntries = useMemo(() => Object.entries(registeredNamespaces).filter(([p, u]) => p && u), [registeredNamespaces]);
+  const registeredEntries = useMemo(
+    () => Object.entries(registeredNamespaces).filter(([p, u]) => p && u),
+    [registeredNamespaces],
+  );
 
   // Compute used namespace URIs by scanning the RDF store (single source of truth)
   const [usedSet, setUsedSet] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     try {
-      const store = rdfManager && typeof rdfManager.getStore === 'function' ? rdfManager.getStore() : null;
+      const store =
+        rdfManager && typeof rdfManager.getStore === "function"
+          ? rdfManager.getStore()
+          : null;
       const candidateUris = registeredEntries.map(([p, uri]) => String(uri));
       const used = computeUsedNamespaceUris(store, candidateUris);
       setUsedSet(used);
@@ -115,11 +128,17 @@ export const NamespaceLegend = ({ namespaces }: NamespaceLegendProps) => {
                   className="w-3 h-3 rounded-full border"
                   style={{ backgroundColor: getNamespaceColor(prefix, index) }}
                 />
-                <Badge variant="outline" className="font-mono shrink-0 text-xs px-1 py-0">
+                <Badge
+                  variant="outline"
+                  className="font-mono shrink-0 text-xs px-1 py-0"
+                >
                   {prefix}:
                 </Badge>
               </div>
-              <span className="text-muted-foreground truncate flex-1" title={uri}>
+              <span
+                className="text-muted-foreground truncate flex-1"
+                title={uri}
+              >
                 {uri}
               </span>
             </div>

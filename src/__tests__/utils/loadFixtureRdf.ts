@@ -8,7 +8,7 @@
  *   await loadFixtureRdf(FIXTURES['https://.../example.ttl'], 'test://graph');
  */
 
-import { rdfManager } from '../../utils/rdfManager';
+import { rdfManager } from "../../utils/rdfManager";
 
 /**
  * Load a Turtle/TTL string into the RDF manager.
@@ -20,21 +20,20 @@ import { rdfManager } from '../../utils/rdfManager';
 export async function loadFixtureRdf(
   ttl: string,
   graphName?: string,
-  options?: { clearGraphBeforeLoad?: boolean }
+  options?: { clearGraphBeforeLoad?: boolean },
 ): Promise<void> {
   const clear = options?.clearGraphBeforeLoad === true;
-  try {
-    if (graphName && clear) {
-      try { rdfManager.removeGraph(graphName); } catch (_) { /* ignore */ }
+  if (graphName && clear) {
+    try {
+      rdfManager.removeGraph(graphName);
+    } catch (_) {
+      /* ignore */
     }
+  }
 
-    if (graphName) {
-      await rdfManager.loadRDFIntoGraph(ttl, graphName);
-    } else {
-      await rdfManager.loadRDF(ttl);
-    }
-  } catch (err) {
-    // Re-throw so tests fail visibly; callers can catch if they want best-effort behavior.
-    throw err;
+  if (graphName) {
+    await rdfManager.loadRDFIntoGraph(ttl, graphName);
+  } else {
+    await rdfManager.loadRDF(ttl);
   }
 }
