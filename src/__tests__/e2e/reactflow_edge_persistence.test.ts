@@ -36,7 +36,7 @@ describe('React Flow edge persistence', () => {
         id: nodeAUri,
         data: {
           key: nodeAUri,
-          uri: nodeAUri,
+         iri: nodeAUri,
           rdfTypes: [],
           label: 'Node A',
           literalProperties: [],
@@ -50,7 +50,7 @@ describe('React Flow edge persistence', () => {
         id: nodeBUri,
         data: {
           key: nodeBUri,
-          uri: nodeBUri,
+         iri: nodeBUri,
           rdfTypes: [],
           label: 'Node B',
           literalProperties: [],

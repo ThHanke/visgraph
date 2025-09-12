@@ -33,7 +33,7 @@ ex:LengthMeasurementProcess rdf:type ex:MeasurementProcess .
     // Also register a simple availableClass so the editor can map to a prefixed URI if needed.
     useOntologyStore.setState({
       availableClasses: [
-        { uri: 'ex:MeasurementProcess', label: 'MeasurementProcess', namespace: 'ex', properties: [], restrictions: {} }
+        {iri: 'ex:MeasurementProcess', label: 'MeasurementProcess', namespace: 'ex', properties: [], restrictions: {} }
       ]
     } as any);
   });
@@ -41,7 +41,7 @@ ex:LengthMeasurementProcess rdf:type ex:MeasurementProcess .
   it('resolves rdf:type from RDFManager and shows short label in EntityAutocomplete', async () => {
     const nodeData = {
       key: 'http://example.com/LengthMeasurementProcess',
-      uri: 'http://example.com/LengthMeasurementProcess',
+     iri: 'http://example.com/LengthMeasurementProcess',
       iri: 'http://example.com/LengthMeasurementProcess',
       classType: 'NamedIndividual', // legacy marker only
       // no rdfTypes provided on the node object

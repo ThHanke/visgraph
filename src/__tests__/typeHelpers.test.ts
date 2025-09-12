@@ -4,8 +4,8 @@ import { TemplateManager } from '../components/Canvas/core/TemplateManager';
 
 describe('deriveInitialNodeType', () => {
   const classEntities = [
-    { uri: 'http://example.org/Person', label: 'Person' },
-    { uri: 'http://example.org/Organization', label: 'Organization' }
+    {iri: 'http://example.org/Person', label: 'Person' },
+    {iri: 'http://example.org/Organization', label: 'Organization' }
   ];
 
   it('prefers explicit canonical type (d.type)', () => {

@@ -78,7 +78,7 @@ export const AnnotationPropertyDialog = ({
             ) : (
               <div className="space-y-2">
                 {properties.map((prop, index) => {
-                  const entity = availableProperties.find(e => e.uri === prop.propertyUri);
+                  const entity = availableProperties.find(e => e.iri === prop.propertyUri);
                   return (
                     <div key={index} className="flex items-center justify-between p-2 border rounded">
                       <div>

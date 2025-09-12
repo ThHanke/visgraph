@@ -10,7 +10,7 @@ export interface ParsedGraph {
 
 export interface GraphNode {
   id: string;
-  uri: string;
+  iri: string;
   classType: string;
   individualName: string;
   namespace: string;
@@ -326,7 +326,7 @@ export class RDFParser {
         if (!entities.has(subjectUri)) {
           entities.set(subjectUri, {
             id: this.createSafeId(subjectUri),
-            uri: subjectUri,
+            iri: subjectUri,
             // store classType as the local name and keep the namespace separate so consumers
             // can assert on `data.classType === 'Length'` and `data.namespace === 'iof-qual'`
             classType: typeName,
@@ -433,7 +433,7 @@ export class RDFParser {
     // Normalize nodes to canonical shape: add iri, type, type_namespace, annotations while preserving legacy fields
     const nodesArray = Array.from(entities.values()).map((n) => {
       // Ensure canonical IRI field
-      (n as any).iri = (n as any).iri || (n as any).uri || (n as any).id || '';
+      (n as any).iri = (n as any).iri || (n as any).id || '';
 
       // Derive type and type_namespace from rdfTypes (preferred) or classType fallback.
       // Prefer the first rdfType that is not an owl:NamedIndividual marker so that

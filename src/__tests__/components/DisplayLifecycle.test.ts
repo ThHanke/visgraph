@@ -27,7 +27,7 @@ describe('Display lifecycle: short -> prefixed after namespaces/classes load', (
 
     const availableClasses = [
       {
-        uri: 'https://spec.industrialontologies.org/ontology/materials/Materials/Specimen',
+       iri: 'https://spec.industrialontologies.org/ontology/materials/Materials/Specimen',
         label: 'Specimen',
         namespace: 'iof-mat'
       }

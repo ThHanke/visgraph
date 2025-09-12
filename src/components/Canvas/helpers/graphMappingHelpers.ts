@@ -15,7 +15,7 @@ export function resolveKeyForCg(ref: string | undefined | null, cg: any): string
     const nd = n && (n.data || n);
     if (!nd) return false;
     return (
-      nd.uri === ref ||
+      nd.iri === ref ||
       nd.iri === ref ||
       nd.id === ref ||
       n.id === ref ||
@@ -25,7 +25,7 @@ export function resolveKeyForCg(ref: string | undefined | null, cg: any): string
 
   if (found) {
     const nd = (found.data || found);
-    return (nd && (nd.uri || nd.iri || nd.id)) || found.uri || found.id || (found.key);
+    return (nd && (nd.iri || nd.iri || nd.id)) || found.iri || found.id || (found.key);
   }
 
   // fallback to the original reference if no matching node found

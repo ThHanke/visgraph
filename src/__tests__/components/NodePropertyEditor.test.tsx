@@ -20,14 +20,14 @@ import { NodePropertyEditor } from '../../components/Canvas/NodePropertyEditor';
 describe('NodePropertyEditor', () => {
   const mockAvailableEntities = [
     {
-      uri: 'http://example.com/TestClass',
+     iri: 'http://example.com/TestClass',
       label: 'TestClass',
       namespace: 'test',
       rdfType: 'owl:Class',
       description: 'A test class'
     },
     {
-      uri: 'http://example.com/AnotherClass',
+     iri: 'http://example.com/AnotherClass',
       label: 'AnotherClass', 
       namespace: 'test',
       rdfType: 'owl:Class'
@@ -35,7 +35,7 @@ describe('NodePropertyEditor', () => {
   ];
 
   const mockNodeData = {
-    uri: 'http://example.com/instance1',
+   iri: 'http://example.com/instance1',
     classType: 'TestClass',
     type: 'TestClass',
     annotationProperties: [

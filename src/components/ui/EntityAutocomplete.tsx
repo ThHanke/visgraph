@@ -29,7 +29,7 @@ function shortLabelFromUri(uri?: string) {
 }
 
 export interface EntityOption {
-  uri: string;
+ iri: string;
   label: string;
   namespace: string;
   description?: string;
@@ -64,13 +64,13 @@ export const EntityAutocomplete = ({
     .filter(entity => filterByType ? entity.rdfType === filterByType : true)
     .filter(entity =>
       entity.label.toLowerCase().includes(inputValue.toLowerCase()) ||
-      entity.uri.toLowerCase().includes(inputValue.toLowerCase()) ||
+      entity.iri.toLowerCase().includes(inputValue.toLowerCase()) ||
       entity.namespace.toLowerCase().includes(inputValue.toLowerCase()) ||
       entity.description?.toLowerCase().includes(inputValue.toLowerCase())
     )
     .slice(0, 5); // Show only top 5 matches
 
-  const selectedEntity = entities.find(entity => entity.uri === value);
+  const selectedEntity = entities.find(entity => entity.iri === value);
   const displayLabel = selectedEntity ? selectedEntity.label : (value ? shortLabelFromUri(value) : placeholder);
 
   return (
@@ -104,10 +104,10 @@ export const EntityAutocomplete = ({
             <CommandGroup>
               {filteredEntities.map((entity) => (
                 <CommandItem
-                  key={entity.uri}
-                  value={entity.uri}
+                  key={entity.iri}
+                  value={entity.iri}
                   onSelect={() => {
-                    onValueChange(entity.uri);
+                    onValueChange(entity.iri);
                     setOpen(false);
                     setInputValue('');
                   }}
@@ -127,7 +127,7 @@ export const EntityAutocomplete = ({
                   <Check
                     className={cn(
                       "ml-auto h-4 w-4",
-                      value === entity.uri ? "opacity-100" : "opacity-0"
+                      value === entity.iri ? "opacity-100" : "opacity-0"
                     )}
                   />
                 </CommandItem>

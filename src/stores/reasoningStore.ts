@@ -99,8 +99,8 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
             return (
               n.key === key ||
               n.id === key ||
-              n.uri === key ||
-              (n.data && (n.data.key === key || n.data.uri === key)) ||
+              n.iri === key ||
+              (n.data && (n.data.key === key || n.data.iri === key)) ||
               (n.data && (n.data.iri === key))
             );
           } catch (_) {
@@ -114,7 +114,7 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
           if (!n && fallbackKey) return defaultURIShortener.shortenURI(String(fallbackKey));
           const indiv = n && (n.individualName || (n.data && n.data.individualName));
           const lab = n && (n.label || (n.data && n.data.label));
-          const uri = n && (n.uri || (n.data && n.data.uri) || (n.data && n.data.iri)) || fallbackKey;
+          const uri = n && (n.iri || (n.data && n.data.iri) || (n.data && n.data.iri)) || fallbackKey;
           if (typeof indiv === 'string' && indiv.trim()) return String(indiv);
           if (typeof lab === 'string' && lab.trim()) return String(lab);
           if (typeof uri === 'string' && uri.trim()) return defaultURIShortener.shortenURI(String(uri));
@@ -166,7 +166,7 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
       // Check for missing properties
       nodes.forEach(node => {
         // Helper to get a friendly display label for node (individualName, label, shortened URI, key)
-        const nodeDisplayLabel = displayLabelForNode(node, node && (node.key || node.id || node.uri));
+        const nodeDisplayLabel = displayLabelForNode(node, node && (node.key || node.id || node.iri));
 
         if (node.classType === 'Person') {
           const hasName = node.literalProperties?.some(prop => prop.key && String(prop.key).includes('name'));
@@ -309,7 +309,7 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
             if (node.classType && node.individualName) {
               inferences.push({
                 type: 'class',
-                subject: node.uri || node.key,
+                subject: node.iri || node.key,
                 predicate: 'rdf:type',
                 object: node.classType,
                 confidence: 1.0

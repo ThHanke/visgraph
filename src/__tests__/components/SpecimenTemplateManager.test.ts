@@ -19,7 +19,7 @@ describe('TemplateManager badge binding', () => {
 
     const availableClasses = [
       {
-        uri: 'https://spec.industrialontologies.org/ontology/materials/Specimen',
+       iri: 'https://spec.industrialontologies.org/ontology/materials/Specimen',
         label: 'Specimen',
         namespace: 'iof-mat',
         properties: []
@@ -43,7 +43,7 @@ describe('TemplateManager badge binding', () => {
     const tm = new TemplateManager();
     // Private method; call via any to emulate template binding behavior
     const nodeData = {
-      uri: 'https://example.org/instances/specimen1',
+     iri: 'https://example.org/instances/specimen1',
       rdfTypes: [
         'http://www.w3.org/2002/07/owl#NamedIndividual',
         'https://spec.industrialontologies.org/ontology/materials/Specimen'

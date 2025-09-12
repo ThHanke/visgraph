@@ -18,7 +18,7 @@ describe('Specimen canvas mapping', () => {
 
     // Simulate a parsed node (src) coming from the parser/currentGraph
     const src = {
-      uri: 'https://example.org/instances/specimen1',
+     iri: 'https://example.org/instances/specimen1',
       iri: 'https://example.org/instances/specimen1',
       rdfTypes: [
         'http://www.w3.org/2002/07/owl#NamedIndividual',
@@ -30,7 +30,7 @@ describe('Specimen canvas mapping', () => {
     // availableClasses as would be present in the store (label + uri)
     const availableClasses = [
       {
-        uri: 'https://spec.industrialontologies.org/ontology/materials/Specimen',
+       iri: 'https://spec.industrialontologies.org/ontology/materials/Specimen',
         label: 'Specimen',
         namespace: 'iof-mat',
         properties: []
@@ -48,7 +48,7 @@ describe('Specimen canvas mapping', () => {
     );
 
     const displayLabel = (displayInfo && (displayInfo.prefixed || displayInfo.short))
-      || (computedTypeFull ? shortLocalName(String(computedTypeFull)) : (src.classType || shortLocalName(src.uri || src.iri || '')));
+      || (computedTypeFull ? shortLocalName(String(computedTypeFull)) : (src.classType || shortLocalName(src.iri || src.iri || '')));
 
     expect(displayInfo).toBeDefined();
     expect(displayInfo?.prefixed).toBe('iof-mat:Specimen');

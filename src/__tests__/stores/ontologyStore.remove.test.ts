@@ -51,7 +51,7 @@ test('removeLoadedOntology removes ontology meta, persisted config entry and nam
     url,
     name: 'MOCK',
     classes: [
-      { uri: `${prefix}:Class`, label: 'Class', namespace: prefix, properties: [], restrictions: {} }
+      {iri: `${prefix}:Class`, label: 'Class', namespace: prefix, properties: [], restrictions: {} }
     ],
     properties: [],
     namespaces: { [prefix]: nsUri }

@@ -108,7 +108,7 @@ describe("OntologyStore - Entity Property Preservation Bug", () => {
       {
         id: "entity1",
         data: {
-          uri: "http://example.com/entity1",
+         iri: "http://example.com/entity1",
           classType: "Length",
           namespace: "iof-qual",
           literalProperties: [

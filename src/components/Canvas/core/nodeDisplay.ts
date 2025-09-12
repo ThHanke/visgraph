@@ -83,7 +83,7 @@ export function pickMeaningfulType(types: string[] | undefined): string | undefi
 export function computeDisplayInfo(
   canonicalNode: { rdfTypes?: string[] | undefined; displayType?: string | undefined; classType?: string | undefined },
   rdfManager?: RDFManager | { getNamespaces?: () => Record<string,string> } | Record<string,string> | undefined,
-  availableClasses?: Array<{ uri: string; label?: string; namespace?: string }>
+  availableClasses?: Array<{iri: string; label?: string; namespace?: string }>
 ): DisplayInfo {
   const result: DisplayInfo = {};
 
@@ -106,17 +106,17 @@ export function computeDisplayInfo(
   if (!chosenStr && Array.isArray(availableClasses) && availableClasses.length > 0) {
     for (const t of allTypesRaw) {
       if (!t) continue;
-      const match = availableClasses.find(c => c && (c.uri === t || c.uri === String(t)));
+      const match = availableClasses.find(c => c && (c.iri === t || c.iri === String(t)));
       if (match) {
-        chosen = match.uri;
+        chosen = match.iri;
         chosenStr = String(chosen);
         break;
       }
       // try tolerant matching by local name
       const local = shortLocalName(String(t));
-      const tolerant = availableClasses.find(c => c && (shortLocalName(c.uri) === local || c.label === local));
+      const tolerant = availableClasses.find(c => c && (shortLocalName(c.iri) === local || c.label === local));
       if (tolerant) {
-        chosen = tolerant.uri;
+        chosen = tolerant.iri;
         chosenStr = String(chosen);
         break;
       }
@@ -144,11 +144,11 @@ export function computeDisplayInfo(
       // No prefix known from rdfManager. Try to match availableClasses (if provided) so
       // loaded ontology class metadata (which may carry a namespace/prefix token) is used.
       if (Array.isArray(availableClasses)) {
-        const match = availableClasses.find(c => c && c.uri === chosenStr);
+        const match = availableClasses.find(c => c && c.iri === chosenStr);
         if (match) {
           const local = shortLocalName(chosenStr);
           // Prefer explicit namespace from class metadata, otherwise infer from rdfManager namespaces.
-          const inferredNs = match.namespace || (rdfManager ? findPrefixForUri(match.uri, rdfManager) : undefined);
+          const inferredNs = match.namespace || (rdfManager ? findPrefixForUri(match.iri, rdfManager) : undefined);
           result.namespace = inferredNs || '';
           result.prefixed = inferredNs ? `${inferredNs}:${local}` : local;
           result.short = local;
@@ -184,13 +184,13 @@ export function computeDisplayInfo(
     const localCandidate = String(chosenStr);
     const match = availableClasses.find(c => {
       if (!c) return false;
-      if (c.uri === localCandidate || c.label === localCandidate) return true;
-      const cLocal = shortLocalName(c.uri);
+      if (c.iri === localCandidate || c.label === localCandidate) return true;
+      const cLocal = shortLocalName(c.iri);
       return cLocal === localCandidate;
     });
     if (match) {
-      const local = shortLocalName(match.uri || localCandidate);
-      const inferredNs = match.namespace || (rdfManager ? findPrefixForUri(match.uri, rdfManager) : undefined);
+      const local = shortLocalName(match.iri || localCandidate);
+      const inferredNs = match.namespace || (rdfManager ? findPrefixForUri(match.iri, rdfManager) : undefined);
       result.namespace = inferredNs || '';
       result.prefixed = inferredNs ? `${inferredNs}:${local}` : local;
       result.short = local;
@@ -230,7 +230,7 @@ function _namespacesKey(rdfManager?: any): string {
 export function computeDisplayInfoMemo(
   canonicalNode: { rdfTypes?: string[] | undefined; displayType?: string | undefined; classType?: string | undefined } | any,
   rdfManager?: RDFManager | { getNamespaces?: () => Record<string,string> } | Record<string,string> | undefined,
-  availableClasses?: Array<{ uri: string; label?: string }>
+  availableClasses?: Array<{iri: string; label?: string }>
 ): DisplayInfo {
   const allTypes = [
     ...(canonicalNode?.displayType ? [String(canonicalNode.displayType)] : []),
@@ -245,7 +245,7 @@ export function computeDisplayInfoMemo(
   const chosenStr = chosen ? String(chosen) : '';
 
   const nsKey = _namespacesKey(rdfManager);
-  const classesKey = Array.isArray(availableClasses) ? (availableClasses.map(c => (c && c.uri ? `${c.uri}@${(c as any).namespace || ''}` : '')).join('|')) : '';
+  const classesKey = Array.isArray(availableClasses) ? (availableClasses.map(c => (c && c.iri ? `${c.iri}@${(c as any).namespace || ''}` : '')).join('|')) : '';
 
   const cacheKey = `${chosenStr}::${nsKey}::${classesKey}`;
   const cached = _displayInfoCache.get(cacheKey);
@@ -263,7 +263,7 @@ export function clearDisplayInfoCache() {
 export function computeBadgeText(
   canonicalNode: { rdfTypes?: string[] | undefined; displayType?: string | undefined; classType?: string | undefined; uri?: string; iri?: string } | any,
   rdfManager?: RDFManager | { getNamespaces?: () => Record<string,string> } | Record<string,string> | undefined,
-  availableClasses?: Array<{ uri: string; label?: string; namespace?: string }>
+  availableClasses?: Array<{iri: string; label?: string; namespace?: string }>
 ): string {
   try {
     // Primary source: RDF type triples (rdfTypes / types / rdfType)
@@ -307,7 +307,7 @@ export function computeBadgeText(
     }
 
     // Tertiary fallback: derive from the canonical node URI/IRI local name (ensures demo nodes without rdfTypes still show a badge)
-    const possibleUri = String(canonicalNode?.uri || canonicalNode?.iri || canonicalNode?.canonicalTypeUri || '');
+    const possibleUri = String(canonicalNode?.iri || canonicalNode?.iri || canonicalNode?.canonicalTypeUri || '');
     if (possibleUri) {
       const short = shortLocalName(possibleUri);
       if (short) return short;

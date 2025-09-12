@@ -109,7 +109,7 @@ describe("Demo flow: single triple change on annotation addition", () => {
     const updatedNodes = currentGraph.nodes.map((node) => {
       const nodeData = (node as any).data || node;
       const nodeUri =
-        nodeData.uri || nodeData.iri || (node as any).uri || (node as any).id;
+        nodeData.iri || nodeData.iri || (node as any).iri || (node as any).id;
       if (nodeUri === entityUri) {
         const literalProperties = (nodeData.literalProperties || []).slice();
         literalProperties.push({

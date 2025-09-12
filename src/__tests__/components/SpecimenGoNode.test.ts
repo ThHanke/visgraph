@@ -17,7 +17,7 @@ describe('Specimen  node mapping', () => {
     };
 
     const src = {
-      uri: 'https://example.org/instances/specimen1',
+     iri: 'https://example.org/instances/specimen1',
       iri: 'https://example.org/instances/specimen1',
       rdfTypes: [
         'http://www.w3.org/2002/07/owl#NamedIndividual',
@@ -29,7 +29,7 @@ describe('Specimen  node mapping', () => {
 
     const availableClasses = [
       {
-        uri: 'https://spec.industrialontologies.org/ontology/materials/Specimen',
+       iri: 'https://spec.industrialontologies.org/ontology/materials/Specimen',
         label: 'Specimen',
         namespace: 'iof-mat',
         properties: []
@@ -40,11 +40,11 @@ describe('Specimen  node mapping', () => {
     const _dispInfo = computeDisplayInfoMemo(src, mockRdfManager, availableClasses);
     const disp = _dispInfo || null;
     const displayLabel = (disp && (disp.prefixed || disp.short))
-      || ( (Array.isArray(src.rdfTypes) ? src.rdfTypes.find((t:any) => t && !String(t).includes('NamedIndividual')) : undefined) ? shortLocalName(String((Array.isArray(src.rdfTypes) ? src.rdfTypes.find((t:any) => t && !String(t).includes('NamedIndividual')) : undefined))) : (src.classType || shortLocalName(src.uri || src.iri || '')) );
+      || ( (Array.isArray(src.rdfTypes) ? src.rdfTypes.find((t:any) => t && !String(t).includes('NamedIndividual')) : undefined) ? shortLocalName(String((Array.isArray(src.rdfTypes) ? src.rdfTypes.find((t:any) => t && !String(t).includes('NamedIndividual')) : undefined))) : (src.classType || shortLocalName(src.iri || src.iri || '')) );
 
     const goNode = {
-      key: src.uri,
-      iri: src.uri,
+      key: src.iri,
+      iri: src.iri,
       rdfTypes: src.rdfTypes,
       type: displayLabel,
       type_namespace: (disp && typeof disp.namespace === 'string' && disp.namespace) ? disp.namespace : src.namespace || ''

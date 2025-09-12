@@ -57,7 +57,7 @@ export function applyPaletteToModelForDiagram(
       try {
         const canonical = {
           rdfTypes: Array.isArray(nd?.rdfTypes) ? nd.rdfTypes.map(String).filter(Boolean) : [],
-          uri: nd?.uri || nd?.iri || nd?.key || nd?.id || ''
+         iri: nd?.iri || nd?.iri || nd?.key || nd?.id || ''
         };
         const info = computeDisplayInfoMemo(canonical, mgr, availableClasses);
         const badge = computeBadgeText(canonical, mgr, availableClasses) || info?.prefixed || '';

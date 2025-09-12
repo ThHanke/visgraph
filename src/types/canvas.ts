@@ -16,8 +16,8 @@ export interface NodeData {
   [key: string]: any;
   /** Unique identifier for the node */
   key: string;
-  /** URI/IRI of the entity this node represents (canonical identifier) */
-  uri: string;
+  /** Canonical IRI of the entity this node represents (preferred canonical identifier) */
+  iri: string;
   /** All RDF types for this entity (canonical - must be present) */
   rdfTypes: string[];
   /** Optional display label computed from rdfTypes (may be present for convenience) */
@@ -99,7 +99,7 @@ export interface CanvasToolbarProps {
   onViewModeChange: (mode: 'abox' | 'tbox') => void;
   /** Available entities for autocomplete */
   availableEntities: Array<{
-    uri: string;
+   iri: string;
     label: string;
     namespace: string;
     rdfType: string;
@@ -119,13 +119,16 @@ export interface NodePropertyEditorProps {
   nodeData: NodeData | null;
   /** Available annotation properties */
   availableProperties: Array<{
-    uri: string;
+   iri: string;
     label: string;
     namespace: string;
     rdfType: string;
   }>;
-  /** Callback for saving node properties */
-  onSave: (nodeKey: string, properties: AnnotationPropertyValue[]) => void;
+  /** Callback for saving node properties.
+   * Note: editor currently provides the full updated node payload to the callback.
+   * Signature kept intentionally permissive to avoid tight coupling during migration.
+   */
+  onSave: (updatedData: any) => void;
 }
 
 /**

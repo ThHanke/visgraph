@@ -11,7 +11,7 @@ export interface NamespaceMap {
   /** The namespace prefix (e.g., 'foaf', 'owl') */
   prefix: string;
   /** The full URI of the namespace */
-  uri: string;
+ iri: string;
 }
 
 /**
@@ -19,7 +19,7 @@ export interface NamespaceMap {
  */
 export interface OntologyClass {
   /** Unique identifier/URI for the class */
-  uri: string;
+ iri: string;
   /** Human-readable label for the class */
   label: string;
   /** Namespace prefix this class belongs to */
@@ -41,7 +41,7 @@ export interface OntologyClass {
  */
 export interface ObjectProperty {
   /** Unique identifier/URI for the property */
-  uri: string;
+ iri: string;
   /** Human-readable label for the property */
   label: string;
   /** Array of valid domain classes for this property */
@@ -67,7 +67,7 @@ export interface ObjectProperty {
  */
 export interface AnnotationProperty {
   /** Unique identifier/URI for the annotation property */
-  uri: string;
+ iri: string;
   /** Human-readable label for the annotation property */
   label: string;
   /** Namespace prefix this property belongs to */
@@ -168,7 +168,7 @@ export type RDFType =
  */
 export interface KnowledgeGraphEntity {
   /** Unique URI identifier */
-  uri: string;
+ iri: string;
   /** Human-readable label */
   label: string;
   /** Namespace prefix */

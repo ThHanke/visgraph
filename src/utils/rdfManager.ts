@@ -2540,8 +2540,8 @@ export class RDFManager {
           Array.isArray(updates.rdfTypes) &&
           updates.rdfTypes.length > 0
         ) {
-          try {
-            this.updateNode(node.uri, { rdfTypes: updates.rdfTypes });
+            try {
+            this.updateNode(node.iri, { rdfTypes: updates.rdfTypes });
           } catch (e) {
             ((...__vg_args) => {
               try {
@@ -2566,7 +2566,7 @@ export class RDFManager {
               console.warn(...__vg_args);
             })(
               "applyParsedNodes: failed to persist rdfTypes for",
-              node && node.uri,
+              node && node.iri,
               e,
             );
           }
@@ -2579,7 +2579,7 @@ export class RDFManager {
         ) {
           try {
             this.updateNode(
-              node.uri,
+              node.iri,
               { annotationProperties: updates.annotationProperties },
               { preserveExistingLiterals: preserve },
             );
@@ -2607,7 +2607,7 @@ export class RDFManager {
               console.warn(...__vg_args);
             })(
               "applyParsedNodes: failed to persist annotationProperties for",
-              node && node.uri,
+              node && node.iri,
               e,
             );
           }
@@ -2634,7 +2634,7 @@ export class RDFManager {
             }
           }
           console.warn(...__vg_args);
-        })("applyParsedNodes: unexpected error for node", node && node.uri, e);
+        })("applyParsedNodes: unexpected error for node", node && node.iri, e);
       }
     });
 

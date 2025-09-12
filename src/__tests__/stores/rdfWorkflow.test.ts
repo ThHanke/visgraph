@@ -33,7 +33,7 @@ describe("RDF Store Workflow Integration Tests", () => {
 
       // Simulate NodePropertyEditor save - this is what happens when user edits
       const updatedNodeData = {
-        uri: entityUri,
+       iri: entityUri,
         classType: "Length",
         namespace: "iof-qual",
         annotationProperties: [
@@ -66,7 +66,7 @@ describe("RDF Store Workflow Integration Tests", () => {
       // Update the graph state as well
       const currentGraph = store.currentGraph;
       const updatedNodes = currentGraph.nodes.map((node) => {
-        if (node.data.uri === entityUri) {
+        if (node.data.iri === entityUri) {
           return {
             ...node,
             data: {

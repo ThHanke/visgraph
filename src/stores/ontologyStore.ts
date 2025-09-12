@@ -148,7 +148,7 @@ function getNodeData(node: ParsedNode | DiagramNode): any {
 }
 
 interface OntologyClass {
-  uri: string;
+ iri: string;
   label: string;
   namespace: string;
   properties: string[];
@@ -156,7 +156,7 @@ interface OntologyClass {
 }
 
 interface ObjectProperty {
-  uri: string;
+ iri: string;
   label: string;
   domain: string[];
   range: string[];
@@ -325,11 +325,11 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         const store = mgr.getStore();
         // Build maps from existing available lists so we can upsert/dedupe
         const prevProps = (getState().availableProperties || []).reduce((m: any, p: any) => {
-          try { m[String(p.uri)] = { ...p, source: p.source || 'store' }; } catch(_) {}
+          try { m[String(p.iri)] = { ...p, source: p.source || 'store' }; } catch(_) {}
           return m;
         }, {} as Record<string, any>);
         const prevClasses = (getState().availableClasses || []).reduce((m: any, c: any) => {
-          try { m[String(c.uri)] = { ...c, source: c.source || 'store' }; } catch(_) {}
+          try { m[String(c.iri)] = { ...c, source: c.source || 'store' }; } catch(_) {}
           return m;
         }, {} as Record<string, any>);
 
@@ -343,7 +343,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             if (isProp) {
               const labelQ = store.getQuads(subj, namedNode(rdfsLabel), null, null) || [];
               const label = labelQ.length > 0 ? String((labelQ[0].object as any).value) : String(s);
-              prevProps[String(s)] = { uri: String(s), label, domain: [], range: [], namespace: '', source: 'store' };
+              prevProps[String(s)] = {iri: String(s), label, domain: [], range: [], namespace: '', source: 'store' };
             } else {
               // If it previously existed as a store-derived property but no longer qualifies, remove it
               if (prevProps[String(s)] && prevProps[String(s)].source === 'store') {
@@ -354,7 +354,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             if (isClass) {
               const labelQ = store.getQuads(subj, namedNode(rdfsLabel), null, null) || [];
               const label = labelQ.length > 0 ? String((labelQ[0].object as any).value) : String(s);
-              prevClasses[String(s)] = { uri: String(s), label, namespace: '', properties: [], restrictions: {}, source: 'store' };
+              prevClasses[String(s)] = {iri: String(s), label, namespace: '', properties: [], restrictions: {}, source: 'store' };
             } else {
               if (prevClasses[String(s)] && prevClasses[String(s)].source === 'store') {
                 delete prevClasses[String(s)];
@@ -585,7 +585,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             (isIndividual || hasLiterals) &&
             Object.keys(updates).length > 0
           ) {
-            rdfManager.updateNode(node.uri, updates);
+            rdfManager.updateNode(node.iri, updates);
           }
 
           const classKey = `${node.namespace}:${node.classType}`;
@@ -603,7 +603,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             ),
           );
           ontologyClasses.push({
-            uri: classKey,
+           iri: classKey,
             label: firstNode.classType,
             namespace: firstNode.namespace,
             properties,
@@ -643,7 +643,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
           const firstEdge = edges[0];
           ontologyProperties.push({
-            uri: propertyType,
+           iri: propertyType,
             label: firstEdge.label,
             domain: domains,
             range: ranges,
@@ -705,7 +705,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           const nodes = (parsed.nodes || []).map((n: any) => {
             const nodeId =
               n.id ||
-              n.uri ||
+              n.iri ||
               n.iri ||
               `${n.namespace}:${n.classType}` ||
               String(Math.random());
@@ -776,13 +776,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
             return {
               id: nodeId,
-              uri: n.uri || n.iri,
+             iri: n.iri || n.id || '',
               data: {
                 individualName:
-                  n.individualName || (n.uri ? n.uri.split("/").pop() : nodeId),
+                  n.individualName || (n.iri ? n.iri.split("/").pop() : nodeId),
                 classType: computedClassType,
                 namespace: computedNamespace,
-                uri: n.uri || n.iri,
+               iri: n.iri || n.id || '',
                 literalProperties: n.literalProperties || [],
                 annotationProperties: n.annotationProperties || [],
               },
@@ -804,20 +804,20 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             const mid =
               (m &&
                 m.data &&
-                ((m.data.uri as string) ||
+                ((m.data.iri as string) ||
                   (m.data.iri as string) ||
                   (m.data.individualName as string) ||
                   (m.data.id as string))) ||
-              m.uri ||
+              m.iri ||
               m.id;
             if (mid) existingUris.add(String(mid));
           });
 
           (parsed.nodes || []).forEach((n: any) => {
             const nIds = [
-              n.uri,
+              n.iri,
               n.id,
-              n.data && n.data.uri,
+              n.data && n.data.iri,
               n.data && n.data.iri,
               n.data && n.data.individualName,
               n.data && n.data.id,
@@ -829,18 +829,18 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
               const nodeObj = {
                 id:
                   n.id ||
-                  n.uri ||
+                  n.iri ||
                   n.iri ||
                   `${n.namespace}:${n.classType}` ||
                   String(Math.random()),
-                uri: n.uri || n.iri,
+               iri: n.iri || n.iri,
                 data: {
                   individualName:
                     n.individualName ||
-                    (n.uri ? n.uri.split("/").pop() : n.id || ""),
+                    (n.iri ? n.iri.split("/").pop() : n.id || ""),
                   classType: n.classType,
                   namespace: n.namespace,
-                  uri: n.uri || n.iri,
+                 iri: n.iri || n.iri,
                   literalProperties: n.literalProperties || [],
                   annotationProperties: n.annotationProperties || [],
                 },
@@ -941,7 +941,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
       if (sourceNode && targetNode && edge.data) {
         const property = availableProperties.find(
-          (prop) => prop.uri === edge.data.propertyType,
+          (prop) => prop.iri === edge.data.propertyType,
         );
 
         if (property) {
@@ -1038,9 +1038,9 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
               const t = (parsed.nodes || []).find(
                 (n: any) => n.id === e.target,
               );
-              if (!s || !t || !s.uri || !t.uri) return;
-              const subj = s.uri;
-              const obj = t.uri;
+              if (!s || !t || !s.iri || !t.iri) return;
+              const subj = s.iri;
+              const obj = t.iri;
               const pred = e.propertyUri || e.propertyType;
               const existing = store.getQuads(
                 namedNode(subj),
@@ -1075,7 +1075,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                   : [];
             if (allTypes && allTypes.length > 0) {
               try {
-                (get().updateNode as any)(node.uri, { rdfTypes: allTypes });
+                (get().updateNode as any)(node.iri, { rdfTypes: allTypes });
               } catch (_) {
                 /* ignore */
               }
@@ -1092,7 +1092,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         const nodesForDiagram = (parsed.nodes || []).map((n: any) => {
           const nodeId =
             n.id ||
-            n.uri ||
+            n.iri ||
             n.iri ||
             `${n.namespace}:${n.classType}` ||
             String(Math.random());
@@ -1163,13 +1163,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
           return {
             id: nodeId,
-            uri: n.uri || n.iri,
+           iri: n.iri || n.id || '',
             data: {
               individualName:
-                n.individualName || (n.uri ? n.uri.split("/").pop() : nodeId),
+                n.individualName || (n.iri ? n.iri.split("/").pop() : nodeId),
               classType: computedClassType,
               namespace: computedNamespace,
-              uri: n.uri || n.iri,
+             iri: n.iri || n.id || '',
               literalProperties: n.literalProperties || [],
               annotationProperties: n.annotationProperties || [],
             },
@@ -1190,20 +1190,20 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           const mid =
             (m &&
               m.data &&
-              ((m.data.uri as string) ||
+              ((m.data.iri as string) ||
                 (m.data.iri as string) ||
                 (m.data.individualName as string) ||
                 (m.data.id as string))) ||
-            m.uri ||
+            m.iri ||
             m.id;
           if (mid) existingUris.add(String(mid));
         });
 
         (parsed.nodes || []).forEach((n: any) => {
           const nIds = [
-            n.uri,
+            n.iri,
             n.id,
-            n.data && n.data.uri,
+            n.data && n.data.iri,
             n.data && n.data.iri,
             n.data && n.data.individualName,
             n.data && n.data.id,
@@ -1213,18 +1213,18 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             const nodeObj = {
               id:
                 n.id ||
-                n.uri ||
+                n.iri ||
                 n.iri ||
                 `${n.namespace}:${n.classType}` ||
                 String(Math.random()),
-              uri: n.uri || n.iri,
+             iri: n.iri || n.id || '',
               data: {
                 individualName:
                   n.individualName ||
-                  (n.uri ? n.uri.split("/").pop() : n.id || ""),
+                  (n.iri ? n.iri.split("/").pop() : n.id || ""),
                 classType: n.classType,
                 namespace: n.namespace,
-                uri: n.uri || n.iri,
+               iri: n.iri || n.id || '',
                 literalProperties: n.literalProperties || [],
                 annotationProperties: n.annotationProperties || [],
               },
@@ -1616,11 +1616,11 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       const removed = (loadedOntologies || []).filter((o) => o.url === url);
 
       const remainingClasses = (get().availableClasses || []).filter(
-        (c) => !removed.some((r) => r.classes.some((rc) => rc.uri === c.uri)),
+        (c) => !removed.some((r) => r.classes.some((rc) => rc.iri === c.iri)),
       );
       const remainingProperties = (get().availableProperties || []).filter(
         (p) =>
-          !removed.some((r) => r.properties.some((rp) => rp.uri === p.uri)),
+          !removed.some((r) => r.properties.some((rp) => rp.iri === p.iri)),
       );
 
       set({
@@ -1739,7 +1739,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     const updatedNodes = currentGraph.nodes.map((node) => {
       const nodeData = getNodeData(node as ParsedNode | DiagramNode);
       const nodeUri =
-        nodeData.iri || nodeData.uri || (node as any).uri || (node as any).id;
+        nodeData.iri || nodeData.iri || (node as any).iri || (node as any).id;
       if (nodeUri === entityUri) {
         const updatedData = { ...nodeData };
 
@@ -1838,7 +1838,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           }));
         }
 
-        updatedData.iri = updatedData.iri || updatedData.uri || entityUri;
+        updatedData.iri = updatedData.iri || entityUri;
 
         const newNode = {
           ...node,
@@ -1848,7 +1848,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             updatedData.type_namespace || updatedData.namespace || "",
           annotations:
             updatedData.annotations || updatedData.annotationProperties || [],
-          uri: updatedData.uri || updatedData.iri || entityUri,
+          iri: updatedData.iri || entityUri,
           classType: updatedData.classType,
           rdfTypes: updatedData.rdfTypes,
           annotationProperties: updatedData.annotationProperties,
@@ -2138,13 +2138,13 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
             if (isProp) {
               const labelQ = store.getQuads(subj, namedNode(rdfsLabel), null, null) || [];
               const label = labelQ.length > 0 ? String((labelQ[0].object as any).value) : String(s);
-              propsMap[String(s)] = { uri: String(s), label, domain: [], range: [], namespace: '', source: 'store' };
+              propsMap[String(s)] = {iri: String(s), label, domain: [], range: [], namespace: '', source: 'store' };
             }
 
             if (isClass) {
               const labelQ = store.getQuads(subj, namedNode(rdfsLabel), null, null) || [];
               const label = labelQ.length > 0 ? String((labelQ[0].object as any).value) : String(s);
-              classesMap[String(s)] = { uri: String(s), label, namespace: '', properties: [], restrictions: {}, source: 'store' };
+              classesMap[String(s)] = {iri: String(s), label, namespace: '', properties: [], restrictions: {}, source: 'store' };
             }
           } catch (_) { /* ignore per-subject errors */ }
         });

@@ -22,7 +22,7 @@ describe("OntologyStore - Graph Preservation", () => {
       {
         id: "node1",
         data: {
-          uri: "http://example.com/node1",
+         iri: "http://example.com/node1",
           classType: "Person",
           namespace: "foaf",
           literalProperties: [
@@ -34,7 +34,7 @@ describe("OntologyStore - Graph Preservation", () => {
       {
         id: "node2",
         data: {
-          uri: "http://example.com/node2",
+         iri: "http://example.com/node2",
           classType: "Organization",
           namespace: "foaf",
           literalProperties: [
@@ -134,7 +134,7 @@ ex:newOrg a foaf:Organization ;
     const testNode = {
       id: "test1",
       data: {
-        uri: entityUri,
+       iri: entityUri,
         classType: "Person",
         namespace: "foaf",
         literalProperties: updates.annotationProperties.map((prop) => ({
@@ -183,7 +183,7 @@ ex:anotherPerson a foaf:Person ;
       {
         id: "node1",
         data: {
-          uri: "http://example.com/person1",
+         iri: "http://example.com/person1",
           classType: "Person",
           namespace: "foaf",
         },

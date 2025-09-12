@@ -93,7 +93,7 @@ function makeFingerprint(eventName: string, meta?: Meta) {
       meta &&
       ((meta as any).key ||
         (meta as any).id ||
-        (meta as any).uri ||
+        (meta as any).iri ||
         (meta as any).name ||
         (typeof meta === "object" && (meta as any).nodes
           ? `nodes:${(meta as any).nodes}`

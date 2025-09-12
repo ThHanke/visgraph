@@ -125,17 +125,17 @@ export const ReactFlowCanvas: React.FC = () => {
   const allEntities = useMemo(() => {
     return loadedOntologies.flatMap((ontology) => [
       ...ontology.classes.map((cls) => ({
-        uri: cls.uri,
+       iri: cls.iri,
         label: cls.label,
         namespace: cls.namespace,
         rdfType: "owl:Class" as const,
         description: `Class from ${ontology.name}`,
       })),
       ...ontology.properties.map((prop) => ({
-        uri: prop.uri,
+       iri: prop.iri,
         label: prop.label,
         namespace: prop.namespace,
-        rdfType: prop.uri.includes("ObjectProperty")
+        rdfType: prop.iri.includes("ObjectProperty")
           ? "owl:ObjectProperty"
           : ("owl:AnnotationProperty" as const),
         description: `Property from ${ontology.name}`,
@@ -340,7 +340,7 @@ export const ReactFlowCanvas: React.FC = () => {
         })();
 
         const id = canonicalId(
-          src.uri || src.iri || src.id || src.key || `n-${i}`,
+          src.iri || src.iri || src.id || src.key || `n-${i}`,
         );
         const pos = node.position || nodeGridPosition(i);
 
@@ -361,7 +361,7 @@ export const ReactFlowCanvas: React.FC = () => {
               mgrLocal && typeof mgrLocal.getStore === "function"
                 ? mgrLocal.getStore()
                 : null;
-            const subjectUri = src.uri || src.iri || src.id || "";
+            const subjectUri = src.iri || src.iri || src.id || "";
             if (store && subjectUri && typeof store.getQuads === "function") {
               // Prefer using rdfManager's prefix expansion to obtain the predicate IRI
               const rdfTypePredicate =
@@ -426,16 +426,16 @@ export const ReactFlowCanvas: React.FC = () => {
             type.includes("DatatypeProperty"),
         );
 
-        const canonicalNodeIri = src.iri ?? src.uri ?? id;
+        const canonicalNodeIri = src.iri ?? src.iri ?? id;
         const nodeData: NodeData = {
           key: id,
           iri: canonicalNodeIri,
-          uri: src.uri || src.iri || id,
+         iri: src.iri || src.iri || id,
           rdfTypes: rdfTypesArr,
           label:
             badgeText ||
             (dispInfo && dispInfo.short) ||
-            shortLocalName(src.uri || src.iri || ""),
+            shortLocalName(src.iri || src.iri || ""),
           namespace: src.namespace,
           classType: src.classType,
           literalProperties: src.literalProperties || [],
@@ -525,8 +525,8 @@ export const ReactFlowCanvas: React.FC = () => {
         // Normalize predicate info and compute a display label for the edge.
         const propertyUriRaw = src.propertyUri || src.propertyType || "";
         const foundProp =
-          (availableProperties || []).find((p: any) => String(p.uri) === String(propertyUriRaw)) ||
-          (loadedOntologies || []).flatMap((o: any) => o.properties || []).find((p: any) => String(p.uri) === String(propertyUriRaw));
+          (availableProperties || []).find((p: any) => String(p.iri) === String(propertyUriRaw)) ||
+          (loadedOntologies || []).flatMap((o: any) => o.properties || []).find((p: any) => String(p.iri) === String(propertyUriRaw));
         const labelForEdge =
           src.label ||
           (foundProp && (foundProp.label || foundProp.name)) ||
@@ -1078,7 +1078,7 @@ useEffect(() => {
       // Build compact fingerprints for nodes and edges (exclude hasReasoningError).
       const nodeSigParts: string[] = nodes.map((n) => {
         const d: any = n.data || {};
-        const uri = String(d.uri || d.iri || "");
+        const uri = String(d.iri || d.iri || "");
         const rdf = Array.isArray(d.rdfTypes) ? d.rdfTypes.join("|") : "";
         const pos = n.position
           ? `${Math.round(n.position.x)}:${Math.round(n.position.y)}`
@@ -1226,7 +1226,7 @@ useEffect(() => {
       const d = node.data || ({} as NodeData);
       const minimal = {
         key: node.id,
-        uri: d.uri || "",
+        iri: d.iri || d.iri || "",
         rdfTypes: d.rdfTypes || [],
         annotationProperties: d.annotationProperties || [],
         hasReasoningError: d.hasReasoningError || false,
@@ -1252,8 +1252,8 @@ useEffect(() => {
               return (
                 String(n.id) === String(id) ||
                 String((n as any).key) === String(id) ||
-                String((n as any).uri) === String(id) ||
-                (n.data && (String(n.data.uri) === String(id) || String(n.data.key) === String(id)))
+                String((n as any).iri) === String(id) ||
+                (n.data && (String(n.data.iri) === String(id) || String(n.data.key) === String(id)))
               );
             } catch {
               return false;
@@ -1273,8 +1273,8 @@ useEffect(() => {
         const propUriFromEdge =
           edgeData.propertyUri || edgeData.propertyType || edge.propertyUri || edge.propertyType || "";
         const foundPropEdge =
-          (availableProperties || []).find((p: any) => String(p.uri) === String(propUriFromEdge)) ||
-          (loadedOntologies || []).flatMap((o: any) => o.properties || []).find((p: any) => String(p.uri) === String(propUriFromEdge));
+          (availableProperties || []).find((p: any) => String(p.iri) === String(propUriFromEdge)) ||
+          (loadedOntologies || []).flatMap((o: any) => o.properties || []).find((p: any) => String(p.iri) === String(propUriFromEdge));
         const propLabelFromEdge =
           edgeData.label ||
           (foundPropEdge && (foundPropEdge.label || foundPropEdge.name)) ||
@@ -1372,15 +1372,15 @@ useEffect(() => {
         (normalizedParams as any).data.propertyUri
           ? (normalizedParams as any).data.propertyUri
           : availableProperties && availableProperties.length > 0
-            ? availableProperties[0].uri || (availableProperties[0] as any).key
+            ? availableProperties[0].iri || (availableProperties[0] as any).key
             : null;
       const predFallback = predCandidate || "http://www.w3.org/2000/01/rdf-schema#seeAlso";
       const predUriToUse = predCandidate || predFallback;
 
       // Compute a human-friendly label for the chosen predicate
       const foundPred =
-        (availableProperties || []).find((p: any) => String(p.uri) === String(predUriToUse)) ||
-        (loadedOntologies || []).flatMap((o: any) => o.properties || []).find((p: any) => String(p.uri) === String(predUriToUse));
+        (availableProperties || []).find((p: any) => String(p.iri) === String(predUriToUse)) ||
+        (loadedOntologies || []).flatMap((o: any) => o.properties || []).find((p: any) => String(p.iri) === String(predUriToUse));
       const predLabel =
         (normalizedParams as any).data && (normalizedParams as any).data.label
           ? (normalizedParams as any).data.label
@@ -1486,7 +1486,7 @@ useEffect(() => {
     async (properties: any[]) => {
       if (!canvasState.selectedNode) return;
       const entityUri =
-        (canvasState.selectedNode as any)?.uri ||
+        (canvasState.selectedNode as any)?.iri ||
         (canvasState.selectedNode as any)?.iri ||
         (canvasState.selectedNode as any)?.key;
       if (!entityUri) return;
@@ -2246,7 +2246,7 @@ useEffect(() => {
             oldData && (oldData.propertyUri || oldData.propertyType)
               ? oldData.propertyUri || oldData.propertyType
               : availableProperties && availableProperties.length > 0
-                ? availableProperties[0].uri ||
+                ? availableProperties[0].iri ||
                   (availableProperties[0] as any).key
                 : "http://www.w3.org/2000/01/rdf-schema#seeAlso";
           const oldPredFull =
@@ -2365,7 +2365,7 @@ useEffect(() => {
               attempts++;
             }
 
-            return [
+                return [
               ...nds,
               {
                 id,
@@ -2373,7 +2373,8 @@ useEffect(() => {
                 position: { x: candidate.x, y: candidate.y },
                 data: {
                   key: id,
-                  uri,
+                  iri: uri,
+                 iri: uri,
                   rdfTypes: [],
                   literalProperties: [],
                   annotationProperties: [],

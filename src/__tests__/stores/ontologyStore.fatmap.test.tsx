@@ -28,13 +28,13 @@ describe("ontologyStore fat-map (RDF -> availableProperties) integration", () =>
     // Wait for the store to reflect the new property
     await waitFor(() => {
       const ap = useOntologyStore.getState().availableProperties || [];
-      const found = ap.find((p) => p.uri === propIri || p.label === propLabel);
+      const found = ap.find((p) => p.iri === propIri || p.label === propLabel);
       if (!found) throw new Error("availableProperties not updated yet");
     }, { timeout: 2000 });
 
     // Assert store contains it
     const found = useOntologyStore.getState().availableProperties.find(
-      (p) => p.uri === propIri || p.label === propLabel
+      (p) => p.iri === propIri || p.label === propLabel
     );
     expect(found).toBeTruthy();
     expect(found!.label).toBe(propLabel);

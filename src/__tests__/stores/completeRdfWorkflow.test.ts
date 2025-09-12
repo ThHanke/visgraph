@@ -92,7 +92,7 @@ describe("Complete RDF Workflow", () => {
       // Also update the canvas state
       const currentGraph = store.currentGraph;
       const updatedNodes = currentGraph.nodes.map((node) => {
-        if (node.data.uri === entityUri) {
+        if (node.data.iri === entityUri) {
           return {
             ...node,
             data: {
@@ -168,7 +168,7 @@ describe("Complete RDF Workflow", () => {
       // Also update canvas state
       const currentGraph = store.currentGraph;
       const updatedNodes = currentGraph.nodes.map((node) => {
-        if (node.data.uri === entityUri) {
+        if (node.data.iri === entityUri) {
           return {
             ...node,
             data: {

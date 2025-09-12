@@ -3,7 +3,7 @@
  * Prioritizes: d.type, d.displayType, d.classType, and rdfTypes (excluding NamedIndividual).
  * Returns a full URI when possible (the caller may map short labels to URIs via classEntities).
  */
-export function deriveInitialNodeType(d: any, classEntities: Array<{uri:string,label:string}>) {
+export function deriveInitialNodeType(d: any, classEntities: Array<{ iri: string; label: string }>) {
   if (!d) return '';
   let initialNodeType = '';
 
@@ -35,9 +35,9 @@ export function deriveInitialNodeType(d: any, classEntities: Array<{uri:string,l
   // If the type looks like a short label (not a full URI) try to map to a full URI via available classEntities
   if (initialNodeType && !initialNodeType.includes(':') && !initialNodeType.startsWith('http')) {
     const match = classEntities.find(e =>
-      e.label === initialNodeType || e.uri.endsWith(`/${initialNodeType}`) || e.uri.endsWith(`#${initialNodeType}`)
+      e.label === initialNodeType || e.iri.endsWith(`/${initialNodeType}`) || e.iri.endsWith(`#${initialNodeType}`)
     );
-    if (match) initialNodeType = match.uri;
+    if (match) initialNodeType = match.iri;
   }
 
   return initialNodeType || '';

@@ -70,7 +70,7 @@ interface CanvasToolbarProps {
   onToggleLayoutEnabled?: (enabled: boolean) => void;
   // New: allow CanvasToolbar to display programmatic layout application (control removed)
   availableEntities: Array<{
-    uri: string;
+   iri: string;
     label: string;
     namespace: string;
     rdfType: string;

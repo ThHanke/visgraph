@@ -52,7 +52,7 @@ const _loggedFingerprints = new Set<string>();
 function CustomOntologyNodeInner(props: NodeProps) {
   const { data, selected } = props;
   const nodeData = (data ?? {}) as CustomOntologyNodeData;
-  const individualNameInitial = String(nodeData.individualName ?? nodeData.iri ?? nodeData.uri ?? '');
+  const individualNameInitial = String(nodeData.individualName ?? nodeData.iri ?? nodeData.iri ?? '');
 
   const [isEditing, setIsEditing] = useState(false);
   const [individualName, setIndividualName] = useState(individualNameInitial);
@@ -66,7 +66,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
   const rdfTypesKey = Array.isArray(nodeData.rdfTypes) ? nodeData.rdfTypes.join('|') : '';
   useEffect(() => {
     try {
-      const uri = (nodeData.uri || nodeData.iri || '') as string;
+      const uri = (nodeData.iri || nodeData.iri || '') as string;
       const types = rdfTypesKey;
       const fp = `${uri}|${String(nodeData.classType ?? '')}|${types}|${String(nodeData.displayType ?? '')}`;
 
@@ -87,7 +87,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
         try { debug('CustomOntologyNode.displayInfo', payload); } catch (_) { /* ignore */ }
       }
     } catch (_) { /* ignore */ }
-  }, [nodeData.uri, nodeData.iri, nodeData.classType, rdfTypesKey, nodeData.displayType, nodeData.rdfTypes]);
+  }, [nodeData.iri, nodeData.iri, nodeData.classType, rdfTypesKey, nodeData.displayType, nodeData.rdfTypes]);
 
   // computed short type text (badge)
   const displayedTypeShort = computeBadgeText(nodeData as unknown as Record<string, unknown>, rdfManager, availableClasses);
@@ -109,16 +109,36 @@ function CustomOntologyNodeInner(props: NodeProps) {
   const hasErrors = Array.isArray(nodeData.errors) && nodeData.errors.length > 0;
 
   // Annotations: prefer annotationProperties (array) then properties (map)
+  // Display-only: shorten predicate IRIs for labels. Persisted shape uses `propertyUri`.
   const annotations: Array<{ term: string; value: string }> = [];
   if (Array.isArray(nodeData.annotationProperties) && nodeData.annotationProperties.length > 0) {
     nodeData.annotationProperties.forEach((ap) => {
-      const term = String((ap && (ap as any).property) || 'property');
-      const value = String((ap && (ap as any).value) ?? '');
-      annotations.push({ term, value });
+      // Read canonical property IRI first (propertyUri), then fall back to legacy fields.
+      const propertyIri = String(
+        (ap && (ap as any).propertyUri) ||
+          (ap && (ap as any).property) ||
+          (ap && (ap as any).term) ||
+          (ap && (ap as any).key) ||
+          '',
+      );
+      const rawValue = (ap && (ap as any).value);
+      // Skip entries without a property IRI or without a non-empty value
+      if (!propertyIri) return;
+      if (rawValue === undefined || rawValue === null) return;
+      const valueStr = String(rawValue);
+      if (valueStr.trim() === '') return;
+      // For display, shorten IRIs but leave blank-node labels (starting with "_:") unchanged.
+      const term =
+        propertyIri.startsWith('_:') ? propertyIri : defaultURIShortener.shortenURI(propertyIri);
+      annotations.push({ term, value: valueStr });
     });
   } else if (nodeData.properties && typeof nodeData.properties === 'object') {
     Object.entries(nodeData.properties).slice(0, 6).forEach(([k, v]) => {
-      annotations.push({ term: k, value: String(v) });
+      if (v === undefined || v === null) return;
+      const valueStr = String(v);
+      if (valueStr.trim() === '') return;
+      const term = String(k).startsWith('_:') ? String(k) : defaultURIShortener.shortenURI(String(k));
+      annotations.push({ term, value: valueStr });
     });
   }
 
@@ -129,7 +149,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
   useEffect(() => {
     setIndividualName(individualNameInitial);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodeData.uri, nodeData.individualName]);
+  }, [nodeData.iri, nodeData.individualName]);
 
   // Measure DOM size and report back to the canvas so dagre can use real node sizes.
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -182,7 +202,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootRef]);
 
-  const canonicalIri = String(nodeData.iri ?? nodeData.uri ?? '');
+  const canonicalIri = String(nodeData.iri ?? nodeData.iri ?? '');
   const headerTitle = canonicalIri;
   const headerDisplay = canonicalIri.startsWith('_:') ? canonicalIri : defaultURIShortener.shortenURI(canonicalIri).replace(/^(https?:\/\/)?(www\.)?/, '');
 

@@ -51,7 +51,7 @@ interface NodePropertyEditorProps {
   nodeData: any;
   onSave: (updatedData: any) => void;
   availableEntities: Array<{
-    uri: string;
+   iri: string;
     label: string;
     namespace: string;
     rdfType: string;
@@ -84,7 +84,7 @@ export const NodePropertyEditor = ({
   const classEntities = useMemo(() => {
     const fromEntities = (availableEntities || []).filter(e => e.rdfType === 'owl:Class');
     const fromStore = (availableClasses || []).map(cls => ({
-      uri: cls.uri,
+     iri: cls.iri,
       label: cls.label,
       namespace: cls.namespace || '',
       rdfType: 'owl:Class'
@@ -93,9 +93,9 @@ export const NodePropertyEditor = ({
     // Merge by uri, preferring entries from availableEntities when present.
     const merged = new Map<string, any>();
     // Add store entries first
-    fromStore.forEach(e => { if (e && e.uri) merged.set(e.uri, e); });
+    fromStore.forEach(e => { if (e && e.iri) merged.set(e.iri, e); });
     // Override with explicit availableEntities entries if they exist
-    fromEntities.forEach(e => { if (e && e.uri) merged.set(e.uri, e); });
+    fromEntities.forEach(e => { if (e && e.iri) merged.set(e.iri, e); });
 
     return Array.from(merged.values());
   }, [availableEntities, availableClasses]);
@@ -143,7 +143,7 @@ export const NodePropertyEditor = ({
 
       // Normalize the derived type so it matches the URIs used by EntityAutocomplete.
       // Many sources may provide full HTTP URIs, prefixed names (foaf:Person), or short labels ("Person").
-      // EntityAutocomplete expects the value to be an entity.uri from availableEntities (often prefixed).
+      // EntityAutocomplete expects the value to be an entity.iri from availableEntities (often prefixed).
       let normalizedNodeType = initialNodeType || '';
 
       if (initialNodeType) {
@@ -152,28 +152,28 @@ export const NodePropertyEditor = ({
           : (String(initialNodeType).split(new RegExp('[#/]')).pop() || initialNodeType);
 
         const match = classEntities.find(e =>
-          e.uri === initialNodeType ||
+          e.iri === initialNodeType ||
           e.label === initialNodeType ||
           e.label === shortLabel ||
-          (typeof e.uri === 'string' && (
-            e.uri === `${shortLabel}` ||
-            e.uri.endsWith(`/${shortLabel}`) ||
-            e.uri.endsWith(`#${shortLabel}`) ||
-            e.uri.endsWith(`:${shortLabel}`)
+          (typeof e.iri === 'string' && (
+            e.iri === `${shortLabel}` ||
+            e.iri.endsWith(`/${shortLabel}`) ||
+            e.iri.endsWith(`#${shortLabel}`) ||
+            e.iri.endsWith(`:${shortLabel}`)
           ))
         );
 
         if (match) {
-          normalizedNodeType = match.uri;
+          normalizedNodeType = match.iri;
         } else {
           // If no exact match, prefer a prefixed form if the initial type looks like a full HTTP URI
-          // and any classEntity.uri contains the short label with a colon (prefixed).
+          // and any classEntity.iri contains the short label with a colon (prefixed).
           if (/^https?:\/\//i.test(initialNodeType)) {
             const prefixedMatch = classEntities.find(e => {
-              const l = e.uri.split(':').pop();
+              const l = e.iri.split(':').pop();
               return l === shortLabel;
             });
-            if (prefixedMatch) normalizedNodeType = prefixedMatch.uri;
+            if (prefixedMatch) normalizedNodeType = prefixedMatch.iri;
           }
         }
       }
@@ -181,7 +181,7 @@ export const NodePropertyEditor = ({
       // If we still don't have a normalized type, or it is the literal 'NamedIndividual',
       // attempt to read rdf:type triples from the RDF manager. This covers cases where
       // the parsed/diagram node stores 'NamedIndividual' in classType or type fields.
-      if (( !normalizedNodeType || String(normalizedNodeType).includes('NamedIndividual') ) && d.uri && typeof getRdfManager === 'function') {
+      if (( !normalizedNodeType || String(normalizedNodeType).includes('NamedIndividual') ) && d.iri && typeof getRdfManager === 'function') {
         try {
           const manager = getRdfManager();
           const store = manager?.getStore?.();
@@ -191,12 +191,12 @@ export const NodePropertyEditor = ({
             try { rdfTypeIri = manager.expandPrefix ? manager.expandPrefix('rdf:type') : rdfTypeIri; } catch (e) { void e; }
             const all = store.getQuads(null, null, null, null) || [];
             const typeQuads = all.filter((q: any) =>
-              q.subject && (q.subject.value === d.uri || q.subject.value === (d.iri || d.uri)) &&
+              q.subject && (q.subject.value === d.iri || q.subject.value === (d.iri || d.iri)) &&
               q.predicate && q.predicate.value === rdfTypeIri
             );
             // Diagnostic: expose the exact quads found so we can debug prefix/expansion issues
             try {
-              ((...__vg_args)=>{try{debug('console.debug',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.debug(...__vg_args);})('NodePropertyEditor: rdf type quads for', d.uri, typeQuads.map((q: any) => ({
+              ((...__vg_args)=>{try{debug('console.debug',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.debug(...__vg_args);})('NodePropertyEditor: rdf type quads for', d.iri, typeQuads.map((q: any) => ({
                 predicate: q.predicate && q.predicate.value,
                 object: q.object && (q.object.value || (q.object.id || null))
               })));
@@ -212,9 +212,9 @@ export const NodePropertyEditor = ({
             // This covers cases where prefixes/namespaces weren't registered or rdf:type used a prefixed name that didn't expand.
             if (meaningful.length === 0) {
               try {
-                  const shortLabelForNode = d.localName || (d.iri || d.uri || '').split(new RegExp('[#/]')).pop() || '';
+                  const shortLabelForNode = d.localName || (d.iri || d.iri || '').split(new RegExp('[#/]')).pop() || '';
                   const subjectQuads = all.filter((q: any) =>
-                  q.subject && (q.subject.value === d.uri || q.subject.value === (d.iri || d.uri))
+                  q.subject && (q.subject.value === d.iri || q.subject.value === (d.iri || d.iri))
                 );
                 const candidateTypes = subjectQuads
                   .map((q: any) => q.object && q.object.value)
@@ -235,17 +235,17 @@ export const NodePropertyEditor = ({
                     ? String(chosen).split(':').pop() || String(chosen)
                     : (String(chosen).split(new RegExp('[#/]')).pop() || String(chosen));
               const match = classEntities.find(e =>
-                e.uri === chosen ||
+                e.iri === chosen ||
                 e.label === chosen ||
                 e.label === shortLabel ||
-                (typeof e.uri === 'string' && (
-                  e.uri.endsWith(`/${shortLabel}`) ||
-                  e.uri.endsWith(`#${shortLabel}`) ||
-                  e.uri.endsWith(`:${shortLabel}`)
+                (typeof e.iri === 'string' && (
+                  e.iri.endsWith(`/${shortLabel}`) ||
+                  e.iri.endsWith(`#${shortLabel}`) ||
+                  e.iri.endsWith(`:${shortLabel}`)
                 ))
               );
               if (match) {
-                normalizedNodeType = match.uri;
+                normalizedNodeType = match.iri;
               } else {
                 // Try to expand prefixed names via manager, otherwise use raw chosen value.
                 if (typeof manager?.expandPrefix === 'function' && String(chosen).includes(':')) {
@@ -276,13 +276,13 @@ export const NodePropertyEditor = ({
           try {
             const manager = getRdfManager && getRdfManager();
             const store = manager?.getStore?.();
-            if (store && d.uri) {
+            if (store && d.iri) {
               // Prefer expanded rdf:type if possible
               let rdfTypeIri = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
               try { rdfTypeIri = manager.expandPrefix ? manager.expandPrefix('rdf:type') : rdfTypeIri; } catch (e) { void e; }
               const all = store.getQuads(null, null, null, null) || [];
               const typeQuads = all.filter((q: any) =>
-                q.subject && (q.subject.value === d.uri || q.subject.value === (d.iri || d.uri)) &&
+                q.subject && (q.subject.value === d.iri || q.subject.value === (d.iri || d.iri)) &&
                 q.predicate && q.predicate.value === rdfTypeIri
               );
               const foundTypes = Array.from(new Set(typeQuads.map((q: any) => (q.object && q.object.value)).filter(Boolean))) as string[];
@@ -315,7 +315,7 @@ export const NodePropertyEditor = ({
       // If the normalizedNodeType is not part of the known classEntities, attempt to look it up
       // in the RDF store for rdfs:label / skos:prefLabel / rdfs:comment so the editor can present
       // a friendly label instead of only showing "not loaded".
-      if (normalizedNodeType && !classEntities.find(e => e && e.uri === normalizedNodeType)) {
+      if (normalizedNodeType && !classEntities.find(e => e && e.iri === normalizedNodeType)) {
         try {
           const manager = getRdfManager && getRdfManager();
           const store = manager?.getStore?.();
@@ -350,7 +350,7 @@ export const NodePropertyEditor = ({
 
             if (foundLabel) {
               setExtraClassFromRdf({
-                uri: normalizedNodeType,
+               iri: normalizedNodeType,
                 label: foundLabel,
                 namespace: ''
               });
@@ -369,7 +369,7 @@ export const NodePropertyEditor = ({
       setNodeType(normalizedNodeType);
 
       // IRI / URI
-      setNodeIri(d.iri || d.uri || '');
+      setNodeIri(d.iri || d.iri || '');
 
       // Preserve any rdfTypes (array) or single rdfType value
       const initialRdfTypes = Array.isArray(d.rdfTypes) ? d.rdfTypes.slice() : (d.rdfType ? [d.rdfType] : []);
@@ -446,7 +446,7 @@ export const NodePropertyEditor = ({
     }
     
     // Convert URI back to label for classType if we have a matching entity
-    const selectedEntity = classEntities.find(entity => entity.uri === nodeType);
+    const selectedEntity = classEntities.find(entity => entity.iri === nodeType);
     const classTypeLabel = selectedEntity ? selectedEntity.label : nodeType;
 
     // Build the updated rdfTypes array while preserving any existing additional types.
@@ -475,14 +475,17 @@ export const NodePropertyEditor = ({
       type: classTypeLabel,
       displayType: nodeType, // Save the full URI as displayType
       rdfTypes: finalTypes, // Preserve multiple rdf types, with NamedIndividual preserved
-      uri: nodeIri,
+     iri: nodeIri,
       iri: nodeIri,
-      annotationProperties: properties.filter(prop => prop.key.trim()).map(prop => ({
-        property: prop.key,
-        key: prop.key,
-        value: prop.value,
-        type: prop.type
-      }))
+      // Persist canonical annotation shape using propertyUri (store-friendly)
+      annotationProperties: properties
+        .filter((prop) => prop.key.trim())
+        .map((prop) => ({
+          propertyUri: prop.key,
+          key: prop.key,
+          value: prop.value,
+          type: prop.type,
+        })),
     };
 
     onSave(updatedNodeData);
@@ -516,10 +519,10 @@ export const NodePropertyEditor = ({
         // form stores short labels, prefixed URIs, or full URIs.
         const shortLabel = nodeType.includes(':') ? nodeType.split(':').pop() : nodeType;
         return (
-          cls.uri === nodeType ||
+          cls.iri === nodeType ||
           cls.label === nodeType ||
           cls.label === shortLabel ||
-          (typeof cls.uri === 'string' && (cls.uri.endsWith(`/${shortLabel}`) || cls.uri.endsWith(`#${shortLabel}`)))
+          (typeof cls.iri === 'string' && (cls.iri.endsWith(`/${shortLabel}`) || cls.iri.endsWith(`#${shortLabel}`)))
         );
       })
       .flatMap(cls => cls.properties || []);
@@ -583,12 +586,12 @@ export const NodePropertyEditor = ({
               className="w-full"
             />
             {/* When class entity isn't loaded show a clear short/prefixed label next to the autocomplete */}
-            {nodeType && !classEntities.find(e => e.uri === nodeType) && (
+            {nodeType && !classEntities.find(e => e.iri === nodeType) && (
               <div className="text-xs text-muted-foreground px-2">
                 {getDisplayLabelFromUri(nodeType)}
               </div>
             )}
-            {nodeType && !classEntities.find(e => e.uri === nodeType) && (
+            {nodeType && !classEntities.find(e => e.iri === nodeType) && (
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground">

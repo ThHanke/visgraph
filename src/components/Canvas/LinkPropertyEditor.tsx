@@ -39,8 +39,8 @@ export const LinkPropertyEditor = ({
   // Build autocomplete options from availableProperties (derived from RDF store).
   // availableProperties items are expected to have { uri, label, namespace, domain, range }
   const allObjectProperties = (availableProperties || []).map((prop) => ({
-    value: prop.uri,
-    label: prop.label || prop.uri,
+    value: prop.iri,
+    label: prop.label || prop.iri,
     description: prop.namespace ? `From ${prop.namespace}` : undefined,
   }));
 
@@ -110,8 +110,8 @@ export const LinkPropertyEditor = ({
           <div className="bg-muted/50 p-3 rounded-lg">
             <div className="text-sm font-medium">
             {(() => {
-              const sIri = String(sourceNode?.iri ?? sourceNode?.uri ?? '');
-              const tIri = String(targetNode?.iri ?? targetNode?.uri ?? '');
+              const sIri = String(sourceNode?.iri ?? sourceNode?.iri ?? '');
+              const tIri = String(targetNode?.iri ?? targetNode?.iri ?? '');
               const sDisplay = sIri.startsWith('_:') ? sIri : defaultURIShortener.shortenURI(sIri).replace(/^(https?:\/\/)?(www\.)?/, '');
               const tDisplay = tIri.startsWith('_:') ? tIri : defaultURIShortener.shortenURI(tIri).replace(/^(https?:\/\/)?(www\.)?/, '');
               return `${sDisplay} → ${tDisplay}`;
