@@ -34,6 +34,13 @@ export interface AppConfig {
   additionalOntologies: string[];
   // Additional ontologies the user explicitly disabled (do not auto-load even if referenced)
   disabledAdditionalOntologies: string[];
+
+  // Blacklist settings: control which prefixes/namespace URIs are excluded from UI subject emissions.
+  // When enabled, subjects belonging to these prefixes or namespace URIs will not be emitted to the UI,
+  // preventing canvas nodes for core vocabulary terms while preserving triples in the store.
+  blacklistEnabled: boolean;
+  blacklistedPrefixes: string[];
+  blacklistedUris: string[];
 }
 
 interface AppConfigStore {
@@ -55,6 +62,11 @@ interface AppConfigStore {
 
   // Debugging action to toggle RDFManager logging
   setDebugRdfLogging: (enabled: boolean) => void;
+
+  // Blacklist actions (UI / config controls)
+  setBlacklistEnabled: (enabled: boolean) => void;
+  setBlacklistedPrefixes: (prefixes: string[]) => void;
+  setBlacklistedUris: (uris: string[]) => void;
   
   // Recent items actions
   addRecentOntology: (url: string) => void;
@@ -87,7 +99,18 @@ const defaultConfig: AppConfig = {
   recentOntologies: [],
   recentLayouts: ['horizontal'],
   additionalOntologies: [],
-  disabledAdditionalOntologies: []
+  disabledAdditionalOntologies: [],
+
+  // Blacklist defaults (enabled)
+  blacklistEnabled: true,
+  blacklistedPrefixes: ['owl', 'rdf', 'rdfs', 'xml', 'xsd'],
+  blacklistedUris: [
+    'http://www.w3.org/2002/07/owl',
+    'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
+    'http://www.w3.org/2000/01/rdf-schema#',
+    'http://www.w3.org/XML/1998/namespace',
+    'http://www.w3.org/2001/XMLSchema#'
+  ]
 };
 
 export const useAppConfigStore = create<AppConfigStore>()(
@@ -178,6 +201,34 @@ export const useAppConfigStore = create<AppConfigStore>()(
           config: {
             ...state.config,
             debugRdfLogging: enabled
+          }
+        }));
+      },
+
+      // Blacklist actions (UI/config controls)
+      setBlacklistEnabled: (enabled: boolean) => {
+        set((state) => ({
+          config: {
+            ...state.config,
+            blacklistEnabled: Boolean(enabled)
+          }
+        }));
+      },
+
+      setBlacklistedPrefixes: (prefixes: string[]) => {
+        set((state) => ({
+          config: {
+            ...state.config,
+            blacklistedPrefixes: Array.isArray(prefixes) ? prefixes.slice() : []
+          }
+        }));
+      },
+
+      setBlacklistedUris: (uris: string[]) => {
+        set((state) => ({
+          config: {
+            ...state.config,
+            blacklistedUris: Array.isArray(uris) ? uris.slice() : []
           }
         }));
       },

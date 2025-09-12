@@ -148,6 +148,35 @@ export const ReactFlowCanvas: React.FC = () => {
     getRdfManagerRef.current = getRdfManager;
   }, [getRdfManager]);
 
+  // Helper to filter out reserved/core RDF namespaces/prefixes from being rendered as canvas nodes.
+  const _blacklistedPrefixes = new Set(['owl', 'rdf', 'rdfs', 'xml', 'xsd']);
+  const _blacklistedUris = [
+    'http://www.w3.org/2002/07/owl',
+    'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
+    'http://www.w3.org/2000/01/rdf-schema#',
+    'http://www.w3.org/XML/1998/namespace',
+    'http://www.w3.org/2001/XMLSchema#'
+  ];
+  function isBlacklistedIri(val?: string | null): boolean {
+    if (!val) return false;
+    try {
+      const s = String(val).trim();
+      if (!s) return false;
+      // Prefixed form (e.g., rdf:label) - check prefix before colon if not an absolute IRI
+      if (s.includes(':') && !/^https?:\/\//i.test(s)) {
+        const prefix = s.split(':', 1)[0];
+        if (_blacklistedPrefixes.has(prefix)) return true;
+      }
+      // Absolute IRI check
+      for (const u of _blacklistedUris) {
+        if (s.startsWith(u)) return true;
+      }
+    } catch (_) {
+      return false;
+    }
+    return false;
+  }
+
   // Helper: convert a canonical IRI (or store blank node label like "_:b0") into an RDF term
   const termForIri = (iri: string) => {
     try {
@@ -284,6 +313,56 @@ export const ReactFlowCanvas: React.FC = () => {
     }
 
     const cg = currentGraph;
+
+    // Determine which nodes are in the data graph (urn:vg:data).
+    // We will only render nodes that are subjects in the data graph or are targets
+    // of an edge where the source node is a data-graph subject.
+    const dataSubjectsSet = new Set<string>();
+    try {
+      const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
+      const store = mgr && typeof mgr.getStore === "function" ? mgr.getStore() : null;
+      if (store && typeof store.getQuads === "function") {
+        try {
+          const g = namedNode("urn:vg:data");
+          const dq = store.getQuads(null, null, null, g) || [];
+          dq.forEach((q: any) => {
+            try {
+              if (q && q.subject && q.subject.value) dataSubjectsSet.add(String(q.subject.value));
+            } catch (_) { /* ignore per-quad */ }
+          });
+        } catch (_) { /* ignore store read errors */ }
+      }
+    } catch (_) { /* ignore rdfManager errors */ }
+
+    // Build quick lookup of node id -> iri for the current graph, used to compute visibility.
+    const nodeIdToIri = new Map<string, string>();
+    try {
+      (cg.nodes || []).forEach((n: any) => {
+        const iri = (n && (n.iri || (n.data && n.data.iri))) || n.id || "";
+        const key = n.id || String(iri) || "";
+        if (key) nodeIdToIri.set(String(key), String(iri));
+      });
+    } catch (_) { /* ignore */ }
+
+    // Compute visible node ids: subjects in data graph plus targets of edges where source is in dataSubjectsSet.
+    const visibleNodeIdsFromData = new Set<string>();
+    try {
+      // Add nodes whose iri is a subject in data graph
+      for (const [nid, iri] of nodeIdToIri.entries()) {
+        if (iri && dataSubjectsSet.has(String(iri))) visibleNodeIdsFromData.add(nid);
+      }
+      // Add targets of edges whose source's iri is in dataSubjectsSet
+      (cg.edges || []).forEach((e: any) => {
+        try {
+          const srcKey = e.source || (e.data && e.data.source) || "";
+          const tgtKey = e.target || (e.data && e.data.target) || "";
+          const srcIri = nodeIdToIri.get(String(srcKey)) || "";
+          if (srcIri && dataSubjectsSet.has(String(srcIri))) {
+            if (tgtKey) visibleNodeIdsFromData.add(String(tgtKey));
+          }
+        } catch (_) { /* ignore per-edge */ }
+      });
+    } catch (_) { /* ignore visibility computation errors */ }
     if (DEBUG) {
       try {
         debug(
@@ -1332,7 +1411,7 @@ useEffect(() => {
 
         try {
           // diagnostic log to help trace why the editor might not receive predicate info
-          // eslint-disable-next-line no-console
+           
           console.debug("[VG] ReactFlowCanvas.onEdgeDoubleClick selectedLinkPayload", {
             selectedLinkPayload,
             edge,
@@ -1470,15 +1549,16 @@ useEffect(() => {
           const objTerm = termForIri(String(objIri));
           const predTerm = namedNode(predFull);
 
+          const g = namedNode("urn:vg:data");
           const existing =
             store.getQuads(
               subjTerm,
               predTerm,
               objTerm,
-              null,
+              g,
             ) || [];
           if (existing.length === 0) {
-            store.addQuad(quad(subjTerm, predTerm, objTerm));
+            store.addQuad(quad(subjTerm, predTerm, objTerm, g));
           }
         }
       } catch (e) {
@@ -1509,7 +1589,7 @@ useEffect(() => {
 
       try {
         // diagnostic logging to capture the payload used to open the link editor
-        // eslint-disable-next-line no-console
+         
         console.debug("[VG] ReactFlowCanvas.onConnect selectedEdgeForEditor", {
           selectedEdgeForEditor,
           normalizedParams,
@@ -1630,12 +1710,13 @@ useEffect(() => {
                   ? mgr.expandPrefix(oldPredRaw)
                   : oldPredRaw;
               try {
+                const g = namedNode("urn:vg:data");
                 const found =
                   store.getQuads(
                     subjTerm,
                     namedNode(oldPredFull),
                     objTerm,
-                    null,
+                    g,
                   ) || [];
                 found.forEach((q: any) => {
                   try {
@@ -1656,10 +1737,11 @@ useEffect(() => {
                   ? mgr.expandPrefix(propertyUri)
                   : propertyUri;
               const newPredTerm = namedNode(newPredFull);
+              const g = namedNode("urn:vg:data");
               const exists =
-                store.getQuads(subjTerm, newPredTerm, objTerm, null) || [];
+                store.getQuads(subjTerm, newPredTerm, objTerm, g) || [];
               if (exists.length === 0) {
-                store.addQuad(quad(subjTerm, newPredTerm, objTerm));
+                store.addQuad(quad(subjTerm, newPredTerm, objTerm, g));
               }
             } catch (_) {
               /* ignore add errors */
@@ -2307,20 +2389,21 @@ useEffect(() => {
           try {
             const oldSubjTerm = termForIri(String(oldSubj));
             const oldObjTerm = termForIri(String(oldObj));
-            const found =
-              store.getQuads(
-                oldSubjTerm,
-                namedNode(oldPredFull),
-                oldObjTerm,
-                null,
-              ) || [];
-            found.forEach((q: any) => {
-              try {
-                store.removeQuad(q);
-              } catch (_) {
-                /* ignore */
-              }
-            });
+                const g = namedNode("urn:vg:data");
+                const found =
+                  store.getQuads(
+                    oldSubjTerm,
+                    namedNode(oldPredFull),
+                    oldObjTerm,
+                    g,
+                  ) || [];
+                found.forEach((q: any) => {
+                  try {
+                    store.removeQuad(q);
+                  } catch (_) {
+                    /* ignore */
+                  }
+                });
           } catch (_) {
             /* ignore */
           }
@@ -2335,15 +2418,16 @@ useEffect(() => {
           const subjTerm = termForIri(String(subjIri));
           const objTerm = termForIri(String(objIri));
           const predTerm2 = namedNode(oldPredFull);
+          const g = namedNode("urn:vg:data");
           const exists =
             store.getQuads(
               subjTerm,
               predTerm2,
               objTerm,
-              null,
+              g,
             ) || [];
           if (exists.length === 0) {
-            store.addQuad(quad(subjTerm, predTerm2, objTerm));
+            store.addQuad(quad(subjTerm, predTerm2, objTerm, g));
           }
         }
       } catch (e) {

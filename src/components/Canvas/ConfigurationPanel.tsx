@@ -9,6 +9,7 @@ import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
 import { Slider } from '../ui/slider';
 import { Badge } from '../ui/badge';
+import { Input } from '../ui/input';
 import {
   Dialog,
   DialogContent,
@@ -29,6 +30,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Settings, Download, Upload, RotateCcw } from 'lucide-react';
 import { useAppConfigStore } from '../../stores/appConfigStore';
 import { useOntologyStore } from '../../stores/ontologyStore';
+import { WELL_KNOWN } from '../../utils/wellKnownOntologies';
 import { fallback } from '../../utils/startupDebug';
 import { toast } from 'sonner';
 
@@ -135,6 +137,28 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
   const [isOpen, setIsOpen] = useState(false);
   const [importText, setImportText] = useState('');
 
+  // Blacklist UI local state (decoupled from persisted config until applied)
+  const [blacklistEnabledLocal, setBlacklistEnabledLocal] = useState<boolean>(() => {
+    try { return Boolean(useAppConfigStore.getState().config.blacklistEnabled); } catch { return true; }
+  });
+  const [prefixesText, setPrefixesText] = useState<string>(() => {
+    try { return (useAppConfigStore.getState().config.blacklistedPrefixes || []).join(', '); } catch { return 'owl, rdf, rdfs, xml, xsd'; }
+  });
+  const [urisText, setUrisText] = useState<string>(() => {
+    try { return (useAppConfigStore.getState().config.blacklistedUris || []).join(', '); } catch { return 'http://www.w3.org/2002/07/owl, http://www.w3.org/1999/02/22-rdf-syntax-ns#'; }
+  });
+
+  useEffect(() => {
+    try {
+      const cfg = useAppConfigStore.getState().config;
+      setBlacklistEnabledLocal(Boolean(cfg.blacklistEnabled));
+      setPrefixesText((cfg.blacklistedPrefixes || []).join(', '));
+      setUrisText((cfg.blacklistedUris || []).join(', '));
+    } catch (_) {
+      /* ignore */
+    }
+  }, []);
+
   const {
     config,
     setCurrentLayout,
@@ -146,6 +170,10 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
     resetToDefaults,
     exportConfig,
     importConfig,
+    // Blacklist controls
+    setBlacklistEnabled,
+    setBlacklistedPrefixes,
+    setBlacklistedUris,
     removeAdditionalOntology
   } = useAppConfigStore();
 
@@ -391,6 +419,129 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
           <TabsContent value="advanced" className="space-y-4">
             <Card>
               <CardHeader>
+                <CardTitle className="text-sm">Blacklist</CardTitle>
+                <CardDescription>Exclude subjects from UI node emission by prefix or namespace URI</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label>Enable blacklist</Label>
+                  <Switch
+                    checked={blacklistEnabledLocal}
+                    onCheckedChange={(val) => {
+                      try {
+                        setBlacklistEnabledLocal(Boolean(val));
+                        setBlacklistEnabled(Boolean(val));
+                        try {
+                          const mgr = useOntologyStore.getState().getRdfManager();
+                          const prefixes = (prefixesText || "").split(",").map(s=>s.trim()).filter(Boolean);
+                          const uris = (urisText || "").split(",").map(s=>s.trim()).filter(Boolean);
+                          mgr.setBlacklist(prefixes, uris);
+                        } catch (_) { /* ignore */ }
+                        toast.success(`Blacklist ${val ? 'enabled' : 'disabled'}`);
+                      } catch (e) {
+                        toast.error('Failed to update blacklist');
+                      }
+                    }}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Blacklisted prefixes (comma-separated)</Label>
+                  <Input
+                    value={prefixesText}
+                    onChange={(e) => {
+                      const v = (e.target as HTMLInputElement).value;
+                      setPrefixesText(v);
+                      try {
+                        const prefixes = (v || "").split(",").map(s=>s.trim()).filter(Boolean);
+                        setBlacklistedPrefixes(prefixes);
+                        const uris = (urisText || "").split(",").map(s=>s.trim()).filter(Boolean);
+                        const mgr = useOntologyStore.getState().getRdfManager();
+                        mgr.setBlacklist(prefixes, uris);
+                      } catch (_) { /* ignore */ }
+                    }}
+                    className="text-xs"
+                    placeholder="e.g. owl, rdf, rdfs, xml, xsd"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Blacklisted namespace URIs (comma-separated)</Label>
+                  <Input
+                    value={urisText}
+                    onChange={(e) => {
+                      const v = (e.target as HTMLInputElement).value;
+                      setUrisText(v);
+                      try {
+                        const uris = (v || "").split(",").map(s=>s.trim()).filter(Boolean);
+                        setBlacklistedUris(uris);
+                        const prefixes = (prefixesText || "").split(",").map(s=>s.trim()).filter(Boolean);
+                        const mgr = useOntologyStore.getState().getRdfManager();
+                        mgr.setBlacklist(prefixes, uris);
+                      } catch (_) { /* ignore */ }
+                    }}
+                    className="text-xs"
+                    placeholder="e.g. http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Computed expanded URIs</Label>
+                  <div className="text-xs text-muted-foreground">
+                    These are expanded namespace URIs derived from current prefixes and known namespaces (for visibility).
+                  </div>
+                  <div className="mt-2 text-xs">
+                    {(() => {
+                      try {
+                        const mgr = useOntologyStore.getState().getRdfManager();
+                        const ns = (mgr && typeof mgr.getNamespaces === 'function') ? mgr.getNamespaces() : {};
+                        const wkPrefixes = (WELL_KNOWN && (WELL_KNOWN as any).prefixes) ? (WELL_KNOWN as any).prefixes : {};
+                        const prefixes = (prefixesText || "").split(",").map(s=>s.trim()).filter(Boolean);
+                        const explicitUris = (urisText || "").split(",").map(s=>s.trim()).filter(Boolean);
+
+                        // Expand prefixes to namespace URIs using runtime namespaces, then well-known fallbacks.
+                        const expandedFromPrefixes = prefixes.map((p) => {
+                          try {
+                            if (!p) return "";
+                            if (ns[p]) return ns[p];
+                            if (wkPrefixes && wkPrefixes[p]) return wkPrefixes[p];
+                            if (mgr && typeof (mgr as any).expandPrefix === 'function') {
+                              try {
+                                const attempt = (mgr as any).expandPrefix(`${p}:dummy`);
+                                // If expandPrefix returns something containing http, try to strip the dummy suffix.
+                                if (typeof attempt === 'string') {
+                                  const stripped = attempt.replace(/dummy$/, '');
+                                  if (/^https?:\/\//i.test(stripped)) return stripped;
+                                }
+                              } catch (_) { /* ignore */ }
+                            }
+                            return "";
+                          } catch (_) {
+                            return "";
+                          }
+                        }).filter(Boolean);
+
+                        // Combine and dedupe expanded URIs and explicit URIs
+                        const combined = Array.from(new Set<string>([...expandedFromPrefixes, ...explicitUris])).filter(Boolean);
+
+                        if (combined.length === 0) {
+                          return <div className="text-xs text-muted-foreground">None</div>;
+                        }
+
+                        return combined.map((u, i) => (
+                          <div key={i} className="truncate">{u}</div>
+                        ));
+                      } catch (_) {
+                        return <div className="text-xs text-muted-foreground">n/a</div>;
+                      }
+                    })()}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
                 <CardTitle className="text-sm">Import/Export Configuration</CardTitle>
                 <CardDescription>Backup or restore your settings</CardDescription>
               </CardHeader>
@@ -412,7 +563,7 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
                     value={importText}
                     onChange={(e) => setImportText(e.target.value)}
                     placeholder="Paste configuration JSON here..."
-                    className="w-full h-24 p-2 text-xs border rounded resize-none"
+                    className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 h-24 resize-none"
                   />
                   <Button 
                     onClick={handleImportConfig} 

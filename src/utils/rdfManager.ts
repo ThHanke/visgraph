@@ -23,6 +23,7 @@ import {
 } from "n3";
 const { namedNode, literal, quad, blankNode } = DataFactory;
 import { useAppConfigStore } from "../stores/appConfigStore";
+import { WELL_KNOWN_BY_URL, WELL_KNOWN } from "../utils/wellKnownOntologies";
 import {
   debugLog,
   debug,
@@ -55,6 +56,137 @@ export class RDFManager {
   private subjectChangeSubscribers = new Set<(subjects: string[]) => void>();
   private subjectChangeBuffer: Set<string> = new Set();
   private subjectFlushTimer: number | null = null;
+
+  // Blacklist configuration: prefixes and absolute namespace URIs that should be
+  // ignored when emitting subject-level change notifications. Default set below
+  // matches common RDF/OWL core vocabularies so they don't create canvas nodes.
+  private blacklistedPrefixes: Set<string> = new Set(["owl", "rdf", "rdfs", "xml", "xsd"]);
+  private blacklistedUris: string[] = [
+    "http://www.w3.org/2002/07/owl",
+    "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "http://www.w3.org/2000/01/rdf-schema#",
+    "http://www.w3.org/XML/1998/namespace",
+    "http://www.w3.org/2001/XMLSchema#",
+  ];
+
+  /**
+   * Get the configured blacklist (prefixes + uris).
+   */
+  public getBlacklist(): { prefixes: string[]; uris: string[] } {
+    return {
+      prefixes: Array.from(this.blacklistedPrefixes),
+      uris: Array.from(this.blacklistedUris),
+    };
+  }
+
+  /**
+   * Set the blacklist. This updates the in-memory manager configuration and (best-effort)
+   * persists into the application config store if available.
+   */
+  public setBlacklist(prefixes: string[] | undefined | null, uris?: string[] | undefined | null): void {
+    try {
+      this.blacklistedPrefixes = new Set((prefixes || []).map(String));
+      if (Array.isArray(uris)) this.blacklistedUris = uris.slice();
+      // Best-effort: persist into app config if the store exposes setConfig
+      try {
+        if (typeof useAppConfigStore !== "undefined" && (useAppConfigStore as any).getState) {
+          const st = (useAppConfigStore as any).getState();
+          if (st && typeof st.setConfig === "function") {
+            try {
+              st.setConfig({ ...(st.config || {}), blacklistedPrefixes: Array.from(this.blacklistedPrefixes), blacklistedUris: this.blacklistedUris });
+            } catch (_) { /* ignore */ }
+          }
+        }
+      } catch (_) { /* ignore */ }
+    } catch (err) {
+      try {
+        if (typeof fallback === "function") fallback("rdf.setBlacklist.failed", { error: String(err) });
+      } catch (_) { /* ignore */ }
+    }
+  }
+
+  private isBlacklistedIri(val?: string | null): boolean {
+    if (!val) return false;
+    try {
+      const s = String(val).trim();
+      if (!s) return false;
+
+      // 1) Prefixed form like rdf:label -> check configured prefix blacklist directly
+      if (s.includes(":") && !/^https?:\/\//i.test(s)) {
+        const prefix = s.split(":", 1)[0];
+        if (this.blacklistedPrefixes.has(prefix)) return true;
+      }
+
+      // 2) Absolute IRI form -> build a set of namespace URI candidates derived from:
+      //    - configured blacklistedUris
+      //    - configured blacklistedPrefixes expanded via runtime namespaces or WELL_KNOWN defaults
+      const uriCandidates = new Set<string>();
+      (this.blacklistedUris || []).forEach((u) => {
+        try {
+          uriCandidates.add(String(u));
+        } catch (_) {}
+      });
+
+      (Array.from(this.blacklistedPrefixes) || []).forEach((p) => {
+        try {
+          // Prefer runtime-registered namespace
+          const nsFromMgr = this.namespaces && this.namespaces[p];
+          if (nsFromMgr) uriCandidates.add(nsFromMgr);
+          // Fall back to known well-known prefix mapping
+          try {
+            const wk = (WELL_KNOWN && (WELL_KNOWN as any).prefixes) || {};
+            if (wk && wk[p]) uriCandidates.add(String(wk[p]));
+          } catch (_) {}
+          // Also consider any ontology entries whose namespaces include this prefix and add their ontology keys/aliases
+          try {
+            const ontMap = (WELL_KNOWN && (WELL_KNOWN as any).ontologies) || {};
+            for (const [ontUrl, meta] of Object.entries(ontMap || {})) {
+              try {
+                const m = meta as any;
+                if (m && m.namespaces && m.namespaces[p]) {
+                  uriCandidates.add(ontUrl);
+                  if (Array.isArray(m.aliases)) {
+                    m.aliases.forEach((a: any) => uriCandidates.add(String(a)));
+                  }
+                }
+              } catch (_) {}
+            }
+          } catch (_) {}
+        } catch (_) {}
+      });
+
+      // Normalize candidates by ensuring common variants are present (with/without trailing #)
+      const normalizedCandidates = Array.from(uriCandidates).reduce<string[]>(
+        (acc, u) => {
+          try {
+            const su = String(u).trim();
+            if (!su) return acc;
+            acc.push(su);
+            if (su.endsWith("#")) acc.push(su.replace(/#$/, ""));
+            else acc.push(su + "#");
+            if (su.endsWith("/")) acc.push(su.replace(/\/$/, ""));
+            else acc.push(su + "/");
+            return acc;
+          } catch (_) {
+            return acc;
+          }
+        },
+        [],
+      );
+
+      for (const u of normalizedCandidates) {
+        try {
+          if (!u) continue;
+          if (s.startsWith(u)) return true;
+        } catch (_) {
+          /* ignore per-candidate failures */
+        }
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    return false;
+  }
 
   constructor() {
     this.store = new Store();
@@ -260,7 +392,10 @@ export class RDFManager {
   private bufferSubjectFromQuad(q: Quad | null | undefined) {
     try {
       if (!q || !q.subject || !q.subject.value) return;
-      this.subjectChangeBuffer.add(String((q.subject as any).value));
+      const subj = String((q.subject as any).value);
+      // Respect configured blacklist: do not buffer or emit subjects from reserved vocabularies.
+      if (this.isBlacklistedIri(subj)) return;
+      this.subjectChangeBuffer.add(subj);
       this.scheduleSubjectFlush();
     } catch (e) {
       try {
@@ -2347,6 +2482,50 @@ export class RDFManager {
         } catch (_) {
           /* ignore */
         }
+      }
+    }
+  }
+
+  /**
+   * Remove quads in a specific named graph that match any of the provided namespace URIs.
+   * Useful for removing an ontology's quads from a shared ontologies graph without touching other graphs.
+   */
+  public removeQuadsInGraphByNamespaces(graphName: string, namespaceUris?: string[] | null): void {
+    try {
+      if (!graphName || !Array.isArray(namespaceUris) || namespaceUris.length === 0) return;
+      const g = namedNode(graphName);
+      const quads = this.store.getQuads(null, null, null, g) || [];
+      quads.forEach((q: Quad) => {
+        try {
+          const subj = (q.subject && (q.subject as any).value) || "";
+          const pred = (q.predicate && (q.predicate as any).value) || "";
+          const obj = (q.object && (q.object as any).value) || "";
+          const matches = (namespaceUris || []).some((ns) =>
+            ns && (subj.startsWith(ns) || pred.startsWith(ns) || obj.startsWith(ns)),
+          );
+          if (matches) {
+            try {
+              this.store.removeQuad(q);
+            } catch (_) {
+              /* ignore */
+            }
+          }
+        } catch (_) {
+          /* ignore */
+        }
+      });
+      try {
+        this.notifyChange();
+      } catch (_) {
+        /* ignore */
+      }
+    } catch (err) {
+      try {
+        if (typeof fallback === "function") {
+          fallback("rdf.removeQuadsInGraphByNamespaces.failed", { graphName, error: String(err) });
+        }
+      } catch (_) {
+        /* ignore */
       }
     }
   }

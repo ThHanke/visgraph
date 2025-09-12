@@ -346,6 +346,14 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         const { parseRDFFile } = await import("../utils/rdfParser");
         const parsed = await parseRDFFile(content);
 
+        // Persist the raw ontology RDF into the shared ontologies graph so
+        // its triples are clearly marked as ontology provenance.
+        try {
+          await rdfManager.loadRDFIntoGraph(content, "urn:vg:ontologies");
+        } catch (_) {
+          /* ignore persist failures - parsing will proceed regardless */
+        }
+
 
         try {
           // Determine a canonical URL for this parsed RDF by matching parsed namespaces
@@ -663,6 +671,36 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
         // Merge parsed graph into currentGraph (preserveGraph behavior)
         try {
+          // Filter out nodes that belong to reserved RDF/OWL namespaces so they are not
+          // added into the UI currentGraph (prevents many core vocabulary nodes from
+          // creating canvas nodes). The RDF store still contains these triples for
+          // indexing/search; we only remove them from the UI merge step.
+          const _blacklistedPrefixes = new Set(["owl", "rdf", "rdfs", "xml", "xsd"]);
+          const _blacklistedUris = [
+            "http://www.w3.org/2002/07/owl",
+            "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+            "http://www.w3.org/2000/01/rdf-schema#",
+            "http://www.w3.org/XML/1998/namespace",
+            "http://www.w3.org/2001/XMLSchema#",
+          ];
+          function isBlacklistedIri(val?: string | null): boolean {
+            if (!val) return false;
+            try {
+              const s = String(val).trim();
+              if (!s) return false;
+              if (s.includes(":") && !/^https?:\/\//i.test(s)) {
+                const prefix = s.split(":", 1)[0];
+                if (_blacklistedPrefixes.has(prefix)) return true;
+              }
+              for (const u of _blacklistedUris) {
+                if (s.startsWith(u)) return true;
+              }
+            } catch (_) {
+              return false;
+            }
+            return false;
+          }
+
           const nodes = (parsed.nodes || []).map((n: any) => {
             const nodeId =
               n.id ||
@@ -1318,7 +1356,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         rdfContent,
         options?.onProgress,
         true,
-        source,
+        "urn:vg:data",
       );
 
       // Note: configured additional ontologies are auto-loaded on application startup.
