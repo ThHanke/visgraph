@@ -31,7 +31,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { X, Plus, Info } from 'lucide-react';
 import { deriveInitialNodeType } from './helpers/nodePropertyHelpers';
-import { shortIriString } from '../../utils/shortIri';
+import { computeTermDisplay, shortLocalName } from '../../utils/termDisplay';
 export { deriveInitialNodeType };
 
 /**
@@ -109,29 +109,10 @@ export const NodePropertyEditor = ({
   // Helper to prefer prefixed form (prefix:LocalName) using rdfManager namespaces, falling back to short label.
   const getDisplayLabelFromUri = (uri?: string) => {
     if (!uri) return "";
-    try {
-      const mgr = getRdfManager && getRdfManager();
-      const ns = mgr?.getNamespaces ? mgr.getNamespaces() : undefined;
-      // Use centralized shortIriString which prefers prefix:local when namespace available.
-      return shortIriString(String(uri), ns);
-    } catch (e) {
-      try {
-        if (typeof fallback === "function") {
-          fallback("console.warn", { args: ["shortIriString failed for", String(uri), String(e)] }, { level: "warn" });
-        }
-      } catch (_) { /* ignore */ }
-      // best-effort fallback to local name
-      if (/^https?:\/\//i.test(String(uri))) {
-        const parts = String(uri).split(new RegExp("[#/]")).filter(Boolean);
-        return parts.length ? parts[parts.length - 1] : String(uri);
-      }
-      if (String(uri).includes(":")) {
-        const parts = String(uri).split(":");
-        return parts[parts.length - 1];
-      }
-      const parts = String(uri).split(new RegExp("[#/]")).filter(Boolean);
-      return parts.length ? parts[parts.length - 1] : String(uri);
-    }
+    const mgr = getRdfManager && getRdfManager();
+    if (!mgr) throw new Error(`getDisplayLabelFromUri requires rdfManager to resolve '${uri}'`);
+    const td = computeTermDisplay(String(uri), mgr as any);
+    return td.prefixed || td.short || '';
   };
 
   // Initialize form data when dialog opens

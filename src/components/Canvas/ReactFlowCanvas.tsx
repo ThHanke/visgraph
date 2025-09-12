@@ -50,7 +50,6 @@ import { buildPaletteMap } from "./core/namespacePalette";
 import { getNamespaceColorFromPalette } from "./helpers/namespaceHelpers";
 import { toast } from "sonner";
 import { computeTermDisplay, shortLocalName } from '../../utils/termDisplay';
-import { shortIriString } from '../../utils/shortIri';
 import { debug, warn, fallback } from "../../utils/startupDebug";
 import { CustomOntologyNode as OntologyNode } from "./CustomOntologyNode";
 import FloatingEdge from "./FloatingEdge";
@@ -99,7 +98,6 @@ export const ReactFlowCanvas: React.FC = () => {
     getRdfManager,
     currentGraph,
     availableProperties,
-    getEntityIndex,
     availableClasses: ac,
   } = useOntologyStore();
   const { startReasoning } = useReasoningStore();
@@ -345,8 +343,10 @@ export const ReactFlowCanvas: React.FC = () => {
 
         // Resolve canonical namespace from entity index using canonicalTypeIri (no heuristics/fallbacks)
         let canonicalNs = "";
-        try {
-          const idx = (typeof getEntityIndex === "function") ? getEntityIndex() : (useOntologyStore as any).getState().getEntityIndex();
+          try {
+          const idx = (useOntologyStore as any).getState && (useOntologyStore as any).getState().getEntityIndex
+            ? (useOntologyStore as any).getState().getEntityIndex()
+            : undefined;
           const mapByIri = idx && idx.mapByIri ? idx.mapByIri : new Map();
           const mapByLocal = idx && idx.mapByLocalName ? idx.mapByLocalName : new Map();
 

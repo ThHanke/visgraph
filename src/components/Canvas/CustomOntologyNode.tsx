@@ -13,7 +13,6 @@ import { useOntologyStore } from '../../stores/ontologyStore';
 import { buildPaletteForRdfManager } from './core/namespacePalette';
 import { getNamespaceColorFromPalette, normalizeNamespaceKey } from './helpers/namespaceHelpers';
 import { computeTermDisplay, shortLocalName } from '../../utils/termDisplay';
-import { shortIriString } from '../../utils/shortIri';
 import { debug } from '../../utils/startupDebug';
 
 /**
@@ -122,21 +121,9 @@ function CustomOntologyNodeInner(props: NodeProps) {
       // For display, shorten IRIs but leave blank-node labels (starting with "_:") unchanged.
       const term = (() => {
         if (propertyIri.startsWith('_:')) return propertyIri;
-        try {
-          if (rdfManager) {
-            const ns = (rdfManager as any).getNamespaces ? (rdfManager as any).getNamespaces() : undefined;
-            const td = computeTermDisplay(propertyIri, rdfManager as any);
-            return td.prefixed || td.short || shortIriString(propertyIri, ns);
-          }
-        } catch (_) {
-          // fall back to shortIriString when strict resolution fails
-        }
-        try {
-          const ns = (rdfManager as any).getNamespaces ? (rdfManager as any).getNamespaces() : undefined;
-          return shortIriString(propertyIri, ns);
-        } catch (_) {
-          return String(propertyIri);
-        }
+        if (!rdfManager) throw new Error(`computeTermDisplay requires rdfManager to resolve '${propertyIri}'`);
+        const td = computeTermDisplay(propertyIri, rdfManager as any);
+        return td.prefixed || td.short || '';
       })();
       annotations.push({ term, value: valueStr });
     });
@@ -148,19 +135,9 @@ function CustomOntologyNodeInner(props: NodeProps) {
       const term = (() => {
         const keyStr = String(k);
         if (keyStr.startsWith('_:')) return keyStr;
-        try {
-          if (rdfManager) {
-            const ns = (rdfManager as any).getNamespaces ? (rdfManager as any).getNamespaces() : undefined;
-            const td = computeTermDisplay(keyStr, rdfManager as any);
-            return td.prefixed || td.short || shortIriString(keyStr, ns);
-          }
-        } catch (_) { /* ignore */ }
-        try {
-          const ns = (rdfManager as any).getNamespaces ? (rdfManager as any).getNamespaces() : undefined;
-          return shortIriString(keyStr, ns);
-        } catch (_) {
-          return keyStr;
-        }
+        if (!rdfManager) throw new Error(`computeTermDisplay requires rdfManager to resolve '${keyStr}'`);
+        const td = computeTermDisplay(keyStr, rdfManager as any);
+        return td.prefixed || td.short || '';
       })();
       annotations.push({ term, value: valueStr });
     });
@@ -228,22 +205,12 @@ function CustomOntologyNodeInner(props: NodeProps) {
 
   const canonicalIri = String(nodeData.iri ?? '');
   const headerTitle = canonicalIri;
-  const headerDisplay = (() => {
+    const headerDisplay = (() => {
     if (!canonicalIri) return '';
     if (canonicalIri.startsWith('_:')) return canonicalIri;
-    try {
-      if (rdfManager) {
-        const ns = (rdfManager as any).getNamespaces ? (rdfManager as any).getNamespaces() : undefined;
-        const td = computeTermDisplay(canonicalIri, rdfManager as any);
-        return (td.prefixed || td.short || shortIriString(canonicalIri, ns)).replace(/^(https?:\/\/)?(www\.)?/, '');
-      }
-    } catch (_) { /* ignore */ }
-    try {
-      const ns = (rdfManager as any)?.getNamespaces ? (rdfManager as any).getNamespaces() : undefined;
-      return shortIriString(canonicalIri, ns).replace(/^(https?:\/\/)?(www\.)?/, '');
-    } catch (_) {
-      return shortLocalName(canonicalIri).replace(/^(https?:\/\/)?(www\.)?/, '');
-    }
+    if (!rdfManager) throw new Error(`computeTermDisplay requires rdfManager to resolve '${canonicalIri}'`);
+    const td = computeTermDisplay(canonicalIri, rdfManager as any);
+    return (td.prefixed || td.short || '').replace(/^(https?:\/\/)?(www\.)?/, '');
   })();
 
     return (

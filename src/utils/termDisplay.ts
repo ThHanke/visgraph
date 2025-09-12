@@ -1,6 +1,5 @@
 import { NamedNode } from "n3";
 import type { RDFManager } from "../utils/rdfManager";
-import { shortIriString } from "./shortIri";
 
 /**
  * Strict term display utilities.
@@ -137,16 +136,32 @@ export function computeTermDisplay(
     };
   }
 
-  // Ensure it's a full IRI
-  if (!iri.includes("://")) {
-    throw new Error(`computeTermDisplay requires a full IRI or NamedNode; received '${iri}'`);
+  // If the input does not look like a full IRI, attempt to expand a prefixed name
+  // using the provided rdfManager / namespace map. If expansion fails or no rdfManager
+  // is available, throw to keep behavior strict and explicit.
+  let targetIri = iri;
+  if (!targetIri.includes("://")) {
+    if (!rdfManager) {
+      throw new Error(`computeTermDisplay requires a full IRI or NamedNode; received '${iri}'`);
+    }
+    try {
+      // expandPrefixed will throw if the value is not a valid prefixed name or prefix unknown
+      targetIri = expandPrefixed(targetIri, rdfManager);
+    } catch (e) {
+      throw new Error(`computeTermDisplay could not expand prefixed name '${iri}': ${String(e)}`);
+    }
   }
 
   const nsMap = resolveNamespaces(rdfManager);
 
   // Prefer producing a prefix:local form when a matching namespace is available,
   // but fall back to a friendly local name when no prefix is known.
-  const prefixed = shortIriString(iri, nsMap);
+  let prefixed: string;
+  try {
+    prefixed = toPrefixed(targetIri, nsMap);
+  } catch (_) {
+    prefixed = shortLocalName(targetIri);
+  }
 
   // Derive prefix/local from prefixed form when possible
   let prefix: string | undefined = undefined;
@@ -158,7 +173,7 @@ export function computeTermDisplay(
   }
 
   return {
-    iri,
+    iri: targetIri,
     prefixed,
     short: local,
     namespace: prefix,
