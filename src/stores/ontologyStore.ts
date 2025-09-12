@@ -187,6 +187,8 @@ interface OntologyStore {
     edges: (ParsedEdge | DiagramEdge)[];
   };
   rdfManager: RDFManager;
+  // incremented whenever availableProperties/availableClasses are updated from the RDF store
+  ontologiesVersion: number;
 
   loadOntology: (url: string) => Promise<void>;
   loadOntologyFromRDF: (
@@ -232,6 +234,8 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
   validationErrors: [],
   currentGraph: { nodes: [], edges: [] },
   rdfManager: rdfManager,
+  // incremented whenever availableProperties/availableClasses are updated from the RDF store
+  ontologiesVersion: 0,
 
   loadOntology: async (url: string) => {
     logCallGraph?.("loadOntology:start", url);
@@ -272,6 +276,164 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           availableClasses: [...state.availableClasses],
           availableProperties: [...state.availableProperties],
         }));
+
+// Incremental RDF-store-driven fat-map synchronization.
+// Use rdfManager's subject-level change notifications to update availableProperties
+// and availableClasses incrementally without full rebuilds. The RDF store is treated
+// as the single point of truth for discovered classes/properties; loadedOntologies
+// remain available for metadata but do not determine presence/absence.
+(function setupRdfDrivenFatMap() {
+  try {
+    const storeApi = useOntologyStore;
+    const getState = storeApi.getState;
+    const setState = storeApi.setState;
+
+    const rdfMgr = getState().rdfManager;
+    if (!rdfMgr || typeof rdfMgr.onSubjectsChange !== "function") return;
+
+    // Safely resolve prefixed names via expandPrefix if available.
+    // Use a local 'expand' helper that normalizes the function and always returns a string.
+    const expand =
+      rdfMgr && typeof (rdfMgr as any).expandPrefix === "function"
+        ? (s: string) => {
+            try {
+              const out = (rdfMgr as any).expandPrefix(s);
+              return typeof out === "string" ? out : String(out || s);
+            } catch (_) {
+              return s;
+            }
+          }
+        : (s: string) => s;
+
+    const rdfsLabel: string = expand("rdfs:label");
+    const rdfType: string = expand("rdf:type");
+
+    const owlObject: string = expand("owl:ObjectProperty");
+    const owlAnnotation: string = expand("owl:AnnotationProperty");
+    const rdfProperty: string = expand("rdf:Property");
+    const owlClass: string = expand("owl:Class");
+    const rdfsClass: string = expand("rdfs:Class");
+
+    const propertyTypes = new Set([owlObject, owlAnnotation, rdfProperty]);
+    const classTypes = new Set([owlClass, rdfsClass]);
+
+    // Apply incremental changes for a set of subject IRIs
+    const applySubjectChanges = (subjects: string[]) => {
+      try {
+        const mgr = getState().rdfManager;
+        if (!mgr) return;
+        const store = mgr.getStore();
+        // Build maps from existing available lists so we can upsert/dedupe
+        const prevProps = (getState().availableProperties || []).reduce((m: any, p: any) => {
+          try { m[String(p.uri)] = { ...p, source: p.source || 'store' }; } catch(_) {}
+          return m;
+        }, {} as Record<string, any>);
+        const prevClasses = (getState().availableClasses || []).reduce((m: any, c: any) => {
+          try { m[String(c.uri)] = { ...c, source: c.source || 'store' }; } catch(_) {}
+          return m;
+        }, {} as Record<string, any>);
+
+        subjects.forEach((s) => {
+          try {
+            const subj = namedNode(String(s));
+            const typeQuads = store.getQuads(subj, namedNode(rdfType), null, null) || [];
+            const types = Array.from(new Set(typeQuads.map((q:any) => (q.object && (q.object as any).value) || '').filter(Boolean)));
+            const isProp = types.some(t => propertyTypes.has(t));
+            const isClass = types.some(t => classTypes.has(t));
+            if (isProp) {
+              const labelQ = store.getQuads(subj, namedNode(rdfsLabel), null, null) || [];
+              const label = labelQ.length > 0 ? String((labelQ[0].object as any).value) : String(s);
+              prevProps[String(s)] = { uri: String(s), label, domain: [], range: [], namespace: '', source: 'store' };
+            } else {
+              // If it previously existed as a store-derived property but no longer qualifies, remove it
+              if (prevProps[String(s)] && prevProps[String(s)].source === 'store') {
+                delete prevProps[String(s)];
+              }
+            }
+
+            if (isClass) {
+              const labelQ = store.getQuads(subj, namedNode(rdfsLabel), null, null) || [];
+              const label = labelQ.length > 0 ? String((labelQ[0].object as any).value) : String(s);
+              prevClasses[String(s)] = { uri: String(s), label, namespace: '', properties: [], restrictions: {}, source: 'store' };
+            } else {
+              if (prevClasses[String(s)] && prevClasses[String(s)].source === 'store') {
+                delete prevClasses[String(s)];
+              }
+            }
+          } catch (_) {
+            /* ignore per-subject errors */
+          }
+        });
+
+        // Convert back to arrays for state, preferring existing order where possible
+        const mergedProps = Object.values(prevProps) as ObjectProperty[];
+        const mergedClasses = Object.values(prevClasses) as OntologyClass[];
+
+        // Update state and bump version
+        setState({
+          availableProperties: mergedProps,
+          availableClasses: mergedClasses,
+          ontologiesVersion: (getState().ontologiesVersion || 0) + 1,
+        });
+        try {
+          console.debug("[VG] ontologies.fatmap.updated", {
+            ontologiesVersion: (getState().ontologiesVersion || 0),
+            added: mergedProps.length,
+            classes: mergedClasses.length,
+          });
+        } catch (_) { /* ignore logging failures */ }
+      } catch (e) {
+        try {
+          fallback("ontology.fatmap.update.failed", { error: String(e) });
+        } catch (_) { /* ignore */ }
+      }
+    };
+
+    // Subscribe to subject-level notifications from rdfManager (already debounced inside rdfManager)
+    try {
+      rdfMgr.onSubjectsChange((subjects: any) => {
+        try {
+          const arr: string[] = Array.isArray(subjects)
+            ? (subjects as any[]).map((x) => String(x))
+            : [];
+          applySubjectChanges(arr);
+        } catch (_) { /* ignore subscriber errors */ }
+      });
+    } catch (_) {
+      /* ignore subscription failures */
+    }
+
+    // Fallback: subscribe to global change notifications and perform a full rebuild of
+    // store-derived classes/properties. This ensures consumers see updates even if
+    // subject-level notifications are missed in some environments (e.g. test runner timing).
+    try {
+      rdfMgr.onChange(() => {
+        try {
+          const mgr = rdfMgr;
+          if (!mgr) return;
+          const store = mgr.getStore();
+          if (!store) return;
+          const allQuads = store.getQuads(null, null, null, null) || [];
+          const subjects = Array.from(
+            new Set(
+              allQuads
+                .map((q: any) => (q && q.subject && (q.subject as any).value) || "")
+                .filter(Boolean),
+            ),
+          );
+          applySubjectChanges(subjects);
+        } catch (_) {
+          /* ignore rebuild errors */
+        }
+      });
+    } catch (_) {
+      /* ignore subscription failures */
+    }
+
+  } catch (e) {
+    /* ignore global setup failures */
+  }
+})();
 
         try {
           const appCfg = useAppConfigStore.getState();
@@ -1198,59 +1360,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         source,
       );
 
-      options?.onProgress?.(90, "Checking for additional ontologies...");
-      const extractedOntologies = extractReferencedOntologies(rdfContent);
-
-      if (extractedOntologies.length > 0) {
-        try {
-          const appCfg = useAppConfigStore.getState();
-          const configured =
-            appCfg &&
-            appCfg.config &&
-            Array.isArray(appCfg.config.additionalOntologies)
-              ? appCfg.config.additionalOntologies
-              : [];
-
-          function normalizeUri(u: string): string {
-            try {
-              return new URL(String(u)).toString();
-            } catch {
-              return typeof u === "string" ? u.replace(/\/+$/, "") : u;
-            }
-          }
-
-          const configuredNorm = new Set(
-            configured.map((u: string) => normalizeUri(u)),
-          );
-          const toLoad = extractedOntologies.filter((u: string) =>
-            configuredNorm.has(normalizeUri(u)),
-          );
-
-          if (toLoad.length > 0) {
-            await get().loadAdditionalOntologies(toLoad, options?.onProgress);
-          } else {
-            options?.onProgress?.(
-              100,
-              "No configured additional ontologies referenced; skipping auto-load",
-            );
-          }
-        } catch (e) {
-          try {
-            fallback(
-              "console.warn",
-              {
-                args: [
-                  "Failed while computing configured additional ontologies to auto-load:",
-                  String(e),
-                ],
-              },
-              { level: "warn" },
-            );
-          } catch (_) {
-            /* ignore */
-          }
-        }
-      }
+      // Note: configured additional ontologies are auto-loaded on application startup.
+      // Do not attempt to auto-load additional ontologies here to avoid duplicate loads.
+      // Keep callers informed via progress callback.
+      options?.onProgress?.(
+        100,
+        "Configured ontology auto-load handled at application startup (skipping here)",
+      );
     } catch (error: any) {
       try {
         fallback(
@@ -1954,3 +2070,121 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
     }
   }
 }
+
+/*
+  Global fat-map backup subscription
+
+  The incremental fat-map synchronizer is normally installed when loading a
+  well-known ontology via loadOntology. In tests and some runtime paths that
+  update the RDF manager directly (rdfManager.updateNode / applyParsedNodes),
+  the in-loadOntology setup may not be executed. Install a lightweight global
+  subscription here that rebuilds the store-derived availableProperties and
+  availableClasses whenever the rdfManager signals changes (subject-level or
+  global). This is intentionally conservative and avoids depending on the
+  in-IIFE helper closure above.
+*/
+(function setupGlobalFatMap() {
+  try {
+    const mgr = rdfManager;
+    if (!mgr || typeof mgr.getStore !== "function") return;
+
+    const expand = typeof (mgr as any).expandPrefix === "function"
+      ? (s: string) => {
+          try {
+            const out = (mgr as any).expandPrefix(s);
+            return typeof out === "string" ? out : String(out || s);
+          } catch (_) {
+            return s;
+          }
+        }
+      : (s: string) => s;
+
+    const rdfsLabel = expand("rdfs:label");
+    const rdfType = expand("rdf:type");
+    const owlObject = expand("owl:ObjectProperty");
+    const owlAnnotation = expand("owl:AnnotationProperty");
+    const rdfProperty = expand("rdf:Property");
+    const owlClass = expand("owl:Class");
+    const rdfsClass = expand("rdfs:Class");
+
+    const propertyTypes = new Set([owlObject, owlAnnotation, rdfProperty]);
+    const classTypes = new Set([owlClass, rdfsClass]);
+
+    const rebuild = () => {
+      try {
+        const store = mgr.getStore();
+        if (!store || typeof store.getQuads !== "function") return;
+
+        const allQuads = store.getQuads(null, null, null, null) || [];
+        const subjects = Array.from(
+          new Set(
+            allQuads
+              .map((q: any) => (q && q.subject && (q.subject as any).value) || "")
+              .filter(Boolean),
+          ),
+        );
+
+        const propsMap: Record<string, any> = {};
+        const classesMap: Record<string, any> = {};
+
+        subjects.forEach((s) => {
+          try {
+            const subj = namedNode(String(s));
+            const typeQuads = store.getQuads(subj, namedNode(rdfType), null, null) || [];
+            const types = Array.from(new Set(typeQuads.map((q:any) => (q.object && (q.object as any).value) || '').filter(Boolean)));
+            const isProp = types.some((t: string) => propertyTypes.has(t));
+            const isClass = types.some((t: string) => classTypes.has(t));
+
+            if (isProp) {
+              const labelQ = store.getQuads(subj, namedNode(rdfsLabel), null, null) || [];
+              const label = labelQ.length > 0 ? String((labelQ[0].object as any).value) : String(s);
+              propsMap[String(s)] = { uri: String(s), label, domain: [], range: [], namespace: '', source: 'store' };
+            }
+
+            if (isClass) {
+              const labelQ = store.getQuads(subj, namedNode(rdfsLabel), null, null) || [];
+              const label = labelQ.length > 0 ? String((labelQ[0].object as any).value) : String(s);
+              classesMap[String(s)] = { uri: String(s), label, namespace: '', properties: [], restrictions: {}, source: 'store' };
+            }
+          } catch (_) { /* ignore per-subject errors */ }
+        });
+
+        const mergedProps = Object.values(propsMap) as ObjectProperty[];
+        const mergedClasses = Object.values(classesMap) as OntologyClass[];
+
+        useOntologyStore.setState((st) => ({
+          availableProperties: mergedProps,
+          availableClasses: mergedClasses,
+          ontologiesVersion: (st.ontologiesVersion || 0) + 1,
+        }));
+      } catch (_) {
+        /* ignore rebuild failures */
+      }
+    };
+
+    // Subscribe to subject-level notifications if available
+    try {
+      if (typeof mgr.onSubjectsChange === "function") {
+        mgr.onSubjectsChange((subjects: any) => {
+          try {
+            // subjects may be string[] or unknown[], just rebuild conservatively
+            rebuild();
+          } catch (_) { /* ignore */ }
+        });
+      }
+    } catch (_) { /* ignore */ }
+
+    // Also subscribe to global change notifications as a fallback
+    try {
+      if (typeof mgr.onChange === "function") {
+        mgr.onChange(() => {
+          try {
+            rebuild();
+          } catch (_) { /* ignore */ }
+        });
+      }
+    } catch (_) { /* ignore */ }
+  } catch (_) {
+    /* ignore top-level setup failures */
+  }
+})();

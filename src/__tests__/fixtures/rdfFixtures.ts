@@ -143,4 +143,23 @@ export const FIXTURES: Record<string, string> = {
     ex:newOrg a foaf:Organization ;
       foaf:name "New Company" .
   `,
+
+  "autocomplete_test_data": `
+    @prefix : <http://example.org/test#> .
+    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+    @prefix owl: <http://www.w3.org/2002/07/owl#> .
+    @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+    :MyClass a owl:Class ;
+      rdfs:label "MyClass Label" .
+
+    :hasPart a owl:ObjectProperty ;
+      rdfs:label "has part" .
+
+    :noteProp a rdfs:AnnotationProperty ;
+      rdfs:label "note property" .
+
+    :specialIRIProperty a owl:ObjectProperty ;
+      rdfs:label "OtherLabel" .
+  `,
 };

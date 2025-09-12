@@ -4,6 +4,7 @@ import { Popover, PopoverContent, PopoverTrigger } from './popover';
 import { Button } from './button';
 import { ChevronDown, Check } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { defaultURIShortener } from '../../utils/uriShortener';
 
 interface AutoCompleteOption {
   value: string;
@@ -18,6 +19,8 @@ interface AutoCompleteProps {
   placeholder?: string;
   emptyMessage?: string;
   className?: string;
+  // When true the dropdown will be opened automatically (useful when embedded in a dialog)
+  autoOpen?: boolean;
   disabled?: boolean;
 }
 
@@ -28,33 +31,64 @@ export const AutoComplete = ({
   placeholder = "Select option...",
   emptyMessage = "No options found.",
   className,
+  autoOpen = false,
   disabled = false
 }: AutoCompleteProps) => {
   const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
 
+  // If consumer requests the dropdown to auto-open (e.g. when dialog is open),
+  // respect that and keep the popover open while autoOpen is true.
+  useEffect(() => {
+    try {
+      setOpen(Boolean(autoOpen));
+    } catch (_) {
+      /* ignore */
+    }
+  }, [autoOpen]);
+
   const selectedOption = options.find(option => option.value === value);
 
-  const filteredOptions = options.filter(option =>
-    option.label.toLowerCase().includes(inputValue.toLowerCase()) ||
-    option.value.toLowerCase().includes(inputValue.toLowerCase()) ||
-    option.description?.toLowerCase().includes(inputValue.toLowerCase())
-  );
+  // Ranking: prefer matches by rdfs:label first, then by IRI substring, then description.
+  // If no input (empty), return full options list.
+  const filteredOptions = (() => {
+    const q = String(inputValue || "").trim().toLowerCase();
+    if (!q) return options;
+    const labelMatches = options.filter((option) =>
+      String(option.label || "").toLowerCase().includes(q),
+    );
+    const valueMatches = options.filter(
+      (option) =>
+        String(option.value || "").toLowerCase().includes(q) &&
+        !labelMatches.some((m) => m.value === option.value),
+    );
+    const descMatches = options.filter(
+      (option) =>
+        !labelMatches.some((m) => m.value === option.value) &&
+        !valueMatches.some((m) => m.value === option.value) &&
+        String(option.description || "").toLowerCase().includes(q),
+    );
+    return [...labelMatches, ...valueMatches, ...descMatches];
+  })();
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className={cn("justify-between", className)}
-          disabled={disabled}
-        >
-          {selectedOption ? selectedOption.label : placeholder}
-          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              role="combobox"
+              aria-expanded={open}
+              className={cn("justify-between", className)}
+              disabled={disabled}
+            >
+              {selectedOption
+                ? String(defaultURIShortener.shortenURI(String(selectedOption.value))).replace(/^(https?:\/\/)?(www\.)?/, '')
+                : value
+                  ? String(defaultURIShortener.shortenURI(String(value))).replace(/^(https?:\/\/)?(www\.)?/, '')
+                  : placeholder}
+              <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
       <PopoverContent className="w-full p-0" align="start">
         <Command>
           <CommandInput 
@@ -77,10 +111,10 @@ export const AutoComplete = ({
                   className="flex items-center justify-between"
                 >
                   <div className="flex flex-col">
-                    <span>{option.label}</span>
-                    {option.description && (
+                    <span>{String(defaultURIShortener.shortenURI(String(option.value))).replace(/^(https?:\/\/)?(www\.)?/, '')}</span>
+                    {(option.label || option.description) && (
                       <span className="text-xs text-muted-foreground">
-                        {option.description}
+                        {option.label ? option.label : option.description}
                       </span>
                     )}
                   </div>

@@ -13,6 +13,7 @@ import { useOntologyStore } from '../../stores/ontologyStore';
 import { computeBadgeText } from './core/nodeDisplay';
 import { buildPaletteForRdfManager } from './core/namespacePalette';
 import { getNamespaceColorFromPalette, normalizeNamespaceKey } from './helpers/namespaceHelpers';
+import { defaultURIShortener } from '../../utils/uriShortener';
 import { debug } from '../../utils/startupDebug';
 
 /**
@@ -51,7 +52,7 @@ const _loggedFingerprints = new Set<string>();
 function CustomOntologyNodeInner(props: NodeProps) {
   const { data, selected } = props;
   const nodeData = (data ?? {}) as CustomOntologyNodeData;
-  const individualNameInitial = String(nodeData.individualName ?? nodeData.uri ?? '');
+  const individualNameInitial = String(nodeData.individualName ?? nodeData.iri ?? nodeData.uri ?? '');
 
   const [isEditing, setIsEditing] = useState(false);
   const [individualName, setIndividualName] = useState(individualNameInitial);
@@ -175,20 +176,24 @@ function CustomOntologyNodeInner(props: NodeProps) {
     }
 
     return () => {
-      try { ro && ro.disconnect(); } catch (_) { /* ignore */ }
+      try { if (ro) ro.disconnect(); } catch (_) { /* ignore */ }
     };
     // Intentionally exclude data.onSizeMeasured from deps to avoid reattaching observer
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootRef]);
 
-  return (
-    <div ref={rootRef} className={cn('inline-flex overflow-hidden', selected && 'ring-2 ring-primary')}>
+  const canonicalIri = String(nodeData.iri ?? nodeData.uri ?? '');
+  const headerTitle = canonicalIri;
+  const headerDisplay = canonicalIri.startsWith('_:') ? canonicalIri : defaultURIShortener.shortenURI(canonicalIri).replace(/^(https?:\/\/)?(www\.)?/, '');
+
+    return (
+      <div ref={rootRef} className={cn('inline-flex overflow-hidden', selected ? 'ring-2 ring-primary' : '')}>
       {/* Main body (autosize). Left color bar is provided by the outer React Flow node wrapper via CSS variable (--node-leftbar-color). */}
       <div className="px-4 py-3 min-w-0 flex-1 w-auto" style={{ background: themeBg }}>
         {/* Header */}
         <div className="flex items-center gap-3 mb-2">
-          <div className="text-sm font-bold text-foreground truncate" title={String(nodeData.uri || nodeData.iri || '')}>
-            {String(nodeData.uri || nodeData.iri || '').replace(/^(https?:\/\/)?(www\.)?/, '')}
+          <div className="text-sm font-bold text-foreground truncate" title={headerTitle}>
+            {headerDisplay}
           </div>
 
           <div

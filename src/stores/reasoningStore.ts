@@ -3,6 +3,7 @@ import { DataFactory } from 'n3';
 const { namedNode, literal, quad } = DataFactory;
 import { WELL_KNOWN } from '../utils/wellKnownOntologies';
 import { fallback } from '../utils/startupDebug';
+import { defaultURIShortener } from '../utils/uriShortener';
 
 // Helper used by inline debug wrappers to safely stringify arguments that may be
 // strings or objects with a .message property.
@@ -83,36 +84,80 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
       const warnings: ReasoningWarning[] = [];
       const inferences: Inference[] = [];
 
-      // Check for domain/range violations
+      // Helper: robustly resolve edge/source/target keys and display labels
+      function resolveEdgeKey(edge: any) {
+        const fromKey = edge.from || edge.source || edge.sourceId || edge.sourceKey || edge.id || edge.key || '';
+        const toKey = edge.to || edge.target || edge.targetId || edge.targetKey || edge.id || edge.key || '';
+        const edgeId = edge.key || edge.id || `${fromKey}-${toKey}`;
+        return { fromKey, toKey, edgeId };
+      }
+
+      function findNodeByKey(nodesArr: any[], key: string) {
+        if (!key) return undefined;
+        return nodesArr.find((n: any) => {
+          try {
+            return (
+              n.key === key ||
+              n.id === key ||
+              n.uri === key ||
+              (n.data && (n.data.key === key || n.data.uri === key)) ||
+              (n.data && (n.data.iri === key))
+            );
+          } catch (_) {
+            return false;
+          }
+        });
+      }
+
+      function displayLabelForNode(n: any, fallbackKey: string) {
+        try {
+          if (!n && fallbackKey) return defaultURIShortener.shortenURI(String(fallbackKey));
+          const indiv = n && (n.individualName || (n.data && n.data.individualName));
+          const lab = n && (n.label || (n.data && n.data.label));
+          const uri = n && (n.uri || (n.data && n.data.uri) || (n.data && n.data.iri)) || fallbackKey;
+          if (typeof indiv === 'string' && indiv.trim()) return String(indiv);
+          if (typeof lab === 'string' && lab.trim()) return String(lab);
+          if (typeof uri === 'string' && uri.trim()) return defaultURIShortener.shortenURI(String(uri));
+          return String(fallbackKey || 'unknown');
+        } catch (_) {
+          return String(fallbackKey || 'unknown');
+        }
+      }
+
+      // Check for domain/range violations and missing labels
       edges.forEach(edge => {
-        const sourceNode = nodes.find(n => n.key === edge.from);
-        const targetNode = nodes.find(n => n.key === edge.to);
-        
+        const { fromKey, toKey, edgeId } = resolveEdgeKey(edge);
+        const sourceNode = findNodeByKey(nodes, fromKey);
+        const targetNode = findNodeByKey(nodes, toKey);
+
+        // Example domain/range check for foaf:memberOf kept from original logic
         if (edge.propertyType === 'foaf:memberOf') {
           if (sourceNode?.classType !== 'Person') {
             errors.push({
-              edgeId: edge.key || `${edge.from}-${edge.to}`,
+              edgeId,
               message: `Property foaf:memberOf requires domain of type Person, but found ${sourceNode?.classType || 'Unknown'}. Solution: Change source node to Person type or use different property.`,
               rule: 'domain-restriction',
               severity: 'error'
             });
           }
-          
+
           if (targetNode?.classType !== 'Organization') {
             errors.push({
-              edgeId: edge.key || `${edge.from}-${edge.to}`,
+              edgeId,
               message: `Property foaf:memberOf requires range of type Organization, but found ${targetNode?.classType || 'Unknown'}. Solution: Change target node to Organization type or use different property.`,
               rule: 'range-restriction',
               severity: 'error'
             });
           }
         }
-        
+
         // Check for missing property labels
-        if (!edge.label || edge.label.trim() === '') {
+        if (!edge.label || (typeof edge.label === 'string' && edge.label.trim() === '')) {
+          const srcLabel = displayLabelForNode(sourceNode, fromKey);
+          const tgtLabel = displayLabelForNode(targetNode, toKey);
           warnings.push({
-            edgeId: edge.key || `${edge.from}-${edge.to}`,
-            message: `Edge between ${sourceNode?.individualName || sourceNode?.key} and ${targetNode?.individualName || targetNode?.key} is missing a property label. Solution: Double-click the edge to add a label.`,
+            edgeId,
+            message: `Edge between ${srcLabel} and ${tgtLabel} is missing a property label. Solution: Double-click the edge to add a label.`,
             rule: 'missing-property-label'
           });
         }
@@ -120,22 +165,26 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
 
       // Check for missing properties
       nodes.forEach(node => {
+        // Helper to get a friendly display label for node (individualName, label, shortened URI, key)
+        const nodeDisplayLabel = displayLabelForNode(node, node && (node.key || node.id || node.uri));
+
         if (node.classType === 'Person') {
-          const hasName = node.literalProperties?.some(prop => prop.key.includes('name'));
+          const hasName = node.literalProperties?.some(prop => prop.key && String(prop.key).includes('name'));
           if (!hasName) {
             warnings.push({
-              nodeId: node.key,
-              message: `Person instance "${node.individualName || node.key}" should have a name property. Solution: Double-click the node to add foaf:name property.`,
+              nodeId: node.key || node.id,
+              message: `Person instance "${nodeDisplayLabel}" should have a name property. Solution: Double-click the node to add foaf:name property.`,
               rule: 'recommended-property'
             });
           }
         }
-        
+
         // Check for nodes without proper individual names
-        if (!node.individualName || node.individualName.trim() === '') {
+        const indivName = (node && (node.individualName || (node.data && node.data.individualName))) || '';
+        if (!indivName || (typeof indivName === 'string' && indivName.trim() === '')) {
           warnings.push({
-            nodeId: node.key,
-            message: `Node of type ${node.classType} is missing an individual name. Solution: Double-click the node to set an individual name.`,
+            nodeId: node.key || node.id,
+            message: `Node of type ${node.classType || 'Unknown'} (${nodeDisplayLabel}) is missing an individual name. Solution: Double-click the node to set an individual name.`,
             rule: 'missing-individual-name'
           });
         }

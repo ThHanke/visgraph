@@ -51,6 +51,7 @@ import {
 import { buildPaletteMap } from "./core/namespacePalette";
 import { getNamespaceColorFromPalette } from "./helpers/namespaceHelpers";
 import { toast } from "sonner";
+import { defaultURIShortener } from '../../utils/uriShortener';
 import { debug, warn, fallback } from "../../utils/startupDebug";
 import { CustomOntologyNode as OntologyNode } from "./CustomOntologyNode";
 import FloatingEdge from "./FloatingEdge";
@@ -146,6 +147,19 @@ export const ReactFlowCanvas: React.FC = () => {
   useEffect(() => {
     getRdfManagerRef.current = getRdfManager;
   }, [getRdfManager]);
+
+  // Helper: convert a canonical IRI (or store blank node label like "_:b0") into an RDF term
+  const termForIri = (iri: string) => {
+    try {
+      if (typeof iri === "string" && iri.startsWith("_:")) {
+        // N3.DataFactory.blankNode expects the label without the "_:" prefix
+        return DataFactory.blankNode(iri.slice(2));
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    return namedNode(String(iri));
+  };
 
   // Listen for structured parse-error events emitted by rdfManager so we can show a user-facing toast
   // at the exact moment the parser fails (this is necessary because loadKnowledgeGraph callers may
@@ -412,8 +426,10 @@ export const ReactFlowCanvas: React.FC = () => {
             type.includes("DatatypeProperty"),
         );
 
+        const canonicalNodeIri = src.iri ?? src.uri ?? id;
         const nodeData: NodeData = {
           key: id,
+          iri: canonicalNodeIri,
           uri: src.uri || src.iri || id,
           rdfTypes: rdfTypesArr,
           label:
@@ -506,13 +522,23 @@ export const ReactFlowCanvas: React.FC = () => {
           continue;
         }
 
+        // Normalize predicate info and compute a display label for the edge.
+        const propertyUriRaw = src.propertyUri || src.propertyType || "";
+        const foundProp =
+          (availableProperties || []).find((p: any) => String(p.uri) === String(propertyUriRaw)) ||
+          (loadedOntologies || []).flatMap((o: any) => o.properties || []).find((p: any) => String(p.uri) === String(propertyUriRaw));
+        const labelForEdge =
+          src.label ||
+          (foundProp && (foundProp.label || foundProp.name)) ||
+          (propertyUriRaw ? defaultURIShortener.shortenURI(String(propertyUriRaw)) : "");
+
         const linkData: LinkData = {
           key: id,
           from: String(from),
           to: String(to),
-          propertyUri: src.propertyUri || "",
+          propertyUri: propertyUriRaw,
           propertyType: src.propertyType || "",
-          label: src.label || "",
+          label: labelForEdge,
           namespace: src.namespace || "",
           rdfType: src.rdfType || "",
         };
@@ -848,76 +874,123 @@ export const ReactFlowCanvas: React.FC = () => {
   };
 
   useEffect(() => {
-    // Expose a developer-facing initializer so authors can opt-in to loading the configured
-    // ontologies / startup file at runtime without changing app code or env vars.
-    if (typeof window !== "undefined") {
-      (window as any).__VG_INIT_APP = async (opts?: any) => {
-        try {
-          await initializeApp(opts);
-        } catch (_) {
-          /* ignore */
-        }
-      };
-    }
-
-    // If a calling environment explicitly opted-in before mount, run initialization automatically.
-    // Prefer persisted autoload when both persisted and force-on-mount flags are present so we avoid
-    // accidentally initializing twice (force-on-mount was historically used for automation/testing).
-    const shouldAuto =
-      typeof window !== "undefined" &&
-      !!(window as any).__VG_ALLOW_PERSISTED_AUTOLOAD;
-    const forceOnMount =
-      typeof window !== "undefined" &&
-      !!(window as any).__VG_INIT_FORCE_ON_MOUNT;
-
-    if (shouldAuto) {
-      // Persisted auto-load requested: run initializer once.
-      void initializeApp({ force: true });
-    } else if (forceOnMount) {
-      // Developer automation: support a force-on-mount flag that enables RDF write tracing
-      // and then forces initialization. This is useful for CI/playwright or when the dev
-      // entrypoint (main.tsx) sets a flag to reproduce startup writes without manual console work.
+  // Expose a developer-facing initializer so authors can opt-in to loading the configured
+  // ontologies / startup file at runtime without changing app code or env vars.
+  if (typeof window !== "undefined") {
+    (window as any).__VG_INIT_APP = async (opts?: any) => {
       try {
-        // Ensure write-logging is enabled so any store.addQuad/removeQuad calls are traced.
-        if (
-          typeof (window as any).__VG_ENABLE_RDF_WRITE_LOGGING === "function"
-        ) {
-          try {
-            (window as any).__VG_ENABLE_RDF_WRITE_LOGGING();
-          } catch (_) {
-            /* ignore */
-          }
-        }
-      } catch (_) {
-        /* ignore */
-      }
-      void initializeApp({ force: true });
-      try {
-        delete (window as any).__VG_INIT_FORCE_ON_MOUNT;
-      } catch (_) {
-        /* ignore */
-      }
-    }
-
-    return () => {
-      try {
-        delete (window as any).__VG_INIT_APP;
+        await initializeApp(opts);
       } catch (_) {
         /* ignore */
       }
     };
-    // Empty deps: run once on mount and rely on stable store.getState() getters above.
-  }, []);
+  }
+
+  // If a calling environment explicitly opted-in before mount, run initialization automatically.
+  // Prefer persisted autoload when both persisted and force-on-mount flags are present so we avoid
+  // accidentally initializing twice (force-on-mount was historically used for automation/testing).
+  const shouldAuto =
+    typeof window !== "undefined" &&
+    !!(window as any).__VG_ALLOW_PERSISTED_AUTOLOAD;
+  const forceOnMount =
+    typeof window !== "undefined" &&
+    !!(window as any).__VG_INIT_FORCE_ON_MOUNT;
+
+  if (shouldAuto) {
+    // Persisted auto-load requested: run initializer once.
+    void initializeApp({ force: true });
+  } else if (forceOnMount) {
+    // Developer automation: support a force-on-mount flag that enables RDF write tracing
+    // and then forces initialization. This is useful for CI/playwright or when the dev
+    // entrypoint (main.tsx) sets a flag to reproduce startup writes without manual console work.
+    try {
+      // Ensure write-logging is enabled so any store.addQuad/removeQuad calls are traced.
+      if (
+        typeof (window as any).__VG_ENABLE_RDF_WRITE_LOGGING === "function"
+      ) {
+        try {
+          (window as any).__VG_ENABLE_RDF_WRITE_LOGGING();
+        } catch (_) {
+          /* ignore */
+        }
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    void initializeApp({ force: true });
+    try {
+      delete (window as any).__VG_INIT_FORCE_ON_MOUNT;
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  return () => {
+    try {
+      delete (window as any).__VG_INIT_APP;
+    } catch (_) {
+      /* ignore */
+    }
+  };
+  // Empty deps: run once on mount and rely on stable store.getState() getters above.
+}, []);
+
+
+// Autoload configured additional ontologies at application startup.
+// This proactively loads configured ontologies once on mount so we don't rely on loadKnowledgeGraph
+// to trigger autoload (which could run repeatedly and create duplication).
+useEffect(() => {
+  try {
+    const cfg = useAppConfigStore.getState().config;
+    const toLoad = Array.isArray(cfg?.additionalOntologies)
+      ? cfg.additionalOntologies.filter(Boolean)
+      : [];
+    if (!toLoad || toLoad.length === 0) return;
+
+    (async () => {
+      try {
+        console.debug("[VG] Autoloading configured ontologies:", toLoad);
+        await loadAdditionalOntologies(
+          toLoad,
+          (progress: number, message: string) => {
+            try {
+              console.debug("[VG] autoload progress", progress, message);
+            } catch (_) {
+              /* ignore */
+            }
+          },
+        );
+        try {
+          toast.success("Configured ontologies loaded");
+        } catch (_) {
+          /* ignore */
+        }
+      } catch (e) {
+        try {
+          console.warn("[VG] Failed to autoload configured ontologies", e);
+          toast.error("Failed to autoload configured ontologies");
+        } catch (_) {
+          /* ignore */
+        }
+      }
+    })();
+  } catch (_) {
+    /* ignore autoload setup errors */
+  }
+  // Empty deps: run once on mount
+}, []);
 
   // Trigger reasoning on nodes/edges change
   const triggerReasoning = useCallback(
-    async (ns: RFNode<NodeData>[], es: RFEdge<LinkData>[]) => {
-      if (!startReasoning || !settings.autoReasoning) return;
+    async (ns: RFNode<NodeData>[], es: RFEdge<LinkData>[], force = false) => {
+      // Allow manual/forced reasoning runs even when autoReasoning is off.
+      if (!startReasoning || (!settings.autoReasoning && !force)) return;
       if (DEBUG) {
         try {
           debug("reactflow.reasoning.invoke", {
             nodes: ns.length,
             edges: es.length,
+            forced: !!force,
           });
         } catch (_) {
           /* ignore */
@@ -938,6 +1011,7 @@ export const ReactFlowCanvas: React.FC = () => {
             debug("reactflow.reasoning.payload", {
               nodes: nodesPayload.length,
               edges: edgesPayload.length,
+              forced: !!force,
             });
           } catch (_) {
             /* ignore */
@@ -1166,9 +1240,81 @@ export const ReactFlowCanvas: React.FC = () => {
 
   const onEdgeDoubleClick = useCallback(
     (event: any, edge: any) => {
-      canvasActions.setSelectedLink(edge.data || edge, true);
+      try {
+        // Resolve canonical identifiers for source/target (support different edge shapes)
+        const srcId = edge.source || edge.from || (edge.data && edge.data.from) || '';
+        const tgtId = edge.target || edge.to || (edge.data && edge.data.to) || '';
+
+        // Find matching nodes in current nodes state by several possible keys
+        const findNode = (id: string) =>
+          nodes.find((n) => {
+            try {
+              return (
+                String(n.id) === String(id) ||
+                String((n as any).key) === String(id) ||
+                String((n as any).uri) === String(id) ||
+                (n.data && (String(n.data.uri) === String(id) || String(n.data.key) === String(id)))
+              );
+            } catch {
+              return false;
+            }
+          });
+
+        const sourceNode = findNode(srcId);
+        const targetNode = findNode(tgtId);
+
+        // Populate link refs so editors receive source/target context
+        linkSourceRef.current = sourceNode ? (sourceNode.data as any) : null;
+        linkTargetRef.current = targetNode ? (targetNode.data as any) : null;
+
+        // Compose a stable selectedLink payload (mirror onConnect shape)
+        // Compute a robust propertyUri + display label for the selected link payload
+        const edgeData = edge.data || {};
+        const propUriFromEdge =
+          edgeData.propertyUri || edgeData.propertyType || edge.propertyUri || edge.propertyType || "";
+        const foundPropEdge =
+          (availableProperties || []).find((p: any) => String(p.uri) === String(propUriFromEdge)) ||
+          (loadedOntologies || []).flatMap((o: any) => o.properties || []).find((p: any) => String(p.uri) === String(propUriFromEdge));
+        const propLabelFromEdge =
+          edgeData.label ||
+          (foundPropEdge && (foundPropEdge.label || foundPropEdge.name)) ||
+          (propUriFromEdge ? defaultURIShortener.shortenURI(String(propUriFromEdge)) : "");
+
+        const selectedLinkPayload = {
+          id: edge.id || edge.key || `${srcId}-${tgtId}`,
+          key: edge.id || edge.key || `${srcId}-${tgtId}`,
+          source: srcId,
+          target: tgtId,
+          data: {
+            propertyType: edgeData.propertyType || edge.propertyType || '',
+            propertyUri: propUriFromEdge,
+            label: propLabelFromEdge,
+          },
+        };
+
+        try {
+          // diagnostic log to help trace why the editor might not receive predicate info
+          // eslint-disable-next-line no-console
+          console.debug("[VG] ReactFlowCanvas.onEdgeDoubleClick selectedLinkPayload", {
+            selectedLinkPayload,
+            edge,
+            nodesCount: nodes.length,
+          });
+        } catch (_) {
+          /* ignore logging failures */
+        }
+
+        canvasActions.setSelectedLink(selectedLinkPayload as any, true);
+      } catch (e) {
+        // Fallback to previous behaviour
+        try {
+          canvasActions.setSelectedLink(edge.data || edge, true);
+        } catch (_) {
+          /* ignore */
+        }
+      }
     },
-    [canvasActions],
+    [canvasActions, nodes],
   );
 
   // Link creation
@@ -1228,8 +1374,19 @@ export const ReactFlowCanvas: React.FC = () => {
           : availableProperties && availableProperties.length > 0
             ? availableProperties[0].uri || (availableProperties[0] as any).key
             : null;
-      const predFallback =
-        predCandidate || "http://www.w3.org/2000/01/rdf-schema#seeAlso";
+      const predFallback = predCandidate || "http://www.w3.org/2000/01/rdf-schema#seeAlso";
+      const predUriToUse = predCandidate || predFallback;
+
+      // Compute a human-friendly label for the chosen predicate
+      const foundPred =
+        (availableProperties || []).find((p: any) => String(p.uri) === String(predUriToUse)) ||
+        (loadedOntologies || []).flatMap((o: any) => o.properties || []).find((p: any) => String(p.uri) === String(predUriToUse));
+      const predLabel =
+        (normalizedParams as any).data && (normalizedParams as any).data.label
+          ? (normalizedParams as any).data.label
+          : (foundPred && (foundPred.label || foundPred.name))
+            ? (foundPred.label || foundPred.name)
+            : defaultURIShortener.shortenURI(String(predUriToUse));
 
       // Create the new edge list, and attach a visible data payload (propertyUri/label) so editors display
       const newEdgeList = addEdge(
@@ -1239,12 +1396,8 @@ export const ReactFlowCanvas: React.FC = () => {
           markerEnd: { type: MarkerType.Arrow },
           data: {
             ...(normalizedParams as any).data,
-            propertyUri: predCandidate || predFallback,
-            label:
-              (normalizedParams as any).data &&
-              (normalizedParams as any).data.label
-                ? (normalizedParams as any).data.label
-                : "",
+            propertyUri: predUriToUse,
+            label: predLabel,
           },
         } as any,
         edges,
@@ -1255,28 +1408,30 @@ export const ReactFlowCanvas: React.FC = () => {
         const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
         if (mgr && typeof mgr.getStore === "function") {
           const store = mgr.getStore();
-          const subj =
-            (sourceNode.data && (sourceNode.data as NodeData).uri) ||
+          const subjIri =
+            (sourceNode.data && (sourceNode.data as NodeData).iri) ||
             sourceNode.id;
-          const obj =
-            (targetNode.data && (targetNode.data as NodeData).uri) ||
+          const objIri =
+            (targetNode.data && (targetNode.data as NodeData).iri) ||
             targetNode.id;
           const predFull =
             mgr.expandPrefix && typeof mgr.expandPrefix === "function"
               ? mgr.expandPrefix(predFallback)
               : predFallback;
 
+          const subjTerm = termForIri(String(subjIri));
+          const objTerm = termForIri(String(objIri));
+          const predTerm = namedNode(predFull);
+
           const existing =
             store.getQuads(
-              namedNode(subj),
-              namedNode(predFull),
-              namedNode(obj),
+              subjTerm,
+              predTerm,
+              objTerm,
               null,
             ) || [];
           if (existing.length === 0) {
-            store.addQuad(
-              quad(namedNode(subj), namedNode(predFull), namedNode(obj)),
-            );
+            store.addQuad(quad(subjTerm, predTerm, objTerm));
           }
         }
       } catch (e) {
@@ -1292,11 +1447,34 @@ export const ReactFlowCanvas: React.FC = () => {
       // Update application state with the augmented edge data so editors and labels are populated immediately
       setEdges(newEdgeList);
 
-      // choose source/target for editors
-      canvasActions.setSelectedLink(
-        { id: normalizedParams.id, ...(normalizedParams as any) },
-        true,
-      );
+      // choose source/target for editors and open the link editor with full data (include propertyUri/propertyType/label)
+      const selectedEdgeForEditor = {
+        id: normalizedParams.id,
+        key: normalizedParams.id,
+        source: normalizedParams.source,
+        target: normalizedParams.target,
+        data: {
+          propertyUri: predUriToUse,
+          propertyType: (normalizedParams as any).data?.propertyType || '',
+          label: predLabel,
+        },
+      };
+
+      try {
+        // diagnostic logging to capture the payload used to open the link editor
+        // eslint-disable-next-line no-console
+        console.debug("[VG] ReactFlowCanvas.onConnect selectedEdgeForEditor", {
+          selectedEdgeForEditor,
+          normalizedParams,
+          predUriToUse,
+          predLabel,
+        });
+      } catch (_) {
+        /* ignore logging failures */
+      }
+
+      canvasActions.setSelectedLink(selectedEdgeForEditor as any, true);
+
       linkSourceRef.current = sourceNode.data as NodeData;
       linkTargetRef.current = targetNode.data as NodeData;
     },
@@ -1349,9 +1527,11 @@ export const ReactFlowCanvas: React.FC = () => {
   );
 
   const handleSaveLinkProperty = useCallback(
-    (propertyType: string, label: string) => {
+    (propertyUri: string, label: string) => {
       const selected = canvasState.selectedLink;
       if (!selected) return;
+
+      // Update edge UI state: set both propertyUri and propertyType (legacy) and label
       setEdges((eds) =>
         eds.map((e) => {
           const keyMatch =
@@ -1359,7 +1539,8 @@ export const ReactFlowCanvas: React.FC = () => {
           if (keyMatch) {
             const newData: LinkData = {
               ...(e.data as LinkData),
-              propertyType,
+              propertyType: propertyUri, // keep legacy field populated
+              propertyUri,
               label,
             };
             return { ...e, data: newData };
@@ -1367,6 +1548,80 @@ export const ReactFlowCanvas: React.FC = () => {
           return e;
         }),
       );
+
+      // Persist predicate change to RDF store: replace old predicate quad with new one where possible
+      try {
+        const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
+        if (mgr && typeof mgr.getStore === "function" && selected) {
+          const store = mgr.getStore();
+
+          const subjIri =
+            (selected as any).source ||
+            (selected as any).data?.from ||
+            (selected as any).from ||
+            "";
+          const objIri =
+            (selected as any).target ||
+            (selected as any).data?.to ||
+            (selected as any).to ||
+            "";
+
+          if (subjIri && objIri) {
+            const subjTerm = termForIri(String(subjIri));
+            const objTerm = termForIri(String(objIri));
+
+            // Remove quads that used the previous predicate (if any)
+            const oldPredRaw =
+              (selected as any).data?.propertyUri ||
+              (selected as any).data?.propertyType ||
+              (selected as any).propertyUri ||
+              (selected as any).propertyType ||
+              "";
+            if (oldPredRaw) {
+              const oldPredFull =
+                mgr.expandPrefix && typeof mgr.expandPrefix === "function"
+                  ? mgr.expandPrefix(oldPredRaw)
+                  : oldPredRaw;
+              try {
+                const found =
+                  store.getQuads(
+                    subjTerm,
+                    namedNode(oldPredFull),
+                    objTerm,
+                    null,
+                  ) || [];
+                found.forEach((q: any) => {
+                  try {
+                    store.removeQuad(q);
+                  } catch (_) {
+                    /* ignore */
+                  }
+                });
+              } catch (_) {
+                /* ignore removal errors */
+              }
+            }
+
+            // Add the new predicate quad
+            try {
+              const newPredFull =
+                mgr.expandPrefix && typeof mgr.expandPrefix === "function"
+                  ? mgr.expandPrefix(propertyUri)
+                  : propertyUri;
+              const newPredTerm = namedNode(newPredFull);
+              const exists =
+                store.getQuads(subjTerm, newPredTerm, objTerm, null) || [];
+              if (exists.length === 0) {
+                store.addQuad(quad(subjTerm, newPredTerm, objTerm));
+              }
+            } catch (_) {
+              /* ignore add errors */
+            }
+          }
+        }
+      } catch (_) {
+        /* ignore persistence errors */
+      }
     },
     [canvasState.selectedLink, setEdges],
   );
@@ -2003,11 +2258,13 @@ export const ReactFlowCanvas: React.FC = () => {
 
           // remove matching quads
           try {
+            const oldSubjTerm = termForIri(String(oldSubj));
+            const oldObjTerm = termForIri(String(oldObj));
             const found =
               store.getQuads(
-                namedNode(oldSubj),
+                oldSubjTerm,
                 namedNode(oldPredFull),
-                namedNode(oldObj),
+                oldObjTerm,
                 null,
               ) || [];
             found.forEach((q: any) => {
@@ -2022,23 +2279,24 @@ export const ReactFlowCanvas: React.FC = () => {
           }
 
           // add new quad
-          const subj =
-            (sourceNode.data && (sourceNode.data as NodeData).uri) ||
+          const subjIri =
+            (sourceNode.data && (sourceNode.data as NodeData).iri) ||
             sourceNode.id;
-          const obj =
-            (targetNode.data && (targetNode.data as NodeData).uri) ||
+          const objIri =
+            (targetNode.data && (targetNode.data as NodeData).iri) ||
             targetNode.id;
+          const subjTerm = termForIri(String(subjIri));
+          const objTerm = termForIri(String(objIri));
+          const predTerm2 = namedNode(oldPredFull);
           const exists =
             store.getQuads(
-              namedNode(subj),
-              namedNode(oldPredFull),
-              namedNode(obj),
+              subjTerm,
+              predTerm2,
+              objTerm,
               null,
             ) || [];
           if (exists.length === 0) {
-            store.addQuad(
-              quad(namedNode(subj), namedNode(oldPredFull), namedNode(obj)),
-            );
+            store.addQuad(quad(subjTerm, predTerm2, objTerm));
           }
         }
       } catch (e) {
@@ -2136,6 +2394,9 @@ export const ReactFlowCanvas: React.FC = () => {
         onViewModeChange={handleViewModeChange}
         onLayoutChange={handleLayoutChange}
         currentLayout={currentLayout}
+        // pass layoutEnabled state and setter so the toolbar toggle is wired to canvas state
+        layoutEnabled={layoutEnabled}
+        onToggleLayoutEnabled={setLayoutEnabled}
         availableEntities={allEntities}
       />
 
@@ -2193,10 +2454,11 @@ export const ReactFlowCanvas: React.FC = () => {
         onRunReason={() => {
           try {
             // Manual reasoning trigger tied to the current React Flow node/edge state
-            triggerReasoning(nodes, edges);
+            // Force the run so it works even when autoReasoning is disabled.
+            console.debug("[VG] Manual reasoning requested (forced)");
+            void triggerReasoning(nodes, edges, true);
           } catch (e) {
             // UI-level safeguard: do not throw from click handler
-
             console.warn("manual reasoning trigger failed", e);
           }
         }}

@@ -64,6 +64,10 @@ interface CanvasToolbarProps {
   onViewModeChange: (mode: 'abox' | 'tbox') => void;
   onLayoutChange?: (layoutType: string, force?: boolean, options?: { nodeSpacing?: number }) => void;
   currentLayout?: string;
+  // layoutEnabled: whether programmatic/layout application is enabled (toggle supplied by parent)
+  layoutEnabled?: boolean;
+  // callback when the layoutEnabled toggle changes
+  onToggleLayoutEnabled?: (enabled: boolean) => void;
   // New: allow CanvasToolbar to display programmatic layout application (control removed)
   availableEntities: Array<{
     uri: string;
@@ -74,7 +78,7 @@ interface CanvasToolbarProps {
   }>;
 }
 
-export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onLoadFile, viewMode, onViewModeChange, onLayoutChange, currentLayout = 'horizontal', availableEntities }: CanvasToolbarProps) => {
+export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onLoadFile, viewMode, onViewModeChange, onLayoutChange, currentLayout = 'horizontal', layoutEnabled = false, onToggleLayoutEnabled, availableEntities }: CanvasToolbarProps) => {
   const [isAddNodeOpen, setIsAddNodeOpen] = useState(false);
   const [isLoadOntologyOpen, setIsLoadOntologyOpen] = useState(false);
   const [isLoadFileOpen, setIsLoadFileOpen] = useState(false);
@@ -162,7 +166,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
     try {
       // Remove protocol and any trailing slashes or hash characters for a stable comparison key.
       // This helps collapse variants like "http://.../", "https://.../", and "...#" to the same key.
-      return String(u).replace(/^https?:\/\//, '').replace(/[\/#]+$/u, '');
+      return String(u).replace(/^https?:\/\//, '').replace(new RegExp('[/#]+$'), '');
     } catch {
       return String(u || '');
     }
@@ -493,51 +497,61 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
             </div>
           </div>
 
-          <div className="mt-3 pt-2 border-t flex gap-2">
-            <button
-              type="button"
-              className="flex-1 px-2 py-1 rounded bg-primary text-white text-sm"
-              onClick={() => {
-                try {
-                  const suggested = layoutManager.suggestOptimalLayout();
-                  if (typeof (window as any).__VG_APPLY_LAYOUT === 'function') {
-                    (window as any).__VG_APPLY_LAYOUT(suggested);
-                  } else {
-                    onLayoutChange?.(suggested, true);
-                  }
-                } catch (_) { /* ignore */ }
-              }}
-            >
-              Auto
-            </button>
-            <button
-              type="button"
-              className="flex-1 px-2 py-1 rounded bg-muted text-sm"
-              onClick={() => {
-                try {
-                  if (typeof (window as any).__VG_APPLY_LAYOUT === 'function') {
-                    (window as any).__VG_APPLY_LAYOUT(currentLayout || 'horizontal');
-                  } else {
+          <div className="mt-3 pt-2 border-t flex gap-2 items-center">
+            <div className="flex-1">
+              <div className="text-sm font-medium mb-1">Auto layout</div>
+              <div className="text-xs text-muted-foreground">Enable programmatic layout application</div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className={`px-3 py-1 rounded text-sm ${currentLayout ? 'bg-muted' : 'bg-muted'}`}
+                onClick={() => {
+                  try {
                     onLayoutChange?.(currentLayout || 'horizontal', true);
+                  } catch (_) { /* ignore */ }
+                }}
+              >
+                Apply
+              </button>
+
+              <button
+                type="button"
+                className="px-3 py-1 rounded text-sm bg-muted"
+                onClick={() => {
+                  try {
+                    useAppConfigStore.getState().setLayoutSpacing(120);
+                    onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: 120 });
+                    toast.success('Reset spacing to 120px');
+                  } catch (_) { /* ignore */ }
+                }}
+              >
+                Reset
+              </button>
+
+              {/* Auto toggle */}
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    const enabled = !layoutEnabled;
+                    if (typeof onToggleLayoutEnabled === 'function') {
+                      try {
+                        onToggleLayoutEnabled(enabled);
+                      } catch (_) { /* ignore */ }
+                    }
+                    toast.success(enabled ? 'Layout toggled ON' : 'Layout toggled OFF');
+                  } catch (_) {
+                    /* ignore */
                   }
-                } catch (_) { /* ignore */ }
-              }}
-            >
-              Apply
-            </button>
-            <button
-              type="button"
-              className="flex-1 px-2 py-1 rounded bg-muted text-sm"
-              onClick={() => {
-                try {
-                  useAppConfigStore.getState().setLayoutSpacing(120);
-                  onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: 120 });
-                  toast.success('Reset spacing to 120px');
-                } catch (_) { /* ignore */ }
-              }}
-            >
-              Reset
-            </button>
+                }}
+                className={`px-3 py-1 rounded text-sm border ${ layoutEnabled ? 'bg-primary text-white' : 'bg-card' }`}
+                aria-pressed={layoutEnabled}
+              >
+                Auto
+              </button>
+            </div>
           </div>
         </PopoverContent>
       </Popover>

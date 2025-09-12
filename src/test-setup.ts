@@ -20,6 +20,32 @@ if (typeof globalThis.document === "undefined") {
   (globalThis as any).Node = dom.window.Node;
 }
 
+/*
+  Provide lightweight DOM polyfills used by UI libraries during tests.
+
+  - Ensure scrollIntoView exists on elements since some libraries call it during
+    mount/layout, and jsdom doesn't implement it.
+  - Provide a ResizeObserver minimal polyfill used by components (cmdk/popover/etc).
+*/
+
+// Minimal scrollIntoView polyfill for jsdom: no-op implementation so callers don't throw.
+if (typeof (globalThis as any).HTMLElement !== "undefined" && typeof (globalThis as any).HTMLElement.prototype.scrollIntoView !== "function") {
+  (globalThis as any).HTMLElement.prototype.scrollIntoView = function() {
+    // no-op for test environment
+  };
+}
+
+// Provide a lightweight ResizeObserver polyfill for jsdom tests where some UI
+// libraries (or cmdk) expect ResizeObserver to exist. The polyfill is intentionally
+// minimal (no-op) because tests only need components to mount without throwing.
+if (typeof (globalThis as any).ResizeObserver === "undefined") {
+  (globalThis as any).ResizeObserver = class {
+    observe() { /* no-op */ }
+    unobserve() { /* no-op */ }
+    disconnect() { /* no-op */ }
+  };
+}
+
 // Polyfills for jsdom missing browser APIs used by the app when rendering in tests.
 // These are intentionally lightweight stubs to allow components that check for
 // matchMedia or create/operate on <canvas> to mount without requiring heavyweight
