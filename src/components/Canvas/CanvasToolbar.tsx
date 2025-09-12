@@ -155,8 +155,50 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
     }
   };
 
-  // Use centralized well-known ontologies list
-  const commonOntologies = WELL_KNOWN_PREFIXES.map((p) => ({ url: p.url, name: p.name }));
+  // Build unified list of options by joining RDF manager namespaces with well-known ontologies (deduped by URL).
+  // Normalize URLs for matching so http/https and trailing slash differences don't create duplicates.
+  const normalizeNamespaceKey = (u?: string) => {
+    if (!u) return '';
+    try {
+      // Remove protocol and any trailing slashes or hash characters for a stable comparison key.
+      // This helps collapse variants like "http://.../", "https://.../", and "...#" to the same key.
+      return String(u).replace(/^https?:\/\//, '').replace(/[\/#]+$/u, '');
+    } catch {
+      return String(u || '');
+    }
+  };
+
+  const namespaceOptionsMap = new Map<string, { url: string; title: string; prefix?: string }>();
+  // Add namespaces discovered in RDF manager / loaded ontologies (prefix -> namespaceUri)
+  Object.entries(mergedNamespaces || {}).forEach(([prefix, namespace]) => {
+    if (namespace) {
+      const key = normalizeNamespaceKey(namespace);
+      const entry = namespaceOptionsMap.get(key);
+      if (!entry) {
+        namespaceOptionsMap.set(key, { url: String(namespace), title: String(prefix), prefix: String(prefix) });
+      } else {
+        // Prefer keeping an explicit prefix if the entry lacks one
+        entry.prefix = entry.prefix || String(prefix);
+      }
+    }
+  });
+
+  // Merge well-known ontologies, prefer well-known name and canonical URL for display when available.
+  for (const p of WELL_KNOWN_PREFIXES) {
+    const key = normalizeNamespaceKey(p.url);
+    const existing = namespaceOptionsMap.get(key);
+    if (existing) {
+      // Prefer the well-known display name and canonical well-known URL
+      existing.title = p.name || existing.title;
+      existing.prefix = existing.prefix || p.prefix;
+      // Prefer the well-known canonical URL so variants (http/https/trailing chars) unify visually
+      existing.url = p.url;
+    } else {
+      namespaceOptionsMap.set(key, { url: p.url, title: p.name, prefix: p.prefix });
+    }
+  }
+
+  const combinedOntologyOptions = Array.from(namespaceOptionsMap.values()).sort((a, b) => String(a.title).localeCompare(String(b.title)));
 
   return (
     <div className="absolute top-4 left-4 z-10 flex flex-wrap gap-2">
@@ -269,34 +311,18 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
               </div>
 
               <div className="grid gap-2">
-                {/* Show merged namespaces from RDF manager and loaded ontologies */}
-                {Object.entries(mergedNamespaces || {}).map(([prefix, namespace]) => (
+                {/* Combined list of namespaces and well-known ontologies (deduped by URL) */}
+                {combinedOntologyOptions.map((opt, index) => (
                   <Button
-                    key={`${prefix}-${namespace}`}
-                    variant={ontologyUrl === namespace ? "default" : "outline"}
+                    key={`${opt.url}-${index}`}
+                    variant={ontologyUrl === opt.url ? "default" : "outline"}
                     size="sm"
                     className="justify-start text-left h-auto py-2"
-                    onClick={() => setOntologyUrl(namespace)}
+                    onClick={() => setOntologyUrl(opt.url)}
                   >
                     <div>
-                      <div className="font-medium">{prefix}</div>
-                      <div className="text-xs text-muted-foreground">{namespace}</div>
-                    </div>
-                  </Button>
-                ))}
-
-                {/* Common ontologies */}
-                {commonOntologies.map((ont, index) => (
-                  <Button
-                    key={`${ont.url}-${index}`}
-                    variant={ontologyUrl === ont.url ? "default" : "outline"}
-                    size="sm"
-                    className="justify-start text-left h-auto py-2"
-                    onClick={() => setOntologyUrl(ont.url)}
-                  >
-                    <div>
-                      <div className="font-medium">{ont.name}</div>
-                      <div className="text-xs text-muted-foreground">{ont.url}</div>
+                      <div className="font-medium">{opt.title}</div>
+                      <div className="text-xs text-muted-foreground">{opt.url}</div>
                     </div>
                   </Button>
                 ))}
