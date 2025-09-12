@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { debug, fallback } from '../../utils/startupDebug';
-import { computeDisplayInfoMemo, clearDisplayInfoCache, computeBadgeText } from './core/nodeDisplay';
+import { computeDisplayInfo, computeBadgeText } from './core/nodeDisplay';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -31,6 +31,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { X, Plus, Info } from 'lucide-react';
 import { deriveInitialNodeType } from './helpers/nodePropertyHelpers';
+import { shortIriString } from '../../utils/shortIri';
 export { deriveInitialNodeType };
 
 /**
@@ -107,28 +108,30 @@ export const NodePropertyEditor = ({
 
   // Helper to prefer prefixed form (prefix:LocalName) using rdfManager namespaces, falling back to short label.
   const getDisplayLabelFromUri = (uri?: string) => {
-    if (!uri) return '';
-    const mgr = getRdfManager && getRdfManager();
+    if (!uri) return "";
     try {
-      const ns = mgr?.getNamespaces ? mgr.getNamespaces() : {};
-      for (const [prefix, nsUri] of Object.entries(ns || {})) {
-      if (nsUri && uri.startsWith(nsUri)) {
-          const local = uri.substring(nsUri.length);
-          return `${prefix}:${local}`;
+      const mgr = getRdfManager && getRdfManager();
+      const ns = mgr?.getNamespaces ? mgr.getNamespaces() : undefined;
+      // Use centralized shortIriString which prefers prefix:local when namespace available.
+      return shortIriString(String(uri), ns);
+    } catch (e) {
+      try {
+        if (typeof fallback === "function") {
+          fallback("console.warn", { args: ["shortIriString failed for", String(uri), String(e)] }, { level: "warn" });
         }
+      } catch (_) { /* ignore */ }
+      // best-effort fallback to local name
+      if (/^https?:\/\//i.test(String(uri))) {
+        const parts = String(uri).split(new RegExp("[#/]")).filter(Boolean);
+        return parts.length ? parts[parts.length - 1] : String(uri);
       }
-    } catch (e) { void e; }
-    // fallback short label
-    if (/^https?:\/\//i.test(uri)) {
-      const parts = uri.split(new RegExp('[#/]')).filter(Boolean);
-      return parts.length ? parts[parts.length - 1] : uri;
+      if (String(uri).includes(":")) {
+        const parts = String(uri).split(":");
+        return parts[parts.length - 1];
+      }
+      const parts = String(uri).split(new RegExp("[#/]")).filter(Boolean);
+      return parts.length ? parts[parts.length - 1] : String(uri);
     }
-    if (uri.includes(':')) {
-      const parts = uri.split(':');
-      return parts[parts.length - 1];
-    }
-    const parts = uri.split(new RegExp('[#/]')).filter(Boolean);
-    return parts.length ? parts[parts.length - 1] : uri;
   };
 
   // Initialize form data when dialog opens
@@ -304,13 +307,12 @@ export const NodePropertyEditor = ({
         normalizedNodeType = '';
       }
 
-      try {
-        // Compute display info (memoized). Do NOT clear the cache here on every render
-        // — clearing the cache too often results in losing namespace mappings and empty badges.
         try {
-          computeDisplayInfoMemo(d, getRdfManager && getRdfManager(), classEntities);
+          // Compute display info (non-memoized)
+          try {
+            computeDisplayInfo(d, getRdfManager && getRdfManager(), classEntities);
+          } catch (e) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(e) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
         } catch (e) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(e) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
-      } catch (e) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(e) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
 
       // If the normalizedNodeType is not part of the known classEntities, attempt to look it up
       // in the RDF store for rdfs:label / skos:prefLabel / rdfs:comment so the editor can present
@@ -475,7 +477,6 @@ export const NodePropertyEditor = ({
       type: classTypeLabel,
       displayType: nodeType, // Save the full URI as displayType
       rdfTypes: finalTypes, // Preserve multiple rdf types, with NamedIndividual preserved
-     iri: nodeIri,
       iri: nodeIri,
       // Persist canonical annotation shape using propertyUri (store-friendly)
       annotationProperties: properties

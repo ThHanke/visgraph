@@ -14,7 +14,7 @@
  */
 
 import { NodeTemplateConfig, LinkTemplateConfig } from '../../../types/canvas';
-import { computeDisplayInfoMemo } from './nodeDisplay';
+import { computeDisplayInfo } from './nodeDisplay';
 import { useOntologyStore } from '../../../stores/ontologyStore';
 
 export class TemplateManager {
@@ -67,7 +67,7 @@ export class TemplateManager {
       const state = useOntologyStore.getState();
       const mgr = typeof state.getRdfManager === 'function' ? state.getRdfManager() : state.rdfManager;
       const classes = state.availableClasses;
-      const info = computeDisplayInfoMemo(data, mgr, classes);
+      const info = computeDisplayInfo(data, mgr, classes);
       return info?.prefixed || info?.short || '';
     } catch {
       return '';

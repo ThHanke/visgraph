@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeDisplayInfoMemo, shortLocalName } from '../../components/Canvas/core/nodeDisplay';
+import { computeDisplayInfo, shortLocalName } from '../../components/Canvas/core/nodeDisplay';
 
 describe('Specimen  node mapping', () => {
   it('produces a goNode.type with iof-mat:Specimen for specimen-like input', () => {
@@ -17,7 +17,6 @@ describe('Specimen  node mapping', () => {
     };
 
     const src = {
-     iri: 'https://example.org/instances/specimen1',
       iri: 'https://example.org/instances/specimen1',
       rdfTypes: [
         'http://www.w3.org/2002/07/owl#NamedIndividual',
@@ -37,7 +36,7 @@ describe('Specimen  node mapping', () => {
     ];
 
     // emulate Canvas mapping logic to produce a goNode
-    const _dispInfo = computeDisplayInfoMemo(src, mockRdfManager, availableClasses);
+    const _dispInfo = computeDisplayInfo(src, mockRdfManager, availableClasses);
     const disp = _dispInfo || null;
     const displayLabel = (disp && (disp.prefixed || disp.short))
       || ( (Array.isArray(src.rdfTypes) ? src.rdfTypes.find((t:any) => t && !String(t).includes('NamedIndividual')) : undefined) ? shortLocalName(String((Array.isArray(src.rdfTypes) ? src.rdfTypes.find((t:any) => t && !String(t).includes('NamedIndividual')) : undefined))) : (src.classType || shortLocalName(src.iri || src.iri || '')) );

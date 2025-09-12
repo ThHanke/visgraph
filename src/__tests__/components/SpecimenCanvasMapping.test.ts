@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeDisplayInfoMemo, shortLocalName } from '../../components/Canvas/core/nodeDisplay';
+import { computeDisplayInfo, shortLocalName } from '../../components/Canvas/core/nodeDisplay';
 
 describe('Specimen canvas mapping', () => {
   it('maps a canonical parsed node -> displayLabel with iof-mat prefix', () => {
@@ -38,7 +38,7 @@ describe('Specimen canvas mapping', () => {
     ];
 
     // This mirrors the mapping logic used in Canvas
-    const _dispInfo = computeDisplayInfoMemo(src, mockRdfManager, availableClasses);
+    const _dispInfo = computeDisplayInfo(src, mockRdfManager, availableClasses);
     const displayInfo = _dispInfo || null;
 
     const computedTypeFull = (

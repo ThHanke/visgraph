@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeDisplayInfoMemo, shortLocalName } from '../../components/Canvas/core/nodeDisplay';
+import { computeDisplayInfo, shortLocalName } from '../../components/Canvas/core/nodeDisplay';
 
 describe('Specimen badge display', () => {
   it('computes a prefixed badge with iof-mat for Specimen node', () => {
@@ -23,7 +23,7 @@ describe('Specimen badge display', () => {
       iri: 'https://example.org/instances/specimen1'
     };
 
-    const info = computeDisplayInfoMemo(canonicalNode, mockRdfManager, []);
+    const info = computeDisplayInfo(canonicalNode, mockRdfManager, []);
 
     // The helper should produce a prefixed form using the iof-mat prefix
     expect(info).toBeDefined();

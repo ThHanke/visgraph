@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { deriveInitialNodeType } from '../components/Canvas/helpers/nodePropertyHelpers';
 import { TemplateManager } from '../components/Canvas/core/TemplateManager';
+import { useOntologyStore } from '../stores/ontologyStore';
 
 describe('deriveInitialNodeType', () => {
   const classEntities = [
@@ -40,6 +41,11 @@ describe('deriveInitialNodeType', () => {
 });
 
 describe('TemplateManager.computeDisplayType', () => {
+  // Ensure the ontology store exposes a rdfManager that can resolve the example.org namespace
+  useOntologyStore.setState({
+    getRdfManager: () => ({ getNamespaces: () => ({ ex: 'http://example.org/' }) }),
+    rdfManager: { getNamespaces: () => ({ ex: 'http://example.org/' }) } as any,
+  } as any);
   const tm = new TemplateManager();
 
   it('returns short local name for first non-NamedIndividual type', () => {
@@ -47,13 +53,13 @@ describe('TemplateManager.computeDisplayType', () => {
       rdfTypes: ['owl:NamedIndividual', 'http://example.org/Person']
     };
     const result = (tm as any).computeDisplayType(data);
-    expect(result).toBe('Person');
+    expect(result).toBe('ex:Person');
   });
 
   it('prefers type/displayType/classType before rdfTypes and filters NamedIndividual', () => {
     const data = { displayType: 'http://example.org/Display', rdfTypes: ['owl:NamedIndividual', 'http://example.org/Person'] };
     const result = (tm as any).computeDisplayType(data);
-    expect(result).toBe('Display');
+    expect(result).toBe('ex:Display');
   });
 
   it('returns empty string when only NamedIndividual is present', () => {
@@ -65,6 +71,6 @@ describe('TemplateManager.computeDisplayType', () => {
   it('handles arrays and mixed shapes', () => {
     const data = { types: ['http://example.org/TypeA', 'owl:NamedIndividual'] };
     const result = (tm as any).computeDisplayType(data);
-    expect(result).toBe('TypeA');
+    expect(result).toBe('ex:TypeA');
   });
 });

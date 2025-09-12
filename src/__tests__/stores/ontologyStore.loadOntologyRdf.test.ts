@@ -2,40 +2,37 @@ import { describe, it, expect } from "vitest";
 import { useOntologyStore } from "../../stores/ontologyStore";
 
 describe("OntologyStore RDF persistence when loading ontologies", () => {
-  it("adds triples to the RDF store when a well-known ontology URL is loaded", async () => {
+  it("adds triples to the RDF store when a well-known OWL ontology URL is loaded (triples increase by hundreds)", async () => {
     const store = useOntologyStore.getState();
 
     // Ensure a clean environment
     store.clearOntologies();
 
-    // Load a well-known mock ontology (the store implementation recognizes FOAF and loads TTL)
-    await store.loadOntology("http://xmlns.com/foaf/0.1/");
-
-    // Get the RDF manager and the underlying store
+    // Get RDF manager and underlying store (before loading)
     const mgr = store.getRdfManager();
     const rdfStore = mgr.getStore();
 
-    // Collect all quads and look for an rdfs:label triple with object "Person"
-    const all = rdfStore.getQuads(null, null, null, null) || [];
-    const rdfsLabelIri =
-      mgr && typeof mgr.expandPrefix === "function"
-        ? (() => {
-            try {
-              return mgr.expandPrefix("rdfs:label");
-            } catch {
-              return "http://www.w3.org/2000/01/rdf-schema#label";
-            }
-          })()
-        : "http://www.w3.org/2000/01/rdf-schema#label";
+    // Count triples before load
+    const before = (rdfStore.getQuads && Array.isArray(rdfStore.getQuads(null, null, null, null))
+      ? rdfStore.getQuads(null, null, null, null).length
+      : (rdfStore.getQuads ? rdfStore.getQuads(null, null, null, null).length : 0)) || 0;
 
-    // Instead of relying on synthetic triples, ensure the FOAF namespace was registered
-    // when the well-known FOAF URL was handled.
+    // Load a public OWL ontology from the web (canonical W3C OWL URL)
+    // This test intentionally fetches a remote OWL ontology to verify substantial triples are added.
+    await store.loadOntology("http://www.w3.org/2002/07/owl");
+
+    // Count triples after load
+    const after = (rdfStore.getQuads && Array.isArray(rdfStore.getQuads(null, null, null, null))
+      ? rdfStore.getQuads(null, null, null, null).length
+      : (rdfStore.getQuads ? rdfStore.getQuads(null, null, null, null).length : 0)) || 0;
+
+    // Expect a significant increase (at least ~100 triples)
+    const delta = after - before;
+    expect(delta).toBeGreaterThanOrEqual(100);
+
+    // Ensure the OWL namespace/prefix was registered
     const ns = mgr.getNamespaces ? mgr.getNamespaces() : {};
-    expect(ns.foaf).toBeDefined();
-
-    // Also ensure the loadedOntologies list contains an entry for FOAF
-    const state = useOntologyStore.getState();
-    expect(state.loadedOntologies.some((o) => o.name === "FOAF")).toBe(true);
+    expect(ns.owl).toBeDefined();
 
     // Clean up
     store.clearOntologies();

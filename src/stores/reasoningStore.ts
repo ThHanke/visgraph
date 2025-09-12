@@ -3,7 +3,7 @@ import { DataFactory } from 'n3';
 const { namedNode, literal, quad } = DataFactory;
 import { WELL_KNOWN } from '../utils/wellKnownOntologies';
 import { fallback } from '../utils/startupDebug';
-import { defaultURIShortener } from '../utils/uriShortener';
+import { shortLocalName } from '../utils/termDisplay';
 
 // Helper used by inline debug wrappers to safely stringify arguments that may be
 // strings or objects with a .message property.
@@ -111,13 +111,13 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
 
       function displayLabelForNode(n: any, fallbackKey: string) {
         try {
-          if (!n && fallbackKey) return defaultURIShortener.shortenURI(String(fallbackKey));
+          if (!n && fallbackKey) return shortLocalName(String(fallbackKey));
           const indiv = n && (n.individualName || (n.data && n.data.individualName));
           const lab = n && (n.label || (n.data && n.data.label));
           const uri = n && (n.iri || (n.data && n.data.iri) || (n.data && n.data.iri)) || fallbackKey;
           if (typeof indiv === 'string' && indiv.trim()) return String(indiv);
           if (typeof lab === 'string' && lab.trim()) return String(lab);
-          if (typeof uri === 'string' && uri.trim()) return defaultURIShortener.shortenURI(String(uri));
+          if (typeof uri === 'string' && uri.trim()) return shortLocalName(String(uri));
           return String(fallbackKey || 'unknown');
         } catch (_) {
           return String(fallbackKey || 'unknown');

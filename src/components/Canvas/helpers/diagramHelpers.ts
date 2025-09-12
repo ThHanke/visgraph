@@ -43,7 +43,7 @@ export function applyPaletteToModelForDiagram(
   mgr: any,
   availableClasses: any[],
   buildPaletteForRdfManager: (mgr?: any) => Record<string, string>,
-  computeDisplayInfoMemo: (canonical: any, mgr?: any, classes?: any[]) => any,
+  computeDisplayInfo: (canonical: any, mgr?: any, classes?: any[]) => any,
   computeBadgeText: (canonical: any, mgr?: any, classes?: any[]) => string | undefined
 ) {
   try {
@@ -59,7 +59,7 @@ export function applyPaletteToModelForDiagram(
           rdfTypes: Array.isArray(nd?.rdfTypes) ? nd.rdfTypes.map(String).filter(Boolean) : [],
          iri: nd?.iri || nd?.iri || nd?.key || nd?.id || ''
         };
-        const info = computeDisplayInfoMemo(canonical, mgr, availableClasses);
+        const info = computeDisplayInfo(canonical, mgr, availableClasses);
         const badge = computeBadgeText(canonical, mgr, availableClasses) || info?.prefixed || '';
         let ns = (info && typeof info.namespace === 'string' && info.namespace) ? info.namespace : (nd && nd.namespace) || '';
         if (!ns && badge && badge.includes(':')) {

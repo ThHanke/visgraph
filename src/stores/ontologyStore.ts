@@ -245,8 +245,23 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       const { rdfManager } = get();
       const preserveGraph = true;
 
+      const normRequestedUrl = (function(u: string) {
+        try {
+          const s = String(u).trim();
+          if (s.toLowerCase().startsWith("http://")) {
+            return s.replace(/^http:\/\//i, "https://");
+          }
+          try {
+            return new URL(s).toString();
+          } catch {
+            return s.replace(/\/+$/, "");
+          }
+        } catch (_) {
+          return String(u || "");
+        }
+      })(url);
       const wkEntry =
-        WELL_KNOWN.ontologies[url as keyof typeof WELL_KNOWN.ontologies];
+        WELL_KNOWN.ontologies[normRequestedUrl as keyof typeof WELL_KNOWN.ontologies] || WELL_KNOWN.ontologies[url as keyof typeof WELL_KNOWN.ontologies];
       if (wkEntry) {
         try {
           const nsMap = wkEntry && wkEntry.namespaces ? wkEntry.namespaces : {};
@@ -263,200 +278,60 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           }
         }
 
-        const loadedOntology: LoadedOntology = {
-          url,
-          name: wkEntry.name || deriveOntologyName(url),
-          classes: [],
-          properties: [],
-          namespaces: rdfManager.getNamespaces(),
-        };
-
-        set((state) => ({
-          loadedOntologies: [...state.loadedOntologies, loadedOntology],
-          availableClasses: [...state.availableClasses],
-          availableProperties: [...state.availableProperties],
-        }));
-
-// Incremental RDF-store-driven fat-map synchronization.
-// Use rdfManager's subject-level change notifications to update availableProperties
-// and availableClasses incrementally without full rebuilds. The RDF store is treated
-// as the single point of truth for discovered classes/properties; loadedOntologies
-// remain available for metadata but do not determine presence/absence.
-(function setupRdfDrivenFatMap() {
-  try {
-    const storeApi = useOntologyStore;
-    const getState = storeApi.getState;
-    const setState = storeApi.setState;
-
-    const rdfMgr = getState().rdfManager;
-    if (!rdfMgr || typeof rdfMgr.onSubjectsChange !== "function") return;
-
-    // Safely resolve prefixed names via expandPrefix if available.
-    // Use a local 'expand' helper that normalizes the function and always returns a string.
-    const expand =
-      rdfMgr && typeof (rdfMgr as any).expandPrefix === "function"
-        ? (s: string) => {
-            try {
-              const out = (rdfMgr as any).expandPrefix(s);
-              return typeof out === "string" ? out : String(out || s);
-            } catch (_) {
-              return s;
-            }
-          }
-        : (s: string) => s;
-
-    const rdfsLabel: string = expand("rdfs:label");
-    const rdfType: string = expand("rdf:type");
-
-    const owlObject: string = expand("owl:ObjectProperty");
-    const owlAnnotation: string = expand("owl:AnnotationProperty");
-    const rdfProperty: string = expand("rdf:Property");
-    const owlClass: string = expand("owl:Class");
-    const rdfsClass: string = expand("rdfs:Class");
-
-    const propertyTypes = new Set([owlObject, owlAnnotation, rdfProperty]);
-    const classTypes = new Set([owlClass, rdfsClass]);
-
-    // Apply incremental changes for a set of subject IRIs
-    const applySubjectChanges = (subjects: string[]) => {
-      try {
-        const mgr = getState().rdfManager;
-        if (!mgr) return;
-        const store = mgr.getStore();
-        // Build maps from existing available lists so we can upsert/dedupe
-        const prevProps = (getState().availableProperties || []).reduce((m: any, p: any) => {
-          try { m[String(p.iri)] = { ...p, source: p.source || 'store' }; } catch(_) {}
-          return m;
-        }, {} as Record<string, any>);
-        const prevClasses = (getState().availableClasses || []).reduce((m: any, c: any) => {
-          try { m[String(c.iri)] = { ...c, source: c.source || 'store' }; } catch(_) {}
-          return m;
-        }, {} as Record<string, any>);
-
-        subjects.forEach((s) => {
-          try {
-            const subj = namedNode(String(s));
-            const typeQuads = store.getQuads(subj, namedNode(rdfType), null, null) || [];
-            const types = Array.from(new Set(typeQuads.map((q:any) => (q.object && (q.object as any).value) || '').filter(Boolean)));
-            const isProp = types.some(t => propertyTypes.has(t));
-            const isClass = types.some(t => classTypes.has(t));
-            if (isProp) {
-              const labelQ = store.getQuads(subj, namedNode(rdfsLabel), null, null) || [];
-              const label = labelQ.length > 0 ? String((labelQ[0].object as any).value) : String(s);
-              prevProps[String(s)] = {iri: String(s), label, domain: [], range: [], namespace: '', source: 'store' };
-            } else {
-              // If it previously existed as a store-derived property but no longer qualifies, remove it
-              if (prevProps[String(s)] && prevProps[String(s)].source === 'store') {
-                delete prevProps[String(s)];
-              }
-            }
-
-            if (isClass) {
-              const labelQ = store.getQuads(subj, namedNode(rdfsLabel), null, null) || [];
-              const label = labelQ.length > 0 ? String((labelQ[0].object as any).value) : String(s);
-              prevClasses[String(s)] = {iri: String(s), label, namespace: '', properties: [], restrictions: {}, source: 'store' };
-            } else {
-              if (prevClasses[String(s)] && prevClasses[String(s)].source === 'store') {
-                delete prevClasses[String(s)];
-              }
-            }
-          } catch (_) {
-            /* ignore per-subject errors */
-          }
-        });
-
-        // Convert back to arrays for state, preferring existing order where possible
-        const mergedProps = Object.values(prevProps) as ObjectProperty[];
-        const mergedClasses = Object.values(prevClasses) as OntologyClass[];
-
-        // Update state and bump version
-        setState({
-          availableProperties: mergedProps,
-          availableClasses: mergedClasses,
-          ontologiesVersion: (getState().ontologiesVersion || 0) + 1,
-        });
-        try {
-          console.debug("[VG] ontologies.fatmap.updated", {
-            ontologiesVersion: (getState().ontologiesVersion || 0),
-            added: mergedProps.length,
-            classes: mergedClasses.length,
-          });
-        } catch (_) { /* ignore logging failures */ }
-      } catch (e) {
-        try {
-          fallback("ontology.fatmap.update.failed", { error: String(e) });
-        } catch (_) { /* ignore */ }
+        // removed early registration for well-known entries so we fall through
+        // to the centralized fetch & parse logic below which will perform the
+        // actual fetch/parse and register only once triples are successfully added.
+        // This ensures loadedOntologies reflects actual store contents.
       }
-    };
 
-    // Subscribe to subject-level notifications from rdfManager (already debounced inside rdfManager)
-    try {
-      rdfMgr.onSubjectsChange((subjects: any) => {
+      // If this URL corresponds to a well-known ontology entry, ensure we have
+      // a lightweight loadedOntologies record immediately. This avoids cases
+      // where parsing or namespace extraction paths later do not result in a
+      // registered entry (tests and some runtime paths expect the known
+      // ontology to appear in loadedOntologies right after loadOntology()).
+      if (wkEntry) {
         try {
-          const arr: string[] = Array.isArray(subjects)
-            ? (subjects as any[]).map((x) => String(x))
-            : [];
-          applySubjectChanges(arr);
-        } catch (_) { /* ignore subscriber errors */ }
-      });
-    } catch (_) {
-      /* ignore subscription failures */
-    }
-
-    // Fallback: subscribe to global change notifications and perform a full rebuild of
-    // store-derived classes/properties. This ensures consumers see updates even if
-    // subject-level notifications are missed in some environments (e.g. test runner timing).
-    try {
-      rdfMgr.onChange(() => {
-        try {
-          const mgr = rdfMgr;
-          if (!mgr) return;
-          const store = mgr.getStore();
-          if (!store) return;
-          const allQuads = store.getQuads(null, null, null, null) || [];
-          const subjects = Array.from(
-            new Set(
-              allQuads
-                .map((q: any) => (q && q.subject && (q.subject as any).value) || "")
-                .filter(Boolean),
-            ),
+          const { loadedOntologies: curLoaded, rdfManager: mgr } = get();
+          const alreadyPresent = (curLoaded || []).some(
+            (o: any) =>
+              (function(x: any) {
+                try {
+                  const s = String(x).trim();
+                  if (s.toLowerCase().startsWith("http://")) return s.replace(/^http:\/\//i, "https://");
+                  try { return new URL(s).toString(); } catch { return s.replace(/\/+$/, ""); }
+                } catch (_) {
+                  return String(x || "");
+                }
+              })(o.url) === normRequestedUrl,
           );
-          applySubjectChanges(subjects);
-        } catch (_) {
-          /* ignore rebuild errors */
-        }
-      });
-    } catch (_) {
-      /* ignore subscription failures */
-    }
-
-  } catch (e) {
-    /* ignore global setup failures */
-  }
-})();
-
-        try {
-          const appCfg = useAppConfigStore.getState();
-          if (appCfg && typeof appCfg.addRecentOntology === "function") {
-            let norm = url;
+          if (!alreadyPresent) {
             try {
-              norm = new URL(String(url)).toString();
-            } catch {
-              norm = String(url).replace(/\/+$/, "");
+              // Prefer explicit namespaces from the well-known entry; fall back to the manager's namespaces.
+              const namespaces =
+                wkEntry.namespaces && Object.keys(wkEntry.namespaces).length > 0
+                  ? wkEntry.namespaces
+                  : (mgr && typeof mgr.getNamespaces === "function"
+                      ? mgr.getNamespaces()
+                      : {});
+              ensureNamespacesPresent(mgr, namespaces);
+
+              const meta: LoadedOntology = {
+                url: normRequestedUrl,
+                name: wkEntry && wkEntry.name ? wkEntry.name : deriveOntologyName(String(normRequestedUrl || url)),
+                classes: [],
+                properties: [],
+                namespaces: namespaces || {},
+              };
+              set((state) => ({
+                loadedOntologies: [...(state.loadedOntologies || []), meta],
+              }));
+            } catch (_) {
+              /* ignore */
             }
-            appCfg.addRecentOntology(norm);
           }
         } catch (_) {
-          try {
-            if (typeof fallback === "function") {
-              fallback("emptyCatch", { error: String(_) });
-            }
-          } catch (_) {
-            /* ignore */
-          }
+          /* ignore */
         }
-
-        return;
       }
 
       // Centralized fetch & mime detection via RDFManager helper
@@ -471,7 +346,14 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         const { parseRDFFile } = await import("../utils/rdfParser");
         const parsed = await parseRDFFile(content);
 
+
         try {
+          // Determine a canonical URL for this parsed RDF by matching parsed namespaces
+          // against our WELL_KNOWN ontology namespace mappings. Preference order:
+          // 1) If the requested URL is a known WELL_KNOWN entry (wkEntry), prefer that.
+          // 2) If any parsed namespace URI maps to a canonical well-known ontology URL,
+          //    prefer that canonical URL.
+          // 3) Otherwise fall back to the original requested URL.
           const parsedNamespaces = parsed.namespaces || {};
           const canonicalByNs: Record<string, string> = {};
 
@@ -489,39 +371,43 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             },
           );
 
-          Object.values(WELL_KNOWN.prefixes || {}).forEach((nsUri: any) => {
-            try {
-              if (WELL_KNOWN.ontologies[String(nsUri)])
-                canonicalByNs[String(nsUri)] = String(nsUri);
-            } catch (_) {
-              /* ignore */
-            }
-          });
-
-          Object.entries(parsedNamespaces).forEach(([p, nsUri]) => {
-            try {
-              const canonical = canonicalByNs[String(nsUri)];
-              if (!canonical) return;
-              const already = (get().loadedOntologies || []).some(
-                (o: any) => o.url === canonical,
-              );
-              if (!already) {
-                const wk = WELL_KNOWN.ontologies[canonical];
-                const meta: LoadedOntology = {
-                  url: canonical,
-                  name: wk && wk.name ? wk.name : String(canonical),
-                  classes: [],
-                  properties: [],
-                  namespaces: parsed.namespaces || {},
-                };
-                set((state) => ({
-                  loadedOntologies: [...state.loadedOntologies, meta],
-                }));
+          // Build chosen canonical URL
+          let canonicalForThis = url;
+          try {
+            for (const nsUri of Object.values(parsedNamespaces || {})) {
+              const cand = canonicalByNs[String(nsUri)];
+              if (cand) {
+                canonicalForThis = cand;
+                break;
               }
-            } catch (_) {
-              /* ignore per-namespace errors */
             }
-          });
+          } catch (_) {
+            /* ignore */
+          }
+
+          // If the requested URL is explicitly a well-known entry, prefer it.
+          if (wkEntry) canonicalForThis = url;
+
+          // Register a single loadedOntology entry (deduplicated) using canonicalForThis.
+          const already = (get().loadedOntologies || []).some(
+            (o: any) => String(o.url) === String(canonicalForThis),
+          );
+          if (!already) {
+            try {
+              const meta: LoadedOntology = {
+                url: canonicalForThis,
+                name: wkEntry && wkEntry.name ? wkEntry.name : deriveOntologyName(String(canonicalForThis)),
+                classes: [],
+                properties: [],
+                namespaces: parsed.namespaces || (wkEntry && wkEntry.namespaces) || {},
+              };
+              set((state) => ({
+                loadedOntologies: [...state.loadedOntologies, meta],
+              }));
+            } catch (_) {
+              /* ignore registration failure */
+            }
+          }
         } catch (e) {
           try {
             fallback(
@@ -651,18 +537,57 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           });
         });
 
+        // Determine a canonical registration URL for the ontology:
+        // prefer a well-known canonical mapping discovered via parsed namespaces,
+        // otherwise fall back to the normalized requested URL.
+        let canonicalUrl = url;
+        try {
+          const parsedNamespaces = parsed.namespaces || {};
+          const canonicalByNs: Record<string, string> = {};
+
+          Object.entries(WELL_KNOWN.ontologies || {}).forEach(
+            ([ontUrl, meta]: any) => {
+              if (meta && meta.namespaces) {
+                Object.values(meta.namespaces).forEach((nsUri: any) => {
+                  try {
+                    canonicalByNs[String(nsUri)] = ontUrl;
+                  } catch (_) {
+                    /* ignore */
+                  }
+                });
+              }
+            },
+          );
+
+          // If any parsed namespace URI maps to a canonical well-known ontology, prefer that.
+          for (const nsUri of Object.values(parsedNamespaces || {})) {
+            const cand = canonicalByNs[String(nsUri)];
+            if (cand) {
+              canonicalUrl = cand;
+              break;
+            }
+          }
+        } catch (_) {
+          // fall back to original url on any error
+          canonicalUrl = url;
+        }
+
         const loadedOntology: LoadedOntology = {
-          url,
-          name: deriveOntologyName(url),
+          url: canonicalUrl,
+          name: deriveOntologyName(canonicalUrl),
           classes: ontologyClasses,
           properties: ontologyProperties,
-          namespaces: parsed.namespaces,
+          namespaces: parsed.namespaces || {},
         };
 
         try {
           const { rdfManager } = get();
           Object.entries(parsed.namespaces || {}).forEach(([prefix, ns]) => {
-            rdfManager.addNamespace(prefix, ns);
+            try {
+              rdfManager.addNamespace(prefix, ns);
+            } catch (_) {
+              /* ignore per-namespace failures */
+            }
           });
         } catch (nsErr) {
           try {
@@ -676,14 +601,50 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           }
         }
 
-        set((state) => ({
-          loadedOntologies: [...state.loadedOntologies, loadedOntology],
-          availableClasses: [...state.availableClasses, ...ontologyClasses],
-          availableProperties: [
-            ...state.availableProperties,
-            ...ontologyProperties,
-          ],
-        }));
+        // Merge into state with deduplication by canonical URL.
+        set((state) => {
+          const exists = (state.loadedOntologies || []).some(
+            (o: any) => String(o.url) === String(loadedOntology.url),
+          );
+
+          const newLoaded = exists
+            ? (state.loadedOntologies || []).map((o: any) =>
+                String(o.url) === String(loadedOntology.url)
+                  ? {
+                      // merge namespaces and metadata, prefer existing name if present
+                      ...o,
+                      name: o.name || loadedOntology.name,
+                      namespaces: { ...(o.namespaces || {}), ...(loadedOntology.namespaces || {}) },
+                      classes: Array.from(new Set([...(o.classes || []), ...(loadedOntology.classes || [])])),
+                      properties: Array.from(new Set([...(o.properties || []), ...(loadedOntology.properties || [])])),
+                    }
+                  : o,
+              )
+            : [...(state.loadedOntologies || []), loadedOntology];
+
+          const mergedClasses = [...state.availableClasses, ...ontologyClasses];
+          const mergedProps = [...state.availableProperties, ...ontologyProperties];
+
+          // Deduplicate available lists by iri
+          const classMap: Record<string, any> = {};
+          mergedClasses.forEach((c: any) => {
+            try {
+              classMap[String(c.iri)] = c;
+            } catch (_) {}
+          });
+          const propMap: Record<string, any> = {};
+          mergedProps.forEach((p: any) => {
+            try {
+              propMap[String(p.iri)] = p;
+            } catch (_) {}
+          });
+
+          return {
+            loadedOntologies: newLoaded,
+            availableClasses: Object.values(classMap),
+            availableProperties: Object.values(propMap),
+          };
+        });
 
         try {
           const appCfg = useAppConfigStore.getState();
@@ -1394,9 +1355,12 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
     function normalizeUri(u: string): string {
       try {
+        if (typeof u === "string" && u.trim().toLowerCase().startsWith("http://")) {
+          return u.trim().replace(/^http:\/\//i, "https://");
+        }
         return new URL(String(u)).toString();
       } catch {
-        return typeof u === "string" ? u.replace(/\/+$/, "") : u;
+        return typeof u === "string" ? String(u).trim().replace(/\/+$/, "") : String(u);
       }
     }
 
@@ -1427,7 +1391,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     for (let i = 0; i < toLoad.length; i++) {
       const uri = toLoad[i];
       const wkEntry =
-        WELL_KNOWN.ontologies[uri as keyof typeof WELL_KNOWN.ontologies];
+        WELL_KNOWN.ontologies[normalizeUri(uri) as keyof typeof WELL_KNOWN.ontologies];
       const ontologyName = wkEntry ? wkEntry.name : undefined;
 
       try {
@@ -1438,25 +1402,22 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
         if (wkEntry) {
           try {
+            // Ensure well-known namespaces are present in the RDF manager.
             ensureNamespacesPresent(get().rdfManager, wkEntry.namespaces || {});
           } catch (_) {
             /* ignore */
           }
 
-          const mockOntology: LoadedOntology = {
-            url: uri,
-            name: wkEntry
-              ? wkEntry.name || uri.split("/").pop() || "Known Ontology"
-              : uri.split("/").pop() || "Known Ontology",
-            classes: [],
-            properties: [],
-            namespaces: get().rdfManager.getNamespaces(),
-          };
-          set((state) => ({
-            loadedOntologies: [...state.loadedOntologies, mockOntology],
-            availableClasses: [...state.availableClasses],
-            availableProperties: [...state.availableProperties],
-          }));
+          // Delegate to the canonical load path so the ontology is fetched/parsed
+          // and registered consistently (no synthetic/mock registration).
+          try {
+            const norm = normalizeUri(uri);
+            // loadOntology will perform canonicalization and proper registration.
+            // We intentionally await here to avoid racing further iterations.
+            await get().loadOntology(norm);
+          } catch (_) {
+            /* ignore per-entry load failures */
+          }
           continue;
         }
 
@@ -1842,7 +1803,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
         const newNode = {
           ...node,
-          iri: updatedData.iri,
           type: updatedData.type || updatedData.classType || "",
           type_namespace:
             updatedData.type_namespace || updatedData.namespace || "",

@@ -38,9 +38,7 @@ import { NodePropertyEditor } from "./NodePropertyEditor";
 import { LinkPropertyEditor } from "./LinkPropertyEditor";
 import { Progress } from "../ui/progress";
 import {
-  computeDisplayInfoMemo,
-  computeBadgeText,
-  shortLocalName,
+  computeDisplayInfo,
 } from "./core/nodeDisplay";
 import { buildPaletteForRdfManager } from "./core/namespacePalette";
 import { resolveKeyForCg } from "./helpers/graphMappingHelpers";
@@ -51,7 +49,8 @@ import {
 import { buildPaletteMap } from "./core/namespacePalette";
 import { getNamespaceColorFromPalette } from "./helpers/namespaceHelpers";
 import { toast } from "sonner";
-import { defaultURIShortener } from '../../utils/uriShortener';
+import { computeTermDisplay, shortLocalName } from '../../utils/termDisplay';
+import { shortIriString } from '../../utils/shortIri';
 import { debug, warn, fallback } from "../../utils/startupDebug";
 import { CustomOntologyNode as OntologyNode } from "./CustomOntologyNode";
 import FloatingEdge from "./FloatingEdge";
@@ -84,7 +83,9 @@ const nodeGridPosition = (index: number) => {
   const row = Math.floor(index / colSize);
   return { x: col * spacingX, y: row * spacingY };
 };
-
+ 
+const _warnedColorNodeIds = new Set<string>();
+ 
 export const ReactFlowCanvas: React.FC = () => {
   const DEBUG = typeof window !== "undefined" && !!(window as any).__VG_DEBUG__;
   const { state: canvasState, actions: canvasActions } = useCanvasState();
@@ -98,6 +99,7 @@ export const ReactFlowCanvas: React.FC = () => {
     getRdfManager,
     currentGraph,
     availableProperties,
+    getEntityIndex,
     availableClasses: ac,
   } = useOntologyStore();
   const { startReasoning } = useReasoningStore();
@@ -311,38 +313,68 @@ export const ReactFlowCanvas: React.FC = () => {
       for (let i = 0; i < cg.nodes.length; i++) {
         const node = cg.nodes[i];
         const src = node.data || node;
-        // compute display info using existing helpers
-        const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
-        let badgeText = "";
-        let dispInfo: any = null;
+        // strip any persisted color from parsed nodes — warn once per node id so we can find producers
         try {
-          dispInfo = computeDisplayInfoMemo(src, mgr, availableClasses);
-          badgeText = computeBadgeText(src, mgr, availableClasses) || "";
-        } catch (e) {
-          /* ignore */
+          const hasColor = (src && (src as any).color) || (node && (node as any).data && (node as any).data.color);
+          if (hasColor) {
+            const nodeIdForWarn = canonicalId(
+              String((src && (src as any).iri) || (src && (src as any).id) || (src && (src as any).key) || `n-${i}`)
+            );
+            if (!_warnedColorNodeIds.has(nodeIdForWarn)) {
+              _warnedColorNodeIds.add(nodeIdForWarn);
+              try { warn('reactflow.strip_color', { id: nodeIdForWarn, color: (src as any).color }); } catch (_) { /* ignore */ }
+              try {
+                // Also emit a visible console warning so it's easy to spot in the browser console during dev.
+                // Keep the message concise and include id + stripped color for diagnostics.
+                // Wrap in try/catch to avoid any console-side failures affecting mapping.
+                console.warn('[VG] reactflow.strip_color', { id: nodeIdForWarn, color: (src as any).color });
+              } catch (_) { /* ignore console failures */ }
+            }
+            try { if ((src as any).color) delete (src as any).color; if (node && (node as any).data && (node as any).data.color) delete (node as any).data.color; } catch (_) { /* ignore */ }
+          }
+        } catch (_) { /* ignore */ }
+        // Determine canonical type and label deterministically from computeDisplayInfo + entity index
+        const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
+        let canonicalTypeIri = "";
+        try {
+          const info = computeDisplayInfo(src, mgr, availableClasses) || {};
+          canonicalTypeIri = String(info.canonicalTypeUri || "");
+        } catch (_) {
+          canonicalTypeIri = "";
         }
 
-        const typeNamespace =
-          (dispInfo && dispInfo.namespace) || src.namespace || "";
-        const paletteLocal = buildPaletteForRdfManager(mgr);
-        const color = (() => {
-          try {
-            const nsKey = typeNamespace || src.namespace || "";
-            const direct = paletteLocal[nsKey];
-            if (direct) return direct;
-            const stripped = String(nsKey || "").replace(/[:#].*$/, "");
-            if (stripped && paletteLocal[stripped])
-              return paletteLocal[stripped];
-            return getNamespaceColor(nsKey);
-          } catch {
-            return getNamespaceColor(typeNamespace || src.namespace);
-          }
-        })();
+        // Resolve canonical namespace from entity index using canonicalTypeIri (no heuristics/fallbacks)
+        let canonicalNs = "";
+        try {
+          const idx = (typeof getEntityIndex === "function") ? getEntityIndex() : (useOntologyStore as any).getState().getEntityIndex();
+          const mapByIri = idx && idx.mapByIri ? idx.mapByIri : new Map();
+          const mapByLocal = idx && idx.mapByLocalName ? idx.mapByLocalName : new Map();
 
-        const id = canonicalId(
-          src.iri || src.iri || src.id || src.key || `n-${i}`,
-        );
+          if (canonicalTypeIri) {
+            const byIri = mapByIri.get(canonicalTypeIri);
+            const byLocal = mapByLocal.get(canonicalTypeIri);
+            const byShort = mapByLocal.get(shortLocalName(canonicalTypeIri));
+            const ent = byIri || byLocal || byShort;
+            if (ent && ent.namespace) canonicalNs = String(ent.namespace);
+          }
+        } catch (_) {
+          canonicalNs = "";
+        }
+
+        const paletteLocal = buildPaletteForRdfManager(mgr);
+        const nsKeyRaw = String(canonicalNs || src.namespace || "");
+        const nsKeyForVar = nsKeyRaw.replace(/[:#].*$/, "") || "default";
+        const leftBarVarValue = (paletteLocal && paletteLocal[nsKeyForVar])
+          ? String(paletteLocal[nsKeyForVar])
+          : `hsl(var(--ns-${nsKeyForVar}))`;
+
+        const id = canonicalId(src.iri || src.iri || src.id || src.key || `n-${i}`);
         const pos = node.position || nodeGridPosition(i);
+
+        // Deterministic label derived from canonicalTypeIri + canonicalNs (no fallbacks)
+        const computedLabel = (canonicalTypeIri && String(canonicalTypeIri).trim())
+          ? (canonicalNs ? `${String(canonicalNs)}:${shortLocalName(String(canonicalTypeIri))}` : shortLocalName(String(canonicalTypeIri)))
+          : shortLocalName(src.iri || src.iri || "");
 
         let rdfTypesArr = Array.isArray(src.rdfTypes)
           ? src.rdfTypes.map(String).filter(Boolean)
@@ -426,37 +458,26 @@ export const ReactFlowCanvas: React.FC = () => {
             type.includes("DatatypeProperty"),
         );
 
-        const canonicalNodeIri = src.iri ?? src.iri ?? id;
+        const canonicalNodeIri = src.iri ?? id;
         const nodeData: NodeData = {
           key: id,
           iri: canonicalNodeIri,
-         iri: src.iri || src.iri || id,
           rdfTypes: rdfTypesArr,
-          label:
-            badgeText ||
-            (dispInfo && dispInfo.short) ||
-            shortLocalName(src.iri || src.iri || ""),
-          namespace: src.namespace,
+          label: computedLabel,
+          namespace: String(canonicalNs || src.namespace || ''),
           classType: src.classType,
           literalProperties: src.literalProperties || [],
           annotationProperties: src.annotationProperties || [],
           visible: true,
-          color,
           hasReasoningError: !!src.hasReasoningError,
           // mark whether this node is a TBox entity so we can render separate canvases/views
           isTBox: !!isTBoxEntity,
         };
 
         // compute a safe namespace key for CSS var fallback
-        const nsKeyForVar =
-          ((dispInfo && dispInfo.namespace) || src.namespace || "")
-            .toString()
-            .replace(/[:#].*$/, "") || "default";
-
-        // Prefer nodeData.color (mapping), otherwise expose a CSS var fallback referencing the theme's --ns-<key>
-        const leftBarVarValue = nodeData.color
-          ? String(nodeData.color)
-          : `hsl(var(--ns-${nsKeyForVar}))`;
+        // leftBarVarValue already computed above during namespace resolution
+        // (kept here for clarity)
+        // const leftBarVarValue computed earlier
 
         // Attach a size-measurement callback into node.data so rendered nodes can report
         // their DOM width/height back to the React Flow state. The CustomOntologyNode
@@ -530,7 +551,16 @@ export const ReactFlowCanvas: React.FC = () => {
         const labelForEdge =
           src.label ||
           (foundProp && (foundProp.label || foundProp.name)) ||
-          (propertyUriRaw ? defaultURIShortener.shortenURI(String(propertyUriRaw)) : "");
+          (propertyUriRaw ? (() => {
+            try {
+              const mgrLocal = getRdfManagerRef.current && getRdfManagerRef.current();
+              if (mgrLocal) {
+                const td = computeTermDisplay(String(propertyUriRaw), mgrLocal as any);
+                return td.prefixed || td.short || shortLocalName(String(propertyUriRaw));
+              }
+            } catch (_) { /* ignore */ }
+            return shortLocalName(String(propertyUriRaw));
+          })() : "");
 
         const linkData: LinkData = {
           key: id,
@@ -1231,7 +1261,6 @@ useEffect(() => {
         annotationProperties: d.annotationProperties || [],
         hasReasoningError: d.hasReasoningError || false,
         visible: true,
-        color: d.color || getNamespaceColor(d.namespace || ""),
       };
       canvasActions.setSelectedNode(minimal as any, true);
     },
@@ -1278,7 +1307,16 @@ useEffect(() => {
         const propLabelFromEdge =
           edgeData.label ||
           (foundPropEdge && (foundPropEdge.label || foundPropEdge.name)) ||
-          (propUriFromEdge ? defaultURIShortener.shortenURI(String(propUriFromEdge)) : "");
+          (propUriFromEdge ? (() => {
+            try {
+              const mgrLocal = getRdfManagerRef.current && getRdfManagerRef.current();
+              if (mgrLocal) {
+                const td = computeTermDisplay(String(propUriFromEdge), mgrLocal as any);
+                return td.prefixed || td.short || '';
+              }
+            } catch (_) { /* ignore */ }
+            return shortLocalName(String(propUriFromEdge));
+          })() : "");
 
         const selectedLinkPayload = {
           id: edge.id || edge.key || `${srcId}-${tgtId}`,
@@ -1384,9 +1422,18 @@ useEffect(() => {
       const predLabel =
         (normalizedParams as any).data && (normalizedParams as any).data.label
           ? (normalizedParams as any).data.label
-          : (foundPred && (foundPred.label || foundPred.name))
+            : (foundPred && (foundPred.label || foundPred.name))
             ? (foundPred.label || foundPred.name)
-            : defaultURIShortener.shortenURI(String(predUriToUse));
+            : (() => {
+                try {
+                  const mgrLocal = getRdfManagerRef.current && getRdfManagerRef.current();
+                  if (mgrLocal) {
+                    const td = computeTermDisplay(String(predUriToUse), mgrLocal as any);
+                    return td.prefixed || td.short || '';
+                  }
+                } catch (_) { /* ignore */ }
+                return shortLocalName(String(predUriToUse));
+              })();
 
       // Create the new edge list, and attach a visible data payload (propertyUri/label) so editors display
       const newEdgeList = addEdge(
@@ -2374,13 +2421,12 @@ useEffect(() => {
                 data: {
                   key: id,
                   iri: uri,
-                 iri: uri,
                   rdfTypes: [],
                   literalProperties: [],
                   annotationProperties: [],
                   hasReasoningError: false,
                   visible: true,
-                  color: getNamespaceColor(""),
+                  namespace: '',
                   label: uri,
                 } as NodeData,
               },

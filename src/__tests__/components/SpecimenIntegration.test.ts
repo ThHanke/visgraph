@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { TemplateManager } from '../../components/Canvas/core/TemplateManager';
 import { useOntologyStore } from '../../stores/ontologyStore';
-import { clearDisplayInfoCache } from '../../components/Canvas/core/nodeDisplay';
 
 describe('TemplateManager runtime integration (namespaces + cache)', () => {
   it('recomputes prefixed label after namespaces change and cache clear', () => {
@@ -89,8 +88,7 @@ describe('TemplateManager runtime integration (namespaces + cache)', () => {
       s.availableClasses = availableClassesB;
     }
 
-    // Clear the display info cache to force recomputation using new namespaces
-    clearDisplayInfoCache();
+    // No cache clearing required after removing memoization; recomputation should reflect updated store
 
     const computedB = (tm as any).computeDisplayType(nodeData);
     expect(computedB).toBe('iof:Specimen');

@@ -4,7 +4,8 @@ import { Popover, PopoverContent, PopoverTrigger } from './popover';
 import { Button } from './button';
 import { ChevronDown, Check } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { defaultURIShortener } from '../../utils/uriShortener';
+import { computeTermDisplay, shortLocalName } from '../../utils/termDisplay';
+import { useOntologyStore } from '../../stores/ontologyStore';
 
 interface AutoCompleteOption {
   value: string;
@@ -81,11 +82,25 @@ export const AutoComplete = ({
               className={cn("justify-between", className)}
               disabled={disabled}
             >
-              {selectedOption
-                ? String(defaultURIShortener.shortenURI(String(selectedOption.value))).replace(/^(https?:\/\/)?(www\.)?/, '')
-                : value
-                  ? String(defaultURIShortener.shortenURI(String(value))).replace(/^(https?:\/\/)?(www\.)?/, '')
-                  : placeholder}
+              {(() => {
+                const mgrState = useOntologyStore.getState();
+                const rdfMgr = typeof mgrState.getRdfManager === 'function' ? mgrState.getRdfManager() : mgrState.rdfManager;
+                const format = (iri?: string) => {
+                  if (!iri) return "";
+                  const s = String(iri);
+                  if (s.startsWith('_:')) return s;
+                  try {
+                    if (rdfMgr) {
+                      const td = computeTermDisplay(s, rdfMgr as any);
+                      return (td.prefixed || td.short || '').replace(/^(https?:\/\/)?(www\.)?/, '');
+                    }
+                  } catch (_) { /* ignore */ }
+                  return shortLocalName(s).replace(/^(https?:\/\/)?(www\.)?/, '');
+                };
+                if (selectedOption) return format(selectedOption.value);
+                if (value) return format(value);
+                return placeholder;
+              })()}
               <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
             </Button>
           </PopoverTrigger>
@@ -111,7 +126,17 @@ export const AutoComplete = ({
                   className="flex items-center justify-between"
                 >
                   <div className="flex flex-col">
-                    <span>{String(defaultURIShortener.shortenURI(String(option.value))).replace(/^(https?:\/\/)?(www\.)?/, '')}</span>
+                    <span>{(() => {
+                      const mgrState = useOntologyStore.getState();
+                      const rdfMgr = typeof mgrState.getRdfManager === 'function' ? mgrState.getRdfManager() : mgrState.rdfManager;
+                      try {
+                        if (rdfMgr) {
+                          const td = computeTermDisplay(String(option.value), rdfMgr as any);
+                          return (td.prefixed || td.short || '').replace(/^(https?:\/\/)?(www\.)?/, '');
+                        }
+                      } catch (_) { /* ignore */ }
+                      return shortLocalName(String(option.value)).replace(/^(https?:\/\/)?(www\.)?/, '');
+                    })()}</span>
                     {(option.label || option.description) && (
                       <span className="text-xs text-muted-foreground">
                         {option.label ? option.label : option.description}

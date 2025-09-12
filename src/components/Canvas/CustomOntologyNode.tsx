@@ -10,10 +10,10 @@ import {
   PopoverTrigger,
 } from '../ui/popover';
 import { useOntologyStore } from '../../stores/ontologyStore';
-import { computeBadgeText } from './core/nodeDisplay';
 import { buildPaletteForRdfManager } from './core/namespacePalette';
 import { getNamespaceColorFromPalette, normalizeNamespaceKey } from './helpers/namespaceHelpers';
-import { defaultURIShortener } from '../../utils/uriShortener';
+import { computeTermDisplay, shortLocalName } from '../../utils/termDisplay';
+import { shortIriString } from '../../utils/shortIri';
 import { debug } from '../../utils/startupDebug';
 
 /**
@@ -21,7 +21,6 @@ import { debug } from '../../utils/startupDebug';
  * Keep this conservative and expand fields only as needed.
  */
 interface CustomOntologyNodeData {
-  uri?: string;
   iri?: string;
   classType?: string;
   individualName?: string;
@@ -35,16 +34,6 @@ interface CustomOntologyNodeData {
   [key: string]: unknown;
 }
 
-/**
- * Small namespace -> color default map to provide sane visuals when palette isn't available.
- */
-const namespaceColors: Record<string, string> = {
-  foaf: '#4CAF50',
-  org: '#4CAF50',
-  rdfs: '#FF9800',
-  owl: '#2196F3',
-  default: '#4CAF50',
-};
 
 // module-scope fingerprint set to avoid noisy repeated logs
 const _loggedFingerprints = new Set<string>();
@@ -52,7 +41,7 @@ const _loggedFingerprints = new Set<string>();
 function CustomOntologyNodeInner(props: NodeProps) {
   const { data, selected } = props;
   const nodeData = (data ?? {}) as CustomOntologyNodeData;
-  const individualNameInitial = String(nodeData.individualName ?? nodeData.iri ?? nodeData.iri ?? '');
+  const individualNameInitial = String(nodeData.individualName ?? nodeData.iri ?? '');
 
   const [isEditing, setIsEditing] = useState(false);
   const [individualName, setIndividualName] = useState(individualNameInitial);
@@ -89,19 +78,22 @@ function CustomOntologyNodeInner(props: NodeProps) {
     } catch (_) { /* ignore */ }
   }, [nodeData.iri, nodeData.iri, nodeData.classType, rdfTypesKey, nodeData.displayType, nodeData.rdfTypes]);
 
-  // computed short type text (badge)
-  const displayedTypeShort = computeBadgeText(nodeData as unknown as Record<string, unknown>, rdfManager, availableClasses);
+  // Use canonical label persisted on the node (mapping is authoritative)
+  const displayedTypeShort = String(nodeData.label || nodeData.classType || shortLocalName(nodeData.iri || ''));
 
   const namespace = String(nodeData.namespace ?? '');
   const paletteLocal = (() => {
     try { return buildPaletteForRdfManager(rdfManager); } catch (_) { return undefined; }
   })();
-  const derivedColor = getNamespaceColorFromPalette(paletteLocal as Record<string, string> | undefined, namespace);
+  // Normalize namespace key before palette lookup so keys match paletteMap normalization
+  const namespaceKey = normalizeNamespaceKey(namespace);
+  const derivedColor = getNamespaceColorFromPalette(paletteLocal as Record<string, string> | undefined, namespaceKey);
 
-  // Badge/leftbar color: prefer explicit node color (set during mapping), otherwise palette-derived, otherwise fallback.
-  const badgeFallback = (nodeData && (nodeData as any).color)
-    ? String((nodeData as any).color)
-    : (derivedColor || (namespaceColors[namespace] || namespaceColors.default));
+  // Badge/leftbar color: compute from palette using the resolved namespace (no per-node stored color)
+  const badgeFallback =
+    derivedColor ||
+    getNamespaceColorFromPalette(paletteLocal as Record<string, string> | undefined, '') ||
+    '#cccccc';
 
   const themeBg = (typeof document !== 'undefined')
     ? (getComputedStyle(document.documentElement).getPropertyValue('--node-bg') || '').trim() || '#ffffff'
@@ -128,8 +120,24 @@ function CustomOntologyNodeInner(props: NodeProps) {
       const valueStr = String(rawValue);
       if (valueStr.trim() === '') return;
       // For display, shorten IRIs but leave blank-node labels (starting with "_:") unchanged.
-      const term =
-        propertyIri.startsWith('_:') ? propertyIri : defaultURIShortener.shortenURI(propertyIri);
+      const term = (() => {
+        if (propertyIri.startsWith('_:')) return propertyIri;
+        try {
+          if (rdfManager) {
+            const ns = (rdfManager as any).getNamespaces ? (rdfManager as any).getNamespaces() : undefined;
+            const td = computeTermDisplay(propertyIri, rdfManager as any);
+            return td.prefixed || td.short || shortIriString(propertyIri, ns);
+          }
+        } catch (_) {
+          // fall back to shortIriString when strict resolution fails
+        }
+        try {
+          const ns = (rdfManager as any).getNamespaces ? (rdfManager as any).getNamespaces() : undefined;
+          return shortIriString(propertyIri, ns);
+        } catch (_) {
+          return String(propertyIri);
+        }
+      })();
       annotations.push({ term, value: valueStr });
     });
   } else if (nodeData.properties && typeof nodeData.properties === 'object') {
@@ -137,7 +145,23 @@ function CustomOntologyNodeInner(props: NodeProps) {
       if (v === undefined || v === null) return;
       const valueStr = String(v);
       if (valueStr.trim() === '') return;
-      const term = String(k).startsWith('_:') ? String(k) : defaultURIShortener.shortenURI(String(k));
+      const term = (() => {
+        const keyStr = String(k);
+        if (keyStr.startsWith('_:')) return keyStr;
+        try {
+          if (rdfManager) {
+            const ns = (rdfManager as any).getNamespaces ? (rdfManager as any).getNamespaces() : undefined;
+            const td = computeTermDisplay(keyStr, rdfManager as any);
+            return td.prefixed || td.short || shortIriString(keyStr, ns);
+          }
+        } catch (_) { /* ignore */ }
+        try {
+          const ns = (rdfManager as any).getNamespaces ? (rdfManager as any).getNamespaces() : undefined;
+          return shortIriString(keyStr, ns);
+        } catch (_) {
+          return keyStr;
+        }
+      })();
       annotations.push({ term, value: valueStr });
     });
   }
@@ -202,9 +226,25 @@ function CustomOntologyNodeInner(props: NodeProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootRef]);
 
-  const canonicalIri = String(nodeData.iri ?? nodeData.iri ?? '');
+  const canonicalIri = String(nodeData.iri ?? '');
   const headerTitle = canonicalIri;
-  const headerDisplay = canonicalIri.startsWith('_:') ? canonicalIri : defaultURIShortener.shortenURI(canonicalIri).replace(/^(https?:\/\/)?(www\.)?/, '');
+  const headerDisplay = (() => {
+    if (!canonicalIri) return '';
+    if (canonicalIri.startsWith('_:')) return canonicalIri;
+    try {
+      if (rdfManager) {
+        const ns = (rdfManager as any).getNamespaces ? (rdfManager as any).getNamespaces() : undefined;
+        const td = computeTermDisplay(canonicalIri, rdfManager as any);
+        return (td.prefixed || td.short || shortIriString(canonicalIri, ns)).replace(/^(https?:\/\/)?(www\.)?/, '');
+      }
+    } catch (_) { /* ignore */ }
+    try {
+      const ns = (rdfManager as any)?.getNamespaces ? (rdfManager as any).getNamespaces() : undefined;
+      return shortIriString(canonicalIri, ns).replace(/^(https?:\/\/)?(www\.)?/, '');
+    } catch (_) {
+      return shortLocalName(canonicalIri).replace(/^(https?:\/\/)?(www\.)?/, '');
+    }
+  })();
 
     return (
       <div ref={rootRef} className={cn('inline-flex overflow-hidden', selected ? 'ring-2 ring-primary' : '')}>
@@ -217,7 +257,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
           </div>
 
           <div
-            className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold text-white"
+            className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold text-black"
             style={{ background: badgeFallback, border: `1px solid ${darken(badgeFallback, 0.12)}` }}
           >
             {displayedTypeShort || nodeData.classType || (namespace ? namespace : 'unknown')}

@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { useOntologyStore } from '../../stores/ontologyStore';
-import { defaultURIShortener } from '../../utils/uriShortener';
+import { computeTermDisplay, shortLocalName } from '../../utils/termDisplay';
 
 interface LinkPropertyEditorProps {
   open: boolean;
@@ -110,10 +110,25 @@ export const LinkPropertyEditor = ({
           <div className="bg-muted/50 p-3 rounded-lg">
             <div className="text-sm font-medium">
             {(() => {
-              const sIri = String(sourceNode?.iri ?? sourceNode?.iri ?? '');
-              const tIri = String(targetNode?.iri ?? targetNode?.iri ?? '');
-              const sDisplay = sIri.startsWith('_:') ? sIri : defaultURIShortener.shortenURI(sIri).replace(/^(https?:\/\/)?(www\.)?/, '');
-              const tDisplay = tIri.startsWith('_:') ? tIri : defaultURIShortener.shortenURI(tIri).replace(/^(https?:\/\/)?(www\.)?/, '');
+              const sIri = String(sourceNode?.iri ?? '');
+              const tIri = String(targetNode?.iri ?? '');
+              const mgrState = useOntologyStore.getState();
+              const rdfMgr = typeof mgrState.getRdfManager === 'function' ? mgrState.getRdfManager() : mgrState.rdfManager;
+              const format = (iri: string) => {
+                if (iri.startsWith('_:')) return iri;
+                try {
+                  if (rdfMgr) {
+                    const td = computeTermDisplay(iri, rdfMgr as any);
+                    // prefer prefixed form for display; fall back to short
+                    return (td.prefixed || td.short || '').replace(/^(https?:\/\/)?(www\.)?/, '');
+                  }
+                } catch (_) {
+                  // fall through to local name fallback
+                }
+                return shortLocalName(iri).replace(/^(https?:\/\/)?(www\.)?/, '');
+              };
+              const sDisplay = format(sIri);
+              const tDisplay = format(tIri);
               return `${sDisplay} → ${tDisplay}`;
             })()}
           </div>

@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { AutoComplete } from "../../components/ui/AutoComplete";
-import { defaultURIShortener } from "../../utils/uriShortener";
+import { shortLocalName } from "../../utils/termDisplay";
 
 /**
  * This test loads a small in-memory OWL/Turtle ontology into the ontology store,
@@ -107,8 +107,8 @@ describe("AutoComplete with ontology-loaded options", () => {
     fireEvent.change(input, { target: { value: "specialIRIProperty" } });
     await waitFor(() => {
       // The primary displayed text is the shortened IRI; ensure that the option with that IRI exists
-      const shortened = String(defaultURIShortener.shortenURI("http://example.org/test#specialIRIProperty")).replace(/^(https?:\/\/)?(www\.)?/, '');
-      // Primary line uses shortened IRI display; confirm it's rendered
+      const shortened = shortLocalName("http://example.org/test#specialIRIProperty");
+      // Primary line now uses the short local name for IRIs; confirm it's rendered
       expect(screen.getByText(shortened)).toBeTruthy();
       // Also ensure the secondary label is present
       expect(screen.getByText("OtherLabel")).toBeTruthy();
