@@ -1,5 +1,6 @@
 import canonicalId from "../../../lib/canonicalId";
-import { NamedNode } from "n3";
+import { DataFactory, NamedNode } from "n3";
+const { namedNode } = DataFactory;
 import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
 import type { RDFManager } from "../../../utils/rdfManager";
 import { computeTermDisplay, shortLocalName } from "../../../utils/termUtils";
@@ -50,10 +51,68 @@ export function buildNodeDataFromParsedNode(
   availableClasses?: Map<string, any> | Array<{iri:string}> | undefined
 ): NodeData {
   const src = canonicalNode || {};
-  // resolve rdf types array
-  const rdfTypesArr: string[] = Array.isArray(src.rdfTypes)
+  // resolve rdf types array (from parsed node if present)
+  let rdfTypesArr: string[] = Array.isArray(src.rdfTypes)
     ? src.rdfTypes.map(String).filter(Boolean)
     : [];
+
+  // If parsed node lacked rdfTypes and an RDF manager is available, try to
+  // query the RDF store for rdf:type triples for this subject. This restores
+  // the previous behavior where the canvas consulted the live store as a fallback.
+  try {
+    if (
+      (!rdfTypesArr || rdfTypesArr.length === 0) &&
+      rdfManager &&
+      typeof rdfManager.getStore === "function"
+    ) {
+      try {
+        const store = rdfManager.getStore();
+        const subjectUri = String(src.iri || src.id || src.key || "");
+        if (subjectUri && store && typeof store.getQuads === "function") {
+          const rdfTypePredicate =
+            typeof (rdfManager as any).expandPrefix === "function"
+              ? String((rdfManager as any).expandPrefix("rdf:type"))
+              : "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+
+          let typeQuads =
+            store.getQuads(namedNode(subjectUri), namedNode(rdfTypePredicate), null, null) ||
+            [];
+
+          // Fallback: try http/https variants as in previous inline logic
+          if ((!typeQuads || typeQuads.length === 0) && subjectUri) {
+            const altSubjects = [`http:${subjectUri}`, `https:${subjectUri}`];
+            for (const s of altSubjects) {
+              try {
+                const found =
+                  store.getQuads(namedNode(s), namedNode(rdfTypePredicate), null, null) ||
+                  [];
+                if (found && found.length > 0) {
+                  typeQuads = found;
+                  break;
+                }
+              } catch (_) {
+                /* ignore per-variant failures */
+              }
+            }
+          }
+
+          if (typeQuads && typeQuads.length > 0) {
+            rdfTypesArr = Array.from(
+              new Set(
+                typeQuads
+                  .map((q: any) => (q.object && q.object.value) || "")
+                  .filter(Boolean),
+              ),
+            );
+          }
+        }
+      } catch (_) {
+        /* ignore store lookup failures */
+      }
+    }
+  } catch (_) {
+    /* ignore outer failures */
+  }
 
   // Compute a friendly label
   let computedLabel = "";
@@ -72,7 +131,8 @@ export function buildNodeDataFromParsedNode(
   }
 
   // Determine if this is a TBox entity by inspecting types
-  const isTBoxEntity = rdfTypesArr.some((type: string) =>
+  // Keep TBox detection conservative: only types that look like class/property constructs.
+  const isTBoxEntity = Array.isArray(rdfTypesArr) && rdfTypesArr.some((type: string) =>
     String(type).includes("Class") ||
     String(type).includes("ObjectProperty") ||
     String(type).includes("AnnotationProperty") ||
@@ -90,6 +150,7 @@ export function buildNodeDataFromParsedNode(
     classType: src.classType,
     literalProperties: src.literalProperties || [],
     annotationProperties: src.annotationProperties || [],
+    // default visible true; mapping layer may override based on data-graph membership
     visible: true,
     hasReasoningError: !!src.hasReasoningError,
     isTBox: !!isTBoxEntity,
@@ -229,8 +290,88 @@ export function mapGraphToDiagram(
   options?: MapOptions
 ): { nodes: RFNode<NodeData>[]; edges: RFEdge<LinkData>[] } {
   const cg = graph || { nodes: [], edges: [] };
+  const mgr = options && typeof options.getRdfManager === "function" ? options.getRdfManager() : undefined;
+
+  // Build a quick map of node key -> iri from the canonical graph so we can
+  // resolve edge endpoints to IRIs for data-graph visibility computation.
+  const nodeKeyToIri = new Map<string, string>();
+  try {
+    (cg.nodes || []).forEach((n: any) => {
+      const src = n && n.data ? n.data : n;
+      const iri = (src && (src.iri || (src.data && src.data.iri))) || src.iri || src.id || "";
+      const key = n.id || String(iri || "");
+      if (key) nodeKeyToIri.set(String(key), String(iri || ""));
+    });
+  } catch (_) {
+    /* ignore index build failures */
+  }
+
+  // Compute the set of subject IRIs present in the data graph (urn:vg:data)
+  const dataSubjectsSet = new Set<string>();
+  try {
+    if (mgr && typeof mgr.getStore === "function") {
+      const store = mgr.getStore();
+      if (store && typeof store.getQuads === "function") {
+        try {
+          const g = namedNode("urn:vg:data");
+          const dq = store.getQuads(null, null, null, g) || [];
+          dq.forEach((q: any) => {
+            try {
+              if (q && q.subject && q.subject.value) dataSubjectsSet.add(String(q.subject.value));
+            } catch (_) { /* ignore */ }
+          });
+        } catch (_) { /* ignore store read errors */ }
+      }
+    }
+  } catch (_) {
+    /* ignore rdfManager errors */
+  }
+
+  // Compute visible IRIs: subjects in data graph plus targets of edges whose source is a data-subject.
+  const visibleIris = new Set<string>();
+  try {
+    // Add direct subjects
+    for (const s of Array.from(dataSubjectsSet)) visibleIris.add(s);
+
+    // For each edge, if its source resolves to an IRI in dataSubjectsSet, add the target IRI.
+    (cg.edges || []).forEach((e: any) => {
+      try {
+        const edgeSrcKey = e.source || (e.data && e.data.source) || "";
+        const edgeTgtKey = e.target || (e.data && e.data.target) || "";
+        const srcIri = nodeKeyToIri.get(String(edgeSrcKey)) || "";
+        const tgtIri = nodeKeyToIri.get(String(edgeTgtKey)) || "";
+        if (srcIri && dataSubjectsSet.has(String(srcIri))) {
+          if (tgtIri) visibleIris.add(String(tgtIri));
+        }
+      } catch (_) { /* ignore per-edge */ }
+    });
+  } catch (_) {
+    /* ignore visibility computation errors */
+  }
+
+  // Map nodes/edges using existing helpers (these will themselves consult RDF manager for missing rdfTypes)
   const mappedNodes = mapCanonicalToRFNodes(cg.nodes || [], options);
   const nodeIds = new Set(mappedNodes.map((n) => n.id));
   const mappedEdges = mapCanonicalToRFEdges(cg.edges || [], nodeIds);
+
+  // Apply computed visibility to node data where possible (prefer explicit visible flag if set)
+  try {
+    mappedNodes.forEach((n) => {
+      try {
+        const iri = n.data && (n.data as any).iri ? String((n.data as any).iri) : "";
+        if (iri) {
+          n.data = { ...(n.data as any), visible: visibleIris.has(iri) };
+        } else {
+          // if no IRI, preserve existing visibility
+          n.data = { ...(n.data as any) };
+        }
+      } catch (_) {
+        /* ignore per-node */
+      }
+    });
+  } catch (_) {
+    /* ignore */
+  }
+
   return { nodes: mappedNodes, edges: mappedEdges };
 }
