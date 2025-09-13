@@ -1488,7 +1488,25 @@ export class RDFManager {
             const expanded = this.expandPrefix
               ? this.expandPrefix(typeStr)
               : typeStr;
-            if (!existingTypeSet.has(expanded)) {
+
+            // If expansion did not produce a full IRI (e.g., "mat:MeasurementDevice")
+            // attempt a best-effort de-duplication by checking existing types for the
+            // same local name (after last '/' or '#'). This avoids adding duplicate
+            // type quads when parser already added the fully-expanded IRI.
+            const localName = (typeStr && typeStr.includes(":"))
+              ? typeStr.split(":").slice(1).join(":")
+              : typeStr;
+            const hasMatchingLocal = Array.from(existingTypeSet).some((et) => {
+              try {
+                const parts = String(et).split(/[#/]/).filter(Boolean);
+                const etLocal = parts.length ? parts[parts.length - 1] : String(et);
+                return etLocal === localName;
+              } catch (_) {
+                return false;
+              }
+            });
+
+            if (!existingTypeSet.has(expanded) && !hasMatchingLocal) {
               try {
                 const s = namedNode(entityUri);
                 const p = namedNode(rdfTypePredicate);
@@ -2203,68 +2221,6 @@ export class RDFManager {
   }
 
   /**
-   * Find a prefix for a full IRI using the manager's namespace map.
-   * Returns the prefix string (e.g. "iof") if found, otherwise undefined.
-   */
-  public findPrefixForUri(fullUri: string): string | undefined {
-    if (!fullUri) return undefined;
-    try {
-      for (const [p, u] of Object.entries(this.namespaces || {})) {
-        if (!u) continue;
-        if (fullUri.startsWith(u)) return p;
-      }
-    } catch (_) {
-      /* ignore */
-    }
-    return undefined;
-  }
-
-  /**
-   * Convert a full IRI to a prefixed form using registered namespaces or well-known fallbacks.
-   * Throws if no matching prefix is found.
-   */
-  public toPrefixed(iri: string | NamedNode): string {
-    const iriStr = typeof iri === "string" ? iri : (iri as NamedNode).value;
-    if (!iriStr) throw new Error("Empty IRI passed to toPrefixed");
-    if (iriStr.startsWith("_:")) return iriStr;
-
-    // Use manager namespaces first
-    const prefix = this.findPrefixForUri(iriStr);
-    if (prefix) {
-      const ns = this.namespaces[prefix];
-      if (ns) return `${prefix}:${iriStr.substring(ns.length)}`;
-    }
-
-    // Fall back to WELL_KNOWN prefixes if present
-    try {
-      const wk = (WELL_KNOWN && (WELL_KNOWN as any).prefixes) || {};
-      for (const [p, u] of Object.entries(wk || {})) {
-        try {
-          if (typeof u === "string" && iriStr.startsWith(u)) {
-            return `${p}:${iriStr.substring(String(u).length)}`;
-          }
-        } catch (_) { /* ignore per-entry failures */ }
-      }
-    } catch (_) {
-      /* ignore well-known fallback failures */
-    }
-
-    throw new Error(`No prefix known for IRI: ${iriStr}`);
-  }
-
-  /**
-   * Public wrapper around internal blacklist check.
-   * Consumers should use this rather than duplicating blacklist logic.
-   */
-  public isBlacklistedIriPublic(val?: string | null): boolean {
-    try {
-      return this.isBlacklistedIri(val);
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /**
    * Add a new namespace
    *
    * When a new prefix is registered at runtime we asynchronously show a UI toast
@@ -2608,15 +2564,48 @@ export class RDFManager {
       return `${namespaceUri}${localName}`;
     }
 
-    // Common fallback for widely-used Dublin Core prefix when not explicitly declared.
+    // Common fallback for widely-used prefixes when not explicitly declared.
     const wellKnownFallbacks: Record<string, string> = {
       dc: "http://purl.org/dc/elements/1.1/",
+      foaf: "http://xmlns.com/foaf/0.1/",
+      skos: "http://www.w3.org/2004/02/skos/core#",
     };
+
+    // Also consult WELL_KNOWN prefixes as a non-persistent fallback (do not overwrite existing mappings).
+    try {
+      const wk = (WELL_KNOWN && (WELL_KNOWN as any).prefixes) || {};
+      Object.entries(wk).forEach(([k, v]) => {
+        try {
+          if (!wellKnownFallbacks[k] && typeof v === "string") wellKnownFallbacks[k] = v;
+        } catch (_) {}
+      });
+    } catch (_) {}
 
     if (wellKnownFallbacks[prefix]) {
       // Add fallback to namespaces so exports include the prefix
       this.namespaces[prefix] = wellKnownFallbacks[prefix];
       return `${wellKnownFallbacks[prefix]}${localName}`;
+    }
+
+    // As a last resort, try to discover a namespace from WELL_KNOWN.ontologies entries
+    // by looking for any ontology that declares this prefix in its namespaces map.
+    try {
+      const wkOnt = (WELL_KNOWN && (WELL_KNOWN as any).ontologies) || {};
+      for (const [, meta] of Object.entries(wkOnt || {})) {
+        try {
+          const m = meta as any;
+          if (m && m.namespaces && m.namespaces[prefix]) {
+            const ns = String(m.namespaces[prefix]);
+            // Persist discovered mapping so subsequent calls will expand normally
+            this.namespaces[prefix] = ns;
+            return `${ns}${localName}`;
+          }
+        } catch (_) {
+          /* ignore per-entry failures */
+        }
+      }
+    } catch (_) {
+      /* ignore */
     }
 
     // Unknown prefix – return original string so caller can decide how to handle it

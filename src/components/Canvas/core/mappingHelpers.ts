@@ -1,4 +1,3 @@
-import canonicalId from "../../../lib/canonicalId";
 import { DataFactory, NamedNode } from "n3";
 const { namedNode } = DataFactory;
 import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
@@ -142,7 +141,7 @@ export function buildNodeDataFromParsedNode(
   const canonicalNodeIri = src.iri ?? src.id ?? src.key ?? "";
 
   const nodeData: NodeData = {
-    key: canonicalId(String(src.iri || src.id || src.key || "")),
+    key: String(src.iri || src.id || src.key || ""),
     iri: canonicalNodeIri,
     rdfTypes: rdfTypesArr,
     label: computedLabel,
@@ -204,7 +203,11 @@ export function mapCanonicalToRFNodes(
       canonicalNs = "";
     }
 
-    const id = canonicalId(nd.iri || nd.key || `n-${i}`);
+    if (!nd.iri) {
+      // Skip nodes that do not expose a full IRI — nodes must have an IRI.
+      continue;
+    }
+    const id = String(nd.iri);
     const pos = (node && node.position) || (src && src.position) || undefined;
 
     nodes.push({
@@ -248,13 +251,13 @@ export function mapCanonicalToRFEdges(
     const edge = canonicalEdges[j];
     const src = edge && edge.data ? edge.data : edge;
 
-    const from = canonicalId(String(src.source || src.from || ""));
-    const to = canonicalId(String(src.target || src.to || ""));
+    const from = String(src.source || src.from || "");
+    const to = String(src.target || src.to || "");
 
     // Skip if endpoints missing on canvas
     if (!nodesPresent.has(String(from)) || !nodesPresent.has(String(to))) continue;
 
-    const id = canonicalId(src.id || `e-${from}-${to}-${j}`);
+    const id = String(src.id || `e-${from}-${to}-${j}`);
 
     const propertyUriRaw = src.propertyUri || src.propertyType || "";
 

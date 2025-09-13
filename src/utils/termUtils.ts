@@ -63,11 +63,22 @@ function resolveNamespaces(mgr?: RDFManager | { getNamespaces?: () => Record<str
 export function findPrefixForUri(fullUri: string, rdfManager?: RDFManager | Record<string,string>): string | undefined {
   if (!fullUri) return undefined;
   const nsMap = resolveNamespaces(rdfManager);
+
+  // Collect all matching prefixes, but prefer non-empty named prefixes over the
+  // empty/default prefix. Some RDF parsers may register a default namespace with
+  // an empty string key; when a named prefix exists for the same namespace we
+  // want to prefer the named prefix (e.g. prefer "iof-mat" over "").
+  const matches: string[] = [];
   for (const [prefix, uri] of Object.entries(nsMap)) {
     if (!uri) continue;
-    if (fullUri.startsWith(uri)) return prefix;
+    try {
+      if (fullUri.startsWith(uri)) matches.push(prefix);
+    } catch (_) { /* ignore */ }
   }
-  return undefined;
+  if (matches.length === 0) return undefined;
+  // Prefer the first non-empty prefix, otherwise fall back to any match (possibly empty).
+  const nonEmpty = matches.find((p) => p && String(p).trim() !== "");
+  return nonEmpty !== undefined ? nonEmpty : matches[0];
 }
 
 /**
@@ -155,13 +166,27 @@ export function computeTermDisplay(
     }
   }
 
-  // Prefer producing a prefix:local form when a matching namespace is available,
-  // but fall back to a friendly local name when no prefix is known.
+  // Prefer producing a prefix:local form when a matching namespace is available.
+  // If no named prefix is known but the RDF manager registers a default/empty
+  // prefix for the namespace, render a visible ':' default prefix (':local').
+  // Otherwise fall back to a friendly local name when no prefix is known.
   let prefixed: string;
   try {
     prefixed = toPrefixed(targetIri, rdfManager);
   } catch (_) {
-    prefixed = shortLocalName(targetIri);
+    try {
+      // Try to detect a default (empty) prefix mapping in the provided namespace map.
+      const nsMap = resolveNamespaces(rdfManager);
+      const defaultNs = nsMap[""] || nsMap['default'] || nsMap[":"] || nsMap["::"];
+      if (defaultNs && typeof defaultNs === "string" && targetIri.startsWith(defaultNs)) {
+        const local = targetIri.substring(String(defaultNs).length);
+        prefixed = `:${local}`;
+      } else {
+        prefixed = shortLocalName(targetIri);
+      }
+    } catch (inner) {
+      prefixed = shortLocalName(targetIri);
+    }
   }
 
   // Derive prefix/local from prefixed form when possible

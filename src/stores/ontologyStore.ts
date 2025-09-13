@@ -11,7 +11,7 @@ import { RDFManager, rdfManager } from "../utils/rdfManager";
 import { useAppConfigStore } from "./appConfigStore";
 import { debug, info, warn, error, fallback } from "../utils/startupDebug";
 import type { ParsedGraph } from "../utils/rdfParser";
-import { DataFactory } from "n3";
+import { DataFactory, Quad } from "n3";
 const { namedNode, quad } = DataFactory;
 import { WELL_KNOWN } from "../utils/wellKnownOntologies";
 
@@ -262,27 +262,11 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       })(url);
       const wkEntry =
         WELL_KNOWN.ontologies[normRequestedUrl as keyof typeof WELL_KNOWN.ontologies] || WELL_KNOWN.ontologies[url as keyof typeof WELL_KNOWN.ontologies];
-      if (wkEntry) {
-        try {
-          const nsMap = wkEntry && wkEntry.namespaces ? wkEntry.namespaces : {};
-          ensureNamespacesPresent(rdfManager, nsMap);
-        } catch (e) {
-          try {
-            fallback(
-              "rdf.addNamespace.failed",
-              { error: String(e) },
-              { level: "warn" },
-            );
-          } catch (_) {
-            /* ignore */
-          }
-        }
 
-        // removed early registration for well-known entries so we fall through
-        // to the centralized fetch & parse logic below which will perform the
-        // actual fetch/parse and register only once triples are successfully added.
-        // This ensures loadedOntologies reflects actual store contents.
-      }
+      // removed early registration for well-known entries so we fall through
+      // to the centralized fetch & parse logic below which will perform the
+      // actual fetch/parse and register only once triples are successfully added.
+      // This ensures loadedOntologies reflects actual store contents.
 
       // If this URL corresponds to a well-known ontology entry, ensure we have
       // a lightweight loadedOntologies record immediately. This avoids cases
@@ -354,6 +338,40 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           /* ignore persist failures - parsing will proceed regardless */
         }
 
+        // To avoid duplicate rdf:type triples appearing across graphs (the raw
+        // ontology persisted into the ontologies graph vs. the parsed nodes being
+        // re-applied into the default graph), proactively remove rdf:type triples
+        // for the parsed subjects from the ontologies graph. This keeps the store
+        // free of duplicate type triples while preserving ontology provenance.
+        try {
+          const store = rdfManager.getStore();
+          const rdfTypeIri = typeof rdfManager.expandPrefix === "function"
+            ? rdfManager.expandPrefix("rdf:type")
+            : "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
+          const g = namedNode("urn:vg:ontologies");
+          (parsed.nodes || []).forEach((n: any) => {
+            try {
+              if (!n || !n.iri) return;
+              const existing = store.getQuads(
+                namedNode(n.iri),
+                namedNode(rdfTypeIri),
+                null,
+                g,
+              ) || [];
+              existing.forEach((q: Quad) => {
+                try {
+                  store.removeQuad(q);
+                } catch (_) {
+                  /* ignore per-quad removal failures */
+                }
+              });
+            } catch (_) {
+              /* ignore per-node errors */
+            }
+          });
+        } catch (_) {
+          /* best-effort only */
+        }
 
         try {
           // Determine a canonical URL for this parsed RDF by matching parsed namespaces
@@ -588,26 +606,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           namespaces: parsed.namespaces || {},
         };
 
-        try {
-          const { rdfManager } = get();
-          Object.entries(parsed.namespaces || {}).forEach(([prefix, ns]) => {
-            try {
-              rdfManager.addNamespace(prefix, ns);
-            } catch (_) {
-              /* ignore per-namespace failures */
-            }
-          });
-        } catch (nsErr) {
-          try {
-            fallback(
-              "rdf.namespaces.add.failed",
-              { error: String(nsErr) },
-              { level: "warn" },
-            );
-          } catch (_) {
-            /* ignore */
-          }
-        }
+
 
         // Merge into state with deduplication by canonical URL.
         set((state) => {
@@ -1020,12 +1019,11 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
       const parsed = await parseRDFFile(rdfContent, onProgress);
 
-      try {
-        const { rdfManager } = get();
-        rdfManager.applyParsedNamespaces(parsed.namespaces || {});
-        rdfManager.applyParsedNodes(parsed.nodes || [], {
-          preserveExistingLiterals: true,
-        });
+        try {
+          const { rdfManager } = get();
+          rdfManager.applyParsedNodes(parsed.nodes || [], {
+            preserveExistingLiterals: true,
+          });
 
         try {
           const store = rdfManager.getStore();
@@ -1064,25 +1062,29 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           /* ignore */
         }
 
-        (parsed.nodes || []).forEach((node: any) => {
-          try {
-            const allTypes =
-              (node as any).rdfTypes && (node as any).rdfTypes.length > 0
-                ? (node as any).rdfTypes.slice()
-                : (node as any).rdfType
-                  ? [(node as any).rdfType]
-                  : [];
-            if (allTypes && allTypes.length > 0) {
-              try {
-                (get().updateNode as any)(node.iri, { rdfTypes: allTypes });
-              } catch (_) {
-                /* ignore */
-              }
-            }
-          } catch (_) {
-            /* ignore */
-          }
-        });
+        // Note: rdfTypes are already applied by rdfManager.applyParsedNodes earlier.
+        // The extra per-node update previously performed here caused duplicate rdf:type
+        // triples in some parsing paths (parser + updateNode both adding the same triple).
+        // Avoid re-applying rdfTypes here to prevent duplicate triples.
+        // (parsed.nodes || []).forEach((node: any) => {
+        //   try {
+        //     const allTypes =
+        //       (node as any).rdfTypes && (node as any).rdfTypes.length > 0
+        //         ? (node as any).rdfTypes.slice()
+        //         : (node as any).rdfType
+        //           ? [(node as any).rdfType]
+        //           : [];
+        //     if (allTypes && allTypes.length > 0) {
+        //       try {
+        //         (get().updateNode as any)(node.iri, { rdfTypes: allTypes });
+        //       } catch (_) {
+        //         /* ignore */
+        //       }
+        //     }
+        //   } catch (_) {
+        //     /* ignore */
+        //   }
+        // });
       } catch (reapplyErr) {
         /* ignore */
       }
@@ -1707,10 +1709,15 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             if (colon > 0) {
               const prefix = p.propertyUri.substring(0, colon);
               if (prefix === "dc" && !ns["dc"]) {
-                rdfManager.addNamespace(
-                  "dc",
-                  "http://purl.org/dc/elements/1.1/",
-                );
+                // Ensure minimal DC presence by adding a tiny RDF snippet into the store.
+                // The rdfManager will recompute namespaces from store contents.
+                try {
+                  rdfManager
+                    .loadRDF('@prefix dc: <http://purl.org/dc/elements/1.1/> . dc:__vg_dummy a dc:__Dummy .')
+                    .catch(() => {});
+                } catch (_) {
+                  /* ignore */
+                }
               }
             }
           }
@@ -2039,7 +2046,13 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
       try {
         if (!existing[p] && !Object.values(existing).includes(ns)) {
           try {
-            rdfMgr.addNamespace(p, ns);
+            // Prefer writing a minimal RDF snippet into the store so namespaces are
+            // discovered by recomputeNamespacesFromStore rather than by ad-hoc registration.
+            try {
+              rdfMgr
+                .loadRDF(`@prefix ${String(p)}: <${String(ns)}> . ${String(p)}:__vg_dummy a ${String(p)}:__Dummy .`)
+                .catch(() => {});
+            } catch (_) { /* ignore */ }
           } catch (e) {
             try {
               if (typeof fallback === "function") {

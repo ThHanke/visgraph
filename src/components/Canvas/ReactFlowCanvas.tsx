@@ -24,7 +24,6 @@ import type {
 } from "@xyflow/react";
 import { DataFactory } from "n3";
 const { namedNode, quad } = DataFactory;
-import canonicalId from "../../lib/canonicalId";
 import { useCanvasState } from "../../hooks/useCanvasState";
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { useReasoningStore } from "../../stores/reasoningStore";
@@ -43,10 +42,6 @@ import {
 import { mapGraphToDiagram } from "./core/mappingHelpers";
 import { buildPaletteForRdfManager } from "./core/namespacePalette";
 import { resolveKeyForCg } from "./helpers/graphMappingHelpers";
-import {
-  deriveNamespaceFromInfo,
-  getColorFromPalette,
-} from "./helpers/paletteHelpers";
 import { buildPaletteMap } from "./core/namespacePalette";
 import { getNamespaceColorFromPalette } from "./helpers/namespaceHelpers";
 import { toast } from "sonner";
@@ -447,9 +442,7 @@ export const ReactFlowCanvas: React.FC = () => {
         try {
           const hasColor = (src && (src as any).color) || (node && (node as any).data && (node as any).data.color);
           if (hasColor) {
-            const nodeIdForWarn = canonicalId(
-              String((src && (src as any).iri) || (src && (src as any).id) || (src && (src as any).key) || `n-${i}`)
-            );
+            const nodeIdForWarn = String((src && (src as any).iri) || (src && (src as any).id) || (src && (src as any).key) || `n-${i}`);
             if (!_warnedColorNodeIds.has(nodeIdForWarn)) {
               _warnedColorNodeIds.add(nodeIdForWarn);
               try { warn('reactflow.strip_color', { id: nodeIdForWarn, color: (src as any).color }); } catch (_) { /* ignore */ }
@@ -500,7 +493,12 @@ export const ReactFlowCanvas: React.FC = () => {
           ? String(paletteLocal[nsKeyForVar])
           : `hsl(var(--ns-${nsKeyForVar}))`;
 
-        const id = canonicalId(src.iri || src.iri || src.id || src.key || `n-${i}`);
+        // Require a full IRI on parsed nodes; skip nodes without an explicit IRI.
+        if (!src || !src.iri) {
+          // Skip nodes that do not expose a full IRI — per policy nodes must have an IRI.
+          continue;
+        }
+        const id = String(src.iri);
         const pos = node.position || nodeGridPosition(i);
 
         // Deterministic label derived from canonicalTypeIri + canonicalNs (no fallbacks)
@@ -662,13 +660,9 @@ export const ReactFlowCanvas: React.FC = () => {
       for (let j = 0; j < cg.edges.length; j++) {
         const edge = cg.edges[j];
         const src = edge.data || edge;
-        const from = canonicalId(
-          resolveKeyForCg(src.source, cg) || String(src.source),
-        );
-        const to = canonicalId(
-          resolveKeyForCg(src.target, cg) || String(src.target),
-        );
-        const id = canonicalId(src.id || `e-${from}-${to}-${j}`);
+        const from = String(resolveKeyForCg(src.source, cg) || src.source || "");
+        const to = String(resolveKeyForCg(src.target, cg) || src.target || "");
+        const id = String(src.id || `e-${from}-${to}-${j}`);
 
         // Skip edge creation when either endpoint isn't present as a node on the canvas
         if (!nodeIdsSet.has(String(from)) || !nodeIdsSet.has(String(to))) {
@@ -1529,11 +1523,9 @@ useEffect(() => {
       // Normalize IDs using canonicalId to keep React Flow ids and RDF subjects/objects consistent
       const normalizedParams = {
         ...params,
-        source: canonicalId(String(params.source)),
-        target: canonicalId(String(params.target)),
-        id: canonicalId(
-          (params as any).id || `${params.source}-${params.target}`,
-        ),
+        source: String(params.source),
+        target: String(params.target),
+        id: String((params as any).id || `${params.source}-${params.target}`),
       };
 
       // Choose a default predicate candidate up-front so we can persist and annotate the edge's data
@@ -2512,7 +2504,74 @@ useEffect(() => {
     <div className="w-full h-screen bg-canvas-bg relative">
       <CanvasToolbar
         onAddNode={(uri: string) => {
-          const id = `node-${Date.now()}`;
+          // Allow prefixed names (e.g. ex:Thing) if rdfManager can expand them.
+          let normalizedUri = String(uri || "");
+          try {
+            const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
+            // If it's not an absolute IRI but looks like prefix:local, try to expand
+            if (!/^https?:\/\/\S+/i.test(normalizedUri) && mgr && typeof (mgr as any).expandPrefix === "function") {
+              try {
+                const expanded = (mgr as any).expandPrefix(normalizedUri);
+                if (expanded && typeof expanded === "string" && /^https?:\/\/\S+/i.test(expanded)) {
+                  normalizedUri = expanded;
+                }
+              } catch (_) {
+                /* ignore expand failures */
+              }
+            }
+
+            // Require a full HTTP/HTTPS IRI after attempting expansion.
+            if (!/^https?:\/\/\S+/i.test(normalizedUri)) {
+              try {
+                toast.error("Please provide a full IRI (e.g. https://example.org/resource) or a registered prefix form (e.g. ex:Local) that can be expanded.");
+              } catch (_) {
+                /* ignore toast failures */
+              }
+              return;
+            }
+
+            // Prevent duplicates: check existing canvas nodes, known entities, and RDF store.
+            const existsInNodes = nodes.some(
+              (n) =>
+                String(n.id) === normalizedUri ||
+                (n.data && String((n.data as any).iri) === normalizedUri) ||
+                (n.data && String((n.data as any).key) === normalizedUri),
+            );
+            const existsInEntities = (allEntities || []).some(
+              (e: any) => String(e.iri) === normalizedUri,
+            );
+            let existsInStore = false;
+            try {
+              const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
+              const store = mgr && typeof mgr.getStore === "function" ? mgr.getStore() : null;
+              if (store && typeof store.getQuads === "function") {
+                const found = store.getQuads(namedNode(String(normalizedUri)), null, null, null) || [];
+                existsInStore = found.length > 0;
+              }
+            } catch (_) {
+              /* ignore store check failures */
+            }
+
+            if (existsInNodes || existsInEntities || existsInStore) {
+              try {
+                toast.error("A node with this IRI already exists");
+              } catch (_) {
+                /* ignore */
+              }
+              return;
+            }
+          } catch (_) {
+            try {
+              toast.error("Invalid IRI");
+            } catch (_) {
+              /* ignore */
+            }
+            return;
+          }
+
+          // Use the full IRI as the React Flow node id so canvas keys remain consistent.
+          const id = String(normalizedUri);
+
           // compute a sensible starting position: center of viewport projected into graph coords
           let startPos = { x: 200, y: 200 };
           try {
@@ -2557,14 +2616,14 @@ useEffect(() => {
                 position: { x: candidate.x, y: candidate.y },
                 data: {
                   key: id,
-                  iri: uri,
+                  iri: normalizedUri,
                   rdfTypes: [],
                   literalProperties: [],
                   annotationProperties: [],
                   hasReasoningError: false,
                   visible: true,
                   namespace: '',
-                  label: uri,
+                  label: normalizedUri,
                 } as NodeData,
               },
             ];

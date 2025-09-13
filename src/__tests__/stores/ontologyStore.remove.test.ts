@@ -41,7 +41,7 @@ beforeEach(() => {
   }
 });
 
-test('removeLoadedOntology removes ontology meta, persisted config entry and namespace triples', () => {
+test('removeLoadedOntology removes ontology meta, persisted config entry and namespace triples', async () => {
   const url = 'http://example.org/mock-ontology';
   const nsUri = 'http://example.org/mock#';
   const prefix = 'm';
@@ -67,20 +67,7 @@ test('removeLoadedOntology removes ontology meta, persisted config entry and nam
   useAppConfigStore.getState().addAdditionalOntology(url);
 
   // Add namespace and a sample triple to RDF manager so removeNamespaceAndQuads has something to remove
-  rdfManager.addNamespace(prefix, nsUri);
-  try {
-    rdfManager.getStore().addQuad(
-      namedNode(`${nsUri}Class`),
-      namedNode('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'),
-      namedNode('http://www.w3.org/2002/07/owl#Class')
-    );
-  } catch (e) {
-    try {
-      if (typeof fallback === "function") {
-        fallback("emptyCatch", { error: String(e) });
-      }
-    } catch (_) { /* empty */ }
-  }
+  await rdfManager.loadRDF(`@prefix ${prefix}: <${nsUri}> . ${prefix}:Class a <http://www.w3.org/2002/07/owl#Class> .`);
 
   // Sanity checks before removal
   expect(useOntologyStore.getState().loadedOntologies.some((o) => o.url === url)).toBe(true);
