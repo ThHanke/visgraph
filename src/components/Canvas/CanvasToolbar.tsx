@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { AutoComplete } from '../ui/AutoComplete';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { Slider } from '../ui/slider';
@@ -85,6 +86,8 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   const [ontologyUrl, setOntologyUrl] = useState('');
   const [newNodeClass, setNewNodeClass] = useState('');
   const [newNodeNamespace, setNewNodeNamespace] = useState('');
+  // New: allow entering an explicit IRI (or prefixed form) when adding a node.
+  const [newNodeIri, setNewNodeIri] = useState('');
   const [fileSource, setFileSource] = useState('');
   const [rdfBody, setRdfBody] = useState('');
   
@@ -151,11 +154,19 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   };
 
   const handleAddNode = () => {
-    if (newNodeClass) {
-      onAddNode(newNodeClass);
+    // Prefer explicit IRI input if provided, otherwise fall back to selected class IRI.
+    const iriToAdd = (newNodeIri && String(newNodeIri).trim()) ? String(newNodeIri).trim() : String(newNodeClass || '').trim();
+    if (!iriToAdd) return;
+
+    try {
+      onAddNode(iriToAdd);
+      // Clear inputs
       setNewNodeClass('');
       setNewNodeNamespace('');
+      setNewNodeIri('');
       setIsAddNodeOpen(false);
+    } catch (e) {
+      ((...__vg_args)=>{try{fallback('console.error',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'error', captureStack:true})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.error(...__vg_args);})('Failed to add node:', e);
     }
   };
 
@@ -223,7 +234,21 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="classType">Class Type</Label>
+              <Label htmlFor="nodeIri">Entity IRI (required) or prefixed form</Label>
+              <Input
+                id="nodeIri"
+                placeholder="https://example.org/resource or ex:LocalName"
+                value={newNodeIri}
+                onChange={(e) => setNewNodeIri(e.target.value)}
+                className="w-full"
+              />
+              <div className="text-xs text-muted-foreground">
+                You may enter a full IRI or a registered prefix form (e.g. ex:Local). If omitted, the selected class IRI will be used.
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="classType">Class Type (optional)</Label>
               <EntityAutocomplete 
                 entities={availableEntities.filter(e => e.rdfType === 'owl:Class')}
                 value={newNodeClass}
@@ -233,11 +258,12 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                 className="w-full"
               />
             </div>
+
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setIsAddNodeOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleAddNode} disabled={!newNodeClass}>
+              <Button onClick={handleAddNode} disabled={!newNodeIri && !newNodeClass}>
                 Add Node
               </Button>
             </div>

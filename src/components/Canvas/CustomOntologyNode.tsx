@@ -13,6 +13,7 @@ import { useOntologyStore } from '../../stores/ontologyStore';
 import { buildPaletteForRdfManager } from './core/namespacePalette';
 import { getNamespaceColorFromPalette, normalizeNamespaceKey } from './helpers/namespaceHelpers';
 import { computeTermDisplay, shortLocalName } from '../../utils/termUtils';
+import { computeBadgeText, computeDisplayInfo } from './core/nodeDisplay';
 import { debug } from '../../utils/startupDebug';
 
 /**
@@ -78,7 +79,68 @@ function CustomOntologyNodeInner(props: NodeProps) {
   }, [nodeData.iri, nodeData.iri, nodeData.classType, rdfTypesKey, nodeData.displayType, nodeData.rdfTypes]);
 
   // Use canonical label persisted on the node (mapping is authoritative)
-  const displayedTypeShort = String(nodeData.label || nodeData.classType || shortLocalName(nodeData.iri || ''));
+  let displayedTypeShort = String(nodeData.label || nodeData.classType || shortLocalName(nodeData.iri || ''));
+  // Compute badge text (prefer a prefixed meaningful type) and a list of all rdf:type displays.
+  let badgeText = displayedTypeShort;
+  let typesList: string[] = [];
+  try {
+    if (rdfManager) {
+      try {
+        // Compute badge text from the first meaningful type deterministically and
+        // ensure we preserve any leading ':' that indicates the default namespace.
+        const candidates: string[] = [
+          ...(nodeData.displayType ? [String(nodeData.displayType)] : []),
+          ...(nodeData.classType ? [String(nodeData.classType)] : []),
+          ...(Array.isArray(nodeData.rdfTypes) ? (nodeData.rdfTypes as string[]).map(String) : []),
+          ...((nodeData as any)?.types ? (nodeData as any).types.map(String) : []),
+        ].filter(Boolean);
+
+        const chosenType = candidates.find(t => t && !/NamedIndividual\b/i.test(String(t)));
+
+        if (chosenType) {
+          try {
+            // Use computeTermDisplay directly so we keep the prefixed form (including leading ':').
+            const td = computeTermDisplay(String(chosenType), rdfManager as any);
+            if (td && td.prefixed && String(td.prefixed).trim() !== "") {
+              badgeText = td.prefixed;
+            } else if (td && td.short) {
+              badgeText = td.short;
+            }
+          } catch (_) {
+            // Fallback to the previous helper if strict display computation fails.
+            try {
+              const bt = computeBadgeText(nodeData as any, rdfManager as any, availableClasses as any);
+              if (bt && String(bt).trim() !== "") badgeText = String(bt);
+            } catch (_) {
+              /* ignore */
+            }
+          }
+        } else {
+          // No meaningful type found — try the generic helper as last resort.
+          try {
+            const bt = computeBadgeText(nodeData as any, rdfManager as any, availableClasses as any);
+            if (bt && String(bt).trim() !== "") badgeText = String(bt);
+          } catch (_) {
+            /* ignore */
+          }
+        }
+      } catch (_) {
+        // ignore failures computing badge text
+      }
+
+      if (Array.isArray(nodeData.rdfTypes) && nodeData.rdfTypes.length > 0) {
+        typesList = nodeData.rdfTypes.map((t: any) => {
+          try {
+            const td = computeTermDisplay(String(t), rdfManager as any);
+            return td.prefixed || td.short || String(t);
+          } catch (_) {
+            // fallback to raw string
+            return String(t);
+          }
+        }).filter(Boolean);
+      }
+    }
+  } catch (_) { /* ignore overall */ }
 
   const namespace = String(nodeData.namespace ?? '');
   const paletteLocal = (() => {
@@ -227,7 +289,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
             className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold text-black"
             style={{ background: badgeFallback, border: `1px solid ${darken(badgeFallback, 0.12)}` }}
           >
-            {displayedTypeShort || nodeData.classType || (namespace ? namespace : 'unknown')}
+            {badgeText || displayedTypeShort || nodeData.classType || (namespace ? namespace : 'unknown')}
           </div>
 
           {/* Error indicator */}
@@ -254,9 +316,13 @@ function CustomOntologyNodeInner(props: NodeProps) {
           )}
         </div>
 
-        {/* Type (human-friendly) */}
+        {/* Type (human-friendly) + list of type definitions */}
         <div className="text-sm text-muted-foreground mb-3">
-          {nodeData.classType ?? displayedTypeShort ?? 'Unknown'}
+          {typesList && typesList.length > 0 && (
+            <div className="text-xs text-muted-foreground mt-1 truncate">
+              {typesList.join(', ')}
+            </div>
+          )}
         </div>
 
         {/* Annotations */}

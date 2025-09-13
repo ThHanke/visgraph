@@ -92,7 +92,9 @@ export const AutoComplete = ({
                   try {
                     if (rdfMgr) {
                       const td = computeTermDisplay(s, rdfMgr as any);
-                      return (td.prefixed || td.short || '').replace(/^(https?:\/\/)?(www\.)?/, '');
+                      const pref = (td.prefixed || td.short || '').replace(/^(https?:\/\/)?(www\.)?/, '');
+                      // Preserve any leading ':' so autocomplete shows default-namespace entries as ':local'
+                      return pref;
                     }
                   } catch (_) { /* ignore */ }
                   return shortLocalName(s).replace(/^(https?:\/\/)?(www\.)?/, '');
@@ -132,7 +134,9 @@ export const AutoComplete = ({
                       try {
                         if (rdfMgr) {
                           const td = computeTermDisplay(String(option.value), rdfMgr as any);
-                          return (td.prefixed || td.short || '').replace(/^(https?:\/\/)?(www\.)?/, '');
+                          const pref = (td.prefixed || td.short || '').replace(/^(https?:\/\/)?(www\.)?/, '');
+                          // Preserve leading ':' so options for the default namespace appear as ':local'
+                          return pref;
                         }
                       } catch (_) { /* ignore */ }
                       return shortLocalName(String(option.value)).replace(/^(https?:\/\/)?(www\.)?/, '');

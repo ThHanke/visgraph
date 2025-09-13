@@ -348,11 +348,10 @@ ex:person1 a foaf:Person ;
   });
 
   describe("RDF Manager Direct Tests", () => {
-    it("should properly expand prefixes", () => {
+    it("should properly expand prefixes", async () => {
       const rdfManager = new RDFManager();
 
-      rdfManager.addNamespace("rdfs", "http://www.w3.org/2000/01/rdf-schema#");
-      rdfManager.addNamespace("foaf", "http://xmlns.com/foaf/0.1/");
+      await rdfManager.loadRDF('@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix foaf: <http://xmlns.com/foaf/0.1/> .');
 
       expect(rdfManager.expandPrefix("rdfs:label")).toBe(
         "http://www.w3.org/2000/01/rdf-schema#label",
@@ -368,8 +367,7 @@ ex:person1 a foaf:Person ;
     it("should update and remove entity properties correctly", async () => {
       const rdfManager = new RDFManager();
 
-      rdfManager.addNamespace("rdfs", "http://www.w3.org/2000/01/rdf-schema#");
-      rdfManager.addNamespace("ex", "http://example.com/");
+      await rdfManager.loadRDF('@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix ex: <http://example.com/> .');
 
       const entityUri = "http://example.com/entity1";
 
@@ -450,9 +448,7 @@ ex:person1 a foaf:Person ;
     it("should export with correct prefixes and formatting", async () => {
       const rdfManager = new RDFManager();
 
-      rdfManager.addNamespace("ex", "http://example.com/");
-      rdfManager.addNamespace("rdfs", "http://www.w3.org/2000/01/rdf-schema#");
-      rdfManager.addNamespace("foaf", "http://xmlns.com/foaf/0.1/");
+      await rdfManager.loadRDF('@prefix ex: <http://example.com/> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix foaf: <http://xmlns.com/foaf/0.1/> .');
 
       // Add some test data
       rdfManager.updateNode("http://example.com/person1", {

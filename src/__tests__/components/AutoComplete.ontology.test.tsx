@@ -106,10 +106,11 @@ describe("AutoComplete with ontology-loaded options", () => {
     // Finally, type a substring that only appears in an IRI (specialIRIProperty)
     fireEvent.change(input, { target: { value: "specialIRIProperty" } });
     await waitFor(() => {
-      // The primary displayed text is the shortened IRI; ensure that the option with that IRI exists
+      // The primary displayed text is the shortened IRI. When the UI shows default-namespace
+      // entries with a leading ':' we expect the primary line to include that marker.
       const shortened = shortLocalName("http://example.org/test#specialIRIProperty");
-      // Primary line now uses the short local name for IRIs; confirm it's rendered
-      expect(screen.getByText(shortened)).toBeTruthy();
+      // Primary line now uses a leading ':' for default-namespace IRI displays; confirm it's rendered
+      expect(screen.getByText(`:${shortened}`)).toBeTruthy();
       // Also ensure the secondary label is present
       expect(screen.getByText("OtherLabel")).toBeTruthy();
     });

@@ -1488,7 +1488,25 @@ export class RDFManager {
             const expanded = this.expandPrefix
               ? this.expandPrefix(typeStr)
               : typeStr;
-            if (!existingTypeSet.has(expanded)) {
+
+            // If expansion did not produce a full IRI (e.g., "mat:MeasurementDevice")
+            // attempt a best-effort de-duplication by checking existing types for the
+            // same local name (after last '/' or '#'). This avoids adding duplicate
+            // type quads when parser already added the fully-expanded IRI.
+            const localName = (typeStr && typeStr.includes(":"))
+              ? typeStr.split(":").slice(1).join(":")
+              : typeStr;
+            const hasMatchingLocal = Array.from(existingTypeSet).some((et) => {
+              try {
+                const parts = String(et).split(/[#/]/).filter(Boolean);
+                const etLocal = parts.length ? parts[parts.length - 1] : String(et);
+                return etLocal === localName;
+              } catch (_) {
+                return false;
+              }
+            });
+
+            if (!existingTypeSet.has(expanded) && !hasMatchingLocal) {
               try {
                 const s = namedNode(entityUri);
                 const p = namedNode(rdfTypePredicate);
@@ -2567,6 +2585,27 @@ export class RDFManager {
       // Add fallback to namespaces so exports include the prefix
       this.namespaces[prefix] = wellKnownFallbacks[prefix];
       return `${wellKnownFallbacks[prefix]}${localName}`;
+    }
+
+    // As a last resort, try to discover a namespace from WELL_KNOWN.ontologies entries
+    // by looking for any ontology that declares this prefix in its namespaces map.
+    try {
+      const wkOnt = (WELL_KNOWN && (WELL_KNOWN as any).ontologies) || {};
+      for (const [, meta] of Object.entries(wkOnt || {})) {
+        try {
+          const m = meta as any;
+          if (m && m.namespaces && m.namespaces[prefix]) {
+            const ns = String(m.namespaces[prefix]);
+            // Persist discovered mapping so subsequent calls will expand normally
+            this.namespaces[prefix] = ns;
+            return `${ns}${localName}`;
+          }
+        } catch (_) {
+          /* ignore per-entry failures */
+        }
+      }
+    } catch (_) {
+      /* ignore */
     }
 
     // Unknown prefix – return original string so caller can decide how to handle it

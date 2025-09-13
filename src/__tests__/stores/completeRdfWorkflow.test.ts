@@ -318,9 +318,8 @@ describe("Complete RDF Workflow", () => {
     it("should maintain consistency between store operations", async () => {
       const rdfManager = new RDFManager();
 
-      // Add namespaces
-      rdfManager.addNamespace("ex", "http://example.com/");
-      rdfManager.addNamespace("rdfs", "http://www.w3.org/2000/01/rdf-schema#");
+      // Add namespaces by loading a small Turtle snippet so the prefixes / triples exist in the store.
+      await rdfManager.loadRDF('@prefix ex: <http://example.com/> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .');
 
       // Load initial data
       const initialRdf = `
