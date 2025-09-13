@@ -12,7 +12,7 @@ import {
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { buildPaletteForRdfManager } from './core/namespacePalette';
 import { getNamespaceColorFromPalette, normalizeNamespaceKey } from './helpers/namespaceHelpers';
-import { computeTermDisplay, shortLocalName } from '../../utils/termDisplay';
+import { computeTermDisplay, shortLocalName } from '../../utils/termUtils';
 import { debug } from '../../utils/startupDebug';
 
 /**

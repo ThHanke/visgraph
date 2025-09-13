@@ -3,7 +3,7 @@ import { DataFactory } from 'n3';
 const { namedNode, literal, quad } = DataFactory;
 import { WELL_KNOWN } from '../utils/wellKnownOntologies';
 import { fallback } from '../utils/startupDebug';
-import { shortLocalName } from '../utils/termDisplay';
+import { shortLocalName } from '../utils/termUtils';
 
 // Helper used by inline debug wrappers to safely stringify arguments that may be
 // strings or objects with a .message property.

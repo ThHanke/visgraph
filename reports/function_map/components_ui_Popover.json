@@ -1,0 +1,31 @@
+{
+  "directory": "src/components/ui",
+  "generatedAt": "2025-09-13T08:11:46+02:00",
+  "file": "src/components/ui/popover.tsx",
+  "exports": [
+    "Popover",
+    "PopoverTrigger",
+    "PopoverContent"
+  ],
+  "functions": [
+    {
+      "name": "Popover",
+      "exported": true,
+      "signature": "const Popover = PopoverPrimitive.Root",
+      "description": "Re-export of Radix Popover root for composition."
+    },
+    {
+      "name": "PopoverTrigger",
+      "exported": true,
+      "signature": "const PopoverTrigger = PopoverPrimitive.Trigger",
+      "description": "Re-export of Radix Popover Trigger for composition."
+    },
+    {
+      "name": "PopoverContent",
+      "exported": true,
+      "signature": "const PopoverContent = React.forwardRef<..., ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>>(({ className, align = 'center', sideOffset = 4, ...props }, ref) => JSX.Element)",
+      "description": "Styled Radix Popover.Content wrapped in a Portal. Applies consistent design system classes, default align/offset, and animations. Forwards ref."
+    }
+  ],
+  "notes": "Small wrapper around Radix primitives to centralize styles and usage."
+}

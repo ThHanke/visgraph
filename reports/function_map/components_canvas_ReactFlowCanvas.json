@@ -1,0 +1,95 @@
+{
+  "directory": "src/components/Canvas",
+  "generatedAt": "2025-09-13T08:31:02+02:00",
+  "file": "src/components/Canvas/ReactFlowCanvas.tsx",
+  "exports": [
+    "ReactFlowCanvas",
+    "default"
+  ],
+  "component_summary": {
+    "name": "ReactFlowCanvas",
+    "type": "React.FC",
+    "description": "A React Flow based canvas replacement that maps the application's currentGraph into React Flow nodes/edges, handles selection/editing, edge creation/persistence, reasoning triggers, and programmatic layouts. Uses many helpers (computeDisplayInfo, buildPaletteForRdfManager, applyDagreLayout) and Zustand stores (ontologyStore, reasoningStore, appConfigStore)."
+  },
+  "top_level_helpers": [
+    {
+      "name": "nodeGridPosition",
+      "signature": "(index: number) => {x:number, y:number}",
+      "description": "Deterministic grid-based fallback position generator for nodes."
+    },
+    {
+      "name": "_warnedColorNodeIds",
+      "signature": "Set<string>",
+      "description": "Module-level set used to warn once when parsed nodes supply inline colors that are stripped by the mapping."
+    }
+  ],
+  "internal_functions_and_handlers": [
+    {
+      "name": "isBlacklistedIri",
+      "signature": "(val?: string|null) => boolean",
+      "description": "Local helper to detect core RDF/OWL IRIs or prefixed names that should not be rendered as canvas nodes."
+    },
+    {
+      "name": "termForIri",
+      "signature": "(iri: string) => NamedNode | BlankNode",
+      "description": "Converts an IRI or blank-node label into an N3 term; blank-node labels beginning with '_:' become blank nodes."
+    },
+    {
+      "name": "initializeApp",
+      "signature": "async (opts?: {force?: boolean}) => Promise<void>",
+      "description": "Programmatic initializer that optionally auto-loads configured ontologies and a startup file. Exposed via window.__VG_INIT_APP for developer/test control. Honors allowAutoLoad flags and reports progress via canvas actions."
+    },
+    {
+      "name": "mapping effect (useEffect)",
+      "signature": "useEffect(() => { ... }, [currentGraph, loadedOntologies, availableClasses, viewMode])",
+      "description": "Core mapping from currentGraph -> React Flow nodes/edges. Includes: visibility computation, canonical id mapping, computeDisplayInfo usage, palette/color selection, deduping, and conditional dagre layout application. Attempts non-destructive store reads for rdf:type when not present on parsed nodes. Performs many defensive try/catch blocks and logs via startupDebug."
+    },
+    {
+      "name": "triggerReasoning",
+      "signature": "async (nodes, edges, force=false) => Promise<void>",
+      "description": "Schedules/invokes reasoning via useReasoningStore.startReasoning, applies resulting error flags back onto nodes/edges, and debounces & fingerprints runs to avoid loops."
+    },
+    {
+      "name": "onNodeDoubleClick / onEdgeDoubleClick",
+      "description": "Selection handlers that prepare and open Node/Link editors by composing stable payloads and resolving predicate labels via computeTermDisplay when possible."
+    },
+    {
+      "name": "onConnect",
+      "signature": "(params: Connection) => void",
+      "description": "Handle new connection: validation (endpoints present, no self-loops, same domain ABox/TBox), choose default predicate candidate, create edge in React Flow, and persist a triple into RDF store under graph 'urn:vg:data'. Also opens link editor with selected edge payload."
+    },
+    {
+      "name": "handleSaveNodeProperties",
+      "signature": "async (properties: any[]) => void",
+      "description": "Builds annotationProperties payload and calls ontologyStore.updateNode, then patches local node data in React Flow state."
+    },
+    {
+      "name": "handleSaveLinkProperty",
+      "signature": "(propertyUri: string, label: string) => void",
+      "description": "Updates edge UI state and persists predicate change by removing old predicate quads and adding new predicate quad into RDF store (urn:vg:data)."
+    },
+    {
+      "name": "onLoadFile",
+      "signature": "async (file: File | string) => void",
+      "description": "Load/parse a file or remote URL: reads content, delegates to loadKnowledgeGraph, and updates canvas loading UI and toasts on success/failure."
+    },
+    {
+      "name": "handleLayoutChange",
+      "signature": "async (layoutType: string, force = false, options?) => Promise<boolean>",
+      "description": "Applies dagre layout (horizontal/vertical) by calling applyDagreLayout helper, updates node positions and persisted currentLayout state, and triggers fitView."
+    },
+    {
+      "name": "onEdgeUpdate / onEdgeUpdateEnd",
+      "signature": "(oldEdge, connection) => void",
+      "description": "Handles edge relinking updates: validation and persistence (remove old quad, add new quad) and state update."
+    }
+  ],
+  "notes": [
+    "This component contains many responsibilities: mapping, persistence, reasoning orchestration, UI wiring and layout. It uses direct store.getStore manipulations in several places rather than exclusively using rdfManager higher-level APIs (persistence paths are duplicated across stores/helpers).",
+    "Duplication hotspots observed here:",
+    "- Prefix expansion & computeTermDisplay usage appears in mapping, link handlers, and across stores. Calls computeTermDisplay directly and also uses mgr.expandPrefix in places — these can be unified.",
+    "- Direct store quad add/remove operations are present in onConnect, handleSaveLinkProperty, onEdgeUpdate, etc. Centralize RDF persistence into rdfManager methods (e.g., addTriple/removeTriple) to enforce graph naming and notification semantics.",
+    "- Node/edge identity resolution (canonicalId, resolveKeyForCg, many fallback key patterns) is repeated; consider a single normalization utility.",
+    "Recommended next scans in Canvas root: CanvasToolbar.tsx, NodePropertyEditor.tsx, LinkPropertyEditor.tsx, NamespaceLegend.* and ConfigurationPanel.tsx to complete Canvas coverage."
+  ]
+}

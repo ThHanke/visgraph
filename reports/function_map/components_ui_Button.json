@@ -1,0 +1,18 @@
+{
+  "directory": "src/components/ui",
+  "generatedAt": "2025-09-13T08:11:17+02:00",
+  "file": "src/components/ui/button.tsx",
+  "exports": [
+    "Button",
+    "buttonVariants"
+  ],
+  "functions": [
+    {
+      "name": "Button (component)",
+      "exported": true,
+      "signature": "const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(({ className, variant, size, asChild = false, ...props }, ref) => JSX.Element)",
+      "description": "Composable button component supporting variants and sizes via class-variance-authority. Supports `asChild` prop to render a Slot for polymorphic behavior and forwards refs. Uses `buttonVariants` to compute CSS classes and `cn` to compose them."
+    }
+  ],
+  "notes": "Exports `buttonVariants` along with the Button component for reuse."
+}

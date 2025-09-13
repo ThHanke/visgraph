@@ -1,0 +1,61 @@
+{
+  "directory": "src/components/ui",
+  "generatedAt": "2025-09-13T09:10:23+02:00",
+  "file": "src/components/ui/breadcrumb.tsx",
+  "exports": [
+    "Breadcrumb",
+    "BreadcrumbList",
+    "BreadcrumbItem",
+    "BreadcrumbLink",
+    "BreadcrumbPage",
+    "BreadcrumbSeparator",
+    "BreadcrumbEllipsis"
+  ],
+  "component_summary": {
+    "name": "Breadcrumb",
+    "type": "React.forwardRef primitives",
+    "description": "Accessible breadcrumb primitives (nav, ol, li, link, current page, separators). Lightweight presentation components providing consistent styling and optional separators/ellipsis for truncated trails."
+  },
+  "components": [
+    {
+      "name": "Breadcrumb",
+      "signature": "React.forwardRef<HTMLElement>",
+      "description": "Wrapper nav element with aria-label='breadcrumb'."
+    },
+    {
+      "name": "BreadcrumbList",
+      "signature": "React.forwardRef<HTMLOListElement>",
+      "description": "Ordered list container styled for inline breadcrumb display."
+    },
+    {
+      "name": "BreadcrumbItem",
+      "signature": "React.forwardRef<HTMLLIElement>",
+      "description": "List item wrapper used for each breadcrumb entry."
+    },
+    {
+      "name": "BreadcrumbLink",
+      "signature": "React.forwardRef<HTMLAnchorElement>",
+      "description": "Anchor wrapper (supports asChild) for clickable breadcrumb items; applies hover/transition styles."
+    },
+    {
+      "name": "BreadcrumbPage",
+      "signature": "React.forwardRef<HTMLSpanElement>",
+      "description": "Non-interactive element representing the current page (aria-current='page')."
+    },
+    {
+      "name": "BreadcrumbSeparator",
+      "signature": "(props) => JSX.Element",
+      "description": "Presentation-only separator element (defaults to ChevronRight SVG) used between items; marked aria-hidden."
+    },
+    {
+      "name": "BreadcrumbEllipsis",
+      "signature": "(props) => JSX.Element",
+      "description": "Presentation-only ellipsis control (MoreHorizontal icon) used when trimming long breadcrumb trails; aria-hidden."
+    }
+  ],
+  "notes": [
+    "Presentation-only primitives with no business logic; accessibility attributes (aria-current, aria-hidden, role) are applied appropriately.",
+    "Duplication risk is minimal; consistent cn utility used for class composition.",
+    "Useful as a composable primitive for top-level navigation UIs."
+  ]
+}

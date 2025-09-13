@@ -1,0 +1,51 @@
+{
+  "directory": "src/components/Canvas",
+  "generatedAt": "2025-09-13T08:37:23+02:00",
+  "file": "src/components/Canvas/LayoutManager.ts",
+  "exports": [
+    "LayoutManager",
+    "LayoutType",
+    "LayoutOptions",
+    "LayoutConfig"
+  ],
+  "class_summary": {
+    "name": "LayoutManager",
+    "description": "Lightweight, dependency-free manager exposing available layouts and an applyLayout API. Designed to be framework-agnostic and avoid hard deps. Supports snapshotting positions and delegating to an underlying diagram object if provided. Dynamically imports dagre layout helper when needed."
+  },
+  "methods": [
+    {
+      "name": "getAvailableLayouts",
+      "signature": "() => LayoutConfig[]",
+      "description": "Return supported layouts (horizontal, vertical) with metadata for UI."
+    },
+    {
+      "name": "suggestOptimalLayout",
+      "signature": "() => LayoutType",
+      "description": "Return a conservative default layout (horizontal)."
+    },
+    {
+      "name": "restoreLastPositions",
+      "signature": "() => void",
+      "description": "Restore previously captured node positions to diagram via setNodePositions or array replacement."
+    },
+    {
+      "name": "resetToOriginal",
+      "signature": "() => void",
+      "description": "Clear stored snapshots and attempt diagram.resetPositions if available."
+    },
+    {
+      "name": "getCurrentLayoutInfo",
+      "signature": "() => { type: LayoutType; options: LayoutOptions }",
+      "description": "Return default/suggested layout info (no internal state)."
+    },
+    {
+      "name": "applyLayout",
+      "signature": "async (layoutType: LayoutType, options?: LayoutOptions) => Promise<void>",
+      "description": "Apply layout to diagram: snapshot positions, attempt to call diagram.applyLayout, else dynamically import dagre helper and compute positions, then set positions via diagram.setNodePositions or replace nodes array. Falls back to grid layout if dagre unavailable. Always resolves; swallows errors to keep manager lightweight."
+    }
+  ],
+  "notes": [
+    "Provides a small abstraction layer for layout operations. The dynamic import of './layout/dagreLayout' keeps the module lightweight.",
+    "Consolidation opportunity: align applyDagreLayout usage across ReactFlowCanvas and LayoutManager so both delegate to the same helper (already done via dynamic import)."
+  ]
+}

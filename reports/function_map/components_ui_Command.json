@@ -1,0 +1,73 @@
+{
+  "directory": "src/components/ui",
+  "generatedAt": "2025-09-13T08:12:46+02:00",
+  "file": "src/components/ui/command.tsx",
+  "exports": [
+    "Command",
+    "CommandDialog",
+    "CommandInput",
+    "CommandList",
+    "CommandEmpty",
+    "CommandGroup",
+    "CommandItem",
+    "CommandShortcut",
+    "CommandSeparator"
+  ],
+  "functions": [
+    {
+      "name": "Command (component)",
+      "exported": true,
+      "signature": "const Command = React.forwardRef(...)",
+      "description": "Styled wrapper around the cmdk Command primitive to provide a consistent design-system styling for command palettes."
+    },
+    {
+      "name": "CommandDialog",
+      "exported": true,
+      "signature": "const CommandDialog = ({ children, ...props }: CommandDialogProps) => JSX.Element",
+      "description": "Dialog wrapper that places a Command component inside a DialogContent for an accessible command palette experience."
+    },
+    {
+      "name": "CommandInput",
+      "exported": true,
+      "signature": "const CommandInput = React.forwardRef(...)",
+      "description": "Input row for the command palette with an embedded Search icon and consistent styling."
+    },
+    {
+      "name": "CommandList",
+      "exported": true,
+      "signature": "const CommandList = React.forwardRef(...)",
+      "description": "Scrollable list container for command items with a max height."
+    },
+    {
+      "name": "CommandEmpty",
+      "exported": true,
+      "signature": "const CommandEmpty = React.forwardRef(...)",
+      "description": "Placeholder shown when no command results match."
+    },
+    {
+      "name": "CommandGroup",
+      "exported": true,
+      "signature": "const CommandGroup = React.forwardRef(...)",
+      "description": "Group wrapper for organizing command items with styled headings."
+    },
+    {
+      "name": "CommandSeparator",
+      "exported": true,
+      "signature": "const CommandSeparator = React.forwardRef(...)",
+      "description": "Visual separator used inside the command palette."
+    },
+    {
+      "name": "CommandItem",
+      "exported": true,
+      "signature": "const CommandItem = React.forwardRef(...)",
+      "description": "Individual selectable item in the command palette with selected/disabled state styling."
+    },
+    {
+      "name": "CommandShortcut",
+      "exported": true,
+      "signature": "const CommandShortcut = ({ className, ...props }) => JSX.Element",
+      "description": "Small helper component to render keyboard shortcut text aligned to the right of a command item."
+    }
+  ],
+  "notes": "These primitives centralize command-palette UI behavior and styling for consistent usage across the app."
+}

@@ -1,0 +1,23 @@
+{
+  "directory": "src/components/Canvas",
+  "generatedAt": "2025-09-13T08:36:53+02:00",
+  "file": "src/components/Canvas/ResizableNamespaceLegend.tsx",
+  "exports": [
+    "ResizableNamespaceLegend"
+  ],
+  "component_summary": {
+    "name": "ResizableNamespaceLegend",
+    "type": "React.FC",
+    "description": "Interactive draggable and resizable legend showing registered namespace prefixes with colors. Reads namespaces from rdfManager, computes a palette map, allows dragging/resizing, and shows a scrollable list of prefixes and URIs."
+  },
+  "behaviors": [
+    "Initializes position/size based on window dimensions and namespace count.",
+    "Builds a paletteMap using buildPaletteMap for consistent color assignment with canvas.",
+    "Provides drag and resize interactions via mouse events; uses onClose prop to close.",
+    "Optimizes rendering by filtering out empty prefixes and sorting entries."
+  ],
+  "notes": [
+    "UI-focused. Palette building and namespace normalization logic duplicates other palette helpers; consider centralizing palette utilities.",
+    "Interaction logic (drag/resize) is specific to this component and is appropriate here."
+  ]
+}

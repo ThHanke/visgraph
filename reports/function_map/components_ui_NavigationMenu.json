@@ -1,0 +1,24 @@
+{
+  "directory": "src/components/ui",
+  "generatedAt": "2025-09-13T09:09:05+02:00",
+  "file": "src/components/ui/navigation-menu.tsx",
+  "exports": [
+    "NavigationMenu",
+    "NavigationMenuList",
+    "NavigationMenuItem",
+    "NavigationMenuContent",
+    "NavigationMenuTrigger",
+    "NavigationMenuLink",
+    "NavigationMenuIndicator",
+    "NavigationMenuViewport"
+  ],
+  "component_summary": {
+    "name": "NavigationMenu",
+    "type": "Radix-UI wrappers",
+    "description": "Collection of styled navigation menu primitives built on @radix-ui/react-navigation-menu. Exposes a responsive navigation menu with a viewport, triggers, content, indicators and links. Uses navigationMenuTriggerStyle from helpers for trigger styling."
+  },
+  "notes": [
+    "Presentation-only components that delegate behavior to Radix primitives.",
+    "Relies on navigationMenuTriggerStyle helper for trigger appearance; consider centralizing styling helpers if duplicated elsewhere."
+  ]
+}

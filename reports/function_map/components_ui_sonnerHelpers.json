@@ -1,0 +1,17 @@
+{
+  "directory": "src/components/ui/helpers",
+  "generatedAt": "2025-09-13T08:14:21+02:00",
+  "file": "src/components/ui/helpers/sonnerHelpers.ts",
+  "exports": [
+    "toast"
+  ],
+  "functions": [
+    {
+      "name": "toast (re-export)",
+      "exported": true,
+      "signature": "export { toast } from 'sonner'",
+      "description": "Thin re-export of the `sonner` library's `toast` helper. Kept in a helpers module to avoid non-component exports colocated with components (react-refresh warnings)."
+    }
+  ],
+  "notes": "Purpose: expose Sonner toast API under the app's helper module so component modules can import `toast` without mixing non-component exports into component files."
+}

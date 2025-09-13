@@ -49,7 +49,7 @@ import {
 import { buildPaletteMap } from "./core/namespacePalette";
 import { getNamespaceColorFromPalette } from "./helpers/namespaceHelpers";
 import { toast } from "sonner";
-import { computeTermDisplay, shortLocalName } from '../../utils/termDisplay';
+import { computeTermDisplay, shortLocalName } from '../../utils/termUtils';
 import { debug, warn, fallback } from "../../utils/startupDebug";
 import { CustomOntologyNode as OntologyNode } from "./CustomOntologyNode";
 import FloatingEdge from "./FloatingEdge";

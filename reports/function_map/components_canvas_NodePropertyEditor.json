@@ -1,0 +1,65 @@
+{
+  "directory": "src/components/Canvas",
+  "generatedAt": "2025-09-13T08:02:28+02:00",
+  "file": "src/components/Canvas/NodePropertyEditor.tsx",
+  "exports": [
+    "NodePropertyEditor",
+    "deriveInitialNodeType"
+  ],
+  "functions": [
+    {
+      "name": "NodePropertyEditor (component)",
+      "exported": true,
+      "signature": "const NodePropertyEditor = ({ open, onOpenChange, nodeData, onSave, availableEntities }: NodePropertyEditorProps) => JSX.Element",
+      "description": "React dialog component for editing a node's type, IRI, and annotation properties. Uses ontology store to resolve classes and rdfManager for prefix/IRI resolution. Initializes form state from nodeData, supports adding/removing/updating annotation properties, validates inputs, and composes a normalized updated node payload passed to onSave. Also exposes helper UI (EntityAutocomplete, AutoComplete) and derives temporary class labels from RDF store when ontology metadata missing."
+    },
+    {
+      "name": "deriveInitialNodeType",
+      "exported": true,
+      "signature": "deriveInitialNodeType(d: any, classEntities: Array<{ iri: string; label: string }>): string",
+      "description": "Re-exported from helpers; determines an initial canonical node type from input node data. Priority: d.type, d.displayType, d.classType, then rdfTypes (excluding NamedIndividual). Maps short labels to IRIs using classEntities when possible."
+    },
+    {
+      "name": "getDisplayLabelFromUri",
+      "exported": false,
+      "signature": "getDisplayLabelFromUri(uri?: string): string",
+      "description": "Helper that resolves an IRI to a prefixed or short display label using computeTermDisplay and the RDF manager. Throws if rdfManager is unavailable."
+    },
+    {
+      "name": "handleAddProperty",
+      "exported": false,
+      "signature": "handleAddProperty(e?: React.MouseEvent): void",
+      "description": "Add an empty annotation property row to the editor form (default type xsd:string)."
+    },
+    {
+      "name": "handleRemoveProperty",
+      "exported": false,
+      "signature": "handleRemoveProperty(index: number, e?: React.MouseEvent): void",
+      "description": "Remove an annotation property row by index."
+    },
+    {
+      "name": "handleUpdateProperty",
+      "exported": false,
+      "signature": "handleUpdateProperty(index: number, field: keyof LiteralProperty, value: string): void",
+      "description": "Update a single field (key/value/type) of the annotation property at the given index."
+    },
+    {
+      "name": "handleSave",
+      "exported": false,
+      "signature": "handleSave(e?: React.MouseEvent): void",
+      "description": "Validate and compose the updated node payload: normalizes selected class/type, preserves rdf:NamedIndividual when applicable, builds final rdfTypes array and annotationProperties, then calls onSave(updatedNodeData) and closes the dialog via onOpenChange(false)."
+    },
+    {
+      "name": "getAnnotationProperties",
+      "exported": false,
+      "signature": "getAnnotationProperties(): { value: string; label: string }[]",
+      "description": "Return a list of common annotation property candidates plus class-specific properties derived from availableClasses for use by the AutoComplete control."
+    },
+    {
+      "name": "getXSDTypes",
+      "exported": false,
+      "signature": "getXSDTypes(): string[]",
+      "description": "Return a fixed set of common XSD data types used to populate the type selector for literals."
+    }
+  ]
+}

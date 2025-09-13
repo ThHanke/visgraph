@@ -1,0 +1,32 @@
+{
+  "directory": "src/components/ui",
+  "generatedAt": "2025-09-13T09:06:31+02:00",
+  "file": "src/components/ui/select.tsx",
+  "exports": [
+    "Select",
+    "SelectGroup",
+    "SelectValue",
+    "SelectTrigger",
+    "SelectContent",
+    "SelectLabel",
+    "SelectItem",
+    "SelectSeparator",
+    "SelectScrollUpButton",
+    "SelectScrollDownButton"
+  ],
+  "component_summary": {
+    "name": "Select",
+    "type": "Radix-UI wrapper components",
+    "description": "Styled wrappers around @radix-ui/react-select primitives providing consistent project styling, icon indicators and scroll buttons. Exposes common select building blocks used across forms and dialogs."
+  },
+  "components": [
+    "SelectTrigger (styled button with ChevronDown icon)",
+    "SelectContent (portal wrapper with viewport and scroll buttons)",
+    "SelectItem (select option with Check indicator)",
+    "SelectLabel / SelectSeparator / ScrollUp/Down buttons"
+  ],
+  "notes": [
+    "Presentation layer only; delegates accessibility and behavior to Radix primitives.",
+    "Duplication risk is low; styling logic is shared via cn utility."
+  ]
+}

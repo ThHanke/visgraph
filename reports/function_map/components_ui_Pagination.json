@@ -1,0 +1,54 @@
+{
+  "directory": "src/components/ui",
+  "generatedAt": "2025-09-13T09:10:59+02:00",
+  "file": "src/components/ui/pagination.tsx",
+  "exports": [
+    "Pagination",
+    "PaginationContent",
+    "PaginationEllipsis",
+    "PaginationItem",
+    "PaginationLink",
+    "PaginationNext",
+    "PaginationPrevious"
+  ],
+  "component_summary": {
+    "name": "Pagination",
+    "type": "Composable primitives",
+    "description": "Accessible pagination primitives (nav, ul, li, link, previous/next buttons, ellipsis) that compose existing Button variants for consistent styling. Intended for simple page navigation UI."
+  },
+  "components": [
+    {
+      "name": "Pagination",
+      "signature": "({ className, ...props }) => <nav>",
+      "description": "Wrapper nav element with role=navigation and aria-label for pagination."
+    },
+    {
+      "name": "PaginationContent",
+      "signature": "React.forwardRef<HTMLUListElement>",
+      "description": "Container UL for pagination items, styled as a horizontal list."
+    },
+    {
+      "name": "PaginationItem",
+      "signature": "React.forwardRef<HTMLLIElement>",
+      "description": "List item wrapper for each pagination control."
+    },
+    {
+      "name": "PaginationLink",
+      "signature": "(props) => <a>",
+      "description": "Anchor styled as a button using buttonVariants; supports isActive to toggle outline/ghost styling and accepts size prop."
+    },
+    {
+      "name": "PaginationPrevious / PaginationNext",
+      "description": "Convenience components combining PaginationLink with Chevron icons and accessible labels."
+    },
+    {
+      "name": "PaginationEllipsis",
+      "description": "Presentation-only ellipsis indicator (MoreHorizontal icon) used when pages are collapsed."
+    }
+  ],
+  "notes": [
+    "Presentation-only; delegates styling to buttonVariants and uses cn utility for class composition.",
+    "Accessible attributes applied (aria-current for active page, aria-hidden for ellipsis).",
+    "Low duplication risk; consistent pattern with other UI primitives."
+  ]
+}

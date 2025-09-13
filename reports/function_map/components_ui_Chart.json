@@ -1,0 +1,50 @@
+{
+  "directory": "src/components/ui",
+  "generatedAt": "2025-09-13T09:12:59+02:00",
+  "file": "src/components/ui/chart.tsx",
+  "exports": [
+    "ChartContainer",
+    "ChartStyle",
+    "ChartTooltip",
+    "ChartTooltipContent",
+    "ChartLegend",
+    "ChartLegendContent"
+  ],
+  "component_summary": {
+    "name": "Chart",
+    "type": "Recharts integration + helpers",
+    "description": "Provides a ChartContainer wrapper around Recharts ResponsiveContainer with theme-aware CSS variable styling, custom tooltip and legend components, and a small context-driven configuration model. Designed to centralize Recharts usage and provide project-consistent tooltip/legend rendering."
+  },
+  "components_and_helpers": [
+    {
+      "name": "ChartContainer",
+      "signature": "React.forwardRef<HTMLDivElement, { config: ChartConfig, children }>",
+      "description": "Wraps Recharts ResponsiveContainer, provides ChartContext with a ChartConfig, injects a ChartStyle <style> block derived from config to define CSS variables for themed colors, and applies global Recharts-related style rules via className."
+    },
+    {
+      "name": "ChartStyle",
+      "signature": "({ id, config }) => JSX.Element | null",
+      "description": "Emits a <style> tag that defines CSS variables (--color-<key>) per chart id and per theme (light/dark). Uses dangerouslySetInnerHTML to inject dynamically computed CSS."
+    },
+    {
+      "name": "ChartTooltipContent",
+      "signature": "forwardRef, props extend Recharts.Tooltip props",
+      "description": "Custom tooltip renderer that reads ChartConfig from context to show friendly labels, icons and formatted values. Supports hideLabel/hideIndicator/indicator types and works with payload objects from Recharts."
+    },
+    {
+      "name": "ChartLegendContent",
+      "signature": "forwardRef, props extend div + LegendProps",
+      "description": "Renders legend entries using Recharts payload and ChartConfig for labels/icons, with optional hideIcon and vertical alignment."
+    },
+    {
+      "name": "getPayloadConfigFromPayload",
+      "signature": "(config: ChartConfig, payload: unknown, key: string) => any",
+      "description": "Utility that attempts to resolve a payload's corresponding entry in the ChartConfig. Looks into payload and payload.payload for label-key overrides and returns the matched config entry or undefined."
+    }
+  ],
+  "notes": [
+    "This module centralizes Recharts usage so chart rendering across the app can share consistent tooltip/legend behavior and theme-aware color variables.",
+    "Duplication candidates: theme->CSS variable injection is custom here; keep it in a single place (ChartStyle) rather than repeating per-chart.",
+    "ChartConfig shape allows either a single color or a per-theme mapping; this is flexible but callers must follow the expected keys for tooltip/legend resolution."
+  ]
+}

@@ -13,7 +13,7 @@
  */
 
 import type { RDFManager } from '../../../utils/rdfManager';
-import { computeTermDisplay, expandPrefixed, shortLocalName as tdShortLocalName } from '../../../utils/termDisplay';
+import { computeTermDisplay, expandPrefixed, shortLocalName as tdShortLocalName } from '../../../utils/termUtils';
 
 /**
  * DisplayInfo - result returned to UI code

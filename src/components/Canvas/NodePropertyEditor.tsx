@@ -31,7 +31,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { X, Plus, Info } from 'lucide-react';
 import { deriveInitialNodeType } from './helpers/nodePropertyHelpers';
-import { computeTermDisplay, shortLocalName } from '../../utils/termDisplay';
+import { computeTermDisplay, shortLocalName } from '../../utils/termUtils';
 export { deriveInitialNodeType };
 
 /**

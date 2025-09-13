@@ -1,0 +1,70 @@
+{
+  "directory": "src/stores",
+  "generatedAt": "2025-09-13T08:18:27+02:00",
+  "file": "src/stores/reasoningStore.ts",
+  "exports": [
+    "useReasoningStore"
+  ],
+  "storeShape": {
+    "state": [
+      "currentReasoning",
+      "reasoningHistory",
+      "isReasoning"
+    ],
+    "actions": [
+      "startReasoning",
+      "abortReasoning",
+      "clearHistory",
+      "getLastResult"
+    ]
+  },
+  "functions": [
+    {
+      "name": "startReasoning",
+      "signature": "async (nodes: any[], edges: any[], rdfStore?: any) => Promise<ReasoningResult>",
+      "description": "Main entrypoint to run a reasoning pass over the provided graph. Runs asynchronously, sets `isReasoning`/`currentReasoning`, performs checks (domain/range, missing labels, recommended properties), optionally reads triples from a provided RDF store to derive RDFS-style inferences (subClassOf transitivity, domain/range inferences), persists inferred triples into the RDF store under graph 'urn:vg:inferred' when possible, collects errors/warnings/inferences, records timing and history, and returns a consolidated ReasoningResult. Contains internal helper functions used only inside this flow: `resolveEdgeKey`, `findNodeByKey`, `displayLabelForNode`, and `expandPredicate`."
+    },
+    {
+      "name": "abortReasoning",
+      "signature": "() => void",
+      "description": "Stops an in-progress reasoning run by setting `isReasoning` to false and clearing `currentReasoning`."
+    },
+    {
+      "name": "clearHistory",
+      "signature": "() => void",
+      "description": "Clears the stored `reasoningHistory` array."
+    },
+    {
+      "name": "getLastResult",
+      "signature": "() => ReasoningResult | null",
+      "description": "Returns the most recent reasoning result from `reasoningHistory`, or null if none."
+    }
+  ],
+  "helpers_and_private": [
+    {
+      "name": "__vg_safe",
+      "description": "Small inline helper used to safely stringify arguments that may be strings or Error-like objects with a `.message` property. Used primarily for logging/debug wrappers."
+    },
+    {
+      "name": "resolveEdgeKey (inner)",
+      "description": "Robust normalization for various edge shapes; extracts `fromKey`, `toKey` and a stable `edgeId` using many candidate fields (from/source/sourceId/target/targetId/id/key)."
+    },
+    {
+      "name": "findNodeByKey (inner)",
+      "description": "Search helper that finds a node in an array by checking many candidate fields (key, id, iri, data.key, data.iri). Makes the reasoning checks resilient to differing node shapes."
+    },
+    {
+      "name": "displayLabelForNode (inner)",
+      "description": "Generates a friendly label for a node using `individualName`, `label`, or a shortened local name (via `shortLocalName`) of the IRI. Used in warnings/error messages to make output readable."
+    },
+    {
+      "name": "expandPredicate (inner)",
+      "description": "Resolves prefixed names (e.g., `rdf:type`) into full URIs by consulting the WELL_KNOWN.prefixes map. Falls back to the original string when no prefix matches. This is a local prefix-expansion helper used when materializing inferred triples."
+    },
+    {
+      "name": "inference rules (inline)",
+      "description": "A small set of RDFS-like inference patterns applied against quads pulled from the RDF store: transitive rdfs:subClassOf, rdfs:domain -> infer rdf:type for subjects, rdfs:range -> infer rdf:type for objects. The store is then updated with new inferred quads (under graph 'urn:vg:inferred') if the RDF store API supports adding quads."
+    }
+  ],
+  "notes": "This store implements a lightweight, application-level reasoning pipeline (mock/simplified RDFS rules plus UI-specific checks). Key duplication and consolidation candidates:\n- Prefix/prefixed-name expansion exists here (`expandPredicate`) and in other modules (ontologyStore, rdfManager). Consolidate into a single prefix-expansion utility to avoid drift.\n- Node/edge shape normalization (`resolveEdgeKey`, `findNodeByKey`, `displayLabelForNode`) duplicates logic found in ontologyStore graph-merge helpers (node identity resolution, extracting individualName/iri). Consider centralizing normalization utilities used across reasoning and ontology merging.\n- Inference rules and RDF-store add/get logic overlap with rdfManager responsibilities; pushing inference materialization into rdfManager or a dedicated reasoning utility would simplify the store and enable reuse.\n- The store writes inferred quads directly into the RDF store using different code paths than rdfManager's loader helpers; unify write paths (e.g., rdfManager.addQuad/addInferredQuad) so persistence policies (graph naming, dedup) are consistent.\n\nThese reports have been saved to reports/function_map/stores_reasoningStore.json for review."
+}

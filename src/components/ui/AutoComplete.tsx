@@ -4,7 +4,7 @@ import { Popover, PopoverContent, PopoverTrigger } from './popover';
 import { Button } from './button';
 import { ChevronDown, Check } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { computeTermDisplay, shortLocalName } from '../../utils/termDisplay';
+import { computeTermDisplay, shortLocalName } from '../../utils/termUtils';
 import { useOntologyStore } from '../../stores/ontologyStore';
 
 interface AutoCompleteOption {

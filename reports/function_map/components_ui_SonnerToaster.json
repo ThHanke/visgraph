@@ -1,0 +1,18 @@
+{
+  "directory": "src/components/ui",
+  "generatedAt": "2025-09-13T08:09:34+02:00",
+  "file": "src/components/ui/sonner.tsx",
+  "exports": [
+    "Toaster",
+    "toast"
+  ],
+  "functions": [
+    {
+      "name": "Toaster (Sonner wrapper)",
+      "exported": true,
+      "signature": "const Toaster = (props: ToasterProps) => JSX.Element",
+      "description": "Wraps the Sonner Toaster component to align its theme with next-themes and apply project-specific classNames and toast option styling. Re-exports a toast helper from ./helpers/sonnerHelpers."
+    }
+  ],
+  "notes": "This module bridges the external sonner library with the app's theming and style conventions."
+}

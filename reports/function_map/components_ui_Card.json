@@ -1,0 +1,55 @@
+{
+  "directory": "src/components/ui",
+  "generatedAt": "2025-09-13T09:12:41+02:00",
+  "file": "src/components/ui/card.tsx",
+  "exports": [
+    "Card",
+    "CardHeader",
+    "CardFooter",
+    "CardTitle",
+    "CardDescription",
+    "CardContent"
+  ],
+  "component_summary": {
+    "name": "Card",
+    "type": "Composable presentation primitives",
+    "description": "Simple, styled card primitives that provide consistent container, header, title, description, content and footer slots. Intended as a lightweight layout/building block for dashboard or panel UIs."
+  },
+  "components": [
+    {
+      "name": "Card",
+      "signature": "React.forwardRef<HTMLDivElement>",
+      "description": "Root container that applies border, background and rounded styling."
+    },
+    {
+      "name": "CardHeader",
+      "signature": "React.forwardRef<HTMLDivElement>",
+      "description": "Header area with padding and vertical spacing."
+    },
+    {
+      "name": "CardTitle",
+      "signature": "React.forwardRef<HTMLParagraphElement>",
+      "description": "Prominent title element (h3 styling)."
+    },
+    {
+      "name": "CardDescription",
+      "signature": "React.forwardRef<HTMLParagraphElement>",
+      "description": "Smaller descriptive text used under title."
+    },
+    {
+      "name": "CardContent",
+      "signature": "React.forwardRef<HTMLDivElement>",
+      "description": "Main content area with padding."
+    },
+    {
+      "name": "CardFooter",
+      "signature": "React.forwardRef<HTMLDivElement>",
+      "description": "Footer slot for actions/metadata."
+    }
+  ],
+  "notes": [
+    "Presentation-only; styling uses the shared `cn` helper.",
+    "Low duplication risk; follows project pattern of tiny, focused UI primitives.",
+    "Good candidate for reuse across pages; no business logic to centralize."
+  ]
+}

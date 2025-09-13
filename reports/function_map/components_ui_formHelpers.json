@@ -1,0 +1,45 @@
+{
+  "directory": "src/components/ui",
+  "generatedAt": "2025-09-13T08:10:16+02:00",
+  "file": "src/components/ui/formHelpers.tsx",
+  "exports": [
+    "Form",
+    "FormFieldContext",
+    "FormField",
+    "FormItemContext",
+    "useFormField"
+  ],
+  "functions": [
+    {
+      "name": "Form",
+      "exported": true,
+      "signature": "const Form = FormProvider",
+      "description": "Re-export of react-hook-form's FormProvider for convenience in the codebase."
+    },
+    {
+      "name": "FormFieldContext",
+      "exported": true,
+      "signature": "const FormFieldContext = React.createContext<FormFieldContextValue>",
+      "description": "Context that provides the current form field name to descendant components like Label, Control, or Message."
+    },
+    {
+      "name": "FormField",
+      "exported": true,
+      "signature": "const FormField = (props: ControllerProps) => JSX.Element",
+      "description": "Wrapper component that provides FormFieldContext and renders a react-hook-form Controller. Ensures child components can access the field name and state."
+    },
+    {
+      "name": "FormItemContext",
+      "exported": true,
+      "signature": "const FormItemContext = React.createContext<FormItemContextValue>",
+      "description": "Context used by FormItem to provide a stable id used by label/control/description/message components."
+    },
+    {
+      "name": "useFormField",
+      "exported": true,
+      "signature": "const useFormField = () => { id, name, formItemId, formDescriptionId, formMessageId, ...fieldState }",
+      "description": "Hook to be used by label/control/description/message components to access field state and generated ids. Uses useFormContext and getFieldState to return validation state and ids."
+    }
+  ],
+  "notes": "This module contains form building primitives to keep non-component exports out of form.tsx for react-refresh compatibility."
+}

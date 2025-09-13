@@ -1,0 +1,126 @@
+{
+  "directory": "src/stores",
+  "generatedAt": "2025-09-13T08:17:45+02:00",
+  "file": "src/stores/ontologyStore.ts",
+  "exports": [
+    "useOntologyStore"
+  ],
+  "storeShape": {
+    "state": [
+      "loadedOntologies",
+      "availableClasses",
+      "availableProperties",
+      "validationErrors",
+      "currentGraph",
+      "rdfManager",
+      "ontologiesVersion"
+    ],
+    "actions": [
+      "loadOntology",
+      "loadOntologyFromRDF",
+      "loadKnowledgeGraph",
+      "loadAdditionalOntologies",
+      "validateGraph",
+      "getCompatibleProperties",
+      "setCurrentGraph",
+      "clearOntologies",
+      "removeLoadedOntology",
+      "updateNode",
+      "exportGraph",
+      "getRdfManager"
+    ]
+  },
+  "functions": [
+    {
+      "name": "loadOntology",
+      "signature": "async (url: string) => Promise<void>",
+      "description": "High-level loader for an ontology URL. Normalizes URL, optionally registers well-known namespace entries, fetches content via RDFManager, parses RDF, registers namespaces, deduplicates and merges loaded ontology metadata into state (loadedOntologies, availableClasses, availableProperties), persists RDF into ontology graph, and merges parsed nodes/edges into currentGraph. Robust error handling and best-effort registration for well-known ontologies."
+    },
+    {
+      "name": "loadOntologyFromRDF",
+      "signature": "async (rdfContent: string, onProgress?: fn, preserveGraph?: boolean, graphName?: string) => Promise<void>",
+      "description": "Parse provided RDF content and apply it into the RDF manager (loadRDFIntoGraph). Re-applies parsed namespaces and nodes into rdfManager, ensures triples are present in the store, updates rdfManager-managed nodes (rdfTypes, annotationProperties) and merges the parsed graph into the UI currentGraph (deduplicating against existing nodes/edges)."
+    },
+    {
+      "name": "loadKnowledgeGraph",
+      "signature": "async (source: string, options?: { onProgress?: fn, timeout?: number }) => Promise<void>",
+      "description": "Wrapper that accepts a URL or inline RDF string. If URL, fetches with timeout and size checks, then delegates to loadOntologyFromRDF to parse and merge (target graph urn:vg:data). Reports progress via callback."
+    },
+    {
+      "name": "loadAdditionalOntologies",
+      "signature": "async (ontologyUris: string[], onProgress?: fn) => Promise<void>",
+      "description": "Batch loader for additional ontology URIs. Normalizes URIs, skips already loaded or disabled ones, supports well-known ontology shortcuts, and attempts fetch/parse for each entry, delegating to loadOntology where appropriate. Reports progress and continues on individual failures."
+    },
+    {
+      "name": "validateGraph",
+      "signature": "(nodes: ParsedNode[], edges: ParsedEdge[]) => ValidationError[]",
+      "description": "Lightweight validation routine that checks nodes' classes exist in availableClasses and checks edge predicate domain/range constraints against availableProperties. Records and returns validation errors."
+    },
+    {
+      "name": "getCompatibleProperties",
+      "signature": "(sourceClass: string, targetClass: string) => ObjectProperty[]",
+      "description": "Returns availableProperties filtered by domain/range compatibility (empty domain/range means 'any')."
+    },
+    {
+      "name": "setCurrentGraph",
+      "signature": "(nodes, edges) => void",
+      "description": "Set the in-memory currentGraph used by the UI directly."
+    },
+    {
+      "name": "clearOntologies",
+      "signature": "() => void",
+      "description": "Clear RDF manager and reset loaded ontologies, available classes/properties, validation errors, and currentGraph."
+    },
+    {
+      "name": "removeLoadedOntology",
+      "signature": "(url: string) => void",
+      "description": "Remove a loaded ontology by URL: updates app config (disable), removes ontology metadata and classes/properties from state, removes graph content from rdfManager and any namespaces introduced by that ontology. Attempts to update appConfigStore auto-load settings as well."
+    },
+    {
+      "name": "updateNode",
+      "signature": "(entityUri: string, updates: Record<string, any>) => void",
+      "description": "High-level node update: forwards updates to rdfManager.updateNode, then finds and patches matching nodes in currentGraph (derives/new classType/namespace when rdfTypes are set, translates annotationProperties to multiple shapes, updates annotation/literal properties, preserves rdfTypes). Also ensures some namespaces exist (e.g., 'dc') when annotationProperties reference certain prefixes."
+    },
+    {
+      "name": "exportGraph",
+      "signature": "async (format: 'turtle'|'json-ld'|'rdf-xml') => Promise<string>",
+      "description": "Delegates export to rdfManager (exportToTurtle/exportToJsonLD/exportToRdfXml)."
+    },
+    {
+      "name": "getRdfManager",
+      "signature": "() => RDFManager",
+      "description": "Returns the store's rdfManager instance (convenience accessor)."
+    }
+  ],
+  "helpers_and_private": [
+    {
+      "name": "inFlightLoads",
+      "description": "Map used to deduplicate concurrent RDF loads for the same source/content so identical loads return same Promise."
+    },
+    {
+      "name": "shouldLogCallGraph / logCallGraph",
+      "description": "Helpers controlling optional instrumentation logging used throughout store functions for call-graph tracing (config-driven)."
+    },
+    {
+      "name": "getNodeData",
+      "description": "Small helper that normalizes node shapes by returning node.data or the node itself."
+    },
+    {
+      "name": "extractReferencedOntologies",
+      "description": "Inspects RDF text to heuristically find referenced well-known ontology URIs based on prefixes, xmlns, or context usage (best-effort)."
+    },
+    {
+      "name": "deriveOntologyName",
+      "description": "Turn a URL into a user-friendly label (strip extensions, date/version suffixes, decode, beautify). Used for loadedOntologies.name."
+    },
+    {
+      "name": "ensureNamespacesPresent",
+      "description": "Idempotent helper that registers namespace prefix -> URI pairs into rdfManager when missing; used to opportunistically populate rdfManager with known prefixes."
+    },
+    {
+      "name": "setupGlobalFatMap (IIFE)",
+      "description": "A startup IIFE that subscribes to rdfManager change notifications (onSubjectsChange / onChange) and rebuilds availableProperties/availableClasses from the RDF store as a 'fat-map' synchronizer. Ensures store state reflects store contents even when updates bypass the normal load path."
+    }
+  ],
+  "notes": "The ontology store is the most behavior-rich module connecting RDF parsing, rdfManager, UI graph mapping, and app config. Key areas to inspect for deduplication: namespace normalization and URL normalization logic (appears in multiple places), rdf:type -> (namespace,class) parsing logic, merging/deduplication logic for loadedOntologies / availableClasses / availableProperties, and graph merge logic used in loadOntology/loadOntologyFromRDF/loadKnowledgeGraph. The IIFE fat-map rebuilder centralizes much of the store-to-UI synchronization, but there are several ad-hoc merges elsewhere that could be consolidated."
+}

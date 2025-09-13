@@ -1,0 +1,17 @@
+{
+  "directory": "src/components/ui",
+  "generatedAt": "2025-09-13T09:08:10+02:00",
+  "file": "src/components/ui/checkbox.tsx",
+  "exports": [
+    "Checkbox"
+  ],
+  "component_summary": {
+    "name": "Checkbox",
+    "type": "Radix-UI wrapper",
+    "description": "Styled wrapper around @radix-ui/react-checkbox providing consistent visual treatment (Check icon indicator) and focus/disabled states. Exports a forwardRef component."
+  },
+  "notes": [
+    "Presentation-only; uses Radix primitive for behavior and accessibility.",
+    "Low duplication risk."
+  ]
+}

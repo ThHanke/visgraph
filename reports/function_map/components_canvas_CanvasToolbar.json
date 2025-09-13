@@ -1,0 +1,55 @@
+{
+  "directory": "src/components/Canvas",
+  "generatedAt": "2025-09-13T08:33:56+02:00",
+  "file": "src/components/Canvas/CanvasToolbar.tsx",
+  "exports": [
+    "CanvasToolbar"
+  ],
+  "component_summary": {
+    "name": "CanvasToolbar",
+    "type": "React.FC",
+    "description": "Toolbar UI for the canvas. Provides dialogs/controls for adding nodes, loading ontologies/files, selecting view mode (ABox/TBox), toggling legend, applying layouts, exporting, and managing loaded ontologies. Composes many ui primitives and uses stores (ontologyStore, appConfigStore)."
+  },
+  "props": [
+    "onAddNode(entityUri: string) => void",
+    "onToggleLegend() => void",
+    "showLegend: boolean",
+    "onExport(format) => void",
+    "onLoadFile?(file) => void",
+    "viewMode, onViewModeChange",
+    "onLayoutChange?(layoutType, force?, options?)",
+    "currentLayout?, layoutEnabled?, onToggleLayoutEnabled?, availableEntities"
+  ],
+  "top_level_behaviors": [
+    {
+      "name": "Add Node dialog",
+      "description": "Opens a dialog to pick a class (via EntityAutocomplete) and invokes onAddNode with the chosen class IRI."
+    },
+    {
+      "name": "Load Ontology dialog",
+      "description": "Allows entering a URL or pasting RDF. Uses ontologyStore.loadOntology / loadOntologyFromRDF; shows toasts on success/failure and offers helpful error text for CORS/redirect issues."
+    },
+    {
+      "name": "Load File dialog",
+      "description": "Accepts file upload or URL and delegates to onLoadFile. Uses toasts and fallback logging on errors."
+    },
+    {
+      "name": "Layouts popover",
+      "description": "Displays available layouts from LayoutManager, allows applying a layout (calls onLayoutChange with force=true), and exposes spacing slider that persists via appConfigStore.setLayoutSpacing."
+    },
+    {
+      "name": "Export dropdown",
+      "description": "Triggers onExport with requested format (Turtle, OWL/XML, JSON-LD)."
+    },
+    {
+      "name": "Loaded ontologies dropdown",
+      "description": "Shows loaded ontologies and allows adding/removing them to/from auto-load via appConfigStore actions."
+    }
+  ],
+  "helpers_and_notes": [
+    "Merges namespaces from loaded ontologies and rdfManager.getNamespaces to show namespace options (deduped).",
+    "Handles UI state (dialogs, temporary spacing) and persists spacing on pointer up / mouse up / touch end events.",
+    "Uses many ui primitives (Dialog, Popover, DropdownMenu, Select, Slider) — logic is presentation-focused and delegates RDF/network operations to stores.",
+    "Duplication candidates: namespace normalization and key normalization helpers appear elsewhere; consider centralizing normalization utilities (normalizeNamespaceKey) and common toast/error patterns."
+  ]
+}

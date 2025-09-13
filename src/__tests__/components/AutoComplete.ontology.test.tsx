@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { AutoComplete } from "../../components/ui/AutoComplete";
-import { shortLocalName } from "../../utils/termDisplay";
+import { shortLocalName } from "../../utils/termUtils";
 
 /**
  * This test loads a small in-memory OWL/Turtle ontology into the ontology store,

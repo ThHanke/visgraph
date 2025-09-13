@@ -1,0 +1,55 @@
+{
+  "directory": "src/components/ui",
+  "generatedAt": "2025-09-13T08:13:42+02:00",
+  "file": "src/components/ui/context-menu.tsx",
+  "exports": [
+    "ContextMenu",
+    "ContextMenuTrigger",
+    "ContextMenuContent",
+    "ContextMenuItem",
+    "ContextMenuCheckboxItem",
+    "ContextMenuRadioItem",
+    "ContextMenuLabel",
+    "ContextMenuSeparator",
+    "ContextMenuShortcut",
+    "ContextMenuGroup",
+    "ContextMenuPortal",
+    "ContextMenuSub",
+    "ContextMenuSubContent",
+    "ContextMenuSubTrigger",
+    "ContextMenuRadioGroup"
+  ],
+  "functions": [
+    {
+      "name": "ContextMenu",
+      "exported": true,
+      "signature": "const ContextMenu = ContextMenuPrimitive.Root",
+      "description": "Re-export of Radix Context Menu root primitive."
+    },
+    {
+      "name": "ContextMenuContent",
+      "exported": true,
+      "signature": "const ContextMenuContent = React.forwardRef(...)",
+      "description": "Styled wrapper around Radix ContextMenu.Content rendered in a Portal with consistent styling and animations."
+    },
+    {
+      "name": "ContextMenuItem / Checkbox / Radio",
+      "exported": true,
+      "signature": "const ContextMenuItem = React.forwardRef(...); const ContextMenuCheckboxItem = React.forwardRef(...); const ContextMenuRadioItem = React.forwardRef(...)",
+      "description": "Item wrappers providing styling, optional inset alignment, and item indicators (Check/Circle)."
+    },
+    {
+      "name": "ContextMenuSubTrigger / ContextMenuSubContent",
+      "exported": true,
+      "signature": "const ContextMenuSubTrigger = React.forwardRef(...); const ContextMenuSubContent = React.forwardRef(...)",
+      "description": "Helpers for nested submenus matching dropdown-menu analogues."
+    },
+    {
+      "name": "ContextMenuLabel / ContextMenuSeparator / ContextMenuShortcut",
+      "exported": true,
+      "signature": "const ContextMenuLabel = React.forwardRef(...); const ContextMenuSeparator = React.forwardRef(...); const ContextMenuShortcut = (...) => JSX.Element",
+      "description": "Presentational helpers used within context menus."
+    }
+  ],
+  "notes": "Mirrors the DropdownMenu implementations but for context menus; centralizes styling and behavior."
+}

@@ -1,0 +1,113 @@
+{
+  "directory": "src/components/Canvas",
+  "generatedAt": "2025-09-13T08:01:50+02:00",
+  "files": {
+    "ReactFlowCanvas.tsx": {
+      "path": "src/components/Canvas/ReactFlowCanvas.tsx",
+      "functions": [
+        {
+          "name": "nodeGridPosition",
+          "exported": false,
+          "signature": "nodeGridPosition(index: number): { x: number; y: number }",
+          "description": "Deterministic helper computing a simple grid position (x,y) for a node index. Uses a 4-column layout and fixed spacing (spacingX=220, spacingY=140)."
+        },
+        {
+          "name": "ReactFlowCanvas (component)",
+          "exported": true,
+          "signature": "const ReactFlowCanvas: React.FC = () => { ... }",
+          "description": "Main React Flow-based canvas component. Responsible for mapping the application's currentGraph and RDF state to React Flow nodes/edges, wiring user interactions (select, double-click, connect), syncing changes back to the RDF store, triggering reasoning runs, applying layouts, and rendering related UI (toolbars, editors, legend, reasoning modal)."
+        },
+        {
+          "name": "isBlacklistedIri",
+          "exported": false,
+          "signature": "isBlacklistedIri(val?: string | null): boolean",
+          "description": "Predicate used to filter out reserved/core RDF prefixes/URIs from canvas rendering. Accepts prefixed names (checks prefix) and absolute IRIs (checks against a configured blacklist list). Returns false on errors."
+        },
+        {
+          "name": "termForIri",
+          "exported": false,
+          "signature": "termForIri(iri: string): NamedNode | BlankNode",
+          "description": "Convert an IRI or blank-node label (\"_:b0\") into an N3 DataFactory term. Blank nodes are created for values starting with '_:'. Falls back to namedNode on errors."
+        },
+        {
+          "name": "initializeApp",
+          "exported": false,
+          "signature": "initializeApp(opts?: { force?: boolean }): Promise<void>",
+          "description": "Programmatic app initializer exposed to window.__VG_INIT_APP. Optionally auto-loads configured ontologies and a startup knowledge graph when allowed by runtime flags or config. Uses canvasActions to show progress. Guards against duplicate initialization and supports force mode."
+        },
+        {
+          "name": "triggerReasoning",
+          "exported": false,
+          "signature": "triggerReasoning(ns: RFNode<NodeData>[], es: RFEdge<LinkData>[], force?: boolean): Promise<void>",
+          "description": "Invoke the reasoning pipeline via useReasoningStore.startReasoning when enabled (autoReasoning or forced). Builds compact payloads from nodes/edges, calls startReasoning with the RDF store, and applies the resulting hasReasoningError flags to nodes and edges in state. Logs and warns on failure."
+        },
+        {
+          "name": "onNodeDoubleClick",
+          "exported": false,
+          "signature": "onNodeDoubleClick(event: any, node: any): void",
+          "description": "Event handler that opens the node property editor for a double-clicked node. Builds a minimal node payload and sets it in canvasActions.selectedNode."
+        },
+        {
+          "name": "onEdgeDoubleClick",
+          "exported": false,
+          "signature": "onEdgeDoubleClick(event: any, edge: any): void",
+          "description": "Event handler that prepares link edit context when an edge is double-clicked. Resolves canonical source/target nodes, composes a selectedLink payload including predicate display label (using available properties and computeTermDisplay fallback), and sets canvasActions.selectedLink."
+        },
+        {
+          "name": "onConnect",
+          "exported": false,
+          "signature": "onConnect(params: Connection): void",
+          "description": "Handler for creating a new edge (connection). Validates endpoints (no self-loops, same ABox/TBox domain), chooses a default predicate candidate, persists a triple into the RDF store (urn:vg:data graph), updates edges state, and opens the link editor with the new edge selection."
+        },
+        {
+          "name": "handleSaveNodeProperties",
+          "exported": false,
+          "signature": "handleSaveNodeProperties(properties: any[]): Promise<void>",
+          "description": "Persist node annotation/literal properties to the RDF store using updateNode, then update the in-memory React Flow node data to reflect the new annotationProperties."
+        },
+        {
+          "name": "handleSaveLinkProperty",
+          "exported": false,
+          "signature": "handleSaveLinkProperty(propertyUri: string, label: string): void",
+          "description": "Update the selected link's UI state (propertyUri/propertyType and label) and persist the predicate change to the RDF store by removing quads using the old predicate and adding a new quad with the chosen predicate under urn:vg:data."
+        },
+        {
+          "name": "handleExport",
+          "exported": false,
+          "signature": "handleExport(format: 'turtle' | 'owl-xml' | 'json-ld'): Promise<void>",
+          "description": "Export the current knowledge graph via exportGraph in the requested format, construct a Blob, and trigger download in the browser. Shows success/error toasts and logs warnings."
+        },
+        {
+          "name": "onLoadFile",
+          "exported": false,
+          "signature": "onLoadFile(file: File | any): Promise<void>",
+          "description": "File/URL loader that reads TTL/RDF text (from a File or URL), invokes loadKnowledgeGraph with progress updates and shows success/error toasts. Uses canvasActions.setLoading to show progress UI."
+        },
+        {
+          "name": "handleLayoutChange",
+          "exported": false,
+          "signature": "handleLayoutChange(layoutType: string, force?: boolean, options?: { nodeSpacing?: number }): Promise<boolean>",
+          "description": "Apply a dagre-based layout (horizontal or vertical) to current nodes/edges when layoutEnabled or when forced. Calls applyDagreLayout and updates node positions, persists currentLayout into app config, and fits view. Returns success boolean and shows toasts on completion/failure."
+        },
+        {
+          "name": "onInit",
+          "exported": false,
+          "signature": "onInit(instance: RFInstance): void",
+          "description": "React Flow initialization callback storing the instance ref, optionally loading a dev demo TTL in development, and exposing instance-based behavior."
+        },
+        {
+          "name": "onEdgeUpdate",
+          "exported": false,
+          "signature": "onEdgeUpdate(oldEdge: RFEdge<LinkData>, connection: Connection): void",
+          "description": "Handler to support relinking edges: validates endpoints, persists the change into the RDF store (remove old predicate quad, add new quad) and updates local edges state."
+        },
+        {
+          "name": "onEdgeUpdateEnd",
+          "exported": false,
+          "signature": "onEdgeUpdateEnd(): void",
+          "description": "No-op placeholder for edge update end; reasoning pipeline is triggered by edges change effects."
+        }
+      ]
+    }
+  }
+}

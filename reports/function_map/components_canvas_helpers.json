@@ -1,0 +1,22 @@
+{
+  "directory": "src/components/Canvas/helpers",
+  "generatedAt": "2025-09-13T08:27:00+02:00",
+  "file": "src/components/Canvas/helpers/diagramHelpers.ts",
+  "exports": [
+    "filterNodesByViewMode",
+    "applyPaletteToModelForDiagram"
+  ],
+  "functions": [
+    {
+      "name": "filterNodesByViewMode",
+      "signature": "filterNodesByViewMode(diagram: any, viewMode: 'abox'|'tbox')",
+      "description": "Iterates diagram nodes and toggles 'visible' property based on whether the node is a TBox entity (class/property) or an ABox individual. Uses diagram transactions and swallows errors (non-fatal)."
+    },
+    {
+      "name": "applyPaletteToModelForDiagram",
+      "signature": "applyPaletteToModelForDiagram(diagram, mgr, availableClasses, buildPaletteForRdfManager, computeDisplayInfo, computeBadgeText)",
+      "description": "Builds a palette via provided builder function then iterates nodeDataArray, computes display info & badge text for each node, derives a namespace and picks a color from the palette and sets node 'color' via model.setDataProperty. Uses transactions and ignores per-node failures."
+    }
+  ],
+  "notes": "Helpers are pure and decoupled from React; they accept computeDisplayInfo and computeBadgeText as injected functions, making them easy to unit test. These helpers rely on display utilities that themselves use prefix-expansion logic — another candidate for centralization."
+}

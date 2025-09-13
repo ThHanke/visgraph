@@ -1,0 +1,67 @@
+{
+  "directory": "src/components/ui",
+  "generatedAt": "2025-09-13T08:12:00+02:00",
+  "file": "src/components/ui/dropdown-menu.tsx",
+  "exports": [
+    "DropdownMenu",
+    "DropdownMenuTrigger",
+    "DropdownMenuContent",
+    "DropdownMenuItem",
+    "DropdownMenuCheckboxItem",
+    "DropdownMenuRadioItem",
+    "DropdownMenuLabel",
+    "DropdownMenuSeparator",
+    "DropdownMenuShortcut",
+    "DropdownMenuGroup",
+    "DropdownMenuPortal",
+    "DropdownMenuSub",
+    "DropdownMenuSubContent",
+    "DropdownMenuSubTrigger",
+    "DropdownMenuRadioGroup"
+  ],
+  "functions": [
+    {
+      "name": "DropdownMenu",
+      "exported": true,
+      "signature": "const DropdownMenu = DropdownMenuPrimitive.Root",
+      "description": "Re-export of Radix DropdownMenu root primitive for composition."
+    },
+    {
+      "name": "DropdownMenuTrigger",
+      "exported": true,
+      "signature": "const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger",
+      "description": "Re-export of the trigger primitive used to open the dropdown."
+    },
+    {
+      "name": "DropdownMenuContent",
+      "exported": true,
+      "signature": "const DropdownMenuContent = React.forwardRef(...)",
+      "description": "Styled wrapper around Radix DropdownMenu.Content placed into a Portal. Applies consistent styling, animations and a default sideOffset."
+    },
+    {
+      "name": "DropdownMenuItem",
+      "exported": true,
+      "signature": "const DropdownMenuItem = React.forwardRef(...)",
+      "description": "Styled wrapper around Radix DropdownMenu.Item supporting an `inset` prop for aligned content and centralizing common item classes."
+    },
+    {
+      "name": "DropdownMenuSubTrigger / DropdownMenuSubContent",
+      "exported": true,
+      "signature": "const DropdownMenuSubTrigger = React.forwardRef(...); const DropdownMenuSubContent = React.forwardRef(...)",
+      "description": "Helpers for nested submenus: SubTrigger renders an item with a trailing ChevronRight; SubContent renders a SubContent portal-styled panel."
+    },
+    {
+      "name": "DropdownMenuCheckboxItem / DropdownMenuRadioItem",
+      "exported": true,
+      "signature": "const DropdownMenuCheckboxItem = React.forwardRef(...); const DropdownMenuRadioItem = React.forwardRef(...)",
+      "description": "Checkbox and radio menu item wrappers that include item indicators (Check / Circle icons) and consistent padding/styling."
+    },
+    {
+      "name": "DropdownMenuLabel / DropdownMenuSeparator / DropdownMenuShortcut",
+      "exported": true,
+      "signature": "const DropdownMenuLabel = React.forwardRef(...); const DropdownMenuSeparator = React.forwardRef(...); const DropdownMenuShortcut = (...) => JSX.Element",
+      "description": "Small presentational helpers for menu labels, separators and shortcut text."
+    }
+  ],
+  "notes": "This module centralizes Radix DropdownMenu primitives and applies the app's design system classes (via `cn`). It provides many convenience re-exports for building menus consistently across the app."
+}

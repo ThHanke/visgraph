@@ -1,0 +1,30 @@
+{
+  "directory": "src/components/Canvas",
+  "generatedAt": "2025-09-13T08:34:37+02:00",
+  "file": "src/components/Canvas/NamespaceLegend.tsx",
+  "exports": [
+    "NamespaceLegend"
+  ],
+  "functions": [
+    {
+      "name": "NamespaceLegend",
+      "signature": "(props: { namespaces?: Record<string,string> }) => JSX.Element | null",
+      "description": "React component that displays a legend of namespace prefixes and their URIs. It reads registered namespaces from an optional prop or the rdfManager (via ontologyStore.rdfManager.getNamespaces()), scans the RDF store to detect which namespaces are actually used (computeUsedNamespaceUris), and renders only those used namespaces with color badges. Subscribes to currentGraph to recompute when graph/store changes."
+    },
+    {
+      "name": "computeUsedNamespaceUris",
+      "signature": "(store: any, candidateUris: string[]) => Set<string>",
+      "description": "Helper that scans the provided RDF store's quads (subject/predicate/object) and returns the subset of candidate namespace URIs that appear as prefixes of term values. This is a best-effort, synchronous scan and stops early if all candidates are found."
+    },
+    {
+      "name": "getNamespaceColor",
+      "signature": "(prefix: string, index: number) => string",
+      "description": "Small deterministic color picker that maps a prefix/index to a color from a fixed palette constant (NAMESPACE_COLORS)."
+    }
+  ],
+  "notes": [
+    "UI-focused component that derives its display from rdfManager and the RDF store's quads (single source of truth).",
+    "Duplication candidates: scanning the RDF store to determine used namespaces is similar to subject/namespace detection logic found in rdfManager and ontologyStore. Consider exposing a rdfManager helper to computeUsedNamespaceUris (or a predicate) to avoid repeating store-scanning logic and to centralize any performance optimizations (debouncing, indexing).",
+    "This component depends on rdfManager.getStore() and currentGraph for reactivity; ensure any refactors preserve the single-source-of-truth pattern (store-based usage detection)."
+  ]
+}

@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { useOntologyStore } from '../../stores/ontologyStore';
-import { computeTermDisplay, shortLocalName } from '../../utils/termDisplay';
+import { computeTermDisplay, shortLocalName } from '../../utils/termUtils';
 
 interface LinkPropertyEditorProps {
   open: boolean;

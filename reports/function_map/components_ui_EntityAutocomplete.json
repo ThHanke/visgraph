@@ -1,0 +1,23 @@
+{
+  "directory": "src/components/ui",
+  "generatedAt": "2025-09-13T08:08:42+02:00",
+  "file": "src/components/ui/EntityAutocomplete.tsx",
+  "exports": [
+    "EntityAutocomplete"
+  ],
+  "functions": [
+    {
+      "name": "shortLabelFromUri",
+      "exported": false,
+      "signature": "shortLabelFromUri(uri?: string): string",
+      "description": "Derive a short human-readable label from a URI, prefixed name, or short label. Handles http(s) URIs by returning the last path/fragment segment, prefixed names by returning the segment after the colon, and falls back to splitting on '#' or '/'."
+    },
+    {
+      "name": "EntityAutocomplete (component)",
+      "exported": true,
+      "signature": "const EntityAutocomplete = ({ entities, value, onValueChange, placeholder?, emptyMessage?, className?, disabled?, filterByType? }: EntityAutocompleteProps) => JSX.Element",
+      "description": "Popover-backed entity selector tailored for ontology entities. Filters entities by optional RDF type and by label/IRI/namespace/description matching the user's input, limits results to top 5, and renders a Command-style list. On select, calls onValueChange with the entity IRI. Displays a concise label for the selected value using shortLabelFromUri when no exact entity is loaded."
+    }
+  ],
+  "notes": "Component is lightweight, shows namespace + label + rdfType in the item subtitle, and uses a small client-side filter with a 5-item result cap for UX performance."
+}

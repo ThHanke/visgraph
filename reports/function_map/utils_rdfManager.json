@@ -1,0 +1,82 @@
+{
+  "directory": "src/utils",
+  "generatedAt": "2025-09-13T08:19:46+02:00",
+  "file": "src/utils/rdfManager.ts",
+  "exports": [
+    "RDFManager",
+    "rdfManager"
+  ],
+  "classes": [
+    {
+      "name": "RDFManager",
+      "description": "Encapsulates an N3 Store with parsing, namespace management, change notifications, and convenience helpers for loading/parsing RDF. Provides high-level APIs used by stores and UI to persist and query RDF data.",
+      "methods": [
+        {
+          "name": "constructor",
+          "description": "Initializes N3 Store, Parser, Writer, default namespaces, optional write-tracing helpers and instrumentation flags."
+        },
+        {
+          "name": "getBlacklist",
+          "signature": "(): { prefixes: string[]; uris: string[] }",
+          "description": "Return configured blacklist."
+        },
+        {
+          "name": "setBlacklist",
+          "signature": "(prefixes?: string[], uris?: string[]) => void",
+          "description": "Set blacklist and best-effort persist to appConfigStore."
+        },
+        {
+          "name": "onChange / offChange",
+          "signature": "(cb: (count:number) => void) => void",
+          "description": "Subscribe/unsubscribe to global change notifications (incrementing counter)."
+        },
+        {
+          "name": "onSubjectsChange / offSubjectsChange",
+          "signature": "(cb: (subjects: string[]) => void) => void",
+          "description": "Subscribe/unsubscribe to debounced subject-level change notifications. Emits subject IRIs not blacklisted."
+        },
+        {
+          "name": "loadRDF",
+          "signature": "async (rdfContent: string, mimeType?: string) => Promise<void>",
+          "description": "Parse RDF text (Turtle/TTL/JSON-LD/RDF-XML) into the default graph. Deduplicates concurrent loads, supports rdf/xml streaming parser if available, auto-prepends missing @prefix declarations from known namespaces, buffers subject change notifications, robust error handling and instrumentation."
+        },
+        {
+          "name": "loadRDFIntoGraph",
+          "signature": "async (rdfContent: string, graphName?: string, mimeType?: string) => Promise<void>",
+          "description": "Same as loadRDF but writes quads into a named graph. Supports xml parser path and similar instrumentation and notifications."
+        },
+        {
+          "name": "updateNode",
+          "signature": "(entityUri: string, updates: { type?, rdfTypes?, annotationProperties? }, options?) => void",
+          "description": "Idempotent persistence helper to add rdf:type triples and literal annotation properties. Supports replace vs additive modes for literals, ensures some fallback namespaces, and buffers subject notifications. Central place where parsed nodes become persisted quads."
+        },
+        {
+          "name": "loadFromUrl",
+          "signature": "async (url: string, options?) => Promise<{ content: string; mimeType: string | null }>",
+          "description": "Network helper that fetches an RDF URL with timeouts and Accept headers, heuristics to detect RDF-like content, proxy fallback (/__external) for CORS, and useful developer-friendly diagnostic snippets on failures."
+        },
+        {
+          "name": "exportToTurtle / exportToJsonLD / exportToRdfXml",
+          "description": "Writers that serialize store quads to requested formats using N3.Writer and current namespace map."
+        },
+        {
+          "name": "getNamespaces / addNamespace / removeNamespaceAndQuads / removeGraph / removeQuadsInGraphByNamespaces / applyParsedNamespaces / applyParsedNodes / extractReferencedOntologies / expandPrefix / getStore / clear",
+          "description": "Namespace and store maintenance helpers: add/remove namespaces, remove quads by namespace or graph, apply parsed nodes/namespaces, extract referenced ontologies heuristically from text, expand prefixed names using the namespace map, access underlying store, and clear/reset the manager."
+        }
+      ],
+      "notes": [
+        "Provides subject-level change buffering and debounced emission.",
+        "Implements an in-flight dedupe map to avoid re-parsing identical content concurrently.",
+        "Performs many best-effort fallback behaviors (namespace fixes, proxy fetch, parse error diagnostics).",
+        "Contains duplication candidates with ontologyStore and reasoningStore: prefix expansion, extractReferencedOntologies, node/applyParsedNodes logic and subject-blacklist logic."
+      ]
+    }
+  ],
+  "instances": [
+    {
+      "name": "rdfManager",
+      "description": "Singleton instance exported for app-wide use."
+    }
+  ],
+  "notes": "RDFManager is a central piece for RDF persistence and change propagation. Consolidation opportunities: move prefix expansion and fetch heuristics into shared utils, centralize namespace blacklist config with appConfigStore usage, and ensure a single path for persisting inferred triples (used also by reasoningStore)."
+}

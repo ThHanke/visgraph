@@ -1,0 +1,26 @@
+{
+  "directory": "src/components/Canvas",
+  "generatedAt": "2025-09-13T08:34:21+02:00",
+  "file": "src/components/Canvas/LinkPropertyEditor.tsx",
+  "exports": [
+    "LinkPropertyEditor"
+  ],
+  "component_summary": {
+    "name": "LinkPropertyEditor",
+    "type": "React.FC",
+    "description": "Dialog to edit a link's predicate/property and label. Offers autocomplete from availableProperties and persists selection via onSave callback. Also renders source→target summary using computeTermDisplay for friendly labels."
+  },
+  "props": [
+    "open, onOpenChange, linkData, sourceNode, targetNode, onSave(propertyType, label)"
+  ],
+  "behaviors": [
+    "Initializes selectedProperty from linkData (supports multiple shapes).",
+    "Builds autocomplete options from ontologyStore.availableProperties.",
+    "Provides format for source→target display label using computeTermDisplay with rdfManager if available; otherwise falls back to shortLocalName.",
+    "handleSave invokes onSave with chosen URI and label."
+  ],
+  "notes": [
+    "Simple presenter/editor relying on ontologyStore and utils/termDisplay.",
+    "Ensures multiple linkData shapes are supported (top-level vs nested data)."
+  ]
+}

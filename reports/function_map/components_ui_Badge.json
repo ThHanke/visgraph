@@ -1,0 +1,17 @@
+{
+  "directory": "src/components/ui",
+  "generatedAt": "2025-09-13T09:11:39+02:00",
+  "file": "src/components/ui/badge.tsx",
+  "exports": [
+    "Badge"
+  ],
+  "component_summary": {
+    "name": "Badge",
+    "type": "Presentational wrapper",
+    "description": "Small utility component that applies variant-based styles via badgeVariants helper and class composition utility `cn`. Accepts variant props defined by class-variance-authority pattern."
+  },
+  "notes": [
+    "Minimal logic; styling delegated to badgeVariants module (centralized).",
+    "Duplication risk low; follows consistent UI primitive patterns."
+  ]
+}
