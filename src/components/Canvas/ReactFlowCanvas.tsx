@@ -40,6 +40,7 @@ import { Progress } from "../ui/progress";
 import {
   computeDisplayInfo,
 } from "./core/nodeDisplay";
+import { mapGraphToDiagram } from "./core/mappingHelpers";
 import { buildPaletteForRdfManager } from "./core/namespacePalette";
 import { resolveKeyForCg } from "./helpers/graphMappingHelpers";
 import {
@@ -313,6 +314,58 @@ export const ReactFlowCanvas: React.FC = () => {
     }
 
     const cg = currentGraph;
+
+    // Short-circuit mapping: use pure mapping helper to produce diagram nodes/edges
+    // and apply them immediately. This preserves the existing inline mapping as a
+    // fallback but prefers the new, testable mapping implementation.
+    try {
+      if (cg) {
+        const diagram = mapGraphToDiagram(cg, {
+          getRdfManager: () => (getRdfManagerRef.current ? getRdfManagerRef.current() : undefined),
+          availableClasses: availableClasses,
+          getEntityIndex: () =>
+            (useOntologyStore as any).getState && (useOntologyStore as any).getState().getEntityIndex
+              ? (useOntologyStore as any).getState().getEntityIndex()
+              : undefined,
+        });
+        // Apply only the nodes/edges appropriate for the current viewMode
+        const mappedNodes = diagram.nodes || [];
+        const mappedEdges = diagram.edges || [];
+
+        setNodes((prev) => {
+          try {
+            if (
+              prev.length === mappedNodes.length &&
+              prev.every((p, idx) => p.id === mappedNodes[idx].id && JSON.stringify(p.data) === JSON.stringify(mappedNodes[idx].data))
+            ) {
+              return prev;
+            }
+          } catch (_) {
+            /* fallback to replace */
+          }
+          return mappedNodes;
+        });
+
+        setEdges((prev) => {
+          try {
+            if (
+              prev.length === mappedEdges.length &&
+              prev.every((p, idx) => p.id === mappedEdges[idx].id && p.source === mappedEdges[idx].source && p.target === mappedEdges[idx].target && JSON.stringify(p.data) === JSON.stringify(mappedEdges[idx].data))
+            ) {
+              return prev;
+            }
+          } catch (_) {
+            /* fallback to replace */
+          }
+          return mappedEdges;
+        });
+
+        // Skip the old inline mapping by returning early from the effect.
+        return;
+      }
+    } catch (e) {
+      /* if helper fails, fall back to original inline mapping below */
+    }
 
     // Determine which nodes are in the data graph (urn:vg:data).
     // We will only render nodes that are subjects in the data graph or are targets

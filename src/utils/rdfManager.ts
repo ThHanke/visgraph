@@ -2203,6 +2203,68 @@ export class RDFManager {
   }
 
   /**
+   * Find a prefix for a full IRI using the manager's namespace map.
+   * Returns the prefix string (e.g. "iof") if found, otherwise undefined.
+   */
+  public findPrefixForUri(fullUri: string): string | undefined {
+    if (!fullUri) return undefined;
+    try {
+      for (const [p, u] of Object.entries(this.namespaces || {})) {
+        if (!u) continue;
+        if (fullUri.startsWith(u)) return p;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    return undefined;
+  }
+
+  /**
+   * Convert a full IRI to a prefixed form using registered namespaces or well-known fallbacks.
+   * Throws if no matching prefix is found.
+   */
+  public toPrefixed(iri: string | NamedNode): string {
+    const iriStr = typeof iri === "string" ? iri : (iri as NamedNode).value;
+    if (!iriStr) throw new Error("Empty IRI passed to toPrefixed");
+    if (iriStr.startsWith("_:")) return iriStr;
+
+    // Use manager namespaces first
+    const prefix = this.findPrefixForUri(iriStr);
+    if (prefix) {
+      const ns = this.namespaces[prefix];
+      if (ns) return `${prefix}:${iriStr.substring(ns.length)}`;
+    }
+
+    // Fall back to WELL_KNOWN prefixes if present
+    try {
+      const wk = (WELL_KNOWN && (WELL_KNOWN as any).prefixes) || {};
+      for (const [p, u] of Object.entries(wk || {})) {
+        try {
+          if (typeof u === "string" && iriStr.startsWith(u)) {
+            return `${p}:${iriStr.substring(String(u).length)}`;
+          }
+        } catch (_) { /* ignore per-entry failures */ }
+      }
+    } catch (_) {
+      /* ignore well-known fallback failures */
+    }
+
+    throw new Error(`No prefix known for IRI: ${iriStr}`);
+  }
+
+  /**
+   * Public wrapper around internal blacklist check.
+   * Consumers should use this rather than duplicating blacklist logic.
+   */
+  public isBlacklistedIriPublic(val?: string | null): boolean {
+    try {
+      return this.isBlacklistedIri(val);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /**
    * Add a new namespace
    *
    * When a new prefix is registered at runtime we asynchronously show a UI toast
