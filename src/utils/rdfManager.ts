@@ -2546,10 +2546,22 @@ export class RDFManager {
       return `${namespaceUri}${localName}`;
     }
 
-    // Common fallback for widely-used Dublin Core prefix when not explicitly declared.
+    // Common fallback for widely-used prefixes when not explicitly declared.
     const wellKnownFallbacks: Record<string, string> = {
       dc: "http://purl.org/dc/elements/1.1/",
+      foaf: "http://xmlns.com/foaf/0.1/",
+      skos: "http://www.w3.org/2004/02/skos/core#",
     };
+
+    // Also consult WELL_KNOWN prefixes as a non-persistent fallback (do not overwrite existing mappings).
+    try {
+      const wk = (WELL_KNOWN && (WELL_KNOWN as any).prefixes) || {};
+      Object.entries(wk).forEach(([k, v]) => {
+        try {
+          if (!wellKnownFallbacks[k] && typeof v === "string") wellKnownFallbacks[k] = v;
+        } catch (_) {}
+      });
+    } catch (_) {}
 
     if (wellKnownFallbacks[prefix]) {
       // Add fallback to namespaces so exports include the prefix
