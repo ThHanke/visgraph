@@ -598,7 +598,10 @@ export const ReactFlowCanvas: React.FC = () => {
           classType: src.classType,
           literalProperties: src.literalProperties || [],
           annotationProperties: src.annotationProperties || [],
-          visible: true,
+          // Use the visibility set computed earlier (visibleNodeIdsFromData). Default to true if set not available.
+          visible: (typeof visibleNodeIdsFromData !== 'undefined' && visibleNodeIdsFromData && typeof visibleNodeIdsFromData.has === 'function')
+            ? visibleNodeIdsFromData.has(id)
+            : true,
           hasReasoningError: !!src.hasReasoningError,
           // mark whether this node is a TBox entity so we can render separate canvases/views
           isTBox: !!isTBoxEntity,
@@ -2337,7 +2340,11 @@ useEffect(() => {
     return nodes.filter((n) => {
       try {
         const isTBox = !!(n.data && (n.data as any).isTBox);
-        return viewMode === "tbox" ? isTBox : !isTBox;
+        // Respect explicit visibility computed by the mapping layer (default true for safety)
+        const visibleFlag = (n.data && typeof (n.data as any).visible === "boolean")
+          ? (n.data as any).visible
+          : true;
+        return visibleFlag && (viewMode === "tbox" ? isTBox : !isTBox);
       } catch {
         return true;
       }
@@ -2358,6 +2365,14 @@ useEffect(() => {
       const sNode = nodes.find((n) => String(n.id) === sId);
       const tNode = nodes.find((n) => String(n.id) === tId);
       if (!sNode || !tNode) return false;
+      // Enforce visibility on endpoints (default true if missing)
+      const sVisible = (sNode.data && typeof (sNode.data as any).visible === "boolean")
+        ? (sNode.data as any).visible
+        : true;
+      const tVisible = (tNode.data && typeof (tNode.data as any).visible === "boolean")
+        ? (tNode.data as any).visible
+        : true;
+      if (!sVisible || !tVisible) return false;
       const sIsTBox = !!(sNode.data && (sNode.data as any).isTBox);
       const tIsTBox = !!(tNode.data && (tNode.data as any).isTBox);
       // require both endpoints to be same domain
