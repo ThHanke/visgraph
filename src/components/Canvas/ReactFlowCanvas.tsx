@@ -95,6 +95,7 @@ export const ReactFlowCanvas: React.FC = () => {
     currentGraph,
     availableProperties,
     availableClasses: ac,
+    ontologiesVersion,
   } = useOntologyStore();
   const { startReasoning } = useReasoningStore();
   const { settings } = useSettingsStore();
@@ -142,7 +143,7 @@ export const ReactFlowCanvas: React.FC = () => {
   const getRdfManagerRef = useRef(getRdfManager);
   useEffect(() => {
     getRdfManagerRef.current = getRdfManager;
-  }, [getRdfManager]);
+  }, [getRdfManager, ontologiesVersion, loadedOntologies]);
 
   // Helper to filter out reserved/core RDF namespaces/prefixes from being rendered as canvas nodes.
   const _blacklistedPrefixes = new Set(['owl', 'rdf', 'rdfs', 'xml', 'xsd']);
@@ -275,7 +276,7 @@ export const ReactFlowCanvas: React.FC = () => {
     } catch (e) {
       return {};
     }
-  }, [getRdfManager]);
+  }, [getRdfManager, ontologiesVersion]);
 
   const getNamespaceColor = useCallback(
     (namespace: string) => {
@@ -324,8 +325,9 @@ export const ReactFlowCanvas: React.FC = () => {
               : undefined,
         });
         // Apply only the nodes/edges appropriate for the current viewMode
-        const mappedNodes = diagram.nodes || [];
+        let mappedNodes = diagram.nodes || [];
         const mappedEdges = diagram.edges || [];
+
 
         setNodes((prev) => {
           try {
@@ -354,6 +356,21 @@ export const ReactFlowCanvas: React.FC = () => {
           }
           return mappedEdges;
         });
+
+        // lightweight runtime diagnostics to help trace mapping -> UI pipeline
+        try {
+          if (typeof console !== "undefined" && typeof console.debug === "function") {
+            try {
+              console.debug("[VG_DEBUG] ReactFlowCanvas.mapGraphToDiagram", {
+                mappedNodesCount: mappedNodes.length,
+                mappedNodesSample: mappedNodes.slice(0, 20).map(n => ({ id: n.id, iri: (n.data as any)?.iri, visible: (n.data as any)?.visible })),
+                mappedEdgesCount: mappedEdges.length,
+                mappedEdgesSample: mappedEdges.slice(0, 20).map(e => ({ id: e.id, source: e.source, target: e.target })),
+                viewMode,
+              });
+            } catch (_) { /* ignore logging failures */ }
+          }
+        } catch (_) { /* ignore */ }
 
         // Skip the old inline mapping by returning early from the effect.
         return;
@@ -486,12 +503,42 @@ export const ReactFlowCanvas: React.FC = () => {
           canonicalNs = "";
         }
 
-        const paletteLocal = buildPaletteForRdfManager(mgr);
-        const nsKeyRaw = String(canonicalNs || src.namespace || "");
-        const nsKeyForVar = nsKeyRaw.replace(/[:#].*$/, "") || "default";
-        const leftBarVarValue = (paletteLocal && paletteLocal[nsKeyForVar])
-          ? String(paletteLocal[nsKeyForVar])
-          : `hsl(var(--ns-${nsKeyForVar}))`;
+        // Determine palette color: prefer the display-type's prefix color (so badge + border match),
+        // otherwise fall back to the namespace-derived palette entry. Do not silently synthesize a color.
+        let paletteColor: string | undefined = undefined;
+        let paletteMissing = false;
+        try {
+          // Try to resolve prefix from the canonical type IRI (preferred - matches badge prefix)
+          if (canonicalTypeIri && typeof getRdfManagerRef.current === "function") {
+            try {
+              const mgrLocal = getRdfManagerRef.current();
+              if (mgrLocal) {
+                const td = computeTermDisplay(String(canonicalTypeIri), mgrLocal as any);
+                const pref = td && td.prefixed ? String(td.prefixed) : "";
+                if (pref) {
+                  const prefixKey = pref.split(":", 1)[0];
+                  if (prefixKey && paletteMap && (paletteMap as Record<string,string>)[prefixKey]) {
+                    paletteColor = (paletteMap as Record<string,string>)[prefixKey];
+                  }
+                }
+              }
+            } catch (_) {
+              /* ignore type-prefix lookup failures */
+            }
+          }
+
+          // If not found by type prefix, fall back to namespace key lookup
+          if (typeof paletteColor === "undefined") {
+            const nsKeyRaw = String(canonicalNs || src.namespace || "");
+            const nsKeyForVar = nsKeyRaw.replace(/[:#].*$/, "") || "default";
+            paletteColor = (paletteMap && typeof paletteMap === "object") ? (paletteMap as Record<string,string>)[nsKeyForVar] : undefined;
+          }
+
+          paletteMissing = typeof paletteColor === "undefined";
+        } catch (_) {
+          paletteColor = undefined;
+          paletteMissing = true;
+        }
 
         // Require a full IRI on parsed nodes; skip nodes without an explicit IRI.
         if (!src || !src.iri) {
@@ -622,6 +669,8 @@ export const ReactFlowCanvas: React.FC = () => {
           position: { x: pos.x, y: pos.y },
           data: {
             ...nodeData,
+            paletteColor: paletteColor,
+            paletteMissing: paletteMissing,
             onSizeMeasured: (w: number, h: number) => {
               try {
                 setNodes((nds) =>
@@ -640,9 +689,25 @@ export const ReactFlowCanvas: React.FC = () => {
               }
             },
           },
-          // set CSS variable on the node so global CSS (./index.css) can pick up the left bar color
-          style: { ["--node-leftbar-color" as any]: leftBarVarValue },
+          // Only set the CSS var when we have a palette color. If paletteColor is missing
+          // we intentionally omit the CSS var so the node UI can surface an explicit error state.
+          style: paletteColor ? { ["--node-leftbar-color" as any]: String(paletteColor) } : undefined,
         });
+
+        // Debug: log mapping-time paletteColor vs computed label to help diagnose mismatches
+        try {
+          if (typeof console !== "undefined" && typeof console.debug === "function") {
+            try {
+              console.debug("[VG_DEBUG] mappedNodeColor", {
+                id,
+                paletteColor: paletteColor,
+                paletteMissing: paletteMissing,
+                computedLabel,
+                canonicalNs,
+              });
+            } catch (_) { /* ignore logging failures */ }
+          }
+        } catch (_) { /* ignore */ }
       }
 
       // Only create edges when both endpoints exist on the canvas (subject and object mapped to nodes).
@@ -862,7 +927,7 @@ export const ReactFlowCanvas: React.FC = () => {
       setNodes([]);
       setEdges([]);
     }
-  }, [currentGraph, loadedOntologies, availableClasses, viewMode]);
+  }, [currentGraph, loadedOntologies, availableClasses, viewMode, paletteMap]);
 
   // Auto-load demo file and additional ontologies on component mount (mirrors Canvas behavior)
   // This component intentionally does NOT auto-populate the canvas on mount by default.
@@ -2337,7 +2402,7 @@ useEffect(() => {
 
   // Compute displayed nodes/edges based on viewMode so only intra-canvas edges render
   const displayedNodes = useMemo(() => {
-    return nodes.filter((n) => {
+    const result = nodes.filter((n) => {
       try {
         const isTBox = !!(n.data && (n.data as any).isTBox);
         // Respect explicit visibility computed by the mapping layer (default true for safety)
@@ -2349,6 +2414,19 @@ useEffect(() => {
         return true;
       }
     });
+    try {
+      if (typeof console !== "undefined" && typeof console.debug === "function") {
+        try {
+          console.debug("[VG_DEBUG] ReactFlowCanvas.displayedNodes", {
+            displayedNodesCount: result.length,
+            displayedNodesSample: result.slice(0, 20).map(n => ({ id: n.id, iri: (n.data as any)?.iri, visible: (n.data as any)?.visible, isTBox: (n.data as any)?.isTBox })),
+            totalNodes: nodes.length,
+            viewMode,
+          });
+        } catch (_) { /* ignore logging failures */ }
+      }
+    } catch (_) { /* ignore */ }
+    return result;
   }, [nodes, viewMode]);
 
   const displayedNodeIds = useMemo(
@@ -2359,7 +2437,7 @@ useEffect(() => {
   const displayedEdges = useMemo(() => {
     // Show edges when both endpoints exist in the nodes state and the endpoints belong to the current viewMode.
     // This is more robust against id-normalization differences (uri vs key) than strict set membership.
-    return edges.filter((e) => {
+    const result = edges.filter((e) => {
       const sId = String(e.source);
       const tId = String(e.target);
       const sNode = nodes.find((n) => String(n.id) === sId);
@@ -2380,6 +2458,19 @@ useEffect(() => {
       // only show edges that match current view mode (tbox vs abox)
       return viewMode === "tbox" ? sIsTBox : !sIsTBox;
     });
+    try {
+      if (typeof console !== "undefined" && typeof console.debug === "function") {
+        try {
+          console.debug("[VG_DEBUG] ReactFlowCanvas.displayedEdges", {
+            displayedEdgesCount: result.length,
+            displayedEdgesSample: result.slice(0, 20).map(e => ({ id: e.id, source: e.source, target: e.target })),
+            totalEdges: edges.length,
+            viewMode,
+          });
+        } catch (_) { /* ignore logging failures */ }
+      }
+    } catch (_) { /* ignore */ }
+    return result;
   }, [edges, nodes, viewMode]);
 
   // Debugging: record counts in startupDebug and console to help diagnose "no edges" issue

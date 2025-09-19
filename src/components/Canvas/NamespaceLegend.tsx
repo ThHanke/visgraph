@@ -12,16 +12,18 @@ import { buildPaletteForRdfManager } from "./core/namespacePalette";
 
 export const NamespaceLegend = () => {
   const rdfManager = useOntologyStore((s) => s.rdfManager);
+  const ontologiesVersion = useOntologyStore((s) => s.ontologiesVersion);
   if (!rdfManager || typeof rdfManager.getNamespaces !== "function") return null;
 
-  const nsMap = rdfManager.getNamespaces() || {};
+  // Recompute namespaces/palette when ontologiesVersion changes so the legend updates
+  const nsMap = rdfManager.getNamespaces ? rdfManager.getNamespaces() : {};
   const entries = Object.entries(nsMap)
     .filter(([_, uri]) => uri)
     .sort(([a], [b]) => String(a ?? "").localeCompare(String(b ?? "") ));
 
   if (!entries || entries.length === 0) return null;
 
-  const palette = buildPaletteForRdfManager(rdfManager);
+  const palette = buildPaletteForRdfManager(nsMap);
 
   return (
     <div className="absolute top-4 right-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border rounded-lg shadow-lg max-w-sm min-w-64 resize overflow-hidden">

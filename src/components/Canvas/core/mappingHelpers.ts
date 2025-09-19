@@ -226,7 +226,7 @@ export function mapCanonicalToRFNodes(
           } catch (_) { /* ignore */ }
         },
       } as NodeData,
-      style: { ["--node-leftbar-color" as any]: `hsl(var(--ns-${(canonicalNs || src.namespace || "").replace(/[:#].*$/, "") || "default"}))` },
+      style: undefined,
     });
   }
 
@@ -352,10 +352,72 @@ export function mapGraphToDiagram(
     /* ignore visibility computation errors */
   }
 
-  // Map nodes/edges using existing helpers (these will themselves consult RDF manager for missing rdfTypes)
+  // Map nodes using existing helper (this will consult RDF manager for missing rdfTypes)
   const mappedNodes = mapCanonicalToRFNodes(cg.nodes || [], options);
   const nodeIds = new Set(mappedNodes.map((n) => n.id));
-  const mappedEdges = mapCanonicalToRFEdges(cg.edges || [], nodeIds);
+
+  // Resolve edges to use node IRIs (not legacy/canonical numeric keys).
+  // Build mappedEdges by resolving each canonical edge's raw endpoint refs to the node IRI
+  // using the nodeKeyToIri index built above. This restores the invariant that React Flow
+  // node ids are IRIs and edges use those IRIs as source/target.
+  const mappedEdges: RFEdge<LinkData>[] = [];
+  try {
+    for (let j = 0; j < (cg.edges || []).length; j++) {
+      const edge = cg.edges[j];
+      const src = edge && edge.data ? edge.data : edge;
+
+      // Raw refs may be under different properties depending on producer
+      const rawFromRef = String(src.source || src.from || (src.data && src.data.source) || "");
+      const rawToRef = String(src.target || src.to || (src.data && src.data.target) || "");
+
+      // Resolve raw refs to IRIs using the canonical graph index (nodeKeyToIri).
+      // If no mapping exists, fall back to the raw ref (preserves previous behavior).
+      const resolvedFromIri = nodeKeyToIri.get(rawFromRef) || rawFromIriOrFallback(rawFromRef);
+      const resolvedToIri = nodeKeyToIri.get(rawToRef) || rawFromIriOrFallback(rawToRef);
+
+      // Skip if endpoints missing on canvas (nodeIds contains mappedNodes' ids which are IRIs)
+      if (!nodeIds.has(String(resolvedFromIri)) || !nodeIds.has(String(resolvedToIri))) continue;
+
+      const id = String(src.id || `e-${resolvedFromIri}-${resolvedToIri}-${j}`);
+      const propertyUriRaw = src.propertyUri || src.propertyType || "";
+      const labelForEdge = src.label || "";
+
+      mappedEdges.push({
+        id,
+        source: String(resolvedFromIri),
+        target: String(resolvedToIri),
+        type: "floating",
+        markerEnd: { type: "arrow" as any },
+        data: {
+          key: id,
+          from: String(resolvedFromIri),
+          to: String(resolvedToIri),
+          propertyUri: propertyUriRaw,
+          propertyType: src.propertyType || "",
+          label: labelForEdge,
+          namespace: src.namespace || "",
+          rdfType: src.rdfType || "",
+        } as LinkData,
+      });
+    }
+  } catch (_) {
+    /* ignore edge mapping failures */
+  }
+
+  // Helper: attempt to coerce a raw reference to a plausible IRI when no explicit mapping found.
+  // Keep this conservative: do not mutate canonical graph, just try simple http/https prefix variants.
+  function rawFromIriOrFallback(ref: string) {
+    try {
+      if (!ref) return ref;
+      if (/^https?:\/\//i.test(ref)) return ref;
+      // try adding common scheme if it looks like an absolute authority path missing scheme
+      if (ref.startsWith("//")) return "https:" + ref;
+      // otherwise, return the original ref unchanged (do not modify canonical data)
+      return ref;
+    } catch (_) {
+      return ref;
+    }
+  }
 
   // Apply computed visibility to node data where possible (prefer explicit visible flag if set)
   try {
@@ -372,6 +434,35 @@ export function mapGraphToDiagram(
         /* ignore per-node */
       }
     });
+  } catch (_) {
+    /* ignore */
+  }
+
+  // Emit a console-friendly debug sample to assist with runtime diagnosis (kept lightweight)
+  try {
+    if (typeof console !== "undefined" && typeof console.debug === "function") {
+      try {
+        // stringify lightweight samples to avoid JSHandle/remote object representations in puppeteer logs
+        const visibleSample = Array.isArray(Array.from(visibleIris || [])) ? Array.from(visibleIris).slice(0, 20).join(",") : "";
+        const nodesSampleStr = Array.isArray(mappedNodes)
+          ? mappedNodes.slice(0, 20).map((n: any) => `${n.id}|${(n.data && (n.data as any).iri) || ""}|visible=${Boolean(n.data && (n.data as any).visible)}`).join(";")
+          : "";
+        const edgesSampleStr = Array.isArray(mappedEdges)
+          ? mappedEdges.slice(0, 20).map((e: any) => `${e.id}:${e.source}->${e.target}`).join(";")
+          : "";
+
+        console.debug("[VG_DEBUG] mapGraphToDiagram", {
+          visibleIrisCount: (visibleIris && typeof (visibleIris.size) === "number") ? visibleIris.size : undefined,
+          visibleIrisSample: visibleSample,
+          mappedNodesCount: Array.isArray(mappedNodes) ? mappedNodes.length : 0,
+          mappedNodesSample: nodesSampleStr,
+          mappedEdgesCount: Array.isArray(mappedEdges) ? mappedEdges.length : 0,
+          mappedEdgesSample: edgesSampleStr,
+        });
+      } catch (_) {
+        /* ignore logging failures */
+      }
+    }
   } catch (_) {
     /* ignore */
   }

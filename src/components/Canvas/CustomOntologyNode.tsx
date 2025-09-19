@@ -10,7 +10,7 @@ import {
   PopoverTrigger,
 } from '../ui/popover';
 import { useOntologyStore } from '../../stores/ontologyStore';
-import { buildPaletteForRdfManager } from './core/namespacePalette';
+import { buildPaletteForRdfManager, usePaletteFromRdfManager } from './core/namespacePalette';
 import { getNamespaceColorFromPalette, normalizeNamespaceKey } from './helpers/namespaceHelpers';
 import { computeTermDisplay, shortLocalName } from '../../utils/termUtils';
 import { computeBadgeText, computeDisplayInfo } from './core/nodeDisplay';
@@ -46,9 +46,10 @@ function CustomOntologyNodeInner(props: NodeProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [individualName, setIndividualName] = useState(individualNameInitial);
 
-  // stable accessors from the ontology store (avoid prop identity churn)
-  const rdfManager = useOntologyStore.getState().rdfManager;
-  const availableClasses = useOntologyStore.getState().availableClasses;
+  // stable accessors from the ontology store (subscribe to ontologiesVersion so node updates when namespaces change)
+  const rdfManager = useOntologyStore((s) => s.rdfManager);
+  const ontologiesVersion = useOntologyStore((s) => s.ontologiesVersion);
+  const availableClasses = useOntologyStore((s) => s.availableClasses);
 
   // debug fingerprint - emit only on meaningful changes and avoid duplicates
   const lastFp = useRef<string | null>(null);
@@ -79,7 +80,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
   }, [nodeData.iri, nodeData.iri, nodeData.classType, rdfTypesKey, nodeData.displayType, nodeData.rdfTypes]);
 
   // Use canonical label persisted on the node (mapping is authoritative)
-  let displayedTypeShort = String(nodeData.label || nodeData.classType || shortLocalName(nodeData.iri || ''));
+  const displayedTypeShort = String(nodeData.label || nodeData.classType || shortLocalName(nodeData.iri || ''));
   // Compute badge text (prefer a prefixed meaningful type) and a list of all rdf:type displays.
   let badgeText = displayedTypeShort;
   let typesList: string[] = [];
@@ -143,18 +144,73 @@ function CustomOntologyNodeInner(props: NodeProps) {
   } catch (_) { /* ignore overall */ }
 
   const namespace = String(nodeData.namespace ?? '');
-  const paletteLocal = (() => {
-    try { return buildPaletteForRdfManager(rdfManager); } catch (_) { return undefined; }
-  })();
-  // Normalize namespace key before palette lookup so keys match paletteMap normalization
-  const namespaceKey = normalizeNamespaceKey(namespace);
-  const derivedColor = getNamespaceColorFromPalette(paletteLocal as Record<string, string> | undefined, namespaceKey);
 
-  // Badge/leftbar color: compute from palette using the resolved namespace (no per-node stored color)
-  const badgeFallback =
-    derivedColor ||
-    getNamespaceColorFromPalette(paletteLocal as Record<string, string> | undefined, '') ||
-    '#cccccc';
+  // Use the central palette hook (single source of truth). Prefer a color explicitly
+  // attached to node.data.paletteColor by the mapping step; otherwise attempt to
+  // resolve the badge prefix against the palette map. If the palette does NOT
+  // contain a mapping for the node's prefix, we intentionally surface a visible
+  // error (no silent neutral fallback).
+  const paletteMap = usePaletteFromRdfManager();
+  const nodePaletteColor = (nodeData as any).paletteColor as string | undefined;
+  let badgePrefixKey: string | null = null;
+  let effectiveColor: string | undefined = undefined;
+  let paletteMissing = false;
+
+  try {
+    // Recompute candidate type deterministically (same rules as above) so we can derive its prefix.
+    const candidates: string[] = [
+      ...(nodeData.displayType ? [String(nodeData.displayType)] : []),
+      ...(nodeData.classType ? [String(nodeData.classType)] : []),
+      ...(Array.isArray(nodeData.rdfTypes) ? (nodeData.rdfTypes as string[]).map(String) : []),
+      ...((nodeData as any)?.types ? (nodeData as any).types.map(String) : []),
+    ].filter(Boolean);
+    const chosenType = candidates.find(t => t && !/NamedIndividual\b/i.test(String(t)));
+
+    if (chosenType && rdfManager) {
+      try {
+        const td = computeTermDisplay(String(chosenType), rdfManager as any);
+        const pref = td && td.prefixed ? String(td.prefixed) : '';
+        if (pref) {
+          // prefix is text before the first colon (':' ), empty string represents default prefix
+          badgePrefixKey = pref.split(':', 1)[0];
+        }
+      } catch (_) {
+        // ignore computeTermDisplay failures here; we'll surface missing palette below
+      }
+    }
+  } catch (_) {
+    // ignore prefix detection failures
+  }
+
+  // Determine authoritative color: mapping-time color wins, otherwise use paletteMap for badge prefix
+  if (nodePaletteColor) {
+    effectiveColor = nodePaletteColor;
+  } else if (badgePrefixKey !== null && typeof paletteMap === 'object') {
+    const rawKey = String(badgePrefixKey || '');
+    effectiveColor = (paletteMap as Record<string,string>)[rawKey] || (paletteMap as Record<string,string>)[rawKey.replace(/[:#].*$/, '')];
+  }
+
+  if (!effectiveColor) {
+    paletteMissing = true;
+    // Surface an explicit, discoverable error for developers so missing palette mappings are visible.
+    try {
+      console.error('[VG] palette missing for node', {
+        iri: nodeData.iri,
+        badgePrefixKey,
+        namespace,
+      });
+    } catch (_) { /* ignore console failures */ }
+  }
+
+  // Final badge color (visible). When paletteMissing is true we intentionally use a
+  // clear error color so the UI makes the problem obvious instead of hiding it.
+  const badgeColor = effectiveColor || '#FF4D4F';
+
+  // Authoritative left-bar color: prefer mapping-time paletteColor, then effectiveColor derived from paletteMap.
+  // When paletteMissing is true we render a visible error color instead of silently falling back.
+  const leftColor = !paletteMissing
+    ? ((nodeData as any).paletteColor as string | undefined) || effectiveColor
+    : '#FF4D4F';
 
   const themeBg = (typeof document !== 'undefined')
     ? (getComputedStyle(document.documentElement).getPropertyValue('--node-bg') || '').trim() || '#ffffff'
@@ -265,9 +321,60 @@ function CustomOntologyNodeInner(props: NodeProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootRef]);
 
+  // Sync the outer React Flow wrapper left-bar color with the authoritative badge/ palette color.
+  // We run this after the ResizeObserver effect so `rootRef` is available. This ensures the
+  // wrapper pseudo-element (::before) uses the exact same color as the badge.
+  useEffect(() => {
+    try {
+      const el = rootRef.current;
+      if (!el) return;
+      const wrapper: HTMLElement | null =
+        typeof el.closest === "function" ? (el as any).closest(".react-flow__node") : (el.parentElement || null);
+      if (!wrapper || !wrapper.style) return;
+      const colorToApply = badgeColor || leftColor;
+      // Debug: log before/after applying to help trace why wrapper/ badge differ
+      try {
+        if (typeof console !== 'undefined' && typeof console.debug === 'function') {
+          try {
+            console.debug('[VG_DEBUG] CustomOntologyNode.syncWrapperColor', {
+              id: (nodeData as any)?.iri || (nodeData as any)?.key,
+              badgeColor,
+              leftColor,
+              wrapperCurrentVar: wrapper.style.getPropertyValue('--node-leftbar-color'),
+            });
+          } catch (_) { /* ignore logging failures */ }
+        }
+      } catch (_) { /* ignore */ }
+
+      if (colorToApply) {
+        try {
+          wrapper.style.setProperty("--node-leftbar-color", String(colorToApply));
+        } catch (_) {
+          try { wrapper.style.setProperty("--node-leftbar-color", String(colorToApply)); } catch (_) { /* ignore */ }
+        }
+        // Log after applying
+        try {
+          if (typeof console !== 'undefined' && typeof console.debug === 'function') {
+            try {
+              console.debug('[VG_DEBUG] CustomOntologyNode.syncWrapperColor.applied', {
+                id: (nodeData as any)?.iri || (nodeData as any)?.key,
+                applied: String(colorToApply),
+                wrapperNow: wrapper.style.getPropertyValue('--node-leftbar-color'),
+              });
+            } catch (_) { /* ignore */ }
+          }
+        } catch (_) { /* ignore */ }
+      } else {
+        try { wrapper.style.removeProperty("--node-leftbar-color"); } catch (_) { /* ignore */ }
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  }, [badgeColor, leftColor]);
+
   const canonicalIri = String(nodeData.iri ?? '');
   const headerTitle = canonicalIri;
-    const headerDisplay = (() => {
+  const headerDisplay = (() => {
     if (!canonicalIri) return '';
     if (canonicalIri.startsWith('_:')) return canonicalIri;
     if (!rdfManager) throw new Error(`computeTermDisplay requires rdfManager to resolve '${canonicalIri}'`);
@@ -275,9 +382,12 @@ function CustomOntologyNodeInner(props: NodeProps) {
     return (td.prefixed || td.short || '').replace(/^(https?:\/\/)?(www\.)?/, '');
   })();
 
-    return (
-      <div ref={rootRef} className={cn('inline-flex overflow-hidden', selected ? 'ring-2 ring-primary' : '')}>
-      {/* Main body (autosize). Left color bar is provided by the outer React Flow node wrapper via CSS variable (--node-leftbar-color). */}
+  return (
+    <div
+      ref={rootRef}
+      className={cn('inline-flex overflow-hidden', selected ? 'ring-2 ring-primary' : '', paletteMissing ? 'ring-2 ring-destructive' : '')}
+    >
+      {/* Main body (autosize). */}
       <div className="px-4 py-3 min-w-0 flex-1 w-auto" style={{ background: themeBg }}>
         {/* Header */}
         <div className="flex items-center gap-3 mb-2">
@@ -286,10 +396,16 @@ function CustomOntologyNodeInner(props: NodeProps) {
           </div>
 
           <div
-            className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold text-black"
-            style={{ background: badgeFallback, border: `1px solid ${darken(badgeFallback, 0.12)}` }}
+            className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold text-black flex items-center gap-1"
+            title={paletteMissing ? 'Palette mapping missing for this node prefix' : undefined}
+            style={{ background: `var(--node-leftbar-color, ${badgeColor})`, border: `1px solid ${darken(badgeColor, 0.12)}` }}
           >
-            {badgeText || displayedTypeShort || nodeData.classType || (namespace ? namespace : 'unknown')}
+            <span className="truncate">{badgeText || displayedTypeShort || nodeData.classType || (namespace ? namespace : 'unknown')}</span>
+            {paletteMissing && (
+              <span title="Palette mapping missing" className="text-red-600" aria-hidden>
+                <AlertTriangle className="h-3 w-3" />
+              </span>
+            )}
           </div>
 
           {/* Error indicator */}

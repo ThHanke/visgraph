@@ -1,3 +1,6 @@
+import { useMemo } from 'react';
+import { useOntologyStore } from '@/stores/ontologyStore';
+
 /**
  * namespacePalette.ts
  *
@@ -45,7 +48,7 @@ export const DEFAULT_PALETTE = [
  * - Order of prefixes does not matter (function sorts them).
  */
 export function getPalette(prefixes: string[] = []): Record<string, string> {
-  const uniq = Array.from(new Set((prefixes || []).filter(Boolean)));
+  const uniq = Array.from(new Set((prefixes || [])));
   const sorted = uniq.slice().sort((a, b) => String(a).localeCompare(String(b)));
   const map: Record<string, string> = {};
   for (let i = 0; i < sorted.length; i++) {
@@ -241,7 +244,7 @@ export function buildPaletteForRdfManager(
     const nsMap = rdfManagerOrMap && typeof (rdfManagerOrMap as any).getNamespaces === 'function'
       ? (rdfManagerOrMap as any).getNamespaces()
       : (rdfManagerOrMap as Record<string,string> | undefined) || {};
-    const prefixes = Object.keys(nsMap || {}).filter(Boolean).sort();
+    const prefixes = Object.keys(nsMap || {}).sort();
     // If caller didn't provide avoidColors, compute sensible defaults from CSS vars
     const avoid = (options && options.avoidColors) || (
       typeof window !== 'undefined' && window.getComputedStyle
@@ -255,4 +258,37 @@ export function buildPaletteForRdfManager(
   } catch {
     return {};
   }
+}
+
+/**
+ * Hook: usePaletteFromRdfManager
+ *
+ * Small helper hook that components can call to obtain a stable prefix -> color map
+ * derived from the RDF manager's registered namespaces. It is memoized on rdfManager
+ * identity and ontologiesVersion so callers can synchronously use the returned map
+ * during render without triggering extra work.
+ */
+export function usePaletteFromRdfManager() {
+  const rdfManager = useOntologyStore((s) => s.rdfManager);
+  const ontologiesVersion = useOntologyStore((s) => s.ontologiesVersion);
+  return useMemo(() => {
+    try {
+      const nsMap =
+        rdfManager && typeof (rdfManager as any).getNamespaces === "function"
+          ? (rdfManager as any).getNamespaces()
+          : {};
+      const prefixes = Object.keys(nsMap || {}).filter(Boolean).sort();
+      const textColors = [
+        typeof window !== "undefined" && window.getComputedStyle
+          ? getComputedStyle(document.documentElement).getPropertyValue("--node-foreground") || "#000000"
+          : "#000000",
+        typeof window !== "undefined" && window.getComputedStyle
+          ? getComputedStyle(document.documentElement).getPropertyValue("--primary-foreground") || "#000000"
+          : "#000000",
+      ];
+      return buildPaletteMap(prefixes, { avoidColors: textColors });
+    } catch (_) {
+      return {};
+    }
+  }, [rdfManager, ontologiesVersion]);
 }
