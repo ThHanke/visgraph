@@ -309,6 +309,7 @@ export const ReactFlowCanvas: React.FC = () => {
   const reactFlowInstance = useRef<RFInstance | null>(null);
   const linkSourceRef = useRef<NodeData | null>(null);
   const linkTargetRef = useRef<NodeData | null>(null);
+  const pendingFocusRef = useRef<string | null>(null);
   // Prevent re-entrant / overlapping reasoning runs which can cause render loops
   const reasoningInProgressRef = useRef(false);
   const reasoningTimerRef = useRef<number | null>(null);
@@ -2573,6 +2574,39 @@ useEffect(() => {
     [displayedNodes],
   );
 
+  // Focus newly-added node when it has been mapped into the displayed nodes set.
+  useEffect(() => {
+    try {
+      const idToFocus = pendingFocusRef.current;
+      if (!idToFocus) return;
+      if (!displayedNodeIds || !displayedNodeIds.has(idToFocus)) return;
+      const inst: any = reactFlowInstance.current;
+      if (!inst) {
+        pendingFocusRef.current = null;
+        return;
+      }
+      try {
+        const node = typeof inst.getNode === "function" ? inst.getNode(idToFocus) : nodes.find((n) => n.id === idToFocus);
+        const pos = node && node.position ? node.position : null;
+        if (pos && typeof inst.setCenter === "function") {
+          try {
+            inst.setCenter(pos.x, pos.y, { duration: 300 });
+          } catch (_) {
+            try { inst.fitView(); } catch (_) { /* ignore */ }
+          }
+        } else if (typeof inst.fitView === "function") {
+          try { inst.fitView(); } catch (_) { /* ignore */ }
+        }
+      } catch (_) {
+        /* ignore centering failures */
+      } finally {
+        pendingFocusRef.current = null;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  }, [displayedNodeIds, nodes]);
+
   const displayedEdges = useMemo(() => {
     // Show edges when both endpoints exist in the nodes state and the endpoints belong to the current viewMode.
     // This is more robust against id-normalization differences (uri vs key) than strict set membership.
@@ -2748,9 +2782,10 @@ useEffect(() => {
   return (
     <div className="w-full h-screen bg-canvas-bg relative">
       <CanvasToolbar
-        onAddNode={(uri: string) => {
-          // Allow prefixed names (e.g. ex:Thing) if rdfManager can expand them.
-          let normalizedUri = String(uri || "");
+        onAddNode={(payload: any) => {
+          // payload may be an object { iri, classCandidate, namespace } or a plain string
+          let normalizedUri = String(payload && (payload.iri || payload) ? (payload.iri || payload) : "");
+          const classCandidate = payload && (payload.classCandidate || payload.classType) ? (payload.classCandidate || payload.classType) : undefined;
           try {
             const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
             // If it's not an absolute IRI but looks like prefix:local, try to expand
@@ -2873,6 +2908,106 @@ useEffect(() => {
               },
             ];
           });
+
+          // Persist rdf:type + rdfs:label into the RDF store via ontology store helper so rdfManager emits subject-change
+          try {
+            const label = String(normalizedUri).split(/[\/#]/).pop() || normalizedUri;
+            const updates: any = {
+              annotationProperties: [
+                { propertyUri: "rdfs:label", value: label, type: "xsd:string" },
+              ],
+            };
+            if (classCandidate) {
+              try {
+                const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
+                const expanded = mgr && typeof (mgr as any).expandPrefix === "function" ? (mgr as any).expandPrefix(String(classCandidate)) : String(classCandidate);
+                updates.rdfTypes = [expanded];
+              } catch (_) {
+                updates.rdfTypes = [classCandidate];
+              }
+            }
+            try {
+              updateNode(id, updates);
+              // Persist a lightweight presence marker in the urn:vg:data graph so mapping/visibility recognizes the new subject.
+              try {
+                const mgr2 = getRdfManagerRef.current && getRdfManagerRef.current();
+                if (mgr2 && typeof mgr2.getStore === "function") {
+                  try {
+                    const store = mgr2.getStore();
+                    const rdfTypePred = mgr2.expandPrefix && typeof mgr2.expandPrefix === "function"
+                      ? String(mgr2.expandPrefix("rdf:type"))
+                      : "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+                    const rdfsResource = mgr2.expandPrefix && typeof mgr2.expandPrefix === "function"
+                      ? (function(){ try { return mgr2.expandPrefix("rdfs:Resource"); } catch { return "http://www.w3.org/2000/01/rdf-schema#Resource"; } })()
+                      : "http://www.w3.org/2000/01/rdf-schema#Resource";
+                    const g = namedNode("urn:vg:data");
+                    try {
+                      const exists = store.getQuads(namedNode(normalizedUri), namedNode(rdfTypePred), namedNode(rdfsResource), g) || [];
+                      if (!exists || exists.length === 0) {
+                        store.addQuad(quad(namedNode(normalizedUri), namedNode(rdfTypePred), namedNode(rdfsResource), g));
+                      }
+                    } catch (_) {
+                      // best-effort add
+                      try {
+                        store.addQuad(quad(namedNode(normalizedUri), namedNode(rdfTypePred), namedNode(rdfsResource), g));
+                      } catch (_) { /* ignore */ }
+                    }
+                  } catch (_) {
+                    /* ignore store presence marking failures */
+                  }
+                }
+              } catch (_) {
+                /* ignore presence marking errors */
+              }
+
+              // Ensure the ontologyStore.currentGraph contains a minimal node entry for this IRI
+              // so the mapping pipeline can derive displayType/classType and palette information.
+              try {
+                const os = (useOntologyStore as any).getState ? (useOntologyStore as any).getState() : null;
+                if (os && typeof os.setCurrentGraph === "function") {
+                  const cg = os.currentGraph || { nodes: [], edges: [] };
+                  const exists = (cg.nodes || []).some((n: any) => {
+                    try {
+                      const nid = (n && (n.iri || n.id)) || "";
+                      return nid === String(normalizedUri);
+                    } catch {
+                      return false;
+                    }
+                  });
+                  if (!exists) {
+                    const classLocal = (updates.rdfTypes && updates.rdfTypes[0])
+                      ? shortLocalName(String(updates.rdfTypes[0]))
+                      : (classCandidate ? String(classCandidate).split(':').pop() : '');
+                    const nodeObj = {
+                      id: normalizedUri,
+                      iri: normalizedUri,
+                      data: {
+                        individualName: String(normalizedUri).split(/[#/]/).pop() || normalizedUri,
+                        classType: classLocal || undefined,
+                        namespace: '',
+                        iri: normalizedUri,
+                        literalProperties: [],
+                        annotationProperties: updates.annotationProperties || [],
+                      },
+                    };
+                    try {
+                      os.setCurrentGraph([...(cg.nodes || []), nodeObj], cg.edges || []);
+                    } catch (_) {
+                      /* ignore setCurrentGraph failures */
+                    }
+                  }
+                }
+              } catch (_) {
+                /* ignore currentGraph update failures */
+              }
+              // mark for focus when mapping completes
+              pendingFocusRef.current = id;
+            } catch (e) {
+              /* ignore persistence failures */
+            }
+          } catch (_) {
+            /* ignore */
+          }
         }}
         onToggleLegend={handleToggleLegend}
         showLegend={showLegend}

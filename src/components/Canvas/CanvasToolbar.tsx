@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { AutoComplete } from '../ui/AutoComplete';
@@ -56,7 +56,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '../ui/popover';
 import { toast } from 'sonner';
 
 interface CanvasToolbarProps {
-  onAddNode: (entityUri: string) => void;
+  onAddNode: (payload: any) => void;
   onToggleLegend: () => void;
   showLegend: boolean;
   onExport: (format: 'turtle' | 'owl-xml' | 'json-ld') => void;
@@ -98,6 +98,25 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   const namespacesFromLoaded = loadedOntologies.reduce((acc, ont) => ({ ...acc, ...ont.namespaces }), {} as Record<string, string>);
   const rdfManagerNamespaces = (getRdfManager && typeof getRdfManager === 'function') ? (getRdfManager()?.getNamespaces?.() || {}) : {};
   const mergedNamespaces = { ...namespacesFromLoaded, ...rdfManagerNamespaces };
+
+  // Build a stable list of class entities for the Add Node autocomplete.
+  // This mirrors the merge logic used in NodePropertyEditor so the same class list
+  // is available in both editors (fallback to ontologyStore.availableClasses).
+  const classEntities = useMemo(() => {
+    const fromEntities = (availableEntities || []).filter(e => e.rdfType === 'owl:Class');
+    const fromStore = (availableClasses || []).map((cls: any) => ({
+      iri: cls.iri,
+      label: cls.label,
+      namespace: cls.namespace || '',
+      rdfType: 'owl:Class'
+    }));
+
+    const merged = new Map<string, any>();
+    fromStore.forEach((e: any) => { if (e && e.iri) merged.set(e.iri, e); });
+    fromEntities.forEach((e: any) => { if (e && e.iri) merged.set(e.iri, e); });
+
+    return Array.from(merged.values());
+  }, [availableEntities, availableClasses]);
 
   // Centralized: ask LayoutManager for available layouts (keeps single source of truth).
   const layoutManager = new LayoutManager();
@@ -159,7 +178,12 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
     if (!iriToAdd) return;
 
     try {
-      onAddNode(iriToAdd);
+      // Pass full payload (IRI + optional class/namespace) so the canvas can persist rdf:type + label
+      onAddNode({
+        iri: iriToAdd,
+        classCandidate: newNodeClass ? String(newNodeClass) : undefined,
+        namespace: newNodeNamespace ? String(newNodeNamespace) : undefined,
+      } as any);
       // Clear inputs
       setNewNodeClass('');
       setNewNodeNamespace('');
@@ -250,7 +274,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
             <div className="space-y-2">
               <Label htmlFor="classType">Class Type (optional)</Label>
               <EntityAutocomplete 
-                entities={availableEntities.filter(e => e.rdfType === 'owl:Class')}
+                entities={classEntities}
                 value={newNodeClass}
                 onValueChange={setNewNodeClass}
                 placeholder="Type to search for classes..."
