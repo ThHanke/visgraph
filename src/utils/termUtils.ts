@@ -1,5 +1,6 @@
 import { NamedNode } from "n3";
 import type { RDFManager } from "../utils/rdfManager";
+import { buildPaletteForRdfManager } from "../components/Canvas/core/namespacePalette";
 
 /**
  * Combined term & prefix utilities.
@@ -20,6 +21,9 @@ export interface TermDisplayInfo {
   short: string;
   namespace: string;
   tooltipLines: string[];
+  // Optional authoritative color resolved from the RDF manager's palette.
+  // When present, callers should use this color as the single source of truth.
+  color?: string | undefined;
 }
 
 /**
@@ -148,6 +152,7 @@ export function computeTermDisplay(
       short: iri,
       namespace: "",
       tooltipLines: [iri],
+      color: undefined,
     };
   }
 
@@ -167,26 +172,38 @@ export function computeTermDisplay(
   }
 
   // Prefer producing a prefix:local form when a matching namespace is available.
-  // If no named prefix is known but the RDF manager registers a default/empty
-  // prefix for the namespace, render a visible ':' default prefix (':local').
-  // Otherwise fall back to a friendly local name when no prefix is known.
+  // Strict behavior: only use prefixes that can be resolved via the provided rdfManager/namespace map.
+  // If no explicit prefix exists, try a conservative fallback: if the IRI's namespace
+  // matches any registered namespace, render as ':local' to indicate default-namespace form.
   let prefixed: string;
   try {
     prefixed = toPrefixed(targetIri, rdfManager);
   } catch (_) {
+    // No explicit prefix found via normal lookup -> attempt conservative fallback
     try {
-      // Try to detect a default (empty) prefix mapping in the provided namespace map.
-      const nsMap = resolveNamespaces(rdfManager);
-      const defaultNs = nsMap[""] || nsMap['default'] || nsMap[":"] || nsMap["::"];
-      if (defaultNs && typeof defaultNs === "string" && targetIri.startsWith(defaultNs)) {
-        const local = targetIri.substring(String(defaultNs).length);
-        prefixed = `:${local}`;
-      } else {
-        prefixed = shortLocalName(targetIri);
+      const nsMap = rdfManager && (rdfManager as any).getNamespaces && typeof (rdfManager as any).getNamespaces === 'function'
+        ? (rdfManager as any).getNamespaces()
+        : (rdfManager && typeof rdfManager === 'object' ? (rdfManager as unknown as Record<string,string>) : undefined);
+      if (nsMap) {
+        const target = String(targetIri);
+        for (const nsUri of Object.values(nsMap)) {
+          try {
+            if (nsUri && target.startsWith(nsUri)) {
+              // Found a matching namespace; render as default-namespace form ":local"
+              prefixed = `:${shortLocalName(targetIri)}`;
+              // Ensure we record namespace as empty to indicate default
+              // (caller uses namespace field to decide styling/colouring).
+              // We'll set namespace below.
+              break;
+            }
+          } catch (_) { /* ignore per-candidate */ }
+        }
       }
-    } catch (inner) {
-      prefixed = shortLocalName(targetIri);
+    } catch (_) {
+      /* ignore fallback failures */
     }
+    // If still not resolved, fall back to local name
+    if (!prefixed) prefixed = shortLocalName(targetIri);
   }
 
   // Derive prefix/local from prefixed form when possible
@@ -198,11 +215,28 @@ export function computeTermDisplay(
     local = local.substring(idx + 1);
   }
 
+  // Determine authoritative color using the rdfManager-derived palette.
+  // Strict: only use a palette color when a named prefix is available and the
+  // palette contains an explicit color for that prefix. Do not synthesize.
+  let color: string | undefined = undefined;
+  try {
+    if (prefix && rdfManager) {
+      const palette = buildPaletteForRdfManager(rdfManager);
+      if (palette && typeof palette === "object") {
+        // Try exact prefix first, then lowercase.
+        color = (palette as Record<string,string>)[prefix] || (palette as Record<string,string>)[prefix.toLowerCase()];
+      }
+    }
+  } catch (_) {
+    color = undefined;
+  }
+
   return {
     iri: targetIri,
     prefixed,
     short: local,
     namespace: prefix || "",
     tooltipLines: [local],
+    color,
   };
 }

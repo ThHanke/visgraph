@@ -272,7 +272,20 @@ export const ReactFlowCanvas: React.FC = () => {
           "--primary-foreground",
         ) || "#000000",
       ];
-      return buildPaletteMap(prefixes, { avoidColors: textColors });
+      const palette = buildPaletteMap(prefixes, { avoidColors: textColors });
+      // Diagnostic: log namespaces and computed palette so we can verify our single-source-of-truth.
+      // Use JSON.stringify to ensure the logged value is fully serializable and visible in captured logs.
+      try {
+        if (typeof console !== "undefined" && typeof console.debug === "function") {
+          try {
+            console.debug("[VG_DEBUG] paletteMap.build", JSON.stringify({ namespaces: nsMap || {}, prefixes, palette }));
+          } catch (_) {
+            // fallback to non-stringified log if stringify fails
+            console.debug("[VG_DEBUG] paletteMap.build", { namespaces: nsMap, prefixes, palette });
+          }
+        }
+      } catch (_) { /* ignore logging failures */ }
+      return palette;
     } catch (e) {
       return {};
     }
@@ -325,7 +338,7 @@ export const ReactFlowCanvas: React.FC = () => {
               : undefined,
         });
         // Apply only the nodes/edges appropriate for the current viewMode
-        let mappedNodes = diagram.nodes || [];
+        const mappedNodes = diagram.nodes || [];
         const mappedEdges = diagram.edges || [];
 
 
@@ -503,35 +516,77 @@ export const ReactFlowCanvas: React.FC = () => {
           canonicalNs = "";
         }
 
-        // Determine palette color: prefer the display-type's prefix color (so badge + border match),
-        // otherwise fall back to the namespace-derived palette entry. Do not silently synthesize a color.
+        // Determine palette color strictly via computeTermDisplay (termUtils is authoritative).
+        // We try canonicalTypeIri first, then the node's first rdf:type if canonicalTypeIri is absent.
+        // computeTermDisplay returns an optional `color` which is the single source of truth.
         let paletteColor: string | undefined = undefined;
         let paletteMissing = false;
+        // Keep lastTd for diagnostics when palette is missing
+        let lastTd: any = undefined;
         try {
-          // Try to resolve prefix from the canonical type IRI (preferred - matches badge prefix)
-          if (canonicalTypeIri && typeof getRdfManagerRef.current === "function") {
-            try {
-              const mgrLocal = getRdfManagerRef.current();
-              if (mgrLocal) {
-                const td = computeTermDisplay(String(canonicalTypeIri), mgrLocal as any);
-                const pref = td && td.prefixed ? String(td.prefixed) : "";
-                if (pref) {
-                  const prefixKey = pref.split(":", 1)[0];
-                  if (prefixKey && paletteMap && (paletteMap as Record<string,string>)[prefixKey]) {
-                    paletteColor = (paletteMap as Record<string,string>)[prefixKey];
+          const mgrLocal = typeof getRdfManagerRef.current === "function" ? getRdfManagerRef.current() : undefined;
+
+          // Strict type candidate selection:
+          // - Prefer canonicalTypeIri if present (must be a full IRI).
+          // - Otherwise prefer the first rdf:type that is a full IRI.
+          // - If no full IRI is present, allow expanding a prefixed rdf:type via rdfManager.expandPrefix.
+          // - DO NOT accept bare local classType/displayType strings as a candidate.
+          let typeCandidate: string | undefined = undefined;
+          try {
+            if (canonicalTypeIri && String(canonicalTypeIri).trim() && /^https?:\/\//i.test(String(canonicalTypeIri).trim())) {
+              typeCandidate = String(canonicalTypeIri).trim();
+            } else {
+              const rdfTypesList = Array.isArray(src.rdfTypes) ? (src.rdfTypes as any[]).map(String).filter(Boolean) : [];
+              // prefer an absolute IRI type
+              const absolute = rdfTypesList.find((t) => t && /^https?:\/\//i.test(String(t)));
+              if (absolute) {
+                typeCandidate = String(absolute);
+              } else {
+                // prefer a prefixed form that we can expand via rdfManager
+                const prefixed = rdfTypesList.find((t) => t && String(t).includes(":"));
+                if (prefixed && mgrLocal && typeof (mgrLocal as any).expandPrefix === "function") {
+                  try {
+                    const expanded = (mgrLocal as any).expandPrefix(String(prefixed));
+                    if (expanded && /^https?:\/\//i.test(String(expanded))) {
+                      typeCandidate = String(expanded);
+                    }
+                  } catch (_) {
+                    // expansion failed -> leave undefined
+                    typeCandidate = undefined;
                   }
+                } else {
+                  // Do not accept bare local names (e.g., "AnnotationProperty") as typeCandidate.
+                  typeCandidate = undefined;
                 }
               }
-            } catch (_) {
-              /* ignore type-prefix lookup failures */
             }
+          } catch (_) {
+            typeCandidate = undefined;
           }
 
-          // If not found by type prefix, fall back to namespace key lookup
-          if (typeof paletteColor === "undefined") {
-            const nsKeyRaw = String(canonicalNs || src.namespace || "");
-            const nsKeyForVar = nsKeyRaw.replace(/[:#].*$/, "") || "default";
-            paletteColor = (paletteMap && typeof paletteMap === "object") ? (paletteMap as Record<string,string>)[nsKeyForVar] : undefined;
+          if (typeCandidate && mgrLocal) {
+              try {
+              const td = computeTermDisplay(String(typeCandidate), mgrLocal as any);
+              // capture for diagnostics
+              lastTd = td;
+              // Use td.color as authoritative palette color (may be undefined when palette missing)
+              paletteColor = td && (td.color as string | undefined);
+
+              // allow canonicalNs diagnostic to reflect termUtils namespace when available
+              if (!canonicalNs && td && td.namespace) {
+                canonicalNs = td.namespace || canonicalNs;
+              }
+
+              // Strict policy: do not attempt canvas-side palette fallbacks here.
+              // computeTermDisplay is authoritative and will only return a color when the
+              // RDF manager explicitly defines a matching prefix/palette entry. If td.color
+              // is not present we treat the palette as missing for this node.
+            } catch (_) {
+              // computeTermDisplay is strict and may throw when prefixes missing; treat as missing
+              paletteColor = undefined;
+            }
+          } else {
+            paletteColor = undefined;
           }
 
           paletteMissing = typeof paletteColor === "undefined";
@@ -708,6 +763,17 @@ export const ReactFlowCanvas: React.FC = () => {
             } catch (_) { /* ignore logging failures */ }
           }
         } catch (_) { /* ignore */ }
+
+        // If palette is missing, also emit the termUtils output + current rdfManager namespaces for diagnosis.
+        try {
+          if (paletteMissing) {
+            try {
+              const mgrLocalForDiag = typeof getRdfManagerRef.current === "function" ? getRdfManagerRef.current() : undefined;
+              const nsDump = mgrLocalForDiag && typeof mgrLocalForDiag.getNamespaces === "function" ? mgrLocalForDiag.getNamespaces() : undefined;
+              console.debug("[VG_DEBUG] mappedNodeColorDetail", { id, td: lastTd, namespaces: nsDump });
+            } catch (_) { /* ignore diag logging failures */ }
+          }
+        } catch (_) { /* ignore */ }
       }
 
       // Only create edges when both endpoints exist on the canvas (subject and object mapped to nodes).
@@ -876,16 +942,26 @@ export const ReactFlowCanvas: React.FC = () => {
           const dir = layoutToApply === 'vertical' ? 'TB' : 'LR';
           // Use the dagre helper directly to lay out the freshly computed diagram nodes/edges.
           // We run this as a microtask to ensure React state updates settle first.
-              setTimeout(() => {
+                  setTimeout(() => {
                 try {
                   setNodes((nds) => {
                     try {
-                      const positioned = applyDagreLayout(nds, diagramEdges as any, {
+                      // Run layout on the freshly computed diagramNodes so hidden nodes are excluded
+                      const positioned = applyDagreLayout(diagramNodes, diagramEdges as any, {
                         direction: dir,
                         nodeSep: config.layoutSpacing,
                         rankSep: config.layoutSpacing,
                       });
-                      return positioned;
+                      // Merge computed positions into existing nodes to preserve identity and data
+                      const posById: Record<string, { x: number; y: number }> = {};
+                      for (const p of positioned) {
+                        try {
+                          if (p && p.id && p.position) posById[String(p.id)] = p.position;
+                        } catch (_) { /* ignore per-node */ }
+                      }
+                      return nds.map((n) =>
+                        posById[n.id] ? { ...n, position: posById[n.id] } : n,
+                      );
                     } catch (_) {
                       return nds;
                     }
@@ -913,6 +989,20 @@ export const ReactFlowCanvas: React.FC = () => {
         /* ignore layout-on-load failures */
       }
     } catch (e) {
+      // Log full error to help diagnose why mapping failed (this was clearing the canvas)
+      try {
+        if (typeof console !== "undefined" && typeof console.error === "function") {
+          try {
+            console.error("[VG] ReactFlowCanvas.mapGraphToDiagram FAILED", {
+              errorMessage: e && (e as Error).message ? (e as Error).message : String(e),
+              errorStack: e && (e as Error).stack ? (e as Error).stack : undefined,
+              currentGraphSize: (currentGraph && (currentGraph as any).nodes) ? (currentGraph as any).nodes.length : 0,
+              loadedOntologiesCount: Array.isArray(loadedOntologies) ? loadedOntologies.length : 0,
+            });
+          } catch (_) { /* ignore console failure */ }
+        }
+      } catch (_) { /* ignore */ }
+
       try {
         fallback(
           "reactflow.mapping.failed",
@@ -924,10 +1014,16 @@ export const ReactFlowCanvas: React.FC = () => {
       } catch (_) {
         /* ignore */
       }
-      setNodes([]);
-      setEdges([]);
+      // Preserve prior nodes/edges on mapping failure instead of clearing the canvas.
+      // Clearing made the UI appear empty after layout when mapping failed mid-update.
+      // We avoid destructive fallback here and keep existing state so users don't lose the UI.
+      try {
+        // no-op: intentionally keep existing nodes/edges
+      } catch (_) {
+        /* ignore */
+      }
     }
-  }, [currentGraph, loadedOntologies, availableClasses, viewMode, paletteMap]);
+  }, [currentGraph, loadedOntologies, availableClasses, viewMode]);
 
   // Auto-load demo file and additional ontologies on component mount (mirrors Canvas behavior)
   // This component intentionally does NOT auto-populate the canvas on mount by default.
@@ -2001,13 +2097,56 @@ useEffect(() => {
 
           setNodes((nds) => {
             try {
-              const positioned = applyDagreLayout(nds, edges as any, {
+              // Determine nodes/edges to layout using the React Flow instance when available
+              const inst = reactFlowInstance.current as any;
+              let nodesForLayout: any[] = [];
+              let edgesForLayout: any[] = [];
+              try {
+                if (inst && typeof inst.getNodes === 'function') {
+                  nodesForLayout = inst.getNodes();
+                } else {
+                  // Fallback: compute visible nodes from current nds using visibility/isTBox rules
+                  nodesForLayout = nds.filter((n) => {
+                    try {
+                      const visibleFlag = n.data && typeof (n.data as any).visible === 'boolean'
+                        ? (n.data as any).visible
+                        : true;
+                      const isTBox = !!(n.data && (n.data as any).isTBox);
+                      return visibleFlag && (viewMode === 'tbox' ? isTBox : !isTBox);
+                    } catch {
+                      return true;
+                    }
+                  });
+                }
+                if (inst && typeof inst.getEdges === 'function') {
+                  edgesForLayout = inst.getEdges();
+                } else {
+                  const nodeIds = new Set(nodesForLayout.map((n) => n.id));
+                  edgesForLayout = edges.filter((e) => nodeIds.has(String(e.source)) && nodeIds.has(String(e.target)));
+                }
+              } catch (_) {
+                // In case of any instance API failure, fall back to full state
+                nodesForLayout = nds;
+                edgesForLayout = edges as any;
+              }
+
+              if (!nodesForLayout || nodesForLayout.length === 0) return nds;
+
+              const positioned = applyDagreLayout(nodesForLayout, edgesForLayout as any, {
                 direction: dir,
                 nodeSep,
                 rankSep,
               });
-              // When using React Flow, positions are set directly on nodes
-              return positioned;
+              // Merge computed positions into existing nodes to preserve identity and data
+              const posById: Record<string, { x: number; y: number }> = {};
+              for (const p of positioned) {
+                try {
+                  if (p && p.id && p.position) posById[String(p.id)] = p.position;
+                } catch (_) { /* ignore per-node */ }
+              }
+              return nds.map((n) =>
+                posById[n.id] ? { ...n, position: posById[n.id] } : n,
+              );
             } catch (err) {
               // fallback to previous positions on failure
               return nds;
@@ -2046,7 +2185,7 @@ useEffect(() => {
         return false;
       }
     },
-    [setNodes, setCurrentLayout, setCurrentLayoutState, edges, layoutEnabled, config.layoutSpacing],
+    [setNodes, setCurrentLayout, setCurrentLayoutState, edges, layoutEnabled, config.layoutSpacing, viewMode],
   );
 
   // Expose programmatic apply layout hook (queue until ready)

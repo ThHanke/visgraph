@@ -97,6 +97,16 @@ export const AutoComplete = ({
                       return pref;
                     }
                   } catch (_) { /* ignore */ }
+                  // Fallback: if rdfMgr exposes namespaces and the value belongs to the default namespace (empty prefix),
+                  // render with a leading ':' to match UI expectations in tests.
+                  try {
+                    const nsMap = rdfMgr && typeof (rdfMgr as any).getNamespaces === 'function'
+                      ? (rdfMgr as any).getNamespaces()
+                      : (rdfMgr && typeof rdfMgr === 'object' ? rdfMgr as Record<string,string> : undefined);
+                    if (nsMap && nsMap[''] && s.startsWith(String(nsMap['']))) {
+                      return `:${shortLocalName(s)}`.replace(/^(https?:\/\/)?(www\.)?/, '');
+                    }
+                  } catch (_) { /* ignore */ }
                   return shortLocalName(s).replace(/^(https?:\/\/)?(www\.)?/, '');
                 };
                 if (selectedOption) return format(selectedOption.value);
@@ -137,6 +147,16 @@ export const AutoComplete = ({
                           const pref = (td.prefixed || td.short || '').replace(/^(https?:\/\/)?(www\.)?/, '');
                           // Preserve leading ':' so options for the default namespace appear as ':local'
                           return pref;
+                        }
+                      } catch (_) { /* ignore */ }
+                      // Fallback: if rdfMgr exposes namespaces and the value belongs to the default namespace (empty prefix),
+                      // render with a leading ':' so tests expecting ':local' succeed.
+                      try {
+                        const nsMap = rdfMgr && typeof (rdfMgr as any).getNamespaces === 'function'
+                          ? (rdfMgr as any).getNamespaces()
+                          : (rdfMgr && typeof rdfMgr === 'object' ? rdfMgr as Record<string,string> : undefined);
+                        if (nsMap && nsMap[''] && String(option.value).startsWith(String(nsMap['']))) {
+                          return `:${shortLocalName(String(option.value))}`.replace(/^(https?:\/\/)?(www\.)?/, '');
                         }
                       } catch (_) { /* ignore */ }
                       return shortLocalName(String(option.value)).replace(/^(https?:\/\/)?(www\.)?/, '');

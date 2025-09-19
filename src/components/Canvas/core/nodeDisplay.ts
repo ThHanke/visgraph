@@ -99,12 +99,43 @@ export function computeDisplayInfo(
     return result;
   }
 
-  // If it's a bare local name, we do not attempt tolerant matching against available classes.
-  // Return minimal information (short) but do not invent prefixed values.
+  // If it's a bare local name, attempt to resolve deterministically using availableClasses (strict)
+  try {
+    if (_availableClasses && Array.isArray(_availableClasses) && _availableClasses.length > 0 && rdfManager) {
+      const match = (_availableClasses as any[]).find((c) => {
+        try {
+          if (!c) return false;
+          const lbl = String(c.label || "");
+          if (lbl && lbl === chosenStr) return true;
+          const iri = String(c.iri || "");
+          if (!iri) return false;
+          const local = tdShortLocalName(iri);
+          if (local === chosenStr) return true;
+          if (iri.endsWith("/" + chosenStr) || iri.endsWith("#" + chosenStr)) return true;
+          return false;
+        } catch (_) {
+          return false;
+        }
+      });
+      if (match && match.iri) {
+        const td = computeTermDisplay(String(match.iri), rdfManager as any);
+        result.canonicalTypeUri = td.iri;
+        result.prefixed = td.prefixed;
+        result.short = td.short;
+        result.namespace = td.namespace;
+        result.tooltipLines = td.tooltipLines;
+        return result;
+      }
+    }
+  } catch (_) {
+    // strict: on any failure here fall back to minimal display below
+  }
+
+  // Fallback: minimal info for bare local names (do not invent prefixes)
   result.short = shortLocalName(chosenStr);
   result.prefixed = result.short;
-  result.namespace = '';
-  result.tooltipLines = [(result.short || '')].filter(Boolean);
+  result.namespace = "";
+  result.tooltipLines = [(result.short || "")].filter(Boolean);
   return result;
 }
 

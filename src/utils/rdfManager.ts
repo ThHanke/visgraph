@@ -11,6 +11,8 @@
  * Internally notifyChange() is invoked whenever quads are added/removed/graphs modified.
  */
 
+/* eslint-disable no-empty */
+
 import {
   Store,
   Parser,
@@ -183,7 +185,13 @@ export class RDFManager {
         }
       }
     } catch (_) {
-      /* ignore */
+      try {
+        if (typeof fallback === "function") {
+          fallback("emptyCatch", { error: String(_) });
+        }
+      } catch (__) {
+        /* ignore fallback errors */
+      }
     }
     return false;
   }
@@ -254,7 +262,13 @@ export class RDFManager {
             fallback("vg.writeTrace.install_failed", { error: String(err) });
           }
         } catch (_) {
-          /* ignore */
+          try {
+            if (typeof fallback === "function") {
+              fallback("emptyCatch", { error: String(_) });
+            }
+          } catch (__) {
+            /* ignore fallback errors */
+          }
         }
       }
     };
@@ -302,7 +316,13 @@ export class RDFManager {
         };
       }
     } catch (_) {
-      /* ignore */
+      try {
+        if (typeof fallback === "function") {
+          fallback("emptyCatch", { error: String(_) });
+        }
+      } catch (__) {
+        /* ignore fallback errors */
+      }
     }
   }
 
@@ -874,7 +894,13 @@ export class RDFManager {
             fallback("emptyCatch", { error: String(_) });
           }
         } catch (_) {
-          /* ignore */
+          try {
+            if (typeof fallback === "function") {
+              fallback("emptyCatch", { error: String(_) });
+            }
+          } catch (__) {
+            /* ignore fallback errors */
+          }
         }
       }
     } finally {
@@ -1423,7 +1449,13 @@ export class RDFManager {
             fallback("emptyCatch", { error: String(_) });
           }
         } catch (_) {
-          /* ignore */
+          try {
+            if (typeof fallback === "function") {
+              fallback("emptyCatch", { error: String(_) });
+            }
+          } catch (__) {
+            /* ignore fallback errors */
+          }
         }
       }
     } finally {
@@ -1949,11 +1981,23 @@ export class RDFManager {
             /* ignore */
           }
         } catch (_) {
-          /* ignore */
+          try {
+            if (typeof fallback === "function") {
+              fallback("emptyCatch", { error: String(_) });
+            }
+          } catch (__) {
+            /* ignore fallback errors */
+          }
         }
       }
     } catch (_) {
-      /* ignore */
+      try {
+        if (typeof fallback === "function") {
+          fallback("emptyCatch", { error: String(_) });
+        }
+      } catch (__) {
+        /* ignore fallback errors */
+      }
     }
 
     // Fallback: use dev server proxy at /__external (configured in vite.config.ts) to bypass CORS/redirect issues.
@@ -2124,7 +2168,13 @@ export class RDFManager {
             snippet: "",
           };
         } catch (_) {
-          /* ignore */
+          try {
+            if (typeof fallback === "function") {
+              fallback("emptyCatch", { error: String(_) });
+            }
+          } catch (__) {
+            /* ignore fallback errors */
+          }
         }
         try {
           window.dispatchEvent(
@@ -2133,11 +2183,23 @@ export class RDFManager {
             }),
           );
         } catch (_) {
-          /* ignore */
+          try {
+            if (typeof fallback === "function") {
+              fallback("emptyCatch", { error: String(_) });
+            }
+          } catch (__) {
+            /* ignore fallback errors */
+          }
         }
       }
     } catch (_) {
-      /* ignore */
+      try {
+        if (typeof fallback === "function") {
+          fallback("emptyCatch", { error: String(_) });
+        }
+      } catch (__) {
+        /* ignore fallback errors */
+      }
     }
     throw new Error(
       `Failed to fetch ${url} (direct fetch and proxy fallback both unsuccessful)`,
@@ -2261,7 +2323,13 @@ export class RDFManager {
               /* ignore dynamic import errors */
             });
         } catch (_) {
-          /* ignore */
+          try {
+            if (typeof fallback === "function") {
+              fallback("emptyCatch", { error: String(_) });
+            }
+          } catch (__) {
+            /* ignore fallback errors */
+          }
         }
       }
     } catch (e) {
@@ -2358,7 +2426,13 @@ export class RDFManager {
             fallback("emptyCatch", { error: String(e) });
           }
         } catch (_) {
-          /* ignore */
+          try {
+            if (typeof fallback === "function") {
+              fallback("emptyCatch", { error: String(_) });
+            }
+          } catch (__) {
+            /* ignore fallback errors */
+          }
         }
       }
 
@@ -2605,7 +2679,13 @@ export class RDFManager {
         }
       }
     } catch (_) {
-      /* ignore */
+      try {
+        if (typeof fallback === "function") {
+          fallback("emptyCatch", { error: String(_) });
+        }
+      } catch (__) {
+        /* ignore fallback errors */
+      }
     }
 
     // Unknown prefix – return original string so caller can decide how to handle it
@@ -2635,7 +2715,13 @@ export class RDFManager {
     try {
       this.notifyChange();
     } catch (_) {
-      /* ignore */
+      try {
+        if (typeof fallback === "function") {
+          fallback("emptyCatch", { error: String(_) });
+        }
+      } catch (__) {
+        /* ignore fallback errors */
+      }
     }
   }
 
@@ -2701,7 +2787,13 @@ export class RDFManager {
       try {
         const updates: any = {};
 
-        // Collect rdf types in authoritative form
+        // Collect rdf types in authoritative form and expand to full IRIs when possible.
+        // Policy:
+        //  - Prefer non-NamedIndividual types from node.rdfTypes / node.rdfType.
+        //  - For each candidate: if it's already an absolute IRI keep it. If it's a prefixed name
+        //    attempt to expand via this.expandPrefix. Do NOT synthesize IRIs from bare local names.
+        //  - As a last-resort for older parsed shapes that only provide node.namespace + node.classType,
+        //    attempt to expand `${namespace}:${classType}` if this.expandPrefix is available.
         const allTypes =
           node && node.rdfTypes && node.rdfTypes.length > 0
             ? node.rdfTypes.slice()
@@ -2709,16 +2801,51 @@ export class RDFManager {
               ? [node.rdfType]
               : [];
         const meaningful = Array.isArray(allTypes)
-          ? allTypes.filter(
-              (t: any) => t && !String(t).includes("NamedIndividual"),
-            )
+          ? allTypes.filter((t: any) => t && !String(t).includes("NamedIndividual"))
           : [];
-        if (meaningful.length > 0) {
-          updates.rdfTypes = meaningful;
-        } else if (allTypes.length > 0) {
-          updates.rdfTypes = allTypes;
-        } else if (node && node.classType && node.namespace) {
-          updates.rdfTypes = [`${node.namespace}:${node.classType}`];
+
+        const candidates = (meaningful && meaningful.length > 0) ? meaningful.slice() : (allTypes && allTypes.length > 0 ? allTypes.slice() : []);
+
+        // If no explicit rdf types but namespace+classType are present, include that prefixed candidate (will be expanded below)
+        if ((!candidates || candidates.length === 0) && node && node.classType && node.namespace) {
+          candidates.push(`${node.namespace}:${node.classType}`);
+        }
+
+        const expandedTypes: string[] = [];
+        try {
+          for (const t of candidates) {
+            try {
+              const ts = String(t || "");
+              if (!ts) continue;
+              // already an absolute IRI
+              if (/^https?:\/\//i.test(ts)) {
+                expandedTypes.push(ts);
+                continue;
+              }
+              // prefixed form -> try to expand
+              if (ts.includes(":")) {
+                try {
+                  const expanded = this.expandPrefix(ts);
+                  if (expanded && /^https?:\/\//i.test(String(expanded))) {
+                    expandedTypes.push(String(expanded));
+                    continue;
+                  }
+                } catch (_) {
+                  // expansion failed -> skip
+                }
+              }
+              // bare local names: do not synthesize IRIs here (strict)
+            } catch (_) {
+              /* ignore per-candidate */
+            }
+          }
+        } catch (_) {
+          /* ignore normalization failures */
+        }
+
+        // Deduplicate and attach only when we have something useful
+        if (expandedTypes.length > 0) {
+          updates.rdfTypes = Array.from(new Set(expandedTypes));
         }
 
         // Collect annotation/literal properties
@@ -2872,7 +2999,13 @@ export class RDFManager {
     try {
       this.notifyChange();
     } catch (_) {
-      /* ignore */
+      try {
+        if (typeof fallback === "function") {
+          fallback("emptyCatch", { error: String(_) });
+        }
+      } catch (__) {
+        /* ignore fallback errors */
+      }
     }
   }
 

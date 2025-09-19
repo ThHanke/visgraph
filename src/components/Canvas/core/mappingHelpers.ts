@@ -50,20 +50,18 @@ export function buildNodeDataFromParsedNode(
   availableClasses?: Map<string, any> | Array<{iri:string}> | undefined
 ): NodeData {
   const src = canonicalNode || {};
-  // resolve rdf types array (from parsed node if present)
-  let rdfTypesArr: string[] = Array.isArray(src.rdfTypes)
+  // Resolve rdf types conservatively and strictly (produce only full IRIs).
+  // - Start from parsed node rdfTypes if present.
+  // - If none present, query the RDF store for rdf:type triples.
+  // - From the collected candidates, only keep absolute IRIs or prefixed forms that
+  //   can be expanded by rdfManager.expandPrefix. Do NOT accept bare local names.
+  let rdfTypesCandidates: string[] = Array.isArray(src.rdfTypes)
     ? src.rdfTypes.map(String).filter(Boolean)
     : [];
 
-  // If parsed node lacked rdfTypes and an RDF manager is available, try to
-  // query the RDF store for rdf:type triples for this subject. This restores
-  // the previous behavior where the canvas consulted the live store as a fallback.
   try {
-    if (
-      (!rdfTypesArr || rdfTypesArr.length === 0) &&
-      rdfManager &&
-      typeof rdfManager.getStore === "function"
-    ) {
+    // If no parsed candidates, probe the store for rdf:type triples
+    if ((!rdfTypesCandidates || rdfTypesCandidates.length === 0) && rdfManager && typeof rdfManager.getStore === "function") {
       try {
         const store = rdfManager.getStore();
         const subjectUri = String(src.iri || src.id || src.key || "");
@@ -73,35 +71,25 @@ export function buildNodeDataFromParsedNode(
               ? String((rdfManager as any).expandPrefix("rdf:type"))
               : "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 
-          let typeQuads =
-            store.getQuads(namedNode(subjectUri), namedNode(rdfTypePredicate), null, null) ||
-            [];
+          let typeQuads = store.getQuads(namedNode(subjectUri), namedNode(rdfTypePredicate), null, null) || [];
 
-          // Fallback: try http/https variants as in previous inline logic
+          // Try common http/https variants if direct lookup returned nothing
           if ((!typeQuads || typeQuads.length === 0) && subjectUri) {
             const altSubjects = [`http:${subjectUri}`, `https:${subjectUri}`];
             for (const s of altSubjects) {
               try {
-                const found =
-                  store.getQuads(namedNode(s), namedNode(rdfTypePredicate), null, null) ||
-                  [];
+                const found = store.getQuads(namedNode(s), namedNode(rdfTypePredicate), null, null) || [];
                 if (found && found.length > 0) {
                   typeQuads = found;
                   break;
                 }
-              } catch (_) {
-                /* ignore per-variant failures */
-              }
+              } catch (_) { /* ignore */ }
             }
           }
 
           if (typeQuads && typeQuads.length > 0) {
-            rdfTypesArr = Array.from(
-              new Set(
-                typeQuads
-                  .map((q: any) => (q.object && q.object.value) || "")
-                  .filter(Boolean),
-              ),
+            rdfTypesCandidates = Array.from(
+              new Set(typeQuads.map((q: any) => (q.object && q.object.value) || "").filter(Boolean)),
             );
           }
         }
@@ -111,6 +99,39 @@ export function buildNodeDataFromParsedNode(
     }
   } catch (_) {
     /* ignore outer failures */
+  }
+
+  // Expand/normalize candidates into strict full IRIs.
+  const rdfTypesArr: string[] = [];
+  try {
+    for (const t of rdfTypesCandidates) {
+      try {
+        const ts = String(t || "");
+        if (!ts) continue;
+        // Already an absolute IRI — keep it.
+        if (/^https?:\/\//i.test(ts)) {
+          rdfTypesArr.push(ts);
+          continue;
+        }
+        // If looks like a prefixed name and rdfManager can expand, try expansion.
+        if (ts.includes(":") && rdfManager && typeof (rdfManager as any).expandPrefix === "function") {
+          try {
+            const expanded = (rdfManager as any).expandPrefix(ts);
+            if (expanded && /^https?:\/\//i.test(String(expanded))) {
+              rdfTypesArr.push(String(expanded));
+              continue;
+            }
+          } catch (_) {
+            // expansion failed — skip this candidate (do not synthesize)
+          }
+        }
+        // Bare local names: intentionally ignored here (strict policy)
+      } catch (_) {
+        /* ignore per-candidate */
+      }
+    }
+  } catch (_) {
+    /* ignore normalization failures */
   }
 
   // Compute a friendly label
@@ -140,13 +161,60 @@ export function buildNodeDataFromParsedNode(
 
   const canonicalNodeIri = src.iri ?? src.id ?? src.key ?? "";
 
+  // Compute display classType/namespace from resolved rdfTypes when available.
+  // Prefer a prefixed form from computeTermDisplay (e.g., 'owl:Class') for display.
+  // Special rule: for ABox (instance) nodes, prefer the first rdf:type that is NOT owl:NamedIndividual.
+  let displayClassType = src.classType;
+  let displayNamespace = String(src.namespace || "");
+  try {
+    if (Array.isArray(rdfTypesArr) && rdfTypesArr.length > 0) {
+      try {
+        // Choose which rdf:type IRI to use for display.
+        // Default to the first available type.
+        let selectedTypeIri: string | undefined = rdfTypesArr[0];
+
+        // If this node is an ABox node (not TBox), prefer the first rdf:type that is not owl:NamedIndividual.
+        // This restores previous behavior where instances show their meaningful class instead of NamedIndividual.
+        try {
+          if (!isTBoxEntity) {
+            const namedIndividualIri = "http://www.w3.org/2002/07/owl#NamedIndividual";
+            const nonNamed = rdfTypesArr.find((t: string) => {
+              try {
+                return String(t).trim() !== String(namedIndividualIri);
+              } catch (_) {
+                return false;
+              }
+            });
+            if (nonNamed) selectedTypeIri = nonNamed;
+          }
+        } catch (_) {
+          // ignore selection errors and fall back to first type
+        }
+
+        if (selectedTypeIri && rdfManager) {
+          try {
+            const td = computeTermDisplay(String(selectedTypeIri), rdfManager as any);
+            if (td) {
+              displayClassType = td.prefixed || td.short || displayClassType;
+              displayNamespace = td.namespace !== undefined ? String(td.namespace) : displayNamespace;
+            }
+          } catch (_) {
+            // keep existing displayClassType/namespace if computeTermDisplay fails
+          }
+        }
+      } catch (_) {
+        /* ignore */
+      }
+    }
+  } catch (_) { /* ignore */ }
+
   const nodeData: NodeData = {
     key: String(src.iri || src.id || src.key || ""),
     iri: canonicalNodeIri,
     rdfTypes: rdfTypesArr,
     label: computedLabel,
-    namespace: String(src.namespace || ""),
-    classType: src.classType,
+    namespace: displayNamespace,
+    classType: displayClassType,
     literalProperties: src.literalProperties || [],
     annotationProperties: src.annotationProperties || [],
     // default visible true; mapping layer may override based on data-graph membership
@@ -154,6 +222,35 @@ export function buildNodeDataFromParsedNode(
     hasReasoningError: !!src.hasReasoningError,
     isTBox: !!isTBoxEntity,
   };
+
+  try {
+    if (typeof console !== "undefined" && typeof console.debug === "function") {
+      try {
+        console.debug("[VG_DEBUG] buildNodeDataFromParsedNode", JSON.stringify({
+          id: src && (src.iri || src.id || src.key) || null,
+          rawClassType: src && src.classType,
+          rdfTypesCandidates: rdfTypesCandidates,
+          rdfTypesArr: rdfTypesArr,
+          displayClassType: displayClassType,
+          displayNamespace: displayNamespace,
+          computedLabel: computedLabel
+        }));
+      } catch (_) {
+        // fallback to plain log if stringify fails
+        try {
+          console.debug("[VG_DEBUG] buildNodeDataFromParsedNode (raw)", {
+            id: src && (src.iri || src.id || src.key) || null,
+            rawClassType: src && src.classType,
+            rdfTypesCandidates,
+            rdfTypesArr,
+            displayClassType,
+            displayNamespace,
+            computedLabel
+          });
+        } catch (_) { /* ignore logging failure */ }
+      }
+    }
+  } catch (_) { /* ignore */ }
 
   return nodeData;
 }

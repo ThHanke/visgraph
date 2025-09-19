@@ -135,7 +135,7 @@ export class LayoutManager {
           try {
             // Import the dagre helper relative to this module.
             // Use dynamic import to keep the module lightweight unless needed.
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
+             
             const { applyDagreLayout } = await import('./layout/dagreLayout');
 
             const direction = layoutType === 'horizontal' ? 'LR' : 'TB';

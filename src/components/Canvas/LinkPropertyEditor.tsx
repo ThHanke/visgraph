@@ -70,7 +70,7 @@ export const LinkPropertyEditor = ({
   useEffect(() => {
     try {
       if (!linkData) return;
-      // eslint-disable-next-line no-console
+       
       console.debug("[VG] LinkPropertyEditor.linkData", {
         open,
         linkData,

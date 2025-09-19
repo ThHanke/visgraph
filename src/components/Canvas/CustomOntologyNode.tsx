@@ -18,7 +18,6 @@ import { debug } from '../../utils/startupDebug';
 
 /**
  * A tighter-typed node data payload that mirrors the shapes used across the canvas.
- * Keep this conservative and expand fields only as needed.
  */
 interface CustomOntologyNodeData {
   iri?: string;
@@ -30,12 +29,9 @@ interface CustomOntologyNodeData {
   properties?: Record<string, unknown>;
   annotationProperties?: Array<{ property?: string; value?: unknown }>;
   errors?: string[];
-  // keep extension point for other stores (BUT avoid "any")
   [key: string]: unknown;
 }
 
-
-// module-scope fingerprint set to avoid noisy repeated logs
 const _loggedFingerprints = new Set<string>();
 
 function CustomOntologyNodeInner(props: NodeProps) {
@@ -46,183 +42,188 @@ function CustomOntologyNodeInner(props: NodeProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [individualName, setIndividualName] = useState(individualNameInitial);
 
-  // stable accessors from the ontology store (subscribe to ontologiesVersion so node updates when namespaces change)
   const rdfManager = useOntologyStore((s) => s.rdfManager);
   const ontologiesVersion = useOntologyStore((s) => s.ontologiesVersion);
   const availableClasses = useOntologyStore((s) => s.availableClasses);
 
-  // debug fingerprint - emit only on meaningful changes and avoid duplicates
   const lastFp = useRef<string | null>(null);
   const rdfTypesKey = Array.isArray(nodeData.rdfTypes) ? nodeData.rdfTypes.join('|') : '';
   useEffect(() => {
     try {
-      const uri = (nodeData.iri || nodeData.iri || '') as string;
-      const types = rdfTypesKey;
-      const fp = `${uri}|${String(nodeData.classType ?? '')}|${types}|${String(nodeData.displayType ?? '')}`;
-
+      const uri = String(nodeData.iri || '');
+      const fp = `${uri}|${String(nodeData.classType ?? '')}|${rdfTypesKey}|${String(nodeData.displayType ?? '')}`;
       if (lastFp.current === fp) return;
       lastFp.current = fp;
-
       if (_loggedFingerprints.has(fp)) return;
       _loggedFingerprints.add(fp);
-
       const payload = {
         uri,
         classType: nodeData.classType,
         rdfTypes: nodeData.rdfTypes,
         displayType: nodeData.displayType,
       };
-
       if (typeof window !== 'undefined' && (window as any).__VG_DEBUG__) {
         try { debug('CustomOntologyNode.displayInfo', payload); } catch (_) { /* ignore */ }
       }
     } catch (_) { /* ignore */ }
-  }, [nodeData.iri, nodeData.iri, nodeData.classType, rdfTypesKey, nodeData.displayType, nodeData.rdfTypes]);
+  }, [nodeData.iri, nodeData.classType, rdfTypesKey, nodeData.displayType, nodeData.rdfTypes]);
 
-  // Use canonical label persisted on the node (mapping is authoritative)
-  const displayedTypeShort = String(nodeData.label || nodeData.classType || shortLocalName(nodeData.iri || ''));
-  // Compute badge text (prefer a prefixed meaningful type) and a list of all rdf:type displays.
+  // Display helpers
+  const displayedTypeShort = String(nodeData.label || shortLocalName(nodeData.iri || ''));
   let badgeText = displayedTypeShort;
   let typesList: string[] = [];
+
+  // Compute badgeText and typesList strictly:
+  // - Prefer expanded rdfTypes (full IRIs) when available.
+  // - Otherwise, try prefixed/displayType/classType candidates via rdfManager (no synthesis).
   try {
-    if (rdfManager) {
+    const rdfTypesArr: string[] = Array.isArray(nodeData.rdfTypes)
+      ? (nodeData.rdfTypes as string[]).map(String).filter(Boolean)
+      : [];
+
+    if (rdfTypesArr.length > 0 && rdfManager) {
       try {
-        // Compute badge text from the first meaningful type deterministically and
-        // ensure we preserve any leading ':' that indicates the default namespace.
-        const candidates: string[] = [
-          ...(nodeData.displayType ? [String(nodeData.displayType)] : []),
-          ...(nodeData.classType ? [String(nodeData.classType)] : []),
-          ...(Array.isArray(nodeData.rdfTypes) ? (nodeData.rdfTypes as string[]).map(String) : []),
-          ...((nodeData as any)?.types ? (nodeData as any).types.map(String) : []),
-        ].filter(Boolean);
+        // Prefer the first meaningful (non-NamedIndividual) rdf:type for the badge.
+        const primaryCandidate =
+          rdfTypesArr.find((t) => t && !/NamedIndividual\b/i.test(String(t))) || rdfTypesArr[0];
 
-        const chosenType = candidates.find(t => t && !/NamedIndividual\b/i.test(String(t)));
-
-        if (chosenType) {
-          try {
-            // Use computeTermDisplay directly so we keep the prefixed form (including leading ':').
-            const td = computeTermDisplay(String(chosenType), rdfManager as any);
-            if (td && td.prefixed && String(td.prefixed).trim() !== "") {
-              badgeText = td.prefixed;
-            } else if (td && td.short) {
-              badgeText = td.short;
-            }
-          } catch (_) {
-            // Fallback to the previous helper if strict display computation fails.
-            try {
-              const bt = computeBadgeText(nodeData as any, rdfManager as any, availableClasses as any);
-              if (bt && String(bt).trim() !== "") badgeText = String(bt);
-            } catch (_) {
-              /* ignore */
-            }
+        try {
+          const tdPrimary = computeTermDisplay(String(primaryCandidate), rdfManager as any);
+          if (tdPrimary && tdPrimary.prefixed && String(tdPrimary.prefixed).trim() !== "") {
+            badgeText = tdPrimary.prefixed;
+          } else if (tdPrimary && tdPrimary.short) {
+            badgeText = tdPrimary.short;
           }
-        } else {
-          // No meaningful type found — try the generic helper as last resort.
-          try {
-            const bt = computeBadgeText(nodeData as any, rdfManager as any, availableClasses as any);
-            if (bt && String(bt).trim() !== "") badgeText = String(bt);
-          } catch (_) {
-            /* ignore */
-          }
+        } catch (_) {
+          // fall through to best-effort below
         }
-      } catch (_) {
-        // ignore failures computing badge text
-      }
 
-      if (Array.isArray(nodeData.rdfTypes) && nodeData.rdfTypes.length > 0) {
-        typesList = nodeData.rdfTypes.map((t: any) => {
+        // Order typesList to show the preferred candidate first, then the rest.
+        const ordered = [primaryCandidate, ...rdfTypesArr.filter((t) => t !== primaryCandidate)];
+        typesList = ordered.map((t) => {
           try {
             const td = computeTermDisplay(String(t), rdfManager as any);
             return td.prefixed || td.short || String(t);
           } catch (_) {
-            // fallback to raw string
             return String(t);
           }
         }).filter(Boolean);
+      } catch (_) {
+        // fall through to best-effort below
+      }
+    } else {
+      // No expanded rdfTypes available -> conservative candidate handling
+      const candidates: string[] = [
+        ...(nodeData.displayType ? [String(nodeData.displayType)] : []),
+        ...(nodeData.classType ? [String(nodeData.classType)] : []),
+        ...((nodeData as any)?.types ? (nodeData as any).types.map(String) : []),
+      ].filter(Boolean);
+
+      const chosenType = candidates.find(t => t && !/NamedIndividual\b/i.test(String(t)));
+
+      if (chosenType && rdfManager) {
+        try {
+          const td = computeTermDisplay(String(chosenType), rdfManager as any);
+          if (td && td.prefixed && String(td.prefixed).trim() !== "" && String(td.prefixed).includes(':')) {
+            badgeText = td.prefixed;
+          } else if (td && td.short) {
+            badgeText = td.short;
+          }
+        } catch (_) {
+          // fallback to generic helper
+          try {
+            const bt = computeBadgeText(nodeData as any, rdfManager as any, availableClasses as any);
+            if (bt && String(bt).trim() !== "") badgeText = String(bt);
+          } catch (_) { /* ignore */ }
+        }
+      } else {
+        // last-resort: use existing helper which applies minimal heuristics for display
+        try {
+          const bt = computeBadgeText(nodeData as any, rdfManager as any, availableClasses as any);
+          if (bt && String(bt).trim() !== "") badgeText = String(bt);
+        } catch (_) { /* ignore */ }
+      }
+
+      // Build typesList conservatively from candidates
+      typesList = candidates.map((t: any) => {
+        try {
+          if (rdfManager) {
+            const td = computeTermDisplay(String(t), rdfManager as any);
+            return td.prefixed || td.short || String(t);
+          }
+        } catch (_) { /* ignore per-item */ }
+        return String(t);
+      }).filter(Boolean);
+
+      // If rdfTypes were present but ignored earlier, still try to render them
+      if (Array.isArray(nodeData.rdfTypes) && nodeData.rdfTypes.length > 0) {
+        typesList = typesList.concat(
+          nodeData.rdfTypes.map((t: any) => {
+            try {
+              if (rdfManager) {
+                const td = computeTermDisplay(String(t), rdfManager as any);
+                return td.prefixed || td.short || String(t);
+              }
+            } catch (_) { /* ignore */ }
+            return String(t);
+          })
+        ).filter(Boolean);
       }
     }
-  } catch (_) { /* ignore overall */ }
+  } catch (_) {
+    // ignore overall failure
+  }
 
   const namespace = String(nodeData.namespace ?? '');
 
-  // Use the central palette hook (single source of truth). Prefer a color explicitly
-  // attached to node.data.paletteColor by the mapping step; otherwise attempt to
-  // resolve the badge prefix against the palette map. If the palette does NOT
-  // contain a mapping for the node's prefix, we intentionally surface a visible
-  // error (no silent neutral fallback).
-  const paletteMap = usePaletteFromRdfManager();
+  // Color/palette resolution
   const nodePaletteColor = (nodeData as any).paletteColor as string | undefined;
-  let badgePrefixKey: string | null = null;
-  let effectiveColor: string | undefined = undefined;
+  let badgeTextColor: string | undefined = undefined;
   let paletteMissing = false;
 
   try {
-    // Recompute candidate type deterministically (same rules as above) so we can derive its prefix.
     const candidates: string[] = [
       ...(nodeData.displayType ? [String(nodeData.displayType)] : []),
       ...(nodeData.classType ? [String(nodeData.classType)] : []),
       ...(Array.isArray(nodeData.rdfTypes) ? (nodeData.rdfTypes as string[]).map(String) : []),
       ...((nodeData as any)?.types ? (nodeData as any).types.map(String) : []),
     ].filter(Boolean);
+
     const chosenType = candidates.find(t => t && !/NamedIndividual\b/i.test(String(t)));
 
     if (chosenType && rdfManager) {
       try {
         const td = computeTermDisplay(String(chosenType), rdfManager as any);
-        const pref = td && td.prefixed ? String(td.prefixed) : '';
-        if (pref) {
-          // prefix is text before the first colon (':' ), empty string represents default prefix
-          badgePrefixKey = pref.split(':', 1)[0];
-        }
+        if (td && td.color) badgeTextColor = td.color;
       } catch (_) {
-        // ignore computeTermDisplay failures here; we'll surface missing palette below
+        badgeTextColor = undefined;
       }
     }
-  } catch (_) {
-    // ignore prefix detection failures
-  }
+  } catch (_) { /* ignore */ }
 
-  // Determine authoritative color: mapping-time color wins, otherwise use paletteMap for badge prefix
-  if (nodePaletteColor) {
-    effectiveColor = nodePaletteColor;
-  } else if (badgePrefixKey !== null && typeof paletteMap === 'object') {
-    const rawKey = String(badgePrefixKey || '');
-    effectiveColor = (paletteMap as Record<string,string>)[rawKey] || (paletteMap as Record<string,string>)[rawKey.replace(/[:#].*$/, '')];
-  }
-
+  const effectiveColor = nodePaletteColor || badgeTextColor;
   if (!effectiveColor) {
     paletteMissing = true;
-    // Surface an explicit, discoverable error for developers so missing palette mappings are visible.
     try {
       console.error('[VG] palette missing for node', {
         iri: nodeData.iri,
-        badgePrefixKey,
-        namespace,
+        displayType: nodeData.displayType,
+        classType: nodeData.classType,
       });
-    } catch (_) { /* ignore console failures */ }
+    } catch (_) { /* ignore */ }
   }
 
-  // Final badge color (visible). When paletteMissing is true we intentionally use a
-  // clear error color so the UI makes the problem obvious instead of hiding it.
   const badgeColor = effectiveColor || '#FF4D4F';
-
-  // Authoritative left-bar color: prefer mapping-time paletteColor, then effectiveColor derived from paletteMap.
-  // When paletteMissing is true we render a visible error color instead of silently falling back.
-  const leftColor = !paletteMissing
-    ? ((nodeData as any).paletteColor as string | undefined) || effectiveColor
-    : '#FF4D4F';
+  const leftColor = (nodeData as any).paletteColor as string | undefined || effectiveColor || '#FF4D4F';
 
   const themeBg = (typeof document !== 'undefined')
     ? (getComputedStyle(document.documentElement).getPropertyValue('--node-bg') || '').trim() || '#ffffff'
     : '#ffffff';
   const hasErrors = Array.isArray(nodeData.errors) && nodeData.errors.length > 0;
 
-  // Annotations: prefer annotationProperties (array) then properties (map)
-  // Display-only: shorten predicate IRIs for labels. Persisted shape uses `propertyUri`.
   const annotations: Array<{ term: string; value: string }> = [];
   if (Array.isArray(nodeData.annotationProperties) && nodeData.annotationProperties.length > 0) {
     nodeData.annotationProperties.forEach((ap) => {
-      // Read canonical property IRI first (propertyUri), then fall back to legacy fields.
       const propertyIri = String(
         (ap && (ap as any).propertyUri) ||
           (ap && (ap as any).property) ||
@@ -231,12 +232,10 @@ function CustomOntologyNodeInner(props: NodeProps) {
           '',
       );
       const rawValue = (ap && (ap as any).value);
-      // Skip entries without a property IRI or without a non-empty value
       if (!propertyIri) return;
       if (rawValue === undefined || rawValue === null) return;
       const valueStr = String(rawValue);
       if (valueStr.trim() === '') return;
-      // For display, shorten IRIs but leave blank-node labels (starting with "_:") unchanged.
       const term = (() => {
         if (propertyIri.startsWith('_:')) return propertyIri;
         if (!rdfManager) throw new Error(`computeTermDisplay requires rdfManager to resolve '${propertyIri}'`);
@@ -261,23 +260,19 @@ function CustomOntologyNodeInner(props: NodeProps) {
     });
   }
 
-  // detect if rdf:type triples are present but class definitions not loaded (informational)
   const typePresentButNotLoaded = !nodeData.classType && Array.isArray(nodeData.rdfTypes) && nodeData.rdfTypes.some((t) => Boolean(t) && !/NamedIndividual/i.test(String(t)));
 
-  // keep local edit state in sync if incoming props change externally
   useEffect(() => {
     setIndividualName(individualNameInitial);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeData.iri, nodeData.individualName]);
 
-  // Measure DOM size and report back to the canvas so dagre can use real node sizes.
   const rootRef = useRef<HTMLDivElement | null>(null);
   const lastMeasuredRef = useRef<{ w: number; h: number } | null>(null);
 
   useEffect(() => {
     const el = rootRef.current;
     if (!el) return;
-
     const report = (w: number, h: number) => {
       try {
         const cb = (data as any)?.onSizeMeasured;
@@ -291,11 +286,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
         }
       } catch (_) { /* ignore */ }
     };
-
-    // Initial report
     report(el.offsetWidth, el.offsetHeight);
-
-    // Use ResizeObserver to detect size changes
     let ro: ResizeObserver | null = null;
     try {
       ro = new ResizeObserver((entries) => {
@@ -306,24 +297,18 @@ function CustomOntologyNodeInner(props: NodeProps) {
       });
       ro.observe(el);
     } catch (_) {
-      // ResizeObserver might not be available in some environments; fallback to window resize
       const onWin = () => report(el.offsetWidth, el.offsetHeight);
       window.addEventListener('resize', onWin);
       return () => {
         window.removeEventListener('resize', onWin);
       };
     }
-
     return () => {
       try { if (ro) ro.disconnect(); } catch (_) { /* ignore */ }
     };
-    // Intentionally exclude data.onSizeMeasured from deps to avoid reattaching observer
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootRef]);
 
-  // Sync the outer React Flow wrapper left-bar color with the authoritative badge/ palette color.
-  // We run this after the ResizeObserver effect so `rootRef` is available. This ensures the
-  // wrapper pseudo-element (::before) uses the exact same color as the badge.
   useEffect(() => {
     try {
       const el = rootRef.current;
@@ -332,7 +317,6 @@ function CustomOntologyNodeInner(props: NodeProps) {
         typeof el.closest === "function" ? (el as any).closest(".react-flow__node") : (el.parentElement || null);
       if (!wrapper || !wrapper.style) return;
       const colorToApply = badgeColor || leftColor;
-      // Debug: log before/after applying to help trace why wrapper/ badge differ
       try {
         if (typeof console !== 'undefined' && typeof console.debug === 'function') {
           try {
@@ -345,14 +329,12 @@ function CustomOntologyNodeInner(props: NodeProps) {
           } catch (_) { /* ignore logging failures */ }
         }
       } catch (_) { /* ignore */ }
-
       if (colorToApply) {
         try {
           wrapper.style.setProperty("--node-leftbar-color", String(colorToApply));
         } catch (_) {
           try { wrapper.style.setProperty("--node-leftbar-color", String(colorToApply)); } catch (_) { /* ignore */ }
         }
-        // Log after applying
         try {
           if (typeof console !== 'undefined' && typeof console.debug === 'function') {
             try {
@@ -387,9 +369,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
       ref={rootRef}
       className={cn('inline-flex overflow-hidden', selected ? 'ring-2 ring-primary' : '', paletteMissing ? 'ring-2 ring-destructive' : '')}
     >
-      {/* Main body (autosize). */}
       <div className="px-4 py-3 min-w-0 flex-1 w-auto" style={{ background: themeBg }}>
-        {/* Header */}
         <div className="flex items-center gap-3 mb-2">
           <div className="text-sm font-bold text-foreground truncate" title={headerTitle}>
             {headerDisplay}
@@ -408,7 +388,6 @@ function CustomOntologyNodeInner(props: NodeProps) {
             )}
           </div>
 
-          {/* Error indicator */}
           {hasErrors && (
             <div className="ml-auto">
               <Popover>
@@ -432,7 +411,6 @@ function CustomOntologyNodeInner(props: NodeProps) {
           )}
         </div>
 
-        {/* Type (human-friendly) + list of type definitions */}
         <div className="text-sm text-muted-foreground mb-3">
           {typesList && typesList.length > 0 && (
             <div className="text-xs text-muted-foreground mt-1 truncate">
@@ -441,7 +419,6 @@ function CustomOntologyNodeInner(props: NodeProps) {
           )}
         </div>
 
-        {/* Annotations */}
         <div className="pt-2 border-t border-gray-100">
           {annotations.length === 0 ? (
             <div className="text-xs text-muted-foreground">No annotations</div>
@@ -457,7 +434,6 @@ function CustomOntologyNodeInner(props: NodeProps) {
           )}
         </div>
 
-        {/* Informational note */}
         {typePresentButNotLoaded && (
           <div className="mt-2 text-xs text-muted-foreground">
             Type present but ontology not loaded
@@ -465,7 +441,6 @@ function CustomOntologyNodeInner(props: NodeProps) {
         )}
       </div>
 
-      {/* Handles: put them visually outside via React Flow but keep them here for connection points */}
       <Handle
         type="target"
         position={Position.Top}
@@ -484,7 +459,6 @@ function CustomOntologyNodeInner(props: NodeProps) {
 
 /**
  * Small color utility to darken a hex color by a factor (0-1).
- * Not perfect but good enough for borders.
  */
 function darken(hex: string, amount: number) {
   try {
