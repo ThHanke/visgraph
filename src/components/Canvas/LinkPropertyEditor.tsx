@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { DataFactory } from 'n3';
+const { namedNode, quad } = DataFactory;
 import { Button } from '../ui/button';
 import { AutoComplete } from '../ui/AutoComplete';
 import { Label } from '../ui/label';
@@ -86,13 +88,142 @@ export const LinkPropertyEditor = ({
     }
   }, [open, linkData, selectedProperty, displayValue, sourceNode, targetNode]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const uriToSave = selectedProperty || displayValue;
-    if (uriToSave) {
-      const property = allObjectProperties.find(p => p.value === uriToSave);
-      onSave(uriToSave, property?.label || uriToSave);
-      onOpenChange(false);
+    if (!uriToSave) return;
+
+    // Resolve manager + subject/object IRIs
+    const mgrState = useOntologyStore.getState();
+    const mgr =
+      typeof (mgrState as any).getRdfManager === "function"
+        ? (mgrState as any).getRdfManager()
+        : (mgrState as any).rdfManager;
+
+    const subjIri =
+      (sourceNode && ((sourceNode as any).iri || (sourceNode as any).key)) ||
+      (linkData && (linkData.data?.from || linkData.from || linkData.source)) ||
+      "";
+    const objIri =
+      (targetNode && ((targetNode as any).iri || (targetNode as any).key)) ||
+      (linkData && (linkData.data?.to || linkData.to || linkData.target)) ||
+      "";
+
+    try {
+      if (mgr && subjIri && objIri) {
+        const predFull =
+          mgr && typeof mgr.expandPrefix === "function"
+            ? String(mgr.expandPrefix(uriToSave))
+            : String(uriToSave);
+
+        // Build a small Turtle snippet to add the triple into the target graph.
+        // Using rdfManager.loadRDFIntoGraph ensures the RDFManager's notification
+        // pipeline (notifyChange / subject-change) runs so the canvas mapping updates.
+        const subjEsc = `<${String(subjIri)}>`;
+        const predEsc = `<${String(predFull)}>`;
+        const objEsc = `<${String(objIri)}>`;
+        const ttl = `${subjEsc} ${predEsc} ${objEsc} .\n`;
+
+        try {
+          if (typeof mgr.loadRDFIntoGraph === "function") {
+            // Prefer the graph-aware loader so the triple is added into urn:vg:data
+            await mgr.loadRDFIntoGraph(ttl, "urn:vg:data");
+          } else if (typeof mgr.loadRDF === "function") {
+            // Fallback: loadRDF then let parsing finalize trigger notifications
+            await mgr.loadRDF(ttl);
+          } else {
+            // As a last resort (very unlikely), fall back to direct store writes and attempt to trigger change.
+            const store = mgr.getStore && mgr.getStore();
+            if (store) {
+              const subjTerm = namedNode(String(subjIri));
+              const predTerm = namedNode(String(predFull));
+              const objTerm = namedNode(String(objIri));
+              const g = namedNode("urn:vg:data");
+              const existing = store.getQuads(subjTerm, predTerm, objTerm, g) || [];
+              if (!existing || existing.length === 0) {
+                try {
+                  store.addQuad(quad(subjTerm, predTerm, objTerm, g));
+                } catch (_) { /* ignore */ }
+              }
+            }
+            // Notify via RDFManager API not available here; rely on mapping rebuild subs to pick it up eventually.
+          }
+
+          // Dev diagnostics after attempt
+          try {
+            if (typeof window !== "undefined" && (window as any).__VG_DEBUG__) {
+              try {
+                // Read back existence from store if possible
+                const store = mgr.getStore && mgr.getStore();
+                if (store) {
+                  const subjTerm = namedNode(String(subjIri));
+                  const predTerm = namedNode(String(predFull));
+                  const objTerm = namedNode(String(objIri));
+                  const g = namedNode("urn:vg:data");
+                  const after = store.getQuads(subjTerm, predTerm, objTerm, g) || [];
+                  console.debug("[VG] LinkPropertyEditor.persistQuad.added_via_mgr", {
+                    subjIri,
+                    predFull,
+                    objIri,
+                    afterCount: (after && after.length) || 0,
+                  });
+                  try { (window as any).__VG_LAST_ADDED_QUAD = { subj: String(subjTerm.value), pred: String(predTerm.value), obj: String(objTerm.value), graph: 'urn:vg:data' }; } catch (_) { /* ignore */ }
+                }
+              } catch (_) { /* ignore diag */ }
+            }
+          } catch (_) { /* ignore */ }
+        } catch (err) {
+          try {
+            if (typeof window !== "undefined" && (window as any).__VG_DEBUG__) {
+              console.error("[VG] LinkPropertyEditor.persistQuad.load_failed", { subjIri, uriToSave, objIri, error: (err && (err as Error).message) || String(err) });
+            }
+          } catch (_) { /* ignore */ }
+        }
+      }
+    } catch (_) {
+      /* ignore persistence errors - still call onSave to update UI mapping pipeline */
     }
+
+    // Notify parent and close editor. The canvas mapping pipeline should reflect the new triple.
+    const property = allObjectProperties.find((p) => p.value === uriToSave);
+
+    try {
+      // Best-effort: also insert a lightweight edge entry into ontologyStore.currentGraph so
+      // the UI mapping pipeline reflects the new connection immediately (instead of waiting
+      // for a full RDF->parsedGraph reconcile).
+      const os = useOntologyStore.getState();
+      if (os && typeof os.setCurrentGraph === "function") {
+        try {
+          const cg = os.currentGraph || { nodes: [], edges: [] };
+          // Build a stable edge id
+          const edgeId = String(`${subjIri}-${objIri}-${(property && property.value) || uriToSave}`);
+          const exists = (cg.edges || []).some((e: any) => String(e.id) === edgeId);
+          if (!exists) {
+            const newEdge = {
+              id: edgeId,
+              source: String(subjIri),
+              target: String(objIri),
+              data: {
+                propertyUri: (property && property.value) || uriToSave,
+                propertyType: (property && property.value) || uriToSave,
+                label: property && property.label ? property.label : (shortLocalName(String(uriToSave)) || String(uriToSave)),
+              },
+            } as any;
+            try {
+              os.setCurrentGraph(cg.nodes || [], [...(cg.edges || []), newEdge]);
+            } catch (_) {
+              /* ignore setCurrentGraph failures - not critical */
+            }
+          }
+        } catch (_) {
+          /* ignore ontologyStore update failures */
+        }
+      }
+    } catch (_) {
+      /* ignore */
+    }
+
+    onSave(uriToSave, property?.label || uriToSave);
+    onOpenChange(false);
   };
 
   return (

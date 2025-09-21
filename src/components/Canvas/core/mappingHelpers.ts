@@ -223,35 +223,6 @@ export function buildNodeDataFromParsedNode(
     isTBox: !!isTBoxEntity,
   };
 
-  try {
-    if (typeof console !== "undefined" && typeof console.debug === "function") {
-      try {
-        console.debug("[VG_DEBUG] buildNodeDataFromParsedNode", JSON.stringify({
-          id: src && (src.iri || src.id || src.key) || null,
-          rawClassType: src && src.classType,
-          rdfTypesCandidates: rdfTypesCandidates,
-          rdfTypesArr: rdfTypesArr,
-          displayClassType: displayClassType,
-          displayNamespace: displayNamespace,
-          computedLabel: computedLabel
-        }));
-      } catch (_) {
-        // fallback to plain log if stringify fails
-        try {
-          console.debug("[VG_DEBUG] buildNodeDataFromParsedNode (raw)", {
-            id: src && (src.iri || src.id || src.key) || null,
-            rawClassType: src && src.classType,
-            rdfTypesCandidates,
-            rdfTypesArr,
-            displayClassType,
-            displayNamespace,
-            computedLabel
-          });
-        } catch (_) { /* ignore logging failure */ }
-      }
-    }
-  } catch (_) { /* ignore */ }
-
   return nodeData;
 }
 

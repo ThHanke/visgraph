@@ -1697,14 +1697,48 @@ useEffect(() => {
         id: String((params as any).id || `${params.source}-${params.target}`),
       };
 
-      // Choose a default predicate candidate up-front so we can persist and annotate the edge's data
-      const predCandidate =
+      // Choose a default predicate candidate up-front so we can persist and annotate the edge's data.
+      // Prefer a semantically-compatible object property when possible by matching availableProperties'
+      // domain/range to the source/target node classes. Fall back to the first available property.
+      let predCandidate =
         (normalizedParams as any).data &&
         (normalizedParams as any).data.propertyUri
           ? (normalizedParams as any).data.propertyUri
-          : availableProperties && availableProperties.length > 0
-            ? availableProperties[0].iri || (availableProperties[0] as any).key
-            : null;
+          : null;
+
+      if (!predCandidate && availableProperties && availableProperties.length > 0) {
+        try {
+          // Derive source/target class URIs in the same format used elsewhere: "namespace:Class"
+          const srcClass =
+            sourceNode && sourceNode.data
+              ? `${(sourceNode.data as any).namespace || ""}:${(sourceNode.data as any).classType || ""}`
+              : "";
+          const tgtClass =
+            targetNode && targetNode.data
+              ? `${(targetNode.data as any).namespace || ""}:${(targetNode.data as any).classType || ""}`
+              : "";
+
+          // Find a property whose domain/range are compatible (best-effort)
+          const compatible = (availableProperties || []).find((p: any) => {
+            try {
+              const domain = Array.isArray(p.domain) ? p.domain : [];
+              const range = Array.isArray(p.range) ? p.range : [];
+              const domainMatch = domain.length === 0 || !srcClass || domain.includes(srcClass);
+              const rangeMatch = range.length === 0 || !tgtClass || range.includes(tgtClass);
+              return domainMatch && rangeMatch;
+            } catch (_) {
+              return false;
+            }
+          });
+
+          predCandidate = compatible
+            ? (compatible.iri || compatible.value || String(compatible))
+            : (availableProperties[0].iri || (availableProperties[0] as any).key);
+        } catch (_) {
+          predCandidate = availableProperties[0].iri || (availableProperties[0] as any).key;
+        }
+      }
+
       const predFallback = predCandidate || "http://www.w3.org/2002/07/owl#topObjectProperty";
       const predUriToUse = predCandidate || predFallback;
 
@@ -1728,92 +1762,36 @@ useEffect(() => {
                 return shortLocalName(String(predUriToUse));
               })();
 
-      // Create the new edge list, and attach a visible data payload (propertyUri/label) so editors display
-      const newEdgeList = addEdge(
-        {
-          ...normalizedParams,
-          type: "floating",
-          markerEnd: { type: MarkerType.Arrow },
-          data: {
-            ...(normalizedParams as any).data,
-            propertyUri: predUriToUse,
-            label: predLabel,
-          },
-        } as any,
-        edges,
-      ) as RFEdge<LinkData>[];
-
-      // Persist the new edge as an RDF triple (subject - predicate - object) into the RDF store.
-      try {
-        const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
-        if (mgr && typeof mgr.getStore === "function") {
-          const store = mgr.getStore();
-          const subjIri =
-            (sourceNode.data && (sourceNode.data as NodeData).iri) ||
-            sourceNode.id;
-          const objIri =
-            (targetNode.data && (targetNode.data as NodeData).iri) ||
-            targetNode.id;
-          const predFull =
-            mgr.expandPrefix && typeof mgr.expandPrefix === "function"
-              ? mgr.expandPrefix(predFallback)
-              : predFallback;
-
-          const subjTerm = termForIri(String(subjIri));
-          const objTerm = termForIri(String(objIri));
-          const predTerm = namedNode(predFull);
-
-          const g = namedNode("urn:vg:data");
-          const existing =
-            store.getQuads(
-              subjTerm,
-              predTerm,
-              objTerm,
-              g,
-            ) || [];
-          if (existing.length === 0) {
-            store.addQuad(quad(subjTerm, predTerm, objTerm, g));
-          }
-        }
-      } catch (e) {
-        try {
-          warn("reactflow.persistEdge.failed", {
-            error: e && (e as Error).message ? (e as Error).message : String(e),
-          });
-        } catch (_) {
-          /* ignore */
-        }
-      }
-
-      // Update application state with the augmented edge data so editors and labels are populated immediately
-      setEdges(newEdgeList);
-
-      // choose source/target for editors and open the link editor with full data (include propertyUri/propertyType/label)
+      // Prepare the selected edge payload for the editor and open it.
+      // Edge persistence is performed by the editor save handler which writes the triple to the RDF store.
       const selectedEdgeForEditor = {
-        id: normalizedParams.id,
-        key: normalizedParams.id,
-        source: normalizedParams.source,
-        target: normalizedParams.target,
+        id: String((params as any).id || `${params.source}-${params.target}`),
+        key: String((params as any).id || `${params.source}-${params.target}`),
+        source: String(params.source),
+        target: String(params.target),
         data: {
+          // Provide default candidate predicate/label so the editor can show sensible defaults.
           propertyUri: predUriToUse,
-          propertyType: (normalizedParams as any).data?.propertyType || '',
+          propertyType: predFallback,
           label: predLabel,
         },
       };
 
       try {
-        // diagnostic logging to capture the payload used to open the link editor
-         
-        console.debug("[VG] ReactFlowCanvas.onConnect selectedEdgeForEditor", {
-          selectedEdgeForEditor,
-          normalizedParams,
-          predUriToUse,
-          predLabel,
-        });
-      } catch (_) {
-        /* ignore logging failures */
-      }
+        // Keep a lightweight debug so developers can trace editor payloads in dev.
+        if (DEBUG && typeof console !== "undefined" && typeof console.debug === "function") {
+          console.debug("[VG] ReactFlowCanvas.onConnect prepared selectedEdgeForEditor", {
+            selectedEdgeForEditor,
+            normalizedParams,
+            predUriToUse,
+            predLabel,
+          });
+        }
+      } catch (_) { /* ignore */ }
 
+      // Open the LinkPropertyEditor with the prepared payload. The editor's save handler
+      // will persist the triple into the RDF store and the canvas mapping pipeline will
+      // reflect the new edge once the store emits subject-change notifications.
       canvasActions.setSelectedLink(selectedEdgeForEditor as any, true);
 
       linkSourceRef.current = sourceNode.data as NodeData;

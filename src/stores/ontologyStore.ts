@@ -1575,7 +1575,24 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     nodes: (ParsedNode | DiagramNode)[],
     edges: (ParsedEdge | DiagramEdge)[],
   ) => {
-    set({ currentGraph: { nodes, edges } });
+    try {
+      // Lightweight diagnostic to help trace UI updates that originate from different code paths.
+      try {
+        const sampleEdges = Array.isArray(edges) ? (edges as any[]).slice(0, 6).map((e: any) => ({ id: e.id, source: e.source, target: e.target })) : [];
+        console.debug("[VG_DEBUG] ontologyStore.setCurrentGraph", {
+          nodesCount: Array.isArray(nodes) ? nodes.length : 0,
+          edgesCount: Array.isArray(edges) ? edges.length : 0,
+          sampleEdges,
+        });
+      } catch (_) { /* ignore logging failures */ }
+
+      set({ currentGraph: { nodes, edges } });
+    } catch (e) {
+      try {
+        fallback("ontology.setCurrentGraph.failed", { error: String(e) }, { level: "warn" });
+      } catch (_) { /* ignore */ }
+      set({ currentGraph: { nodes, edges } });
+    }
   },
 
   clearOntologies: () => {
@@ -2181,6 +2198,150 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
             // subjects may be string[] or unknown[], just rebuild conservatively
             rebuild();
           } catch (_) { /* ignore */ }
+
+          // NEW: Automatic mapping reaction
+          // When subjects change in the urn:vg:data graph, attempt to map
+          // any newly added subject->predicate->object (where object is an IRI)
+          // into canonical edges inside ontologyStore.currentGraph so the canvas
+          // mapping sees and renders them.
+          try {
+            const subjList: string[] = Array.isArray(subjects) ? subjects.map(String).filter(Boolean) : [];
+            if (!subjList || subjList.length === 0) return;
+
+            // Diagnostic: log received subjects for troubleshooting
+            try {
+              console.debug("[VG_DEBUG] rdf.onSubjectsChange received", { subjects: subjList.slice(0, 50) });
+            } catch (_) { /* ignore */ }
+
+            // Guard: require store access
+            const store = mgr && typeof mgr.getStore === "function" ? mgr.getStore() : null;
+            if (!store || typeof store.getQuads !== "function") return;
+
+            const g = namedNode("urn:vg:data");
+            const osState = (useOntologyStore as any).getState ? (useOntologyStore as any).getState() : null;
+            const current = osState && osState.currentGraph ? osState.currentGraph : { nodes: [], edges: [] };
+            const curNodes = (current && current.nodes) ? current.nodes : [];
+            const curEdges = (current && current.edges) ? current.edges : [];
+
+            // Helper: resolve a full node id in currentGraph for an IRI.
+            const findNodeIdForIri = (iri: string) => {
+              if (!iri) return "";
+              try {
+                // Match against node.data.iri, node.iri or node.id
+                for (const n of curNodes) {
+                  try {
+                    const nd = (n && (n.data || n)) || {};
+                    const candIri = String(nd.iri || (n && (n.iri || n.id)) || "");
+                    if (!candIri) continue;
+                    if (String(candIri) === String(iri)) return String(n.id || candIri);
+                    // try http/https scheme variants
+                    if (String(candIri).replace(/^https?:/i, "") === String(iri).replace(/^https?:/i, "")) return String(n.id || candIri);
+                  } catch (_) { /* ignore per-node */ }
+                }
+              } catch (_) { /* ignore */ }
+              return "";
+            };
+
+            const edgesToAdd: any[] = [];
+            subjList.forEach((s) => {
+              try {
+                if (!s) return;
+                const subjTerm = namedNode(String(s));
+                const quads = store.getQuads(subjTerm, null, null, g) || [];
+                for (const q of quads) {
+                  try {
+                    if (!q || !q.subject || !q.predicate || !q.object) continue;
+                    // only consider object IRIs (skip literals)
+                    if (!q.object.value || (q.object.termType && q.object.termType !== "NamedNode")) continue;
+
+                    const subjIri = String(q.subject.value);
+                    const objIri = String(q.object.value);
+                    const predIri = String(q.predicate.value);
+
+                    const sourceId = findNodeIdForIri(subjIri);
+                    const targetId = findNodeIdForIri(objIri);
+
+                    if (!sourceId || !targetId) {
+                      // endpoints not present in currentGraph — skip (mapping will include them when nodes are added)
+                      continue;
+                    }
+
+                    const edgeId = `${sourceId}-${targetId}-${encodeURIComponent(predIri)}`;
+
+                    // Skip if already present in current graph edges
+                    const already = (curEdges || []).some((e: any) => {
+                      try {
+                        return String(e.id) === String(edgeId);
+                      } catch { return false; }
+                    });
+                    if (already) continue;
+
+                    // Build lightweight edge payload matching currentGraph shape
+                    const label = ((): string => {
+                      try {
+                        // Short local name fallback
+                        const parts = String(predIri).split(/[#\/]/).filter(Boolean);
+                        return parts.length ? parts[parts.length - 1] : String(predIri);
+                      } catch (_) {
+                        return String(predIri);
+                      }
+                    })();
+
+                    const newEdge = {
+                      id: edgeId,
+                      source: sourceId,
+                      target: targetId,
+                      data: {
+                        propertyUri: predIri,
+                        propertyType: predIri,
+                        label,
+                      },
+                    };
+                    edgesToAdd.push(newEdge);
+                  } catch (_) { /* ignore per-quad */ }
+                }
+              } catch (_) { /* ignore per-subject */ }
+            });
+
+            // Diagnostic: log attempted edge creations
+            try {
+              console.debug("[VG_DEBUG] rdf.onSubjectsChange edgesToAdd", { count: edgesToAdd.length, sample: edgesToAdd.slice(0, 8) });
+            } catch (_) { /* ignore */ }
+
+            if (edgesToAdd.length > 0) {
+              try {
+                const merged = [...(curEdges || []), ...edgesToAdd];
+                // Deduplicate by id just in case
+                const seen = new Set<string>();
+                const deduped = merged.filter((e: any) => {
+                  try {
+                    if (!e || !e.id) return false;
+                    if (seen.has(String(e.id))) return false;
+                    seen.add(String(e.id));
+                    return true;
+                  } catch { return false; }
+                });
+
+                // Diagnostic: log before / after counts
+                try {
+                  console.debug("[VG_DEBUG] rdf.onSubjectsChange mergingEdges", { before: (curEdges || []).length, after: deduped.length });
+                } catch (_) { /* ignore */ }
+
+                // Apply update via store setter so ReactFlowCanvas mapping will pick it up
+                try {
+                  (useOntologyStore as any).setState({ currentGraph: { nodes: curNodes, edges: deduped } });
+                } catch (_) {
+                  // fallback: if direct setState unavailable, call setCurrentGraph if exposed
+                  try {
+                    const os = (useOntologyStore as any).getState ? (useOntologyStore as any).getState() : null;
+                    if (os && typeof os.setCurrentGraph === "function") {
+                      os.setCurrentGraph(curNodes, deduped);
+                    }
+                  } catch (_) { /* ignore */ }
+                }
+              } catch (_) { /* ignore merge failure */ }
+            }
+          } catch (_) { /* ignore subject-change handler failures */ }
         });
       }
     } catch (_) { /* ignore */ }

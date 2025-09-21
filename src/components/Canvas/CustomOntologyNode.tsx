@@ -58,6 +58,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
 
   const [isEditing, setIsEditing] = useState(false);
   const [individualName, setIndividualName] = useState(individualNameInitial);
+  const showHandles = !!((connection as any)?.inProgress || !selected);
 
   const rdfManager = useOntologyStore((s) => s.rdfManager);
   const ontologiesVersion = useOntologyStore((s) => s.ontologiesVersion);
@@ -470,21 +471,25 @@ function CustomOntologyNodeInner(props: NodeProps) {
 
         {/* Match example: render source on the Right and target on the Left, with the same conditional logic.
             This mirrors the provided example so native handle-drag shows the live connection correctly. */}
-          <Handle
-            id={handleId}
-            type="source"
-            position={Position.Right}
-            className="!bg-transparent !border-0"
-            isConnectable={true}
-          />
-        {(!((connection as any)?.inProgress) || isTarget) && (
-          <Handle
-            id={handleId}
-            type="target"
-            position={Position.Left}
-            className="!bg-transparent !border-0"
-            isConnectable={true}
-          />
+        {showHandles && (
+          <>
+            <Handle
+              id={handleId}
+              type="source"
+              position={Position.Right}
+              className="!bg-transparent !border-0"
+              isConnectable={true}
+            />
+            {(!((connection as any)?.inProgress) || isTarget) && (
+              <Handle
+                id={handleId}
+                type="target"
+                position={Position.Left}
+                className="!bg-transparent !border-0"
+                isConnectable={true}
+              />
+            )}
+          </>
         )}
     </div>
   );
