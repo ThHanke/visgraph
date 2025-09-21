@@ -310,6 +310,10 @@ export const ReactFlowCanvas: React.FC = () => {
   const linkSourceRef = useRef<NodeData | null>(null);
   const linkTargetRef = useRef<NodeData | null>(null);
   const pendingFocusRef = useRef<string | null>(null);
+  // NEW: ref to enable externally-dispatched connection starts to call current onConnect
+  const onConnectRef = useRef<((params: Connection) => void) | null>(null);
+  // React Flow native connection start id used to wire connectionLineComponent (easy-connect pattern)
+  const [connectionStartId, setConnectionStartId] = useState<string | null>(null);
   // Prevent re-entrant / overlapping reasoning runs which can cause render loops
   const reasoningInProgressRef = useRef(false);
   const reasoningTimerRef = useRef<number | null>(null);
@@ -1701,7 +1705,7 @@ useEffect(() => {
           : availableProperties && availableProperties.length > 0
             ? availableProperties[0].iri || (availableProperties[0] as any).key
             : null;
-      const predFallback = predCandidate || "http://www.w3.org/2000/01/rdf-schema#seeAlso";
+      const predFallback = predCandidate || "http://www.w3.org/2002/07/owl#topObjectProperty";
       const predUriToUse = predCandidate || predFallback;
 
       // Compute a human-friendly label for the chosen predicate
@@ -1817,6 +1821,50 @@ useEffect(() => {
     },
     [edges, setEdges, nodes, canvasActions, availableProperties],
   );
+
+  // Keep a ref to the latest onConnect callback so external event handlers can invoke it safely.
+  useEffect(() => {
+    try {
+      onConnectRef.current = onConnect;
+    } catch (_) {
+      /* ignore */
+    }
+    return () => {
+      try {
+        onConnectRef.current = null;
+      } catch (_) {
+        /* ignore */
+      }
+    };
+  }, [onConnect]);
+
+  // Bridge removed — nodes now use React Flow's native connection lifecycle (useConnection + handles).
+  // Previous vg:start-connection / vg:end-connection bridge was redundant after refactoring nodes and
+  // could cause mismatches between React Flow's internal connection state and programmatic edge creation.
+  // If you still need a programmatic click-to-connect later, implement it by calling the React Flow
+  // instance API (e.g. startConnection) so React Flow's internal connection.inProgress state is updated.
+
+  // React Flow connection helpers (easy-connect pattern)
+  const connectionStartNode = useMemo(() => {
+    try {
+      if (!connectionStartId) return undefined;
+      const inst: any = reactFlowInstance.current;
+      if (inst && typeof inst.getNode === "function") return inst.getNode(connectionStartId);
+      return nodes.find((n) => n.id === connectionStartId);
+    } catch (_) {
+      return undefined;
+    }
+  }, [connectionStartId, nodes]);
+
+  const onConnectStart = useCallback((event: MouseEvent | TouchEvent, { nodeId }: { nodeId: string }) => {
+    try {
+      if (nodeId) setConnectionStartId(String(nodeId));
+    } catch (_) { /* ignore */ }
+  }, []);
+
+  const onConnectStop = useCallback(() => {
+    try { setConnectionStartId(null); } catch (_) { /* ignore */ }
+  }, []);
 
   // Node property save handler (mirror previous behavior: update RDF store then node data)
   const handleSaveNodeProperties = useCallback(

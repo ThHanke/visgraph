@@ -81,39 +81,74 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
     }
   }, [entries, size]);
 
-  const handleMouseDown = (e: React.MouseEvent, type: "drag" | "resize") => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handlePointerDown = (e: React.PointerEvent, type: "drag" | "resize") => {
+    try {
+      e.preventDefault();
+      e.stopPropagation();
+    } catch (_) { /* ignore */ }
+
+    // Try to capture the pointer on the container so we continue receiving pointer events
+    // even when the pointer leaves the visible element. This avoids using document-level
+    // listeners which can interfere with React Flow pointer handling.
+    try {
+      const el = containerRef.current as any;
+      if (el && typeof el.setPointerCapture === "function") {
+        try { el.setPointerCapture((e as any).pointerId); } catch (_) { /* ignore */ }
+      }
+    } catch (_) { /* ignore */ }
+
     if (type === "drag") {
       setIsDragging(true);
-      setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
+      setDragStart({ x: (e as any).clientX - position.x, y: (e as any).clientY - position.y });
     } else {
       setIsResizing(true);
-      setResizeStart({ x: e.clientX, y: e.clientY, width: size.width, height: size.height });
+      setResizeStart({ x: (e as any).clientX, y: (e as any).clientY, width: size.width, height: size.height });
     }
   };
 
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (isDragging) {
-        setPosition({ x: Math.max(0, e.clientX - dragStart.x), y: Math.max(0, e.clientY - dragStart.y) });
-      } else if (isResizing) {
-        const newWidth = Math.max(200, resizeStart.width + (e.clientX - resizeStart.x));
-        const newHeight = Math.max(150, resizeStart.height + (e.clientY - resizeStart.y));
-        setSize({ width: newWidth, height: newHeight });
-      }
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handlePointerMove = (e: PointerEvent) => {
+      try {
+        if (isDragging) {
+          setPosition({ x: Math.max(0, e.clientX - dragStart.x), y: Math.max(0, e.clientY - dragStart.y) });
+        } else if (isResizing) {
+          const newWidth = Math.max(200, resizeStart.width + (e.clientX - resizeStart.x));
+          const newHeight = Math.max(150, resizeStart.height + (e.clientY - resizeStart.y));
+          setSize({ width: newWidth, height: newHeight });
+        }
+      } catch (_) { /* ignore per-event errors */ }
     };
-    const handleMouseUp = () => {
+
+    const handlePointerUp = (e: PointerEvent) => {
+      try {
+        // release pointer capture if supported
+        try {
+          if (el && typeof (el as any).releasePointerCapture === "function") {
+            try { (el as any).releasePointerCapture((e as any).pointerId); } catch (_) { /* ignore */ }
+          }
+        } catch (_) { /* ignore */ }
+      } catch (_) { /* ignore */ }
       setIsDragging(false);
       setIsResizing(false);
     };
+
     if (isDragging || isResizing) {
-      document.addEventListener("mousemove", handleMouseMove);
-      document.addEventListener("mouseup", handleMouseUp);
+      try {
+        el.addEventListener("pointermove", handlePointerMove);
+        el.addEventListener("pointerup", handlePointerUp);
+        el.addEventListener("pointercancel", handlePointerUp);
+      } catch (_) { /* ignore attach errors */ }
     }
+
     return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
+      try {
+        el.removeEventListener("pointermove", handlePointerMove);
+        el.removeEventListener("pointerup", handlePointerUp);
+        el.removeEventListener("pointercancel", handlePointerUp);
+      } catch (_) { /* ignore detach errors */ }
     };
   }, [isDragging, isResizing, dragStart, resizeStart]);
 
@@ -127,7 +162,7 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
     >
       <div
         className="flex items-center justify-between p-3 border-b cursor-move bg-muted/50 rounded-t-lg"
-        onMouseDown={(e) => handleMouseDown(e, "drag")}
+        onPointerDown={(e) => handlePointerDown(e, "drag")}
       >
         <div className="flex items-center gap-2">
           <GripVertical className="h-4 w-4 text-muted-foreground" />
@@ -170,7 +205,7 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
 
       <div
         className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize bg-muted/50 rounded-tl-lg border-l border-t border-border/50"
-        onMouseDown={(e) => handleMouseDown(e, "resize")}
+        onPointerDown={(e) => handlePointerDown(e, "resize")}
       >
         <div className="absolute bottom-1 right-1 w-2 h-2">
           <div className="absolute bottom-0 right-0 w-1 h-1 bg-muted-foreground/50 rounded-full"></div>

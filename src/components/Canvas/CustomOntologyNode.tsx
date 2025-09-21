@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
-import { Handle, Position, NodeProps } from '@xyflow/react';
+import { Handle, Position, NodeProps, useConnection, useUpdateNodeInternals } from '@xyflow/react';
 import { cn } from '../../lib/utils';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -35,7 +35,24 @@ interface CustomOntologyNodeData {
 const _loggedFingerprints = new Set<string>();
 
 function CustomOntologyNodeInner(props: NodeProps) {
-  const { data, selected } = props;
+  const { data, selected, id } = props;
+  // Use React Flow's built-in connection hook so the node can render conditional handles
+  // and participate in native "connection in progress" state (shows "Drop here" targets etc).
+  const connection = useConnection();
+  const updateNodeInternals = useUpdateNodeInternals();
+  // Ensure React Flow knows about conditional handles when connection state changes.
+  // This mirrors the example note: "If handles are conditionally rendered and not present initially,
+  // you need to update the node internals".
+  useEffect(() => {
+    try {
+      if (typeof id === 'string') updateNodeInternals(String(id));
+    } catch (_) {
+      /* ignore */
+    }
+  }, [updateNodeInternals, connection?.inProgress, id]);
+
+  const isTarget =
+    !!(connection && (connection as any).inProgress && (connection as any).fromNode && String((connection as any).fromNode.id) !== String(id));
   const nodeData = (data ?? {}) as CustomOntologyNodeData;
   const individualNameInitial = String(nodeData.individualName ?? nodeData.iri ?? '');
 
@@ -364,6 +381,16 @@ function CustomOntologyNodeInner(props: NodeProps) {
     return (td.prefixed || td.short || '').replace(/^(https?:\/\/)?(www\.)?/, '');
   })();
 
+  // Use the node id (IRI) directly as the handle id per project convention.
+  const handleId = String(id || '');
+
+  // Connection helpers removed — canvas now relies on React Flow native handle drag.
+  // Click-to-connect bridge (vg:start-connection / vg:end-connection) was removed to
+  // simplify behavior and rely on React Flow's built-in connection lifecycle.
+
+  // When the user interacts with the node, use pointer events for more reliable behavior.
+  // onPointerDown starts a pending connection; onPointerUp ends it (if pending). We stop propagation
+  // so inner interactive elements don't swallow the gesture. Also emit lightweight debug logs.
   return (
     <div
       ref={rootRef}
@@ -441,18 +468,24 @@ function CustomOntologyNodeInner(props: NodeProps) {
         )}
       </div>
 
-      <Handle
-        type="target"
-        position={Position.Top}
-        className="!bg-transparent !border-0"
-        style={{ right: 12, top: -6 }}
-      />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        className="!bg-transparent !border-0"
-        style={{ right: 12, bottom: -6 }}
-      />
+        {/* Match example: render source on the Right and target on the Left, with the same conditional logic.
+            This mirrors the provided example so native handle-drag shows the live connection correctly. */}
+          <Handle
+            id={handleId}
+            type="source"
+            position={Position.Right}
+            className="!bg-transparent !border-0"
+            isConnectable={true}
+          />
+        {(!((connection as any)?.inProgress) || isTarget) && (
+          <Handle
+            id={handleId}
+            type="target"
+            position={Position.Left}
+            className="!bg-transparent !border-0"
+            isConnectable={true}
+          />
+        )}
     </div>
   );
 }

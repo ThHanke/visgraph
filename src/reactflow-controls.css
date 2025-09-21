@@ -71,3 +71,68 @@
     height: 48px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Project-specific React Flow cursor / handle tweaks to make node interaction
+   clearer and avoid persistent "grab" cursor on node bodies which can confuse
+   users into thinking the whole node is a drag handle.
+   - Keep node body cursor neutral by default
+   - Make handles show pointer / connection cursor and increase hit area
+   - Provide a small visible hover cue for handles so they're discoverable
+   --------------------------------------------------------------------------- */
+
+/* Scope changes to the app canvas so these overrides are local and safe */
+.knowledge-graph-canvas .react-flow__node.draggable {
+  cursor: default; /* don't show grab cursor for whole node body */
+}
+
+/* Prefer showing pointer on handles so users can spot where to start a connection.
+   Use !important sparingly to overcome inline utility classes that may set
+   pointer-events or transparency. */
+.knowledge-graph-canvas .react-flow__handle {
+  cursor: pointer !important;
+  width: 100%;
+  height: 100%;
+  background: #00f;
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 0;
+  transform: none;
+  border: none;
+  opacity: 0;
+}
+
+/* Slightly enlarge and highlight handle on node hover to make it discoverable */
+.knowledge-graph-canvas .react-flow__node:hover .react-flow__handle {
+  transform: scale(1.2);
+  background: rgba(34,34,34,0.08);
+  opacity: 1 !important;
+}
+
+/* Make sure connection-in-progress indicator remains obvious */
+.knowledge-graph-canvas .react-flow__handle.connectionindicator {
+  background: rgba(34,34,34,0.14) !important;
+  border-color: rgba(34,34,34,0.2) !important;
+}
+
+/* Optional: extend clickable area without visually changing layout by using a pseudo element.
+   This makes it easier to start a drag without changing node visuals. */
+.knowledge-graph-canvas .react-flow__handle::after {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: -6px;
+  right: -6px;
+  bottom: -6px;
+  border-radius: inherit;
+  pointer-events: none; /* leave events to the handle itself */
+}
+
+/* For touch devices prefer larger handles */
+@media (pointer: coarse) {
+  .knowledge-graph-canvas .react-flow__handle {
+    width: 20px !important;
+    height: 20px !important;
+  }
+}
