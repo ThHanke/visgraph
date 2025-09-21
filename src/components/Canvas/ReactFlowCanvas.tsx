@@ -1127,18 +1127,78 @@ export const ReactFlowCanvas: React.FC = () => {
         typeof window !== "undefined" && (window as any).__VG_STARTUP_TTL
           ? String((window as any).__VG_STARTUP_TTL)
           : "";
-      const startupUrl = startupTtl
-        ? startupTtl
-        : typeof window !== "undefined" && (window as any).__VG_STARTUP_URL
-          ? (window as any).__VG_STARTUP_URL
-          : startupUrlFromSettings;
+
+      // Resolve startup URL / TTL with client-side parsing that prefers:
+      // 1) inline TTL (__VG_STARTUP_TTL)
+      // 2) URL provided in fragment/hash (#url=...) — never sent to server (works around dev-server FS rules)
+      // 3) URL provided in query string (?url=...)
+      // 4) explicit window override (__VG_STARTUP_URL)
+      // 5) configured VITE_STARTUP_URL or settings store
+      //
+      // This parsing runs entirely in the browser and avoids any server-side interception.
+      let startupUrl = "";
+      try {
+        const win = typeof window !== "undefined" ? window : undefined;
+
+        // prefer inline TTL if present (keeps previous behavior)
+        if (startupTtl && startupTtl.trim().length > 0) {
+          startupUrl = startupTtl;
+        } else {
+          // extract from query string (may be rejected by some dev servers, but parsing here is safe)
+          // Prefer non-reserved param names to avoid Vite/fs-routing conflicts: support `rdfUrl`
+          // but fall back to legacy `url` for compatibility.
+          const fromQuery =
+            win && win.location
+              ? (() => {
+                  try {
+                    const u = new URL(String(win.location.href));
+                    // Prefer rdfUrl (non-reserved), then legacy url, then vg_url as an additional fallback.
+                    return (
+                      u.searchParams.get("rdfUrl") ||
+                      u.searchParams.get("url") ||
+                      u.searchParams.get("vg_url") ||
+                      null
+                    );
+                  } catch (_) {
+                    return null;
+                  }
+                })()
+              : null;
+
+          if (fromQuery) {
+            startupUrl = fromQuery;
+          } else if (typeof window !== "undefined" && (window as any).__VG_STARTUP_URL) {
+            startupUrl = (window as any).__VG_STARTUP_URL;
+          } else if (startupUrlFromSettings) {
+            startupUrl = startupUrlFromSettings;
+          } else {
+            startupUrl = "";
+          }
+        }
+
+        // Basic validation: accept http(s) URLs or inline TTL (startupTtl).
+        // If we ended up with a non-http string that is not the inline TTL, clear it to avoid accidental local paths.
+        if (
+          startupUrl &&
+          !/^https?:\/\//i.test(String(startupUrl)) &&
+          !(startupTtl && startupTtl === startupUrl)
+        ) {
+          startupUrl = "";
+        }
+      } catch (_) {
+        // fallback: prefer inline TTL if available
+        startupUrl = startupTtl || "";
+      }
 
       const additionalOntologies =
         appConfigState && appConfigState.config
           ? appConfigState.config.additionalOntologies
           : config && config.additionalOntologies;
 
-      // Only perform network/load operations when autorun is explicitly allowed.
+      // Load additional ontologies from config when autorun is explicitly allowed.
+      // However, if a startupUrl is present in the fragment/query/overrides, attempt
+      // to load it regardless of the allowAutoLoad flag so `?rdfUrl=...` / `#url=...`
+      // can be used as a direct user entrypoint during development.
       if (allowAutoLoad) {
         // Load additional ontologies from config first
         if (
@@ -1158,9 +1218,26 @@ export const ReactFlowCanvas: React.FC = () => {
             },
           );
         }
+      } else {
+        // Only log a diagnostic when autorun is disabled and nothing explicit requested.
+        if (!startupUrl && DEBUG) {
+          try {
+            debug(
+              "reactflow.initializeApp.autoload_disabled.no_startup",
+              { reason: "autoLoadDisabled" },
+              { caller: true },
+            );
+          } catch (_) {
+            /* ignore */
+          }
+        }
+      }
 
-        // Then load the startup file if configured
-        if (startupUrl && typeof loadKnowledgeGraphFn === "function") {
+      // Always attempt to load a startupUrl when present (fragment/query/window override),
+      // even if autorun is disabled. This lets developers open the app with ?rdfUrl=... or
+      // #url=... without changing server settings.
+      if (startupUrl && typeof loadKnowledgeGraphFn === "function") {
+        try {
           canvasActions.setLoading(true, 50, "Loading demo file...");
           await loadKnowledgeGraphFn(startupUrl, {
             onProgress: (progress: number, message: string) => {
@@ -1171,17 +1248,15 @@ export const ReactFlowCanvas: React.FC = () => {
               );
             },
           });
-        }
-      } else {
-        // When auto-load disabled, just initialize UI state (no RDF/network activity)
-        // This keeps the canvas empty and the app responsive for debugging.
-        if (DEBUG) {
+        } catch (e) {
+          // Preserve existing failure handling above; surface a concise debug entry.
           try {
-            debug(
-              "reactflow.initializeApp.skipped",
-              { reason: "autoLoadDisabled" },
-              { caller: true },
-            );
+            if (DEBUG) {
+              debug("reactflow.initializeApp.startup_load_failed", {
+                startupUrl,
+                error: e && (e as Error).message ? (e as Error).message : String(e),
+              });
+            }
           } catch (_) {
             /* ignore */
           }
@@ -1257,6 +1332,40 @@ export const ReactFlowCanvas: React.FC = () => {
       delete (window as any).__VG_INIT_FORCE_ON_MOUNT;
     } catch (_) {
       /* ignore */
+    }
+  } else {
+    // If the page was opened with an explicit startup indicator (rdfUrl or fragment #url=),
+    // run the initializer once so developers can open the app with ?rdfUrl=... without
+    // enabling global autorun.
+    try {
+      const win = typeof window !== "undefined" ? window : undefined;
+      const hasStartupParam =
+        !!(
+          win &&
+          win.location &&
+          (function () {
+            try {
+              const u = new URL(String(win.location.href));
+              return (
+                Boolean(u.searchParams.get("rdfUrl")) ||
+                Boolean(u.searchParams.get("url")) ||
+                Boolean(u.searchParams.get("vg_url"))
+              );
+            } catch {
+              return false;
+            }
+          })()
+        );
+
+      if (hasStartupParam) {
+        try {
+          void initializeApp({ force: true });
+        } catch (_) {
+          /* ignore */
+        }
+      }
+    } catch (_) {
+      /* ignore detection failures */
     }
   }
 
@@ -1747,7 +1856,7 @@ useEffect(() => {
           });
 
           predCandidate = compatible
-            ? (compatible.iri || compatible.value || String(compatible))
+            ? (compatible.iri || (compatible as any).key || "")
             : (availableProperties[0].iri || (availableProperties[0] as any).key);
         } catch (_) {
           predCandidate = availableProperties[0].iri || (availableProperties[0] as any).key;

@@ -16,6 +16,12 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
     allowedHosts: true,
+    fs: {
+      // Allow serving files from the project root during development so
+      // requests like "/?url=..." that Vite rejects by default (403) will work.
+      // This is safe for local development only.
+      allow: [path.resolve(__dirname)]
+    }
   },
   plugins: [
     react()
