@@ -14,6 +14,7 @@ import type { ParsedGraph } from "../utils/rdfParser";
 import { DataFactory, Quad } from "n3";
 const { namedNode, quad } = DataFactory;
 import { WELL_KNOWN } from "../utils/wellKnownOntologies";
+import { computeTermDisplay } from "../utils/termUtils";
 
 /**
  * Map to track in-flight RDF loads so identical loads return the same Promise.
@@ -78,7 +79,9 @@ function logCallGraph(...args: any[]) {
     ((...__vg_args) => {
       try {
         debug("console.debug", {
-          args: __vg_args.map((a: any) => ((a && (a as any).message) ? (a as any).message : String(a))),
+          args: __vg_args.map((a: any) =>
+            a && (a as any).message ? (a as any).message : String(a),
+          ),
         });
       } catch (_) {
         try {
@@ -148,7 +151,7 @@ function getNodeData(node: ParsedNode | DiagramNode): any {
 }
 
 interface OntologyClass {
- iri: string;
+  iri: string;
   label: string;
   namespace: string;
   properties: string[];
@@ -156,7 +159,7 @@ interface OntologyClass {
 }
 
 interface ObjectProperty {
- iri: string;
+  iri: string;
   label: string;
   domain: string[];
   range: string[];
@@ -245,7 +248,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       const { rdfManager } = get();
       const preserveGraph = true;
 
-      const normRequestedUrl = (function(u: string) {
+      const normRequestedUrl = (function (u: string) {
         try {
           const s = String(u).trim();
           if (s.toLowerCase().startsWith("http://")) {
@@ -261,7 +264,9 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         }
       })(url);
       const wkEntry =
-        WELL_KNOWN.ontologies[normRequestedUrl as keyof typeof WELL_KNOWN.ontologies] || WELL_KNOWN.ontologies[url as keyof typeof WELL_KNOWN.ontologies];
+        WELL_KNOWN.ontologies[
+          normRequestedUrl as keyof typeof WELL_KNOWN.ontologies
+        ] || WELL_KNOWN.ontologies[url as keyof typeof WELL_KNOWN.ontologies];
 
       // removed early registration for well-known entries so we fall through
       // to the centralized fetch & parse logic below which will perform the
@@ -278,11 +283,16 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           const { loadedOntologies: curLoaded, rdfManager: mgr } = get();
           const alreadyPresent = (curLoaded || []).some(
             (o: any) =>
-              (function(x: any) {
+              (function (x: any) {
                 try {
                   const s = String(x).trim();
-                  if (s.toLowerCase().startsWith("http://")) return s.replace(/^http:\/\//i, "https://");
-                  try { return new URL(s).toString(); } catch { return s.replace(/\/+$/, ""); }
+                  if (s.toLowerCase().startsWith("http://"))
+                    return s.replace(/^http:\/\//i, "https://");
+                  try {
+                    return new URL(s).toString();
+                  } catch {
+                    return s.replace(/\/+$/, "");
+                  }
                 } catch (_) {
                   return String(x || "");
                 }
@@ -294,14 +304,17 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
               const namespaces =
                 wkEntry.namespaces && Object.keys(wkEntry.namespaces).length > 0
                   ? wkEntry.namespaces
-                  : (mgr && typeof mgr.getNamespaces === "function"
-                      ? mgr.getNamespaces()
-                      : {});
+                  : mgr && typeof mgr.getNamespaces === "function"
+                    ? mgr.getNamespaces()
+                    : {};
               ensureNamespacesPresent(mgr, namespaces);
 
               const meta: LoadedOntology = {
                 url: normRequestedUrl,
-                name: wkEntry && wkEntry.name ? wkEntry.name : deriveOntologyName(String(normRequestedUrl || url)),
+                name:
+                  wkEntry && wkEntry.name
+                    ? wkEntry.name
+                    : deriveOntologyName(String(normRequestedUrl || url)),
                 classes: [],
                 properties: [],
                 namespaces: namespaces || {},
@@ -345,19 +358,21 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         // free of duplicate type triples while preserving ontology provenance.
         try {
           const store = rdfManager.getStore();
-          const rdfTypeIri = typeof rdfManager.expandPrefix === "function"
-            ? rdfManager.expandPrefix("rdf:type")
-            : "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
+          const rdfTypeIri =
+            typeof rdfManager.expandPrefix === "function"
+              ? rdfManager.expandPrefix("rdf:type")
+              : "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
           const g = namedNode("urn:vg:ontologies");
           (parsed.nodes || []).forEach((n: any) => {
             try {
               if (!n || !n.iri) return;
-              const existing = store.getQuads(
-                namedNode(n.iri),
-                namedNode(rdfTypeIri),
-                null,
-                g,
-              ) || [];
+              const existing =
+                store.getQuads(
+                  namedNode(n.iri),
+                  namedNode(rdfTypeIri),
+                  null,
+                  g,
+                ) || [];
               existing.forEach((q: Quad) => {
                 try {
                   store.removeQuad(q);
@@ -422,10 +437,14 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             try {
               const meta: LoadedOntology = {
                 url: canonicalForThis,
-                name: wkEntry && wkEntry.name ? wkEntry.name : deriveOntologyName(String(canonicalForThis)),
+                name:
+                  wkEntry && wkEntry.name
+                    ? wkEntry.name
+                    : deriveOntologyName(String(canonicalForThis)),
                 classes: [],
                 properties: [],
-                namespaces: parsed.namespaces || (wkEntry && wkEntry.namespaces) || {},
+                namespaces:
+                  parsed.namespaces || (wkEntry && wkEntry.namespaces) || {},
               };
               set((state) => ({
                 loadedOntologies: [...state.loadedOntologies, meta],
@@ -515,7 +534,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             ),
           );
           ontologyClasses.push({
-           iri: classKey,
+            iri: classKey,
             label: firstNode.classType,
             namespace: firstNode.namespace,
             properties,
@@ -555,7 +574,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
           const firstEdge = edges[0];
           ontologyProperties.push({
-           iri: propertyType,
+            iri: propertyType,
             label: firstEdge.label,
             domain: domains,
             range: ranges,
@@ -606,8 +625,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           namespaces: parsed.namespaces || {},
         };
 
-
-
         // Merge into state with deduplication by canonical URL.
         set((state) => {
           const exists = (state.loadedOntologies || []).some(
@@ -621,16 +638,32 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                       // merge namespaces and metadata, prefer existing name if present
                       ...o,
                       name: o.name || loadedOntology.name,
-                      namespaces: { ...(o.namespaces || {}), ...(loadedOntology.namespaces || {}) },
-                      classes: Array.from(new Set([...(o.classes || []), ...(loadedOntology.classes || [])])),
-                      properties: Array.from(new Set([...(o.properties || []), ...(loadedOntology.properties || [])])),
+                      namespaces: {
+                        ...(o.namespaces || {}),
+                        ...(loadedOntology.namespaces || {}),
+                      },
+                      classes: Array.from(
+                        new Set([
+                          ...(o.classes || []),
+                          ...(loadedOntology.classes || []),
+                        ]),
+                      ),
+                      properties: Array.from(
+                        new Set([
+                          ...(o.properties || []),
+                          ...(loadedOntology.properties || []),
+                        ]),
+                      ),
                     }
                   : o,
               )
             : [...(state.loadedOntologies || []), loadedOntology];
 
           const mergedClasses = [...state.availableClasses, ...ontologyClasses];
-          const mergedProps = [...state.availableProperties, ...ontologyProperties];
+          const mergedProps = [
+            ...state.availableProperties,
+            ...ontologyProperties,
+          ];
 
           // Deduplicate available lists by iri
           const classMap: Record<string, any> = {};
@@ -674,7 +707,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           // added into the UI currentGraph (prevents many core vocabulary nodes from
           // creating canvas nodes). The RDF store still contains these triples for
           // indexing/search; we only remove them from the UI merge step.
-          const _blacklistedPrefixes = new Set(["owl", "rdf", "rdfs", "xml", "xsd"]);
+          const _blacklistedPrefixes = new Set([
+            "owl",
+            "rdf",
+            "rdfs",
+            "xml",
+            "xsd",
+          ]);
           const _blacklistedUris = [
             "http://www.w3.org/2002/07/owl",
             "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
@@ -700,99 +739,152 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             return false;
           }
 
-          const nodes = (parsed.nodes || []).map((n: any) => {
-            const nodeId =
-              n.id ||
-              n.iri ||
-              n.iri ||
-              `${n.namespace}:${n.classType}` ||
-              String(Math.random());
-            const allTypes =
-              (n as any).rdfTypes && (n as any).rdfTypes.length > 0
-                ? (n as any).rdfTypes.slice()
-                : (n as any).rdfType
-                  ? [(n as any).rdfType]
-                  : [];
-            const meaningful = allTypes.filter(
-              (t: string) => t && !String(t).includes("NamedIndividual"),
-            );
-            const chosen =
-              meaningful.length > 0
-                ? meaningful[0]
-                : allTypes.length > 0
-                  ? allTypes[0]
-                  : undefined;
+          const nodes = (parsed.nodes || [])
+            .map((n: any) => {
+              const isIriOrBNode = (s?: string) =>
+                !!s && (/^https?:\/\//i.test(s) || s.startsWith("_:"));
+              const rawId = n && n.id ? String(n.id) : "";
+              const rawIri = n && n.iri ? String(n.iri) : "";
+              const nodeId = isIriOrBNode(rawId)
+                ? rawId
+                : isIriOrBNode(rawIri)
+                  ? rawIri
+                  : null;
 
-            let computedClassType = n.classType;
-            let computedNamespace = n.namespace;
+              if (!nodeId) {
+                try {
+                  if (
+                    typeof console !== "undefined" &&
+                    typeof console.debug === "function"
+                  ) {
+                    console.debug(
+                      "[VG_WARN] ontologyStore.skippingParsedNode missing IRI id",
+                      {
+                        preview: {
+                          id: rawId || undefined,
+                          iri: rawIri || undefined,
+                        },
+                      },
+                    );
+                  }
+                } catch (_) {
+                  /* ignore */
+                }
+                return null;
+              }
 
-            try {
-              if (chosen) {
-                const chosenStr = String(chosen);
-                if (chosenStr.includes(":")) {
-                  const idx = chosenStr.indexOf(":");
-                  computedNamespace = chosenStr.substring(0, idx);
-                  computedClassType = chosenStr.substring(idx + 1);
-                } else if (/^https?:\/\//i.test(chosenStr)) {
-                  try {
-                    const mgr = get().rdfManager;
-                    const nsMap =
-                      mgr && typeof mgr.getNamespaces === "function"
-                        ? mgr.getNamespaces()
-                        : {};
-                    let matched = false;
-                    for (const [p, uri] of Object.entries(nsMap || {})) {
-                      if (uri && chosenStr.startsWith(uri)) {
-                        computedNamespace = p === ":" ? "" : p;
-                        computedClassType = chosenStr.substring(uri.length);
-                        matched = true;
-                        break;
+              const allTypes =
+                (n as any).rdfTypes && (n as any).rdfTypes.length > 0
+                  ? (n as any).rdfTypes.slice()
+                  : (n as any).rdfType
+                    ? [(n as any).rdfType]
+                    : [];
+              const meaningful = allTypes.filter(
+                (t: string) => t && !String(t).includes("NamedIndividual"),
+              );
+              const chosen =
+                meaningful.length > 0
+                  ? meaningful[0]
+                  : allTypes.length > 0
+                    ? allTypes[0]
+                    : undefined;
+
+              let computedClassType = n.classType;
+              let computedNamespace = n.namespace;
+
+              try {
+                if (chosen) {
+                  const chosenStr = String(chosen);
+                  if (chosenStr.includes(":")) {
+                    const idx = chosenStr.indexOf(":");
+                    computedNamespace = chosenStr.substring(0, idx);
+                    computedClassType = chosenStr.substring(idx + 1);
+                  } else if (/^https?:\/\//i.test(chosenStr)) {
+                    try {
+                      const mgr = get().rdfManager;
+                      const nsMap =
+                        mgr && typeof mgr.getNamespaces === "function"
+                          ? mgr.getNamespaces()
+                          : {};
+                      let matched = false;
+                      for (const [p, uri] of Object.entries(nsMap || {})) {
+                        if (uri && chosenStr.startsWith(uri)) {
+                          computedNamespace = p === ":" ? "" : p;
+                          computedClassType = chosenStr.substring(uri.length);
+                          matched = true;
+                          break;
+                        }
                       }
-                    }
-                    if (!matched) {
+                      if (!matched) {
+                        const parts = chosenStr.split(/[#/]/).filter(Boolean);
+                        computedClassType = parts.length
+                          ? parts[parts.length - 1]
+                          : chosenStr;
+                      }
+                    } catch {
                       const parts = chosenStr.split(/[#/]/).filter(Boolean);
                       computedClassType = parts.length
                         ? parts[parts.length - 1]
                         : chosenStr;
                     }
-                  } catch {
+                  } else {
                     const parts = chosenStr.split(/[#/]/).filter(Boolean);
                     computedClassType = parts.length
                       ? parts[parts.length - 1]
                       : chosenStr;
                   }
-                } else {
-                  const parts = chosenStr.split(/[#/]/).filter(Boolean);
-                  computedClassType = parts.length
-                    ? parts[parts.length - 1]
-                    : chosenStr;
                 }
+              } catch {
+                // ignore
               }
-            } catch {
-              // ignore
-            }
 
+              return {
+                id: nodeId,
+                iri: n.iri || n.id || "",
+                data: {
+                  individualName:
+                    n.individualName ||
+                    (n.iri ? n.iri.split("/").pop() : nodeId),
+                  classType: computedClassType,
+                  namespace: computedNamespace,
+                  iri: n.iri || n.id || "",
+                  literalProperties: n.literalProperties || [],
+                  annotationProperties: n.annotationProperties || [],
+                },
+              };
+            })
+            .filter(Boolean);
+
+          const edges = (parsed.edges || []).map((e: any) => {
+            // Normalize edge endpoints so downstream merge/mapping always see string IRIs or blank nodes.
+            const rawSource =
+              e.source ||
+              (e.data &&
+                (e.data.source ||
+                  e.data.from ||
+                  e.data.subj ||
+                  e.data.subject)) ||
+              e.subj ||
+              e.subject ||
+              e.s ||
+              "";
+            const rawTarget =
+              e.target ||
+              (e.data &&
+                (e.data.target || e.data.to || e.data.obj || e.data.object)) ||
+              e.obj ||
+              e.object ||
+              e.o ||
+              "";
             return {
-              id: nodeId,
-             iri: n.iri || n.id || '',
-              data: {
-                individualName:
-                  n.individualName || (n.iri ? n.iri.split("/").pop() : nodeId),
-                classType: computedClassType,
-                namespace: computedNamespace,
-               iri: n.iri || n.id || '',
-                literalProperties: n.literalProperties || [],
-                annotationProperties: n.annotationProperties || [],
-              },
+              id:
+                e.id ||
+                `${String(rawSource)}-${String(rawTarget)}-${String(e.propertyType || e.propertyUri || "")}`,
+              source: String(rawSource || ""),
+              target: String(rawTarget || ""),
+              data: e,
             };
           });
-
-          const edges = (parsed.edges || []).map((e: any) => ({
-            id: e.id || `${e.source}-${e.target}-${e.propertyType}`,
-            source: e.source,
-            target: e.target,
-            data: e,
-          }));
 
           // Merge into existing graph preserving previous nodes/edges
           const existing = get().currentGraph;
@@ -824,21 +916,49 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
               (id) => id && existingUris.has(String(id)),
             );
             if (!exists) {
+              // Enforce strict IRI / blank-node ids for merged nodes.
+              const isIriOrBNode = (s?: string) =>
+                !!s && (/^https?:\/\//i.test(s) || s.startsWith("_:"));
+              const rawId = n && n.id ? String(n.id) : "";
+              const rawIri = n && n.iri ? String(n.iri) : "";
+              const nodeId = isIriOrBNode(rawId)
+                ? rawId
+                : isIriOrBNode(rawIri)
+                  ? rawIri
+                  : null;
+
+              if (!nodeId) {
+                try {
+                  if (
+                    typeof console !== "undefined" &&
+                    typeof console.debug === "function"
+                  ) {
+                    console.debug(
+                      "[VG_WARN] ontologyStore.skippingParsedNode on merge missing IRI id",
+                      {
+                        preview: {
+                          id: rawId || undefined,
+                          iri: rawIri || undefined,
+                        },
+                      },
+                    );
+                  }
+                } catch (_) {
+                  /* ignore */
+                }
+                return;
+              }
+
               const nodeObj = {
-                id:
-                  n.id ||
-                  n.iri ||
-                  n.iri ||
-                  `${n.namespace}:${n.classType}` ||
-                  String(Math.random()),
-               iri: n.iri || n.iri,
+                id: nodeId,
+                iri: n.iri || n.id || "",
                 data: {
                   individualName:
                     n.individualName ||
-                    (n.iri ? n.iri.split("/").pop() : n.id || ""),
+                    (n.iri ? n.iri.split("/").pop() : nodeId),
                   classType: n.classType,
                   namespace: n.namespace,
-                 iri: n.iri || n.iri,
+                  iri: n.iri || n.id || "",
                   literalProperties: n.literalProperties || [],
                   annotationProperties: n.annotationProperties || [],
                 },
@@ -852,18 +972,71 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
           const mergedEdges: any[] = [...existing.edges];
           (parsed.edges || []).forEach((e: any) => {
-            const edgeId = e.id || `${e.source}-${e.target}-${e.propertyType}`;
+            // Normalize edge id and endpoints robustly: some producers use different field names.
+            const rawSource =
+              e.source ||
+              (e.data &&
+                (e.data.source ||
+                  e.data.from ||
+                  e.data.subj ||
+                  e.data.subject)) ||
+              e.subj ||
+              e.subject ||
+              e.s ||
+              "";
+            const rawTarget =
+              e.target ||
+              (e.data &&
+                (e.data.target || e.data.to || e.data.obj || e.data.object)) ||
+              e.obj ||
+              e.object ||
+              e.o ||
+              "";
+            const edgeId =
+              e.id ||
+              `${String(rawSource)}-${String(rawTarget)}-${String(e.propertyType || e.propertyUri || "")}`;
             if (!mergedEdges.find((me: any) => me.id === edgeId)) {
               mergedEdges.push({
                 id: edgeId,
-                source: e.source,
-                target: e.target,
+                source: String(rawSource || ""),
+                target: String(rawTarget || ""),
                 data: e,
               });
             }
           });
 
-          set({ currentGraph: { nodes: mergedNodes, edges: mergedEdges } });
+                // Ensure edges loaded from RDF receive computed display labels now that the RDF manager
+                // has been updated. We compute labels conservatively using computeTermDisplay when an RDF
+                // manager is available; otherwise labels remain empty (strict policy).
+                try {
+                  const mgrLocal = get().rdfManager;
+                  const labeledEdges = (mergedEdges || []).map((e: any) => {
+                    try {
+                      const pred = (e && e.data && (e.data.propertyUri || e.data.propertyType)) || "";
+                      let label = "";
+                      if (mgrLocal && pred) {
+                        try {
+                          const td = computeTermDisplay(String(pred), mgrLocal as any);
+                          label = String(td.prefixed || td.short || "");
+                        } catch (_) {
+                          label = "";
+                        }
+                      } else if (e && e.data && e.data.label) {
+                        // preserve any explicit label present in parsed edge payload
+                        label = String(e.data.label);
+                      } else {
+                        label = "";
+                      }
+                      return { ...e, data: { ...(e.data || {}), label } };
+                    } catch (_) {
+                      return e;
+                    }
+                  });
+                  set({ currentGraph: { nodes: mergedNodes, edges: labeledEdges } });
+                } catch (_) {
+                  // fallback to original merged set if anything goes wrong
+                  set({ currentGraph: { nodes: mergedNodes, edges: mergedEdges } });
+                }
         } catch (mergeErr) {
           try {
             fallback(
@@ -898,7 +1071,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             "console.error",
             {
               args: __vg_args.map((a: any) =>
-                (a && (a as any).message) ? (a as any).message : String(a),
+                a && (a as any).message ? (a as any).message : String(a),
               ),
             },
             { level: "error", captureStack: true },
@@ -1019,11 +1192,11 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
       const parsed = await parseRDFFile(rdfContent, onProgress);
 
-        try {
-          const { rdfManager } = get();
-          rdfManager.applyParsedNodes(parsed.nodes || [], {
-            preserveExistingLiterals: true,
-          });
+      try {
+        const { rdfManager } = get();
+        rdfManager.applyParsedNodes(parsed.nodes || [], {
+          preserveExistingLiterals: true,
+        });
 
         try {
           const store = rdfManager.getStore();
@@ -1090,99 +1263,146 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       }
 
       try {
-        const nodesForDiagram = (parsed.nodes || []).map((n: any) => {
-          const nodeId =
-            n.id ||
-            n.iri ||
-            n.iri ||
-            `${n.namespace}:${n.classType}` ||
-            String(Math.random());
-          const allTypes =
-            (n as any).rdfTypes && (n as any).rdfTypes.length > 0
-              ? (n as any).rdfTypes.slice()
-              : (n as any).rdfType
-                ? [(n as any).rdfType]
-                : [];
-          const meaningful = allTypes.filter(
-            (t: string) => t && !String(t).includes("NamedIndividual"),
-          );
-          const chosen =
-            meaningful.length > 0
-              ? meaningful[0]
-              : allTypes.length > 0
-                ? allTypes[0]
-                : undefined;
+        const nodesForDiagram = (parsed.nodes || [])
+          .map((n: any) => {
+            const isIriOrBNode = (s?: string) =>
+              !!s && (/^https?:\/\//i.test(s) || s.startsWith("_:"));
+            const rawId = n && n.id ? String(n.id) : "";
+            const rawIri = n && n.iri ? String(n.iri) : "";
+            const nodeId = isIriOrBNode(rawId)
+              ? rawId
+              : isIriOrBNode(rawIri)
+                ? rawIri
+                : null;
 
-          let computedClassType = n.classType;
-          let computedNamespace = n.namespace;
+            if (!nodeId) {
+              try {
+                if (
+                  typeof console !== "undefined" &&
+                  typeof console.debug === "function"
+                ) {
+                  console.debug(
+                    "[VG_WARN] ontologyStore.skippingParsedNode missing IRI id (nodesForDiagram)",
+                    {
+                      preview: {
+                        id: rawId || undefined,
+                        iri: rawIri || undefined,
+                      },
+                    },
+                  );
+                }
+              } catch (_) {
+                /* ignore */
+              }
+              return null;
+            }
 
-          try {
-            if (chosen) {
-              const chosenStr = String(chosen);
-              if (chosenStr.includes(":")) {
-                const idx = chosenStr.indexOf(":");
-                computedNamespace = chosenStr.substring(0, idx);
-                computedClassType = chosenStr.substring(idx + 1);
-              } else if (/^https?:\/\//i.test(chosenStr)) {
-                try {
-                  const mgr = get().rdfManager;
-                  const nsMap =
-                    mgr && typeof mgr.getNamespaces === "function"
-                      ? mgr.getNamespaces()
-                      : {};
-                  let matched = false;
-                  for (const [p, uri] of Object.entries(nsMap || {})) {
-                    if (uri && chosenStr.startsWith(uri)) {
-                      computedNamespace = p === ":" ? "" : p;
-                      computedClassType = chosenStr.substring(uri.length);
-                      matched = true;
-                      break;
+            const allTypes =
+              (n as any).rdfTypes && (n as any).rdfTypes.length > 0
+                ? (n as any).rdfTypes.slice()
+                : (n as any).rdfType
+                  ? [(n as any).rdfType]
+                  : [];
+            const meaningful = allTypes.filter(
+              (t: string) => t && !String(t).includes("NamedIndividual"),
+            );
+            const chosen =
+              meaningful.length > 0
+                ? meaningful[0]
+                : allTypes.length > 0
+                  ? allTypes[0]
+                  : undefined;
+
+            let computedClassType = n.classType;
+            let computedNamespace = n.namespace;
+
+            try {
+              if (chosen) {
+                const chosenStr = String(chosen);
+                if (chosenStr.includes(":")) {
+                  const idx = chosenStr.indexOf(":");
+                  computedNamespace = chosenStr.substring(0, idx);
+                  computedClassType = chosenStr.substring(idx + 1);
+                } else if (/^https?:\/\//i.test(chosenStr)) {
+                  try {
+                    const mgr = get().rdfManager;
+                    const nsMap =
+                      mgr && typeof mgr.getNamespaces === "function"
+                        ? mgr.getNamespaces()
+                        : {};
+                    let matched = false;
+                    for (const [p, uri] of Object.entries(nsMap || {})) {
+                      if (uri && chosenStr.startsWith(uri)) {
+                        computedNamespace = p === ":" ? "" : p;
+                        computedClassType = chosenStr.substring(uri.length);
+                        matched = true;
+                        break;
+                      }
                     }
-                  }
-                  if (!matched) {
+                    if (!matched) {
+                      const parts = chosenStr.split(/[#/]/).filter(Boolean);
+                      computedClassType = parts.length
+                        ? parts[parts.length - 1]
+                        : chosenStr;
+                    }
+                  } catch {
                     const parts = chosenStr.split(/[#/]/).filter(Boolean);
                     computedClassType = parts.length
                       ? parts[parts.length - 1]
                       : chosenStr;
                   }
-                } catch {
-                  const parts = chosenStr.split(/[#\/]/).filter(Boolean);
+                } else {
+                  const parts = chosenStr.split(/[#/]/).filter(Boolean);
                   computedClassType = parts.length
                     ? parts[parts.length - 1]
                     : chosenStr;
                 }
-              } else {
-                const parts = chosenStr.split(/[#\/]/).filter(Boolean);
-                computedClassType = parts.length
-                  ? parts[parts.length - 1]
-                  : chosenStr;
               }
+            } catch {
+              // ignore
             }
-          } catch {
-            // ignore
-          }
 
+            return {
+              id: nodeId,
+              iri: n.iri || n.id || "",
+              data: {
+                individualName:
+                  n.individualName || (n.iri ? n.iri.split("/").pop() : nodeId),
+                classType: computedClassType,
+                namespace: computedNamespace,
+                iri: n.iri || n.id || "",
+                literalProperties: n.literalProperties || [],
+                annotationProperties: n.annotationProperties || [],
+              },
+            };
+          })
+          .filter(Boolean);
+
+        const edgesForDiagram = (parsed.edges || []).map((e: any) => {
+          const pred = e.propertyUri || e.propertyType || "";
+          let label = "";
+          try {
+            const mgrLocal = get().rdfManager;
+            if (mgrLocal && pred) {
+              try {
+                const td = computeTermDisplay(String(pred), mgrLocal as any);
+                label = String(td.prefixed || td.short || "");
+              } catch (_) {
+                label = "";
+              }
+            } else {
+              label = "";
+            }
+          } catch (_) {
+            label = "";
+          }
           return {
-            id: nodeId,
-           iri: n.iri || n.id || '',
-            data: {
-              individualName:
-                n.individualName || (n.iri ? n.iri.split("/").pop() : nodeId),
-              classType: computedClassType,
-              namespace: computedNamespace,
-             iri: n.iri || n.id || '',
-              literalProperties: n.literalProperties || [],
-              annotationProperties: n.annotationProperties || [],
-            },
+            id: e.id || `${e.source}-${e.target}-${e.propertyType}`,
+            source: e.source,
+            target: e.target,
+            data: { ...(e || {}), label },
           };
         });
-
-        const edgesForDiagram = (parsed.edges || []).map((e: any) => ({
-          id: e.id || `${e.source}-${e.target}-${e.propertyType}`,
-          source: e.source,
-          target: e.target,
-          data: e,
-        }));
 
         const existing = get().currentGraph;
         const mergedNodes: any[] = [...existing.nodes];
@@ -1211,21 +1431,47 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           ];
           const exists = nIds.some((id) => id && existingUris.has(String(id)));
           if (!exists) {
+            const isIriOrBNode = (s?: string) =>
+              !!s && (/^https?:\/\//i.test(s) || s.startsWith("_:"));
+            const rawId = n && n.id ? String(n.id) : "";
+            const rawIri = n && n.iri ? String(n.iri) : "";
+            const nodeId = isIriOrBNode(rawId)
+              ? rawId
+              : isIriOrBNode(rawIri)
+                ? rawIri
+                : null;
+
+            if (!nodeId) {
+              try {
+                if (
+                  typeof console !== "undefined" &&
+                  typeof console.debug === "function"
+                ) {
+                  console.debug(
+                    "[VG_WARN] ontologyStore.skippingParsedNode on merge missing IRI id",
+                    {
+                      preview: {
+                        id: rawId || undefined,
+                        iri: rawIri || undefined,
+                      },
+                    },
+                  );
+                }
+              } catch (_) {
+                /* ignore */
+              }
+              return;
+            }
+
             const nodeObj = {
-              id:
-                n.id ||
-                n.iri ||
-                n.iri ||
-                `${n.namespace}:${n.classType}` ||
-                String(Math.random()),
-             iri: n.iri || n.id || '',
+              id: nodeId,
+              iri: n.iri || n.id || "",
               data: {
                 individualName:
-                  n.individualName ||
-                  (n.iri ? n.iri.split("/").pop() : n.id || ""),
+                  n.individualName || (n.iri ? n.iri.split("/").pop() : nodeId),
                 classType: n.classType,
                 namespace: n.namespace,
-               iri: n.iri || n.id || '',
+                iri: n.iri || n.id || "",
                 literalProperties: n.literalProperties || [],
                 annotationProperties: n.annotationProperties || [],
               },
@@ -1239,12 +1485,34 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
         const mergedEdges: any[] = [...existing.edges];
         (parsed.edges || []).forEach((e: any) => {
-          const edgeId = e.id || `${e.source}-${e.target}-${e.propertyType}`;
+          // Normalize edge id and endpoints robustly: some producers use different field names.
+          const rawSource =
+            e.source ||
+            (e.data &&
+              (e.data.source ||
+                e.data.from ||
+                e.data.subj ||
+                e.data.subject)) ||
+            e.subj ||
+            e.subject ||
+            e.s ||
+            "";
+          const rawTarget =
+            e.target ||
+            (e.data &&
+              (e.data.target || e.data.to || e.data.obj || e.data.object)) ||
+            e.obj ||
+            e.object ||
+            e.o ||
+            "";
+          const edgeId =
+            e.id ||
+            `${String(rawSource)}-${String(rawTarget)}-${String(e.propertyType || e.propertyUri || "")}`;
           if (!mergedEdges.find((me: any) => me.id === edgeId)) {
             mergedEdges.push({
               id: edgeId,
-              source: e.source,
-              target: e.target,
+              source: String(rawSource || ""),
+              target: String(rawTarget || ""),
               data: e,
             });
           }
@@ -1261,7 +1529,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             "console.error",
             {
               args: __vg_args.map((a: any) =>
-                (a && (a as any).message) ? (a as any).message : String(a),
+                a && (a as any).message ? (a as any).message : String(a),
               ),
             },
             { level: "error", captureStack: true },
@@ -1395,12 +1663,17 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
     function normalizeUri(u: string): string {
       try {
-        if (typeof u === "string" && u.trim().toLowerCase().startsWith("http://")) {
+        if (
+          typeof u === "string" &&
+          u.trim().toLowerCase().startsWith("http://")
+        ) {
           return u.trim().replace(/^http:\/\//i, "https://");
         }
         return new URL(String(u)).toString();
       } catch {
-        return typeof u === "string" ? String(u).trim().replace(/\/+$/, "") : String(u);
+        return typeof u === "string"
+          ? String(u).trim().replace(/\/+$/, "")
+          : String(u);
       }
     }
 
@@ -1431,7 +1704,9 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     for (let i = 0; i < toLoad.length; i++) {
       const uri = toLoad[i];
       const wkEntry =
-        WELL_KNOWN.ontologies[normalizeUri(uri) as keyof typeof WELL_KNOWN.ontologies];
+        WELL_KNOWN.ontologies[
+          normalizeUri(uri) as keyof typeof WELL_KNOWN.ontologies
+        ];
       const ontologyName = wkEntry ? wkEntry.name : undefined;
 
       try {
@@ -1578,18 +1853,52 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     try {
       // Lightweight diagnostic to help trace UI updates that originate from different code paths.
       try {
-        const sampleEdges = Array.isArray(edges) ? (edges as any[]).slice(0, 6).map((e: any) => ({ id: e.id, source: e.source, target: e.target })) : [];
+        const sampleEdges = Array.isArray(edges)
+          ? (edges as any[])
+              .slice(0, 6)
+              .map((e: any) => ({
+                id: e.id,
+                source: e.source,
+                target: e.target,
+              }))
+          : [];
         console.debug("[VG_DEBUG] ontologyStore.setCurrentGraph", {
           nodesCount: Array.isArray(nodes) ? nodes.length : 0,
           edgesCount: Array.isArray(edges) ? edges.length : 0,
           sampleEdges,
         });
-      } catch (_) { /* ignore logging failures */ }
+      } catch (_) {
+        /* ignore logging failures */
+      }
 
+      try {
+        if (typeof window !== "undefined") {
+          try {
+          } catch (_) { /* ignore cross-origin / readonly failures */ }
+        }
+      } catch (_) { /* ignore */ }
       set({ currentGraph: { nodes, edges } });
+      try {
+        if (typeof window !== "undefined") {
+          try {
+          } catch (_) { /* ignore */ }
+        }
+      } catch (_) { /* ignore */ }
     } catch (e) {
       try {
-        fallback("ontology.setCurrentGraph.failed", { error: String(e) }, { level: "warn" });
+        fallback(
+          "ontology.setCurrentGraph.failed",
+          { error: String(e) },
+          { level: "warn" },
+        );
+      } catch (_) {
+        /* ignore */
+      }
+      try {
+        if (typeof window !== "undefined") {
+          try {
+          } catch (_) { /* ignore */ }
+        }
       } catch (_) { /* ignore */ }
       set({ currentGraph: { nodes, edges } });
     }
@@ -1730,7 +2039,9 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                 // The rdfManager will recompute namespaces from store contents.
                 try {
                   rdfManager
-                    .loadRDF('@prefix dc: <http://purl.org/dc/elements/1.1/> . dc:__vg_dummy a dc:__Dummy .')
+                    .loadRDF(
+                      "@prefix dc: <http://purl.org/dc/elements/1.1/> . dc:__vg_dummy a dc:__Dummy .",
+                    )
                     .catch(() => {});
                 } catch (_) {
                   /* ignore */
@@ -2067,9 +2378,13 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
             // discovered by recomputeNamespacesFromStore rather than by ad-hoc registration.
             try {
               rdfMgr
-                .loadRDF(`@prefix ${String(p)}: <${String(ns)}> . ${String(p)}:__vg_dummy a ${String(p)}:__Dummy .`)
+                .loadRDF(
+                  `@prefix ${String(p)}: <${String(ns)}> . ${String(p)}:__vg_dummy a ${String(p)}:__Dummy .`,
+                )
                 .catch(() => {});
-            } catch (_) { /* ignore */ }
+            } catch (_) {
+              /* ignore */
+            }
           } catch (e) {
             try {
               if (typeof fallback === "function") {
@@ -2116,16 +2431,17 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
     const mgr = rdfManager;
     if (!mgr || typeof mgr.getStore !== "function") return;
 
-    const expand = typeof (mgr as any).expandPrefix === "function"
-      ? (s: string) => {
-          try {
-            const out = (mgr as any).expandPrefix(s);
-            return typeof out === "string" ? out : String(out || s);
-          } catch (_) {
-            return s;
+    const expand =
+      typeof (mgr as any).expandPrefix === "function"
+        ? (s: string) => {
+            try {
+              const out = (mgr as any).expandPrefix(s);
+              return typeof out === "string" ? out : String(out || s);
+            } catch (_) {
+              return s;
+            }
           }
-        }
-      : (s: string) => s;
+        : (s: string) => s;
 
     const rdfsLabel = expand("rdfs:label");
     const rdfType = expand("rdf:type");
@@ -2147,7 +2463,9 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
         const subjects = Array.from(
           new Set(
             allQuads
-              .map((q: any) => (q && q.subject && (q.subject as any).value) || "")
+              .map(
+                (q: any) => (q && q.subject && (q.subject as any).value) || "",
+              )
               .filter(Boolean),
           ),
         );
@@ -2158,23 +2476,54 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
         subjects.forEach((s) => {
           try {
             const subj = namedNode(String(s));
-            const typeQuads = store.getQuads(subj, namedNode(rdfType), null, null) || [];
-            const types = Array.from(new Set(typeQuads.map((q:any) => (q.object && (q.object as any).value) || '').filter(Boolean)));
+            const typeQuads =
+              store.getQuads(subj, namedNode(rdfType), null, null) || [];
+            const types = Array.from(
+              new Set(
+                typeQuads
+                  .map((q: any) => (q.object && (q.object as any).value) || "")
+                  .filter(Boolean),
+              ),
+            );
             const isProp = types.some((t: string) => propertyTypes.has(t));
             const isClass = types.some((t: string) => classTypes.has(t));
 
             if (isProp) {
-              const labelQ = store.getQuads(subj, namedNode(rdfsLabel), null, null) || [];
-              const label = labelQ.length > 0 ? String((labelQ[0].object as any).value) : String(s);
-              propsMap[String(s)] = {iri: String(s), label, domain: [], range: [], namespace: '', source: 'store' };
+              const labelQ =
+                store.getQuads(subj, namedNode(rdfsLabel), null, null) || [];
+              const label =
+                labelQ.length > 0
+                  ? String((labelQ[0].object as any).value)
+                  : String(s);
+              propsMap[String(s)] = {
+                iri: String(s),
+                label,
+                domain: [],
+                range: [],
+                namespace: "",
+                source: "store",
+              };
             }
 
             if (isClass) {
-              const labelQ = store.getQuads(subj, namedNode(rdfsLabel), null, null) || [];
-              const label = labelQ.length > 0 ? String((labelQ[0].object as any).value) : String(s);
-              classesMap[String(s)] = {iri: String(s), label, namespace: '', properties: [], restrictions: {}, source: 'store' };
+              const labelQ =
+                store.getQuads(subj, namedNode(rdfsLabel), null, null) || [];
+              const label =
+                labelQ.length > 0
+                  ? String((labelQ[0].object as any).value)
+                  : String(s);
+              classesMap[String(s)] = {
+                iri: String(s),
+                label,
+                namespace: "",
+                properties: [],
+                restrictions: {},
+                source: "store",
+              };
             }
-          } catch (_) { /* ignore per-subject errors */ }
+          } catch (_) {
+            /* ignore per-subject errors */
+          }
         });
 
         const mergedProps = Object.values(propsMap) as ObjectProperty[];
@@ -2197,7 +2546,9 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
           try {
             // subjects may be string[] or unknown[], just rebuild conservatively
             rebuild();
-          } catch (_) { /* ignore */ }
+          } catch (_) {
+            /* ignore */
+          }
 
           // NEW: Automatic mapping reaction
           // When subjects change in the urn:vg:data graph, attempt to map
@@ -2205,40 +2556,60 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
           // into canonical edges inside ontologyStore.currentGraph so the canvas
           // mapping sees and renders them.
           try {
-            const subjList: string[] = Array.isArray(subjects) ? subjects.map(String).filter(Boolean) : [];
+            const subjList: string[] = Array.isArray(subjects)
+              ? subjects.map(String).filter(Boolean)
+              : [];
             if (!subjList || subjList.length === 0) return;
 
             // Diagnostic: log received subjects for troubleshooting
             try {
-              console.debug("[VG_DEBUG] rdf.onSubjectsChange received", { subjects: subjList.slice(0, 50) });
-            } catch (_) { /* ignore */ }
+              console.debug("[VG_DEBUG] rdf.onSubjectsChange received", {
+                subjects: subjList.slice(0, 50),
+              });
+            } catch (_) {
+              /* ignore */
+            }
 
             // Guard: require store access
-            const store = mgr && typeof mgr.getStore === "function" ? mgr.getStore() : null;
+            const store =
+              mgr && typeof mgr.getStore === "function" ? mgr.getStore() : null;
             if (!store || typeof store.getQuads !== "function") return;
 
             const g = namedNode("urn:vg:data");
-            const osState = (useOntologyStore as any).getState ? (useOntologyStore as any).getState() : null;
-            const current = osState && osState.currentGraph ? osState.currentGraph : { nodes: [], edges: [] };
-            const curNodes = (current && current.nodes) ? current.nodes : [];
-            const curEdges = (current && current.edges) ? current.edges : [];
+            const osState = (useOntologyStore as any).getState
+              ? (useOntologyStore as any).getState()
+              : null;
+            const current =
+              osState && osState.currentGraph
+                ? osState.currentGraph
+                : { nodes: [], edges: [] };
+            const curNodes = current && current.nodes ? current.nodes : [];
+            const curEdges = current && current.edges ? current.edges : [];
 
             // Helper: resolve a full node id in currentGraph for an IRI.
+            // Strict matching only: match exact IRI or exact node.id (which should be an IRI or blank node).
             const findNodeIdForIri = (iri: string) => {
               if (!iri) return "";
               try {
-                // Match against node.data.iri, node.iri or node.id
+                // Match only exact equality against node.data.iri, node.iri or node.id
                 for (const n of curNodes) {
                   try {
                     const nd = (n && (n.data || n)) || {};
-                    const candIri = String(nd.iri || (n && (n.iri || n.id)) || "");
+                    const candIri = String(
+                      nd.iri || (n && (n.iri || n.id)) || "",
+                    );
                     if (!candIri) continue;
-                    if (String(candIri) === String(iri)) return String(n.id || candIri);
-                    // try http/https scheme variants
-                    if (String(candIri).replace(/^https?:/i, "") === String(iri).replace(/^https?:/i, "")) return String(n.id || candIri);
-                  } catch (_) { /* ignore per-node */ }
+                    if (candIri === iri) return String(n.id || candIri);
+                    // Also allow exact match against node.id if it is present
+                    const nodeId = n && (n.id || "");
+                    if (nodeId && String(nodeId) === iri) return String(nodeId);
+                  } catch (_) {
+                    /* ignore per-node */
+                  }
                 }
-              } catch (_) { /* ignore */ }
+              } catch (_) {
+                /* ignore */
+              }
               return "";
             };
 
@@ -2252,7 +2623,11 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
                   try {
                     if (!q || !q.subject || !q.predicate || !q.object) continue;
                     // only consider object IRIs (skip literals)
-                    if (!q.object.value || (q.object.termType && q.object.termType !== "NamedNode")) continue;
+                    if (
+                      !q.object.value ||
+                      (q.object.termType && q.object.termType !== "NamedNode")
+                    )
+                      continue;
 
                     const subjIri = String(q.subject.value);
                     const objIri = String(q.object.value);
@@ -2272,20 +2647,29 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
                     const already = (curEdges || []).some((e: any) => {
                       try {
                         return String(e.id) === String(edgeId);
-                      } catch { return false; }
+                      } catch {
+                        return false;
+                      }
                     });
                     if (already) continue;
 
                     // Build lightweight edge payload matching currentGraph shape
-                    const label = ((): string => {
-                      try {
-                        // Short local name fallback
-                        const parts = String(predIri).split(/[#\/]/).filter(Boolean);
-                        return parts.length ? parts[parts.length - 1] : String(predIri);
-                      } catch (_) {
-                        return String(predIri);
+                    let label = "";
+                    try {
+                      const mgrLocal = rdfManager;
+                      if (mgrLocal && predIri) {
+                        try {
+                          const td = computeTermDisplay(String(predIri), mgrLocal as any);
+                          label = String(td.prefixed || td.short || "");
+                        } catch (_) {
+                          label = "";
+                        }
+                      } else {
+                        label = "";
                       }
-                    })();
+                    } catch (_) {
+                      label = "";
+                    }
 
                     const newEdge = {
                       id: edgeId,
@@ -2298,15 +2682,24 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
                       },
                     };
                     edgesToAdd.push(newEdge);
-                  } catch (_) { /* ignore per-quad */ }
+                  } catch (_) {
+                    /* ignore per-quad */
+                  }
                 }
-              } catch (_) { /* ignore per-subject */ }
+              } catch (_) {
+                /* ignore per-subject */
+              }
             });
 
             // Diagnostic: log attempted edge creations
             try {
-              console.debug("[VG_DEBUG] rdf.onSubjectsChange edgesToAdd", { count: edgesToAdd.length, sample: edgesToAdd.slice(0, 8) });
-            } catch (_) { /* ignore */ }
+              console.debug("[VG_DEBUG] rdf.onSubjectsChange edgesToAdd", {
+                count: edgesToAdd.length,
+                sample: edgesToAdd.slice(0, 8),
+              });
+            } catch (_) {
+              /* ignore */
+            }
 
             if (edgesToAdd.length > 0) {
               try {
@@ -2319,32 +2712,51 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
                     if (seen.has(String(e.id))) return false;
                     seen.add(String(e.id));
                     return true;
-                  } catch { return false; }
+                  } catch {
+                    return false;
+                  }
                 });
 
                 // Diagnostic: log before / after counts
                 try {
-                  console.debug("[VG_DEBUG] rdf.onSubjectsChange mergingEdges", { before: (curEdges || []).length, after: deduped.length });
-                } catch (_) { /* ignore */ }
+                  console.debug(
+                    "[VG_DEBUG] rdf.onSubjectsChange mergingEdges",
+                    { before: (curEdges || []).length, after: deduped.length },
+                  );
+                } catch (_) {
+                  /* ignore */
+                }
 
                 // Apply update via store setter so ReactFlowCanvas mapping will pick it up
                 try {
-                  (useOntologyStore as any).setState({ currentGraph: { nodes: curNodes, edges: deduped } });
+                  (useOntologyStore as any).setState({
+                    currentGraph: { nodes: curNodes, edges: deduped },
+                  });
                 } catch (_) {
                   // fallback: if direct setState unavailable, call setCurrentGraph if exposed
                   try {
-                    const os = (useOntologyStore as any).getState ? (useOntologyStore as any).getState() : null;
+                    const os = (useOntologyStore as any).getState
+                      ? (useOntologyStore as any).getState()
+                      : null;
                     if (os && typeof os.setCurrentGraph === "function") {
                       os.setCurrentGraph(curNodes, deduped);
                     }
-                  } catch (_) { /* ignore */ }
+                  } catch (_) {
+                    /* ignore */
+                  }
                 }
-              } catch (_) { /* ignore merge failure */ }
+              } catch (_) {
+                /* ignore merge failure */
+              }
             }
-          } catch (_) { /* ignore subject-change handler failures */ }
+          } catch (_) {
+            /* ignore subject-change handler failures */
+          }
         });
       }
-    } catch (_) { /* ignore */ }
+    } catch (_) {
+      /* ignore */
+    }
 
     // Also subscribe to global change notifications as a fallback
     try {
@@ -2352,10 +2764,14 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
         mgr.onChange(() => {
           try {
             rebuild();
-          } catch (_) { /* ignore */ }
+          } catch (_) {
+            /* ignore */
+          }
         });
       }
-    } catch (_) { /* ignore */ }
+    } catch (_) {
+      /* ignore */
+    }
   } catch (_) {
     /* ignore top-level setup failures */
   }

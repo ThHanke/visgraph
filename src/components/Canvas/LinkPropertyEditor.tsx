@@ -13,6 +13,7 @@ import {
 } from '../ui/dialog';
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { computeTermDisplay, shortLocalName } from '../../utils/termUtils';
+import { getPredicateDisplay } from './core/edgeLabel';
 
 interface LinkPropertyEditorProps {
   open: boolean;
@@ -99,14 +100,10 @@ export const LinkPropertyEditor = ({
         ? (mgrState as any).getRdfManager()
         : (mgrState as any).rdfManager;
 
-    const subjIri =
-      (sourceNode && ((sourceNode as any).iri || (sourceNode as any).key)) ||
-      (linkData && (linkData.data?.from || linkData.from || linkData.source)) ||
-      "";
-    const objIri =
-      (targetNode && ((targetNode as any).iri || (targetNode as any).key)) ||
-      (linkData && (linkData.data?.to || linkData.to || linkData.target)) ||
-      "";
+    // Resolve subject/object deterministically from the canvas-provided node props.
+    // Do NOT fall back to linkData fields — the canvas must provide authoritative endpoints.
+    const subjIri = (sourceNode && ((sourceNode as any).iri || (sourceNode as any).key)) || "";
+    const objIri = (targetNode && ((targetNode as any).iri || (targetNode as any).key)) || "";
 
     try {
       if (mgr && subjIri && objIri) {
@@ -166,8 +163,7 @@ export const LinkPropertyEditor = ({
                     objIri,
                     afterCount: (after && after.length) || 0,
                   });
-                  try { (window as any).__VG_LAST_ADDED_QUAD = { subj: String(subjTerm.value), pred: String(predTerm.value), obj: String(objTerm.value), graph: 'urn:vg:data' }; } catch (_) { /* ignore */ }
-                }
+                  }
               } catch (_) { /* ignore diag */ }
             }
           } catch (_) { /* ignore */ }
@@ -192,31 +188,78 @@ export const LinkPropertyEditor = ({
       // for a full RDF->parsedGraph reconcile).
       const os = useOntologyStore.getState();
       if (os && typeof os.setCurrentGraph === "function") {
-        try {
-          const cg = os.currentGraph || { nodes: [], edges: [] };
-          // Build a stable edge id
-          const edgeId = String(`${subjIri}-${objIri}-${(property && property.value) || uriToSave}`);
-          const exists = (cg.edges || []).some((e: any) => String(e.id) === edgeId);
-          if (!exists) {
-            const newEdge = {
-              id: edgeId,
-              source: String(subjIri),
-              target: String(objIri),
-              data: {
-                propertyUri: (property && property.value) || uriToSave,
-                propertyType: (property && property.value) || uriToSave,
-                label: property && property.label ? property.label : (shortLocalName(String(uriToSave)) || String(uriToSave)),
-              },
-            } as any;
-            try {
-              os.setCurrentGraph(cg.nodes || [], [...(cg.edges || []), newEdge]);
-            } catch (_) {
-              /* ignore setCurrentGraph failures - not critical */
-            }
-          }
-        } catch (_) {
-          /* ignore ontologyStore update failures */
-        }
+              try {
+                const cg = os.currentGraph || { nodes: [], edges: [] };
+                // Build a stable edge id that encodes the predicate so identical endpoint pairs
+                // with different predicates don't collide. Use encodeURIComponent for safety.
+                const predVal = (property && property.value) || uriToSave;
+                const edgeId = String(`${subjIri}-${objIri}-${encodeURIComponent(String(predVal))}`);
+                const exists = (cg.edges || []).some((e: any) => String(e.id) === edgeId);
+                if (!exists) {
+                  // Compute a friendly label for the predicate: prefer rdfs:label / prefixed form, then short local name
+                  let labelForEdge = "";
+                  try {
+                    const ms = useOntologyStore.getState();
+                    const rdfMgrForLabel =
+                      typeof (ms as any).getRdfManager === "function"
+                        ? (ms as any).getRdfManager()
+                        : (ms as any).rdfManager;
+                    try {
+                      // Strict label resolution:
+                      // 1) prefer explicit property.label when present
+                      // 2) otherwise use computeTermDisplay with the rdf manager (strict)
+                      // 3) if no rdf manager or computeTermDisplay fails, leave label empty
+                      if (property && property.label) {
+                        labelForEdge = String(property.label);
+                      } else if (rdfMgrForLabel && predVal) {
+                        try {
+                          const td = computeTermDisplay(String(predVal), rdfMgrForLabel as any);
+                          labelForEdge = String(td.prefixed || td.short || "");
+                        } catch (_) {
+                          labelForEdge = "";
+                        }
+                      } else {
+                        labelForEdge = "";
+                      }
+                    } catch (_) {
+                      labelForEdge = property && property.label ? String(property.label) : "";
+                    }
+                  } catch (_) {
+                    labelForEdge = property && property.label ? String(property.label) : "";
+                  }
+  
+                  const newEdge = {
+                    id: edgeId,
+                    source: String(subjIri),
+                    target: String(objIri),
+                    data: {
+                      propertyUri: predVal,
+                      propertyType: predVal,
+                      label: labelForEdge,
+                    },
+                  } as any;
+                  try {
+                    // Diagnostic: log the intended insertion so we can verify the payload when new edges are created
+                    try {
+                      if (typeof console !== "undefined" && typeof console.debug === "function") {
+                        console.debug("[VG] LinkPropertyEditor.insertingEdge", { edgeId, subjIri, predVal, objIri, newEdge, currentGraphSample: { nodes: (cg.nodes || []).slice(-3), edges: (cg.edges || []).slice(-6) } });
+                      }
+                    } catch (_) { /* ignore logging failures */ }
+  
+                    os.setCurrentGraph(cg.nodes || [], [...(cg.edges || []), newEdge]);
+  
+                    // Also attach a debug hook on window so devs can inspect the last inserted edge immediately.
+                    try {
+                      if (typeof window !== "undefined") {
+                      }
+                    } catch (_) { /* ignore */ }
+                  } catch (_) {
+                    /* ignore setCurrentGraph failures - not critical */
+                  }
+                }
+              } catch (_) {
+                /* ignore ontologyStore update failures */
+              }
       }
     } catch (_) {
       /* ignore */
@@ -230,7 +273,7 @@ export const LinkPropertyEditor = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Edit Connection Property</DialogTitle>
+          <DialogTitle>{linkData?.operation === "create" ? "Create Connection" : "Edit Connection Property"}</DialogTitle>
           <DialogDescription>
             Select the relationship type between these nodes
           </DialogDescription>
@@ -241,20 +284,22 @@ export const LinkPropertyEditor = ({
           <div className="bg-muted/50 p-3 rounded-lg">
             <div className="text-sm font-medium">
             {(() => {
-              const sIri = String(sourceNode?.iri ?? '');
-              const tIri = String(targetNode?.iri ?? '');
+              // Prefer the linkSource/linkTarget props (set by the canvas refs) as the single source of truth
+              // for what the user intended when dragging. Fall back to the selected link payload fields only
+              // if the props are not available (timing/latency cases).
+              // Use the canvas-provided nodes as the single source of truth for display.
+              const sIri = String(sourceNode?.iri ?? sourceNode?.key ?? '');
+              const tIri = String(targetNode?.iri ?? targetNode?.key ?? '');
               const mgrState = useOntologyStore.getState();
-              const rdfMgr = typeof mgrState.getRdfManager === 'function' ? mgrState.getRdfManager() : mgrState.rdfManager;
+              const rdfMgr = typeof mgrState.getRdfManager === 'function' ? mgrState.getRdfManager() : (mgrState as any).rdfManager;
               const format = (iri: string) => {
+                if (!iri) return '';
                 if (iri.startsWith('_:')) return iri;
                 try {
-                  if (rdfMgr) {
-                    const td = computeTermDisplay(iri, rdfMgr as any);
-                    // prefer prefixed form for display; fall back to short
-                    return (td.prefixed || td.short || '').replace(/^(https?:\/\/)?(www\.)?/, '');
-                  }
+                  const td = rdfMgr ? computeTermDisplay(iri, rdfMgr as any) : undefined;
+                  if (td) return (td.prefixed || td.short || '').replace(/^(https?:\/\/)?(www\.)?/, '');
                 } catch (_) {
-                  // fall through to local name fallback
+                  /* ignore computeTermDisplay failures */
                 }
                 return shortLocalName(iri).replace(/^(https?:\/\/)?(www\.)?/, '');
               };
@@ -283,7 +328,7 @@ export const LinkPropertyEditor = ({
           </div>
 
           {/* Actions */}
-          <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
@@ -291,7 +336,7 @@ export const LinkPropertyEditor = ({
               onClick={handleSave}
               disabled={!(selectedProperty || displayValue)}
             >
-              Save Connection
+              {linkData?.operation === "create" ? "Create Connection" : "Save Connection"}
             </Button>
           </div>
         </div>

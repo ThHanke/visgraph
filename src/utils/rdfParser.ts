@@ -324,8 +324,9 @@ export class RDFParser {
         }
 
         if (!entities.has(subjectUri)) {
+          // Use the full IRI as the canonical node id so node.id === node.iri (IRI-first policy)
           entities.set(subjectUri, {
-            id: this.createSafeId(subjectUri),
+            id: subjectUri,
             iri: subjectUri,
             // store classType as the local name and keep the namespace separate so consumers
             // can assert on `data.classType === 'Length'` and `data.namespace === 'iof-qual'`
@@ -403,11 +404,14 @@ export class RDFParser {
       );
 
     objectQuads.forEach(quadItem => {
-      const sourceId = this.createSafeId(quadItem.subject.value);
-      const targetId = this.createSafeId((quadItem.object as NamedNode).value);
+      const sourceIri = quadItem.subject.value;
+      const targetIri = (quadItem.object as NamedNode).value;
       const propertyUri = (quadItem.predicate as NamedNode).value;
       const { namespace, localName } = this.splitUri(propertyUri);
 
+      // Use IRIs as endpoint identifiers (node ids are IRIs under the IRI-first policy)
+      const sourceId = sourceIri;
+      const targetId = targetIri;
       const edgeId = `${sourceId}-${targetId}-${localName}`;
 
       // Find rdfs:label for this property

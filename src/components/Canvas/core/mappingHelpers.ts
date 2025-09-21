@@ -3,6 +3,7 @@ const { namedNode } = DataFactory;
 import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
 import type { RDFManager } from "../../../utils/rdfManager";
 import { computeTermDisplay, shortLocalName } from "../../../utils/termUtils";
+import { getPredicateDisplay } from "./edgeLabel";
 import type { NodeData, LinkData } from "../../../types/canvas";
 
 /**
@@ -29,13 +30,14 @@ import type { NodeData, LinkData } from "../../../types/canvas";
  * provides node.position when available on the canonical node, otherwise no position.
  */
 
-/* Minimal defensive typing for the canonical graph shape used by the app */
-type CanonicalNode = any;
-type CanonicalEdge = any;
+/* Minimal defensive typing for the graph node/edge shapes used by the app */
+type NodeShape = any;
+type EdgeShape = any;
 
 export interface MapOptions {
   getRdfManager?: (() => RDFManager | undefined) | undefined;
   availableClasses?: Array<{ iri: string; label?: string; namespace?: string }>;
+  availableProperties?: Array<any> | undefined;
   getEntityIndex?: (() => { mapByIri?: Map<string, any>; mapByLocalName?: Map<string, any> } | undefined) | undefined;
 }
 
@@ -45,7 +47,7 @@ export interface MapOptions {
  * - rdfManager: optional manager used to expand/contract prefixes
  */
 export function buildNodeDataFromParsedNode(
-  canonicalNode: CanonicalNode,
+  canonicalNode: NodeShape,
   rdfManager?: RDFManager | undefined,
   availableClasses?: Map<string, any> | Array<{iri:string}> | undefined
 ): NodeData {
@@ -101,7 +103,8 @@ export function buildNodeDataFromParsedNode(
     /* ignore outer failures */
   }
 
-  // Expand/normalize candidates into strict full IRIs.
+  // Expand/normalize candidates into full IRIs where possible, but keep raw values as fallback.
+  // Purpose: preserve type information even when rdfManager cannot expand a prefixed form.
   const rdfTypesArr: string[] = [];
   try {
     for (const t of rdfTypesCandidates) {
@@ -121,11 +124,14 @@ export function buildNodeDataFromParsedNode(
               rdfTypesArr.push(String(expanded));
               continue;
             }
+            // Expansion returned something non-IRI or failed to produce an IRI:
+            // fall through to keep the raw candidate below as a fallback.
           } catch (_) {
-            // expansion failed — skip this candidate (do not synthesize)
+            // expansion failed — fall through to keep raw candidate
           }
         }
-        // Bare local names: intentionally ignored here (strict policy)
+        // Fallback: keep the raw candidate (prefixed name or local name) so we don't lose information.
+        rdfTypesArr.push(ts);
       } catch (_) {
         /* ignore per-candidate */
       }
@@ -159,7 +165,8 @@ export function buildNodeDataFromParsedNode(
     String(type).includes("DatatypeProperty")
   );
 
-  const canonicalNodeIri = src.iri ?? src.id ?? src.key ?? "";
+  // Prefer explicit iri, but do not treat absence as fatal — node.id is authoritative when present.
+  const nodeIri = src.iri ?? src.id ?? src.key ?? "";
 
   // Compute display classType/namespace from resolved rdfTypes when available.
   // Prefer a prefixed form from computeTermDisplay (e.g., 'owl:Class') for display.
@@ -208,10 +215,10 @@ export function buildNodeDataFromParsedNode(
     }
   } catch (_) { /* ignore */ }
 
-  const nodeData: NodeData = {
-    key: String(src.iri || src.id || src.key || ""),
-    iri: canonicalNodeIri,
-    rdfTypes: rdfTypesArr,
+    const nodeData: NodeData = {
+      key: String(src.iri || src.id || src.key || ""),
+      iri: nodeIri,
+      rdfTypes: rdfTypesArr,
     label: computedLabel,
     namespace: displayNamespace,
     classType: displayClassType,
@@ -236,8 +243,8 @@ export function buildNodeDataFromParsedNode(
  * The function returns an array of RFNode<NodeData>. It does not set layout/positions
  * beyond any position present on the canonical node (caller may apply layout).
  */
-export function mapCanonicalToRFNodes(
-  canonicalNodes: CanonicalNode[] = [],
+export function mapNodesToRFNodes(
+  nodesForMapping: NodeShape[] = [],
   options?: MapOptions
 ): RFNode<NodeData>[] {
   const mgr = options && typeof options.getRdfManager === "function" ? options.getRdfManager() : undefined;
@@ -246,8 +253,8 @@ export function mapCanonicalToRFNodes(
 
   const nodes: RFNode<NodeData>[] = [];
 
-  for (let i = 0; i < (canonicalNodes || []).length; i++) {
-    const node = canonicalNodes[i];
+  for (let i = 0; i < (nodesForMapping || []).length; i++) {
+    const node = nodesForMapping[i];
     const src = node && node.data ? node.data : node;
 
     // Build node data (pure)
@@ -271,11 +278,33 @@ export function mapCanonicalToRFNodes(
       canonicalNs = "";
     }
 
-    if (!nd.iri) {
-      // Skip nodes that do not expose a full IRI — nodes must have an IRI.
+    // Enforce strict IRI-first node id policy:
+    // - Prefer node.id when it is an absolute IRI (http/https) or a blank node (_:)
+    // - Otherwise prefer the parsed node iri (nd.iri) when it is an absolute IRI or blank node
+    // - Otherwise skip the node and emit a lightweight diagnostic (do not fabricate ids)
+    let id = "";
+    const rawNodeId = node && node.id ? String(node.id) : "";
+    const parsedIri = nd && nd.iri ? String(nd.iri) : "";
+    const isIriOrBNode = (s: string) => !!s && (/^https?:\/\//i.test(s) || s.startsWith("_:"));
+    try {
+      if (isIriOrBNode(rawNodeId)) {
+        id = rawNodeId;
+      } else if (isIriOrBNode(parsedIri)) {
+        id = parsedIri;
+      } else {
+        // Emit a lightweight diagnostic so producers of non-IRI ids can be found.
+        try {
+          if (typeof console !== "undefined" && typeof console.debug === "function") {
+            console.debug("[VG_WARN] mapNodesToRFNodes skipping node without IRI id", {
+              nodePreview: { id: rawNodeId || undefined, iri: parsedIri || undefined, label: nd && (nd as any).label },
+            });
+          }
+        } catch (_) { /* ignore logging failures */ }
+        continue;
+      }
+    } catch (_) {
       continue;
     }
-    const id = String(nd.iri);
     const pos = (node && node.position) || (src && src.position) || undefined;
 
     nodes.push({
@@ -309,14 +338,16 @@ export function mapCanonicalToRFNodes(
  *
  * Returns: RFEdge<LinkData>[]
  */
-export function mapCanonicalToRFEdges(
-  canonicalEdges: CanonicalEdge[] = [],
-  nodesPresent: Set<string> = new Set()
+export function mapEdgesToRFEdges(
+  edgesForMapping: EdgeShape[] = [],
+  nodesPresent: Set<string> = new Set(),
+  options?: MapOptions
 ): RFEdge<LinkData>[] {
+  const mgrLocal = options && typeof options.getRdfManager === "function" ? options.getRdfManager() : undefined;
   const edges: RFEdge<LinkData>[] = [];
 
-  for (let j = 0; j < (canonicalEdges || []).length; j++) {
-    const edge = canonicalEdges[j];
+  for (let j = 0; j < (edgesForMapping || []).length; j++) {
+    const edge = edgesForMapping[j];
     const src = edge && edge.data ? edge.data : edge;
 
     const from = String(src.source || src.from || "");
@@ -329,7 +360,31 @@ export function mapCanonicalToRFEdges(
 
     const propertyUriRaw = src.propertyUri || src.propertyType || "";
 
-    const labelForEdge = src.label || "";
+    // Strict label resolution:
+    // Prefer computeTermDisplay when a predicate IRI and RDF manager are available.
+    // Otherwise fall back to any explicit label present on the source object or the foundProp label.
+    let labelForEdge = "";
+    try {
+      const rdfMgr = mgrLocal || ((typeof (globalThis as any).__VG_RDF_MANAGER === "function")
+        ? (globalThis as any).__VG_RDF_MANAGER()
+        : undefined);
+      if (propertyUriRaw && rdfMgr) {
+        try {
+          const td = computeTermDisplay(String(propertyUriRaw), rdfMgr as any);
+          labelForEdge = String(td.prefixed || td.short || "");
+        } catch (_) {
+          labelForEdge = src && src.label ? String(src.label) : (foundProp && (foundProp.label || foundProp.name) ? String(foundProp.label || foundProp.name) : "");
+        }
+      } else if (src && src.label) {
+        labelForEdge = String(src.label);
+      } else if (foundProp && (foundProp.label || foundProp.name)) {
+        labelForEdge = String(foundProp.label || foundProp.name);
+      } else {
+        labelForEdge = "";
+      }
+    } catch (_) {
+      labelForEdge = src && src.label ? String(src.label) : "";
+    }
 
     edges.push({
       id,
@@ -357,21 +412,32 @@ export function mapCanonicalToRFEdges(
  * Convenience: map whole graph -> { nodes, edges }
  */
 export function mapGraphToDiagram(
-  graph: { nodes?: CanonicalNode[]; edges?: CanonicalEdge[] } | undefined,
+  graph: { nodes?: NodeShape[]; edges?: EdgeShape[] } | undefined,
   options?: MapOptions
 ): { nodes: RFNode<NodeData>[]; edges: RFEdge<LinkData>[] } {
   const cg = graph || { nodes: [], edges: [] };
   const mgr = options && typeof options.getRdfManager === "function" ? options.getRdfManager() : undefined;
 
-  // Build a quick map of node key -> iri from the canonical graph so we can
-  // resolve edge endpoints to IRIs for data-graph visibility computation.
+  // Build indexes for resolving edge endpoints:
+  // - nodeKeyToIri: map canonical node key -> iri (when iri exists)
+  // - nodeIds: set of canonical node ids (primary identifiers; expected to be IRIs)
+  // - iriToNodeId: reverse map iri -> node.id for quick lookups
   const nodeKeyToIri = new Map<string, string>();
+  const cgNodeIds = new Set<string>();
+  const iriToNodeId = new Map<string, string>();
   try {
     (cg.nodes || []).forEach((n: any) => {
       const src = n && n.data ? n.data : n;
-      const iri = (src && (src.iri || (src.data && src.data.iri))) || src.iri || src.id || "";
-      const key = n.id || String(iri || "");
-      if (key) nodeKeyToIri.set(String(key), String(iri || ""));
+      const iri = (src && (src.iri || (src.data && src.data.iri))) || src.iri || "";
+      // Only register node keys if they are valid IRIs or blank nodes; do not index fabricated or local keys.
+      const key = (n && n.id && (typeof n.id === "string") && ((/^https?:\/\//i.test(n.id)) || n.id.startsWith("_:"))) ? String(n.id) : (iri && ((/^https?:\/\//i.test(iri)) || iri.startsWith("_:")) ? String(iri) : "");
+      if (key) {
+        nodeKeyToIri.set(String(key), String(iri || ""));
+        cgNodeIds.add(String(key));
+        if (iri && ((/^https?:\/\//i.test(iri)) || iri.startsWith("_:"))) {
+          iriToNodeId.set(String(iri), String(key));
+        }
+      }
     });
   } catch (_) {
     /* ignore index build failures */
@@ -421,8 +487,8 @@ export function mapGraphToDiagram(
   }
 
   // Map nodes using existing helper (this will consult RDF manager for missing rdfTypes)
-  const mappedNodes = mapCanonicalToRFNodes(cg.nodes || [], options);
-  const nodeIds = new Set(mappedNodes.map((n) => n.id));
+  const mappedNodes = mapNodesToRFNodes(cg.nodes || [], options);
+  const mappedNodeIds = new Set(mappedNodes.map((n) => n.id));
 
   // Resolve edges to use node IRIs (not legacy/canonical numeric keys).
   // Build mappedEdges by resolving each canonical edge's raw endpoint refs to the node IRI
@@ -434,32 +500,143 @@ export function mapGraphToDiagram(
       const edge = cg.edges[j];
       const src = edge && edge.data ? edge.data : edge;
 
-      // Raw refs may be under different properties depending on producer
-      const rawFromRef = String(src.source || src.from || (src.data && src.data.source) || "");
-      const rawToRef = String(src.target || src.to || (src.data && src.data.target) || "");
+      // Raw refs may be under different properties depending on producer.
+      // Some edges place endpoint refs on the top-level (edge.source/edge.target) while others
+      // put them inside edge.data. Check both places and normalize to a consistent string.
+      const edgeObj = edge || {};
+      const dataObj = (edgeObj && edgeObj.data) ? edgeObj.data : {};
+      const rawFromRef = String(
+        (dataObj && (dataObj.source || dataObj.from || dataObj.s || dataObj.subj || dataObj.subject)) ||
+        edgeObj.source ||
+        edgeObj.from ||
+        edgeObj.subj ||
+        edgeObj.subject ||
+        ""
+      );
+      const rawToRef = String(
+        (dataObj && (dataObj.target || dataObj.to || dataObj.o || dataObj.obj || dataObj.object)) ||
+        edgeObj.target ||
+        edgeObj.to ||
+        edgeObj.obj ||
+        edgeObj.object ||
+        ""
+      );
 
-      // Resolve raw refs to IRIs using the canonical graph index (nodeKeyToIri).
-      // If no mapping exists, fall back to the raw ref (preserves previous behavior).
-      const resolvedFromIri = nodeKeyToIri.get(rawFromRef) || rawFromIriOrFallback(rawFromRef);
-      const resolvedToIri = nodeKeyToIri.get(rawToRef) || rawFromIriOrFallback(rawToRef);
+    // Resolve raw refs strictly to existing mapped node ids (IRI or blank node).
+    // No scheme-insensitive or fuzzy matching allowed here; require exact id equality or iri -> nodeId mapping.
+    let resolvedFrom = "";
+    let resolvedTo = "";
 
-      // Skip if endpoints missing on canvas (nodeIds contains mappedNodes' ids which are IRIs)
-      if (!nodeIds.has(String(resolvedFromIri)) || !nodeIds.has(String(resolvedToIri))) continue;
+    // 1) Direct match: raw ref equals a mapped node id
+    if (mappedNodeIds.has(String(rawFromRef))) {
+      resolvedFrom = String(rawFromRef);
+    } else {
+      // 2) If rawRef is an IRI that maps to a node id via iriToNodeId, use that
+      if (iriToNodeId.has(String(rawFromRef))) {
+        resolvedFrom = iriToNodeId.get(String(rawFromRef)) || "";
+      } else {
+        // 3) If rawRef is a key that indexes to an iri which then maps to a node id, use that (rare)
+        const iri = nodeKeyToIri.get(String(rawFromRef)) || "";
+        if (iri && iriToNodeId.has(iri)) resolvedFrom = iriToNodeId.get(iri) || "";
+      }
+    }
 
-      const id = String(src.id || `e-${resolvedFromIri}-${resolvedToIri}-${j}`);
+    if (mappedNodeIds.has(String(rawToRef))) {
+      resolvedTo = String(rawToRef);
+    } else {
+      if (iriToNodeId.has(String(rawToRef))) {
+        resolvedTo = iriToNodeId.get(String(rawToRef)) || "";
+      } else {
+        const iriT = nodeKeyToIri.get(String(rawToRef)) || "";
+        if (iriT && iriToNodeId.has(iriT)) resolvedTo = iriToNodeId.get(iriT) || "";
+      }
+    }
+
+    // If either endpoint could not be resolved exactly, skip the edge and emit a diagnostic.
+    if (!resolvedFrom || !resolvedTo) {
+      try {
+        if (typeof console !== "undefined" && typeof console.debug === "function") {
+          // Serialize key helper structures into lightweight samples to avoid huge logs.
+          const mappedNodeIdsArr = Array.from(mappedNodeIds || []).slice(0, 200);
+          const nodeKeyToIriKeys = Array.from((nodeKeyToIri && nodeKeyToIri.keys && typeof nodeKeyToIri.keys === "function") ? nodeKeyToIri.keys() : []).slice(0, 200);
+          const nodeKeyToIriSample: Record<string,string> = {};
+          try {
+            for (const k of nodeKeyToIriKeys) {
+              try {
+                nodeKeyToIriSample[String(k)] = String(nodeKeyToIri.get ? nodeKeyToIri.get(k) : "");
+              } catch (_) { nodeKeyToIriSample[String(k)] = ""; }
+            }
+          } catch (_) { /* ignore sample building errors */ }
+
+          const diagPayload = {
+            edgePreview: { id: src && src.id, rawFromRef, rawToRef, resolvedFrom, resolvedTo },
+            diagnostics: {
+              mappedNodeIdsCount: (mappedNodeIds && typeof mappedNodeIds.size === "number") ? mappedNodeIds.size : mappedNodeIdsArr.length,
+              mappedNodeIdsSample: mappedNodeIdsArr,
+              nodeKeyToIriSample,
+            },
+          };
+
+          // Human-readable object for interactive consoles
+          console.debug("[VG_WARN] mapGraphToDiagram skipping edge due to unresolved endpoints", diagPayload);
+
+          // JSON-stringified version so logs captured to text files contain the full payload
+          try {
+            console.debug("[VG_WARN_JSON] mapGraphToDiagram", JSON.stringify(diagPayload));
+          } catch (_) {
+            // If stringify fails for any reason, fall back to the raw object (best-effort)
+            try { console.debug("[VG_WARN_JSON] mapGraphToDiagram (stringify failed)", diagPayload); } catch (_) { /* ignore */ }
+          }
+        }
+      } catch (_) { /* ignore logging failures */ }
+      continue;
+    }
+
+    // Ensure resolved ids are present in mappedNodeIds (sanity)
+    if (!mappedNodeIds.has(String(resolvedFrom)) || !mappedNodeIds.has(String(resolvedTo))) {
+      try {
+        if (typeof console !== "undefined" && typeof console.debug === "function") {
+          console.debug("[VG_WARN] mapGraphToDiagram resolved endpoints not present in mappedNodeIds", {
+            edgePreview: { id: src && src.id, resolvedFrom, resolvedTo, mappedNodeCount: mappedNodeIds.size },
+          });
+        }
+      } catch (_) { /* ignore */ }
+      continue;
+    }
+
+      const id = String(src.id || `e-${resolvedFrom}-${resolvedTo}-${j}`);
       const propertyUriRaw = src.propertyUri || src.propertyType || "";
-      const labelForEdge = src.label || "";
+
+      // Strict label resolution: prefer computeTermDisplay when predicate IRI + rdf manager present.
+      let labelForEdge = "";
+      try {
+        if (mgr && propertyUriRaw) {
+          try {
+            const td = computeTermDisplay(String(propertyUriRaw), mgr as any);
+            labelForEdge = String(td.prefixed || td.short || "");
+          } catch (_) {
+            // if computeTermDisplay fails, fall back to explicit src.label if present
+            labelForEdge = src && src.label ? String(src.label) : "";
+          }
+        } else if (src && src.label) {
+          labelForEdge = String(src.label);
+        } else {
+          labelForEdge = "";
+        }
+      } catch (_) {
+        labelForEdge = src && src.label ? String(src.label) : "";
+      }
 
       mappedEdges.push({
         id,
-        source: String(resolvedFromIri),
-        target: String(resolvedToIri),
+        source: String(resolvedFrom),
+        target: String(resolvedTo),
         type: "floating",
         markerEnd: { type: "arrow" as any },
         data: {
           key: id,
-          from: String(resolvedFromIri),
-          to: String(resolvedToIri),
+          from: String(resolvedFrom),
+          to: String(resolvedTo),
           propertyUri: propertyUriRaw,
           propertyType: src.propertyType || "",
           label: labelForEdge,
@@ -472,20 +649,6 @@ export function mapGraphToDiagram(
     /* ignore edge mapping failures */
   }
 
-  // Helper: attempt to coerce a raw reference to a plausible IRI when no explicit mapping found.
-  // Keep this conservative: do not mutate canonical graph, just try simple http/https prefix variants.
-  function rawFromIriOrFallback(ref: string) {
-    try {
-      if (!ref) return ref;
-      if (/^https?:\/\//i.test(ref)) return ref;
-      // try adding common scheme if it looks like an absolute authority path missing scheme
-      if (ref.startsWith("//")) return "https:" + ref;
-      // otherwise, return the original ref unchanged (do not modify canonical data)
-      return ref;
-    } catch (_) {
-      return ref;
-    }
-  }
 
   // Apply computed visibility to node data where possible (prefer explicit visible flag if set)
   try {

@@ -47,6 +47,7 @@ import { getNamespaceColorFromPalette } from "./helpers/namespaceHelpers";
 import { toast } from "sonner";
 import { computeTermDisplay, shortLocalName } from '../../utils/termUtils';
 import { debug, warn, fallback } from "../../utils/startupDebug";
+import { getPredicateDisplay } from './core/edgeLabel';
 import { CustomOntologyNode as OntologyNode } from "./CustomOntologyNode";
 import FloatingEdge from "./FloatingEdge";
 import FloatingConnectionLine from "./FloatingConnectionLine";
@@ -813,19 +814,28 @@ export const ReactFlowCanvas: React.FC = () => {
         const foundProp =
           (availableProperties || []).find((p: any) => String(p.iri) === String(propertyUriRaw)) ||
           (loadedOntologies || []).flatMap((o: any) => o.properties || []).find((p: any) => String(p.iri) === String(propertyUriRaw));
-        const labelForEdge =
-          src.label ||
-          (foundProp && (foundProp.label || foundProp.name)) ||
-          (propertyUriRaw ? (() => {
-            try {
-              const mgrLocal = getRdfManagerRef.current && getRdfManagerRef.current();
-              if (mgrLocal) {
+        let labelForEdge = "";
+        try {
+          if (src && src.label) {
+            labelForEdge = String(src.label);
+          } else if (foundProp && (foundProp.label || foundProp.name)) {
+            labelForEdge = String(foundProp.label || foundProp.name);
+          } else {
+            const mgrLocal = getRdfManagerRef.current && getRdfManagerRef.current();
+            if (mgrLocal && propertyUriRaw) {
+              try {
                 const td = computeTermDisplay(String(propertyUriRaw), mgrLocal as any);
-                return td.prefixed || td.short || shortLocalName(String(propertyUriRaw));
+                labelForEdge = String(td.prefixed || td.short || "");
+              } catch (_) {
+                labelForEdge = "";
               }
-            } catch (_) { /* ignore */ }
-            return shortLocalName(String(propertyUriRaw));
-          })() : "");
+            } else {
+              labelForEdge = "";
+            }
+          }
+        } catch (_) {
+          labelForEdge = src && src.label ? String(src.label) : "";
+        }
 
         const linkData: LinkData = {
           key: id,
@@ -1599,19 +1609,28 @@ useEffect(() => {
         const foundPropEdge =
           (availableProperties || []).find((p: any) => String(p.iri) === String(propUriFromEdge)) ||
           (loadedOntologies || []).flatMap((o: any) => o.properties || []).find((p: any) => String(p.iri) === String(propUriFromEdge));
-        const propLabelFromEdge =
-          edgeData.label ||
-          (foundPropEdge && (foundPropEdge.label || foundPropEdge.name)) ||
-          (propUriFromEdge ? (() => {
-            try {
-              const mgrLocal = getRdfManagerRef.current && getRdfManagerRef.current();
-              if (mgrLocal) {
+        let propLabelFromEdge = "";
+        try {
+          if (edgeData.label) {
+            propLabelFromEdge = String(edgeData.label);
+          } else if (foundPropEdge && (foundPropEdge.label || foundPropEdge.name)) {
+            propLabelFromEdge = String(foundPropEdge.label || foundPropEdge.name);
+          } else {
+            const mgrLocal = getRdfManagerRef.current && getRdfManagerRef.current();
+            if (mgrLocal && propUriFromEdge) {
+              try {
                 const td = computeTermDisplay(String(propUriFromEdge), mgrLocal as any);
-                return td.prefixed || td.short || '';
+                propLabelFromEdge = String(td.prefixed || td.short || "");
+              } catch (_) {
+                propLabelFromEdge = "";
               }
-            } catch (_) { /* ignore */ }
-            return shortLocalName(String(propUriFromEdge));
-          })() : "");
+            } else {
+              propLabelFromEdge = "";
+            }
+          }
+        } catch (_) {
+          propLabelFromEdge = edgeData.label || "";
+        }
 
         const selectedLinkPayload = {
           id: edge.id || edge.key || `${srcId}-${tgtId}`,
@@ -1655,11 +1674,7 @@ useEffect(() => {
     (params: Connection) => {
       if (DEBUG) {
         try {
-          debug(
-            "reactflow.connect.attempt",
-            { params: { source: params.source, target: params.target } },
-            { caller: true },
-          );
+          debug("reactflow.layout.request", { context: "onConnect" }, { caller: true });
         } catch (_) {
           /* ignore */
         }
@@ -1746,56 +1761,117 @@ useEffect(() => {
       const foundPred =
         (availableProperties || []).find((p: any) => String(p.iri) === String(predUriToUse)) ||
         (loadedOntologies || []).flatMap((o: any) => o.properties || []).find((p: any) => String(p.iri) === String(predUriToUse));
-      const predLabel =
-        (normalizedParams as any).data && (normalizedParams as any).data.label
-          ? (normalizedParams as any).data.label
-            : (foundPred && (foundPred.label || foundPred.name))
-            ? (foundPred.label || foundPred.name)
-            : (() => {
-                try {
-                  const mgrLocal = getRdfManagerRef.current && getRdfManagerRef.current();
-                  if (mgrLocal) {
-                    const td = computeTermDisplay(String(predUriToUse), mgrLocal as any);
-                    return td.prefixed || td.short || '';
-                  }
-                } catch (_) { /* ignore */ }
-                return shortLocalName(String(predUriToUse));
-              })();
+      let predLabel = "";
+      if ((normalizedParams as any).data && (normalizedParams as any).data.label) {
+        predLabel = String((normalizedParams as any).data.label);
+      } else if (foundPred && (foundPred.label || foundPred.name)) {
+        predLabel = String(foundPred.label || foundPred.name);
+      } else {
+        try {
+          const mgrLocal = getRdfManagerRef.current && getRdfManagerRef.current();
+          if (mgrLocal && predUriToUse) {
+            const td = computeTermDisplay(String(predUriToUse), mgrLocal as any);
+            predLabel = String(td.prefixed || td.short || "");
+          } else {
+            predLabel = "";
+          }
+        } catch (_) {
+          predLabel = "";
+        }
+      }
 
-      // Prepare the selected edge payload for the editor and open it.
-      // Edge persistence is performed by the editor save handler which writes the triple to the RDF store.
+      // Determine authoritative claimedSource/claimedTarget using the recorded connectionStartId and params.
+      // Some handle configurations invert params.source/params.target; detect that case and correct it.
+      const startId = connectionStartId ? String(connectionStartId) : null;
+      const pSource = String(params.source);
+      const pTarget = String(params.target);
+      let claimedSource: string;
+      let claimedTarget: string;
+
+      if (startId) {
+        // The user started dragging from startId; that must be the source.
+        claimedSource = startId;
+        // If React Flow reported params.target === startId then params.source is actually the drop node.
+        // In that inverted scenario use params.source as the true target. Otherwise use params.target.
+        claimedTarget = pTarget === startId ? pSource : pTarget;
+      } else {
+        // No recorded start id available — fall back to the event params as-is.
+        claimedSource = pSource;
+        claimedTarget = pTarget;
+      }
+
+      // Clear the recorded start id after consuming it so subsequent connects are fresh.
+      try {
+        setConnectionStartId(null);
+      } catch (_) {
+        /* ignore */
+      }
+
+      // Resolve nodes robustly by checking multiple identity fields (id, data.iri, data.key).
+      // This avoids falling back to the wrong node when React Flow params are inverted.
+      const findNodeByAny = (id: string | null | undefined) =>
+        nodes.find((n) => {
+          try {
+            return (
+              String(n.id) === String(id) ||
+              String((n as any).data?.iri) === String(id) ||
+              String((n as any).data?.key) === String(id)
+            );
+          } catch {
+            return false;
+          }
+        });
+
+      const srcNodeForRef = findNodeByAny(claimedSource) || sourceNode;
+      const tgtNodeForRef = findNodeByAny(claimedTarget) || targetNode;
+
+      // Diagnostic: log resolved nodes to help debug why the target sometimes equals the start node.
+      try {
+        if (typeof console !== "undefined" && typeof console.debug === "function") {
+          console.debug("[VG] onConnect.resolveNodes", {
+            claimedSource,
+            claimedTarget,
+            srcNodeForRefId: (srcNodeForRef as any)?.id ?? null,
+            srcNodeForRefIri: (srcNodeForRef as any)?.data?.iri ?? null,
+            tgtNodeForRefId: (tgtNodeForRef as any)?.id ?? null,
+            tgtNodeForRefIri: (tgtNodeForRef as any)?.data?.iri ?? null,
+            nodesCount: nodes.length,
+          });
+        }
+      } catch (_) { /* ignore logging failures */ }
+
+      linkSourceRef.current = (srcNodeForRef as any)?.data ?? null;
+      linkTargetRef.current = (tgtNodeForRef as any)?.data ?? null;
+
+      // Minimal selected-edge payload: React Flow ids for source/target and chosen predicate.
       const selectedEdgeForEditor = {
-        id: String((params as any).id || `${params.source}-${params.target}`),
-        key: String((params as any).id || `${params.source}-${params.target}`),
-        source: String(params.source),
-        target: String(params.target),
+        id: String((params as any).id || `${claimedSource}-${claimedTarget}-${encodeURIComponent(String(predUriToUse || ""))}`),
+        key: String((params as any).id || `${claimedSource}-${claimedTarget}-${encodeURIComponent(String(predUriToUse || ""))}`),
+        operation: "create",
+        source: claimedSource,
+        target: claimedTarget,
         data: {
-          // Provide default candidate predicate/label so the editor can show sensible defaults.
           propertyUri: predUriToUse,
-          propertyType: predFallback,
           label: predLabel,
         },
       };
 
+      // Debug: ensure the refs and payload match the user's drag direction before opening the editor.
       try {
-        // Keep a lightweight debug so developers can trace editor payloads in dev.
-        if (DEBUG && typeof console !== "undefined" && typeof console.debug === "function") {
-          console.debug("[VG] ReactFlowCanvas.onConnect prepared selectedEdgeForEditor", {
+        if (typeof console !== "undefined" && typeof console.debug === "function") {
+          console.debug("[VG] onConnect -> opening editor", {
             selectedEdgeForEditor,
-            normalizedParams,
-            predUriToUse,
-            predLabel,
+            linkSourceIri: linkSourceRef.current?.iri ?? linkSourceRef.current?.key ?? null,
+            linkTargetIri: linkTargetRef.current?.iri ?? linkTargetRef.current?.key ?? null,
+            paramsSource: params.source,
+            paramsTarget: params.target,
+            nodesCount: nodes.length,
           });
         }
-      } catch (_) { /* ignore */ }
+      } catch (_) { /* ignore logging failures */ }
 
-      // Open the LinkPropertyEditor with the prepared payload. The editor's save handler
-      // will persist the triple into the RDF store and the canvas mapping pipeline will
-      // reflect the new edge once the store emits subject-change notifications.
+      // Open the editor with the minimal payload so it renders "source → target" exactly as the drag.
       canvasActions.setSelectedLink(selectedEdgeForEditor as any, true);
-
-      linkSourceRef.current = sourceNode.data as NodeData;
-      linkTargetRef.current = targetNode.data as NodeData;
     },
     [edges, setEdges, nodes, canvasActions, availableProperties],
   );
@@ -1836,6 +1912,12 @@ useEffect(() => {
 
   const onConnectStart = useCallback((event: MouseEvent | TouchEvent, { nodeId }: { nodeId: string }) => {
     try {
+      // Record the node id where the user started the connection drag.
+      if (typeof console !== "undefined" && typeof console.debug === "function") {
+        try {
+          console.debug("[VG] onConnectStart", { nodeId });
+        } catch (_) { /* ignore */ }
+      }
       if (nodeId) setConnectionStartId(String(nodeId));
     } catch (_) { /* ignore */ }
   }, []);
@@ -2077,15 +2159,21 @@ useEffect(() => {
     async (layoutType: string, force = false, options?: { nodeSpacing?: number }) => {
       if (DEBUG) {
         try {
-          debug(
-            "reactflow.layout.request",
-            { layoutType, force, layoutEnabled, options },
-            { caller: true },
-          );
+          debug("reactflow.layout.request", { layoutType }, { caller: true });
         } catch (_) {
           /* ignore */
         }
       }
+
+      // Diagnostic: log current recorded connectionStartId (if any) so we can verify which
+      // node React Flow considered the drag origin vs the params.source reported on connect.
+      try {
+        if (typeof console !== "undefined" && typeof console.debug === "function") {
+          try {
+            console.debug("[VG] onConnect.debug", { connectionStartId });
+          } catch (_) { /* ignore */ }
+        }
+      } catch (_) { /* ignore */ }
       // Gate programmatic layout application behind the toolbar toggle unless explicitly forced.
       if (!layoutEnabled && !force) {
         if (DEBUG) {
@@ -2937,7 +3025,7 @@ useEffect(() => {
 
           // Persist rdf:type + rdfs:label into the RDF store via ontology store helper so rdfManager emits subject-change
           try {
-            const label = String(normalizedUri).split(/[\/#]/).pop() || normalizedUri;
+            const label = String(normalizedUri).split(/[#/]/).pop() || normalizedUri;
             const updates: any = {
               annotationProperties: [
                 { propertyUri: "rdfs:label", value: label, type: "xsd:string" },
@@ -3077,6 +3165,7 @@ useEffect(() => {
           onInit={onInit}
           onNodeDoubleClick={onNodeDoubleClick}
           onEdgeDoubleClick={onEdgeDoubleClick}
+          onConnectStart={onConnectStart}
           onConnect={onConnect}
           nodeTypes={{ ontology: OntologyNode }}
           edgeTypes={{ floating: FloatingEdge }}

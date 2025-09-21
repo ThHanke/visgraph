@@ -118,6 +118,6 @@ describe("AutoComplete with ontology-loaded options", () => {
     // Cleanup: clear ontologies to avoid leakage into other tests
     try {
       if (typeof store.clearOntologies === "function") store.clearOntologies();
-    } catch (_) {}
+    } catch (_) { /* ignore */ }
   });
 });

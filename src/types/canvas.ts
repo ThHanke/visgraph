@@ -16,9 +16,9 @@ export interface NodeData {
   [key: string]: any;
   /** Unique identifier for the node */
   key: string;
-  /** Canonical IRI of the entity this node represents (preferred canonical identifier) */
+  /** IRI of the entity this node represents (preferred identifier) */
   iri: string;
-  /** All RDF types for this entity (canonical - must be present) */
+  /** All RDF types for this entity (must be present) */
   rdfTypes: string[];
   /** Optional display label computed from rdfTypes (may be present for convenience) */
   label?: string;
