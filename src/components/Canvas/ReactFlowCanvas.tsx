@@ -2645,8 +2645,80 @@ useEffect(() => {
     (mode: "abox" | "tbox") => {
       setViewMode(mode);
       setPersistedViewMode(mode);
+
+      // Unselect any selected node/link and clear transient connection state when switching view.
+      // This avoids a race where a node remains selected across view switches and its handles
+      // are not present after re-mount, preventing edge creation.
+      try {
+        try {
+          if (canvasActions && typeof canvasActions.setSelectedNode === "function") {
+            // clear selection (do not open editor)
+            canvasActions.setSelectedNode(null as any, false);
+          }
+        } catch (_) { /* ignore */ }
+        try {
+          if (canvasActions && typeof canvasActions.setSelectedLink === "function") {
+            canvasActions.setSelectedLink(null as any, false);
+          }
+        } catch (_) { /* ignore */ }
+        try {
+          // clear any recorded connection start id so subsequent connects are fresh
+          setConnectionStartId(null);
+        } catch (_) { /* ignore */ }
+
+        // Also clear React Flow's internal node selection state by unsetting any `selected` flags
+        // on the managed nodes array so the visual selection is removed immediately.
+        try {
+          setNodes((nds) =>
+            (nds || []).map((n) => {
+              try {
+                if ((n as any).selected) {
+                  return { ...n, selected: false };
+                }
+                return n;
+              } catch (_) {
+                return n;
+              }
+            }),
+          );
+
+          // Additionally update the internal React Flow instance nodes list (if available).
+          // Some React Flow versions keep an internal selection store; synchronizing the instance
+          // nodes ensures the visual selection is cleared immediately.
+          try {
+            const inst: any = reactFlowInstance.current;
+            if (inst && typeof inst.getNodes === "function" && typeof inst.setNodes === "function") {
+              try {
+                const currentInstNodes = inst.getNodes() || [];
+                const updated = (currentInstNodes || []).map((n: any) => {
+                  try {
+                    if (n && n.selected) return { ...n, selected: false };
+                    return n;
+                  } catch (_) { return n; }
+                });
+                try { inst.setNodes(updated); } catch (_) { /* ignore instance update failure */ }
+              } catch (_) { /* ignore per-instance handling */ }
+            }
+          } catch (_) { /* ignore instance sync failures */ }
+        } catch (_) { /* ignore node deselect failures */ }
+
+        // Ensure React Flow recomputes node internals so handles are available after the view switch.
+        try {
+          const inst: any = reactFlowInstance.current;
+          if (inst && typeof inst.updateNodeInternals === "function") {
+            try {
+              const nodesToRefresh = typeof inst.getNodes === "function" ? inst.getNodes() : [];
+              (nodesToRefresh || []).forEach((n: any) => {
+                try { inst.updateNodeInternals(n.id); } catch (_) { /* ignore per-node */ }
+              });
+            } catch (_) { /* ignore */ }
+          }
+        } catch (_) { /* ignore */ }
+      } catch (_) {
+        /* ignore overall */
+      }
     },
-    [setPersistedViewMode],
+    [setPersistedViewMode, canvasActions, setConnectionStartId, setNodes],
   );
 
   // React Flow init
