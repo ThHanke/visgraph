@@ -91,7 +91,25 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   const [fileSource, setFileSource] = useState('');
   const [rdfBody, setRdfBody] = useState('');
   
-  const { loadedOntologies, loadOntology, availableClasses, loadKnowledgeGraph, loadOntologyFromRDF, getRdfManager } = useOntologyStore();
+  // Select functions from the store as stable callbacks; subscribe separately to the loadedOntologies array
+  const { loadOntology, availableClasses, loadKnowledgeGraph, loadOntologyFromRDF, getRdfManager } = useOntologyStore();
+  const loadedOntologies = useOntologyStore((s) => s.loadedOntologies);
+  // Select a dedicated count value so the toolbar reliably re-renders when the list changes.
+  const loadedCount = useOntologyStore((s) => (s.loadedOntologies || []).length);
+
+  // Debug subscription: surface loadedOntologies/loadedCount changes to console so we can trace why the toolbar count may stay at 0.
+  React.useEffect(() => {
+    try {
+      if (typeof console !== "undefined" && typeof console.debug === "function") {
+        console.debug("[VG_DEBUG] CanvasToolbar.loadedOntologies change", {
+          count: loadedCount,
+          sample: Array.isArray(loadedOntologies) ? loadedOntologies.slice(0, 6).map(o => ({ url: o.url, name: o.name })) : loadedOntologies,
+        });
+      }
+    } catch (_) {
+      /* ignore debug failures */
+    }
+  }, [loadedCount, loadedOntologies]);
 
   // Build a merged list of namespaces: prefer namespaces discovered in the RDF manager
   // but include namespaces from loaded ontology metadata as a fallback.
@@ -383,13 +401,13 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
               </div>
             </div>
 
-            {loadedOntologies.length > 0 && (
+            {loadedOntologies && loadedOntologies.length > 0 && (
               <div className="space-y-2">
                 <Label>Loaded Ontologies</Label>
                 <div className="flex flex-wrap gap-1">
                   {loadedOntologies.map((ont, index) => (
                     <Badge key={`${ont.url}-${index}`} variant="secondary" className="text-xs">
-                      {ont.name || new URL(ont.url).hostname}
+                      {ont.name || (() => { try { return new URL(ont.url).hostname } catch (_) { return String(ont.url) } })()}
                     </Badge>
                   ))}
                 </div>
@@ -724,9 +742,9 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
       {/* Loaded Ontologies (interactive) */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="shadow-glass backdrop-blur-sm flex items-center gap-2">
+            <Button variant="outline" size="sm" className="shadow-glass backdrop-blur-sm flex items-center gap-2">
             <Network className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">{loadedOntologies.length} ontologies</span>
+            <span className="text-sm text-muted-foreground">{loadedCount} ontologies</span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-80 max-h-64 overflow-y-auto z-50">

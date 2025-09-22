@@ -322,6 +322,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
               };
               set((state) => ({
                 loadedOntologies: [...(state.loadedOntologies || []), meta],
+                ontologiesVersion: (state.ontologiesVersion || 0) + 1,
               }));
             } catch (_) {
               /* ignore */
@@ -351,6 +352,19 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         } catch (_) {
           /* ignore persist failures - parsing will proceed regardless */
         }
+
+        // Ensure any namespaces discovered during parsing are applied into the RDF manager
+        // immediately so subsequent logic that uses computeTermDisplay or expandPrefix
+        // sees the newly-registered prefixes. This is idempotent and safe to call.
+        try {
+          if (parsed && parsed.namespaces && Object.keys(parsed.namespaces).length > 0) {
+            try {
+              rdfManager.applyParsedNamespaces(parsed.namespaces);
+            } catch (_) {
+              /* ignore namespace application failures */
+            }
+          }
+        } catch (_) { /* ignore overall */ }
 
         // To avoid duplicate rdf:type triples appearing across graphs (the raw
         // ontology persisted into the ontologies graph vs. the parsed nodes being
@@ -684,6 +698,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             loadedOntologies: newLoaded,
             availableClasses: Object.values(classMap),
             availableProperties: Object.values(propMap),
+            ontologiesVersion: (state.ontologiesVersion || 0) + 1,
           };
         });
 

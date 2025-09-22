@@ -1,6 +1,7 @@
 import { NamedNode } from "n3";
 import type { RDFManager } from "../utils/rdfManager";
 import { buildPaletteForRdfManager } from "../components/Canvas/core/namespacePalette";
+import { WELL_KNOWN } from "../utils/wellKnownOntologies";
 
 /**
  * Combined term & prefix utilities.
@@ -68,21 +69,33 @@ export function findPrefixForUri(fullUri: string, rdfManager?: RDFManager | Reco
   if (!fullUri) return undefined;
   const nsMap = resolveNamespaces(rdfManager);
 
-  // Collect all matching prefixes, but prefer non-empty named prefixes over the
-  // empty/default prefix. Some RDF parsers may register a default namespace with
-  // an empty string key; when a named prefix exists for the same namespace we
-  // want to prefer the named prefix (e.g. prefer "iof-mat" over "").
-  const matches: string[] = [];
+  // Collect matching prefixes along with their namespace URIs so we can prefer the
+  // most specific (longest) namespace match. Some parsers register a default namespace
+  // under the empty string key; prefer explicit named prefixes when available.
+  const candidates: { prefix: string; uri: string }[] = [];
   for (const [prefix, uri] of Object.entries(nsMap)) {
     if (!uri) continue;
     try {
-      if (fullUri.startsWith(uri)) matches.push(prefix);
+      if (fullUri.startsWith(uri)) candidates.push({ prefix, uri });
     } catch (_) { /* ignore */ }
   }
-  if (matches.length === 0) return undefined;
-  // Prefer the first non-empty prefix, otherwise fall back to any match (possibly empty).
-  const nonEmpty = matches.find((p) => p && String(p).trim() !== "");
-  return nonEmpty !== undefined ? nonEmpty : matches[0];
+  if (candidates.length === 0) return undefined;
+
+  // Sort by namespace URI length (longest first) so more specific namespaces win.
+  candidates.sort((a, b) => {
+    try {
+      return (b.uri ? String(b.uri).length : 0) - (a.uri ? String(a.uri).length : 0);
+    } catch (_) {
+      return 0;
+    }
+  });
+
+  // Prefer a non-empty named prefix among the sorted candidates.
+  const named = candidates.find((c) => c.prefix && String(c.prefix).trim() !== "");
+  if (named) return named.prefix;
+
+  // Otherwise return the first candidate's prefix (may be the empty/default prefix).
+  return candidates[0].prefix;
 }
 
 /**
@@ -156,53 +169,88 @@ export function computeTermDisplay(
     };
   }
 
-  // If the input does not look like a full IRI, attempt to expand a prefixed name
-  // using the provided rdfManager / namespace map. If expansion fails or no rdfManager
-  // is available, throw to keep behavior strict and explicit.
+  // Ensure we have a target IRI (expand prefixed names when needed)
   let targetIri = iri;
   if (!targetIri.includes("://")) {
     if (!rdfManager) {
       throw new Error(`computeTermDisplay requires a full IRI or NamedNode; received '${iri}'`);
     }
     try {
+      // Try to expand a runtime-known prefixed name first (strict)
       targetIri = expandPrefixed(targetIri, rdfManager);
-    } catch (e) {
-      throw new Error(`computeTermDisplay could not expand prefixed name '${iri}': ${String(e)}`);
+    } catch (_) {
+      // If expansion fails, prefer to produce a sensible prefixed/local representation
+      // rather than throwing — try WELL_KNOWN, then runtime namespaces, then fallback to local name.
     }
   }
 
-  // Prefer producing a prefix:local form when a matching namespace is available.
-  // Strict behavior: only use prefixes that can be resolved via the provided rdfManager/namespace map.
-  // If no explicit prefix exists, try a conservative fallback: if the IRI's namespace
-  // matches any registered namespace, render as ':local' to indicate default-namespace form.
-  let prefixed: string;
+  // Determine a prefixed presentation for the targetIri.
+  let prefixed: string | undefined;
   try {
+    // 1) Try strict conversion using runtime-known prefixes
     prefixed = toPrefixed(targetIri, rdfManager);
   } catch (_) {
-    // No explicit prefix found via normal lookup -> attempt conservative fallback
+    // 2) FALLBACKS: WELL_KNOWN prefixes, then runtime namespace map (prefer named prefixes), then default/empty prefix mapping.
     try {
-      const nsMap = rdfManager && (rdfManager as any).getNamespaces && typeof (rdfManager as any).getNamespaces === 'function'
-        ? (rdfManager as any).getNamespaces()
-        : (rdfManager && typeof rdfManager === 'object' ? (rdfManager as unknown as Record<string,string>) : undefined);
-      if (nsMap) {
-        const target = String(targetIri);
-        for (const nsUri of Object.values(nsMap)) {
-          try {
-            if (nsUri && target.startsWith(nsUri)) {
-              // Found a matching namespace; render as default-namespace form ":local"
-              prefixed = `:${shortLocalName(targetIri)}`;
-              // Ensure we record namespace as empty to indicate default
-              // (caller uses namespace field to decide styling/colouring).
-              // We'll set namespace below.
-              break;
+      const target = String(targetIri);
+
+      // a) WELL_KNOWN canonical prefixes
+      try {
+        if (WELL_KNOWN && (WELL_KNOWN as any).prefixes) {
+          const wkPrefixes = (WELL_KNOWN as any).prefixes as Record<string, string>;
+          for (const [wkPrefix, wkUri] of Object.entries(wkPrefixes)) {
+            try {
+              if (!wkUri) continue;
+              const norm = (s: string) => String(s).replace(/[#\/]+$/, "");
+              if (norm(target).startsWith(norm(wkUri))) {
+                prefixed = `${wkPrefix}:${shortLocalName(targetIri)}`;
+                break;
+              }
+            } catch (_) {
+              /* ignore per-entry */
             }
-          } catch (_) { /* ignore per-candidate */ }
+          }
+        }
+      } catch (_) {
+        /* ignore WELL_KNOWN failures */
+      }
+
+      // b) runtime-registered namespaces
+      if (!prefixed && rdfManager) {
+        try {
+          const nsMap =
+            (rdfManager as any)?.getNamespaces && typeof (rdfManager as any).getNamespaces === "function"
+              ? (rdfManager as any).getNamespaces()
+              : (rdfManager && typeof rdfManager === "object" ? (rdfManager as unknown as Record<string,string>) : undefined);
+
+          if (nsMap) {
+            // Prefer named prefixes; remember default empty prefix if present.
+            let defaultPrefixed: string | undefined = undefined;
+            for (const [p, nsUri] of Object.entries(nsMap)) {
+              try {
+                if (!nsUri) continue;
+                if (target.startsWith(nsUri)) {
+                  if (p && String(p).trim() !== "") {
+                    prefixed = `${p}:${shortLocalName(targetIri)}`;
+                    break;
+                  } else if (!defaultPrefixed) {
+                    defaultPrefixed = `:${shortLocalName(targetIri)}`;
+                  }
+                }
+              } catch (_) {
+                /* ignore per-entry */
+              }
+            }
+            if (!prefixed && defaultPrefixed) prefixed = defaultPrefixed;
+          }
+        } catch (_) {
+          /* ignore runtime nsMap failures */
         }
       }
     } catch (_) {
       /* ignore fallback failures */
     }
-    // If still not resolved, fall back to local name
+    // Final fallback to local name
     if (!prefixed) prefixed = shortLocalName(targetIri);
   }
 
@@ -216,14 +264,12 @@ export function computeTermDisplay(
   }
 
   // Determine authoritative color using the rdfManager-derived palette.
-  // Strict: only use a palette color when a named prefix is available and the
-  // palette contains an explicit color for that prefix. Do not synthesize.
+  // Only use palette color when a named prefix is available and palette contains a mapping.
   let color: string | undefined = undefined;
   try {
     if (prefix && rdfManager) {
       const palette = buildPaletteForRdfManager(rdfManager);
       if (palette && typeof palette === "object") {
-        // Try exact prefix first, then lowercase.
         color = (palette as Record<string,string>)[prefix] || (palette as Record<string,string>)[prefix.toLowerCase()];
       }
     }
@@ -233,7 +279,7 @@ export function computeTermDisplay(
 
   return {
     iri: targetIri,
-    prefixed,
+    prefixed: prefixed || shortLocalName(targetIri),
     short: local,
     namespace: prefix || "",
     tooltipLines: [local],

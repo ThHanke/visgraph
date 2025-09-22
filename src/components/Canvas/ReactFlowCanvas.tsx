@@ -316,6 +316,8 @@ export const ReactFlowCanvas: React.FC = () => {
   const onConnectRef = useRef<((params: Connection) => void) | null>(null);
   // React Flow native connection start id used to wire connectionLineComponent (easy-connect pattern)
   const [connectionStartId, setConnectionStartId] = useState<string | null>(null);
+  // Debounce timer to coalesce multiple on-load layout requests (many ontologies load in quick succession).
+  const layoutDebounceRef = useRef<number | null>(null);
   // Prevent re-entrant / overlapping reasoning runs which can cause render loops
   const reasoningInProgressRef = useRef(false);
   const reasoningTimerRef = useRef<number | null>(null);
@@ -425,49 +427,25 @@ export const ReactFlowCanvas: React.FC = () => {
               if (layoutRequested && nodesForLayout && nodesForLayout.length > 0) {
                 const dir = (config && config.currentLayout) ? (config.currentLayout === "vertical" ? "TB" : "LR") : (currentLayout === "vertical" ? "TB" : "LR");
                 // Run layout as a microtask to let React state settle first (mirrors previous behavior).
-                setTimeout(() => {
+                try {
+                  // Debounce multiple rapid layout requests (e.g., when several ontologies load one after another).
                   try {
-                    setNodes((nds) => {
+                    if (layoutDebounceRef.current) window.clearTimeout(layoutDebounceRef.current);
+                    layoutDebounceRef.current = window.setTimeout(() => {
                       try {
-                        const positioned = applyDagreLayout(nodesForLayout, edgesForLayout as any, {
-                          direction: dir,
-                          nodeSep: config.layoutSpacing,
-                          rankSep: config.layoutSpacing,
-                        });
-                        const posById: Record<string, { x: number; y: number }> = {};
-                        for (const p of positioned) {
-                          try {
-                            if (p && p.id && p.position) posById[String(p.id)] = p.position;
-                          } catch (_) { /* ignore per-node */ }
-                        }
-                        return nds.map((n) =>
-                          posById[n.id] ? { ...n, position: posById[n.id] } : n,
-                        );
+                        void handleLayoutChange((config && config.currentLayout) || currentLayout, true);
                       } catch (_) {
-                        return nds;
+                        /* ignore layout invocation failures */
+                      } finally {
+                        layoutDebounceRef.current = null;
                       }
-                    });
-                    try {
-                      setCurrentLayoutState((config && config.currentLayout) || currentLayout);
-                      setCurrentLayout((config && config.currentLayout) || currentLayout);
-                    } catch (_) { /* ignore */ }
-
-                    // Defer fitView until next paint so React Flow has applied the new positions.
-                    try {
-                      const inst = reactFlowInstance.current;
-                      if (inst && typeof (inst as any).fitView === "function" && fitRequested) {
-                        requestAnimationFrame(() => requestAnimationFrame(() => {
-                          try { (inst as any).fitView(); } catch (_) { /* ignore */ }
-                        }));
-                      } else if (inst && typeof (inst as any).fitView === "function" && !fitRequested) {
-                        // If layout requested but fit not explicitly requested, keep previous behavior: still fitView.
-                        requestAnimationFrame(() => requestAnimationFrame(() => {
-                          try { (inst as any).fitView(); } catch (_) { /* ignore */ }
-                        }));
-                      }
-                    } catch (_) { /* ignore */ }
-                  } catch (_) { /* ignore */ }
-                }, 0);
+                    }, 80);
+                  } catch (_) {
+                    /* ignore debounce scheduling failures */
+                  }
+                } catch (_) {
+                  /* ignore outer failures */
+                }
               } else if (!layoutRequested && fitRequested) {
                 // No layout requested but a fit was requested: run fit after render so it's based on displayedNodes.
                 try {
@@ -988,48 +966,24 @@ export const ReactFlowCanvas: React.FC = () => {
           const dir = layoutToApply === 'vertical' ? 'TB' : 'LR';
           // Use the dagre helper directly to lay out the freshly computed diagram nodes/edges.
           // We run this as a microtask to ensure React state updates settle first.
-                  setTimeout(() => {
                 try {
-                  setNodes((nds) => {
-                    try {
-                      // Run layout on the freshly computed diagramNodes so hidden nodes are excluded
-                      const positioned = applyDagreLayout(diagramNodes, diagramEdges as any, {
-                        direction: dir,
-                        nodeSep: config.layoutSpacing,
-                        rankSep: config.layoutSpacing,
-                      });
-                      // Merge computed positions into existing nodes to preserve identity and data
-                      const posById: Record<string, { x: number; y: number }> = {};
-                      for (const p of positioned) {
-                        try {
-                          if (p && p.id && p.position) posById[String(p.id)] = p.position;
-                        } catch (_) { /* ignore per-node */ }
+                  try {
+                    if (layoutDebounceRef.current) window.clearTimeout(layoutDebounceRef.current);
+                    layoutDebounceRef.current = window.setTimeout(() => {
+                      try {
+                        void handleLayoutChange(layoutToApply, true);
+                      } catch (_) {
+                        /* ignore */
+                      } finally {
+                        layoutDebounceRef.current = null;
                       }
-                      return nds.map((n) =>
-                        posById[n.id] ? { ...n, position: posById[n.id] } : n,
-                      );
-                    } catch (_) {
-                      return nds;
-                    }
-                  });
-                  try {
-                    setCurrentLayoutState(layoutToApply);
-                    setCurrentLayout(layoutToApply);
+                    }, 80);
                   } catch (_) {
-                    /* ignore */
-                  }
-                  try {
-                    const inst = reactFlowInstance.current;
-                    if (inst && typeof (inst as any).fitView === "function") {
-                      (inst as any).fitView();
-                    }
-                  } catch (_) {
-                    /* ignore */
+                    /* ignore debounce scheduling failures */
                   }
                 } catch (_) {
                   /* ignore */
                 }
-              }, 0);
         }
       } catch (_) {
         /* ignore layout-on-load failures */
