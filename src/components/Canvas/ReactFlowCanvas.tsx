@@ -392,6 +392,97 @@ export const ReactFlowCanvas: React.FC = () => {
           }
         } catch (_) { /* ignore */ }
 
+        // Consume optional mapping meta to deterministically apply layout/fit using the final mapped node set.
+        try {
+          const meta = diagram && (diagram as any).meta ? (diagram as any).meta : undefined;
+          if (meta && (meta.requestLayoutOnNextMap || meta.requestFitOnNextMap)) {
+            const layoutRequested = !!meta.requestLayoutOnNextMap;
+            const fitRequested = !!meta.requestFitOnNextMap;
+            // Clear global one-shot request flags so repeated mapping passes don't re-trigger unintentionally.
+            try {
+              if (typeof window !== "undefined") {
+                try { delete (window as any).__VG_REQUEST_LAYOUT_ON_NEXT_MAP; } catch (_) {}
+                try { delete (window as any).__VG_REQUEST_FIT_ON_NEXT_MAP; } catch (_) {}
+              }
+            } catch (_) { /* ignore */ }
+
+            try {
+              // Compute the nodes/edges that should participate in layout according to the active viewMode
+              const nodesForLayout = (mappedNodes || []).filter((n) => {
+                try {
+                  const isTBox = !!(n.data && (n.data as any).isTBox);
+                  const visibleFlag = (n.data && typeof (n.data as any).visible === "boolean")
+                    ? (n.data as any).visible
+                    : true;
+                  return visibleFlag && (viewMode === "tbox" ? isTBox : !isTBox);
+                } catch {
+                  return true;
+                }
+              });
+              const nodeIdsForLayout = new Set((nodesForLayout || []).map((n) => n.id));
+              const edgesForLayout = (mappedEdges || []).filter((e) => nodeIdsForLayout.has(String(e.source)) && nodeIdsForLayout.has(String(e.target)));
+
+              if (layoutRequested && nodesForLayout && nodesForLayout.length > 0) {
+                const dir = (config && config.currentLayout) ? (config.currentLayout === "vertical" ? "TB" : "LR") : (currentLayout === "vertical" ? "TB" : "LR");
+                // Run layout as a microtask to let React state settle first (mirrors previous behavior).
+                setTimeout(() => {
+                  try {
+                    setNodes((nds) => {
+                      try {
+                        const positioned = applyDagreLayout(nodesForLayout, edgesForLayout as any, {
+                          direction: dir,
+                          nodeSep: config.layoutSpacing,
+                          rankSep: config.layoutSpacing,
+                        });
+                        const posById: Record<string, { x: number; y: number }> = {};
+                        for (const p of positioned) {
+                          try {
+                            if (p && p.id && p.position) posById[String(p.id)] = p.position;
+                          } catch (_) { /* ignore per-node */ }
+                        }
+                        return nds.map((n) =>
+                          posById[n.id] ? { ...n, position: posById[n.id] } : n,
+                        );
+                      } catch (_) {
+                        return nds;
+                      }
+                    });
+                    try {
+                      setCurrentLayoutState((config && config.currentLayout) || currentLayout);
+                      setCurrentLayout((config && config.currentLayout) || currentLayout);
+                    } catch (_) { /* ignore */ }
+
+                    // Defer fitView until next paint so React Flow has applied the new positions.
+                    try {
+                      const inst = reactFlowInstance.current;
+                      if (inst && typeof (inst as any).fitView === "function" && fitRequested) {
+                        requestAnimationFrame(() => requestAnimationFrame(() => {
+                          try { (inst as any).fitView(); } catch (_) { /* ignore */ }
+                        }));
+                      } else if (inst && typeof (inst as any).fitView === "function" && !fitRequested) {
+                        // If layout requested but fit not explicitly requested, keep previous behavior: still fitView.
+                        requestAnimationFrame(() => requestAnimationFrame(() => {
+                          try { (inst as any).fitView(); } catch (_) { /* ignore */ }
+                        }));
+                      }
+                    } catch (_) { /* ignore */ }
+                  } catch (_) { /* ignore */ }
+                }, 0);
+              } else if (!layoutRequested && fitRequested) {
+                // No layout requested but a fit was requested: run fit after render so it's based on displayedNodes.
+                try {
+                  const inst = reactFlowInstance.current;
+                  if (inst && typeof (inst as any).fitView === "function") {
+                    requestAnimationFrame(() => requestAnimationFrame(() => {
+                      try { (inst as any).fitView(); } catch (_) { /* ignore */ }
+                    }));
+                  }
+                } catch (_) { /* ignore */ }
+              }
+            } catch (_) { /* ignore layout/fit application errors */ }
+          }
+        } catch (_) { /* ignore meta consumption errors */ }
+
         // Skip the old inline mapping by returning early from the effect.
         return;
       }

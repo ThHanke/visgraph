@@ -417,7 +417,7 @@ export function mapEdgesToRFEdges(
 export function mapGraphToDiagram(
   graph: { nodes?: NodeShape[]; edges?: EdgeShape[] } | undefined,
   options?: MapOptions
-): { nodes: RFNode<NodeData>[]; edges: RFEdge<LinkData>[] } {
+): { nodes: RFNode<NodeData>[]; edges: RFEdge<LinkData>[]; meta?: { requestLayoutOnNextMap?: boolean; requestFitOnNextMap?: boolean } } {
   const cg = graph || { nodes: [], edges: [] };
   const mgr = options && typeof options.getRdfManager === "function" ? options.getRdfManager() : undefined;
 
@@ -703,5 +703,36 @@ export function mapGraphToDiagram(
     /* ignore */
   }
 
-  return { nodes: mappedNodes, edges: mappedEdges };
+  // Decide layout/fit meta flags for the caller. Mapping is authoritative about which IRIs are visible
+  // in the data graph; expose small signals the consumer (ReactFlowCanvas) can use to apply layout/fit
+  // at the right time (i.e., after mapping has produced the final diagram.nodes/edges).
+  let requestLayoutOnNextMap = false;
+  let requestFitOnNextMap = false;
+  try {
+    if (typeof window !== "undefined") {
+      try {
+        requestLayoutOnNextMap = !!(window as any).__VG_REQUEST_LAYOUT_ON_NEXT_MAP;
+      } catch (_) { requestLayoutOnNextMap = false; }
+      try {
+        requestFitOnNextMap = !!(window as any).__VG_REQUEST_FIT_ON_NEXT_MAP;
+      } catch (_) { requestFitOnNextMap = false; }
+    }
+  } catch (_) { /* ignore */ }
+
+  try {
+    // If there are visible IRIs and mapped nodes include at least one visible node, suggest a fit.
+    const visibleCount = (visibleIris && typeof visibleIris.size === "number") ? visibleIris.size : Array.from(visibleIris || []).length;
+    const mappedVisibleNodesCount = (mappedNodes || []).filter(n => {
+      try { return !!(n.data && (n.data as any).visible); } catch { return false; }
+    }).length;
+    if (visibleCount > 0 && mappedVisibleNodesCount > 0) {
+      requestFitOnNextMap = true;
+    }
+  } catch (_) {
+    /* ignore */
+  }
+
+  const meta = { requestLayoutOnNextMap, requestFitOnNextMap };
+
+  return { nodes: mappedNodes, edges: mappedEdges, meta };
 }

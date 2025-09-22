@@ -196,7 +196,59 @@ function CustomOntologyNodeInner(props: NodeProps) {
 
   // Color/palette resolution (strict: use central palette only)
   const palette = usePaletteFromRdfManager();
-  const resolvedPaletteColor = getNamespaceColorFromPalette(palette, String(nodeData.namespace ?? '')) || undefined;
+
+  // Resolve palette color with robust fallbacks:
+  // 1. Direct palette lookup using the node's namespace (may be a prefix or a short key)
+  // 2. If missing and rdfManager provides prefix->uri mappings, try to reverse-lookup
+  //    a prefix for a namespace that is a full URI and use that prefix to find a color.
+  // 3. If still missing, leave undefined so callers can show a diagnostic.
+  let resolvedPaletteColor: string | undefined = undefined;
+  try {
+    resolvedPaletteColor = getNamespaceColorFromPalette(palette, String(nodeData.namespace ?? '')) || undefined;
+  } catch (_) {
+    resolvedPaletteColor = undefined;
+  }
+
+  // Fallback: if node namespace looks like a full namespace URI (http(s) or ends with / or #)
+  // try to find a matching prefix from rdfManager.getNamespaces() and use that prefix in the palette.
+  if (!resolvedPaletteColor && (rdfManager && typeof (rdfManager as any).getNamespaces === 'function')) {
+    try {
+      const nsMap = (rdfManager as any).getNamespaces() || {};
+      const nsVal = String(nodeData.namespace || '').trim();
+      if (nsVal && (/^https?:\/\//i.test(nsVal) || /[#\/]$/.test(nsVal) || nsVal.includes('/'))) {
+        // reverse lookup: find prefix whose URI equals the namespace value (exact match)
+        const match = Object.entries(nsMap).find(([, uri]) => String(uri) === nsVal);
+        if (match && match[0]) {
+          const prefix = String(match[0]);
+          try {
+            resolvedPaletteColor = palette[prefix] || palette[prefix.replace(/[:#].*$/, '')] || undefined;
+          } catch (_) {
+            resolvedPaletteColor = undefined;
+          }
+        } else {
+          // Try fuzzy match: namespace may be stored without trailing separators in some places.
+          const matchFuzzy = Object.entries(nsMap).find(([, uri]) => {
+            try {
+              return String(uri).replace(/\/+$/, '') === nsVal.replace(/\/+$/, '');
+            } catch {
+              return false;
+            }
+          });
+          if (matchFuzzy && matchFuzzy[0]) {
+            const prefix = String(matchFuzzy[0]);
+            try {
+              resolvedPaletteColor = palette[prefix] || palette[prefix.replace(/[:#].*$/, '')] || undefined;
+            } catch (_) {
+              resolvedPaletteColor = undefined;
+            }
+          }
+        }
+      }
+    } catch (_) {
+      /* ignore reverse-lookup failures */
+    }
+  }
+
   const paletteMissing = !resolvedPaletteColor;
   const badgeColor = resolvedPaletteColor;
   const leftColor = resolvedPaletteColor;

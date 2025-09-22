@@ -11,6 +11,8 @@ export interface AppConfig {
   currentLayout: string;
   layoutAnimations: boolean;
   layoutSpacing: number;
+  // Whether the canvas should automatically apply the selected layout on mapping updates
+  autoApplyLayout: boolean;
   
   // UI preferences
   showLegend: boolean;
@@ -55,6 +57,8 @@ interface AppConfigStore {
   setShowLegend: (show: boolean) => void;
   setViewMode: (mode: 'abox' | 'tbox') => void;
   setCanvasTheme: (theme: 'light' | 'dark' | 'auto') => void;
+  // Persisted toggle: when true, mapping updates will auto-apply the configured layout
+  setAutoApplyLayout: (enabled: boolean) => void;
   
   // Performance actions
   setAutoReasoning: (enabled: boolean) => void;
@@ -89,6 +93,7 @@ const defaultConfig: AppConfig = {
   currentLayout: 'horizontal',
   layoutAnimations: true,
   layoutSpacing: 120,
+  autoApplyLayout: true,
   showLegend: false,
   viewMode: 'abox',
   canvasTheme: 'auto',
@@ -172,6 +177,15 @@ export const useAppConfigStore = create<AppConfigStore>()(
           config: {
             ...state.config,
             canvasTheme: theme
+          }
+        }));
+      },
+
+      setAutoApplyLayout: (enabled: boolean) => {
+        set((state) => ({
+          config: {
+            ...state.config,
+            autoApplyLayout: Boolean(enabled)
           }
         }));
       },

@@ -1034,6 +1034,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                     }
                   });
                   set({ currentGraph: { nodes: mergedNodes, edges: labeledEdges } });
+                  if (typeof window !== 'undefined') try { try { console.debug("[VG] ontologyStore: set __VG_REQUEST_LAYOUT_ON_NEXT_MAP (labeledEdges)"); } catch (_) {} (window as any).__VG_REQUEST_LAYOUT_ON_NEXT_MAP = true; (window as any).__VG_REQUEST_FIT_ON_NEXT_MAP = true; } catch (_) { /* ignore */ }
                 } catch (_) {
                   // fallback to original merged set if anything goes wrong
                   set({ currentGraph: { nodes: mergedNodes, edges: mergedEdges } });
@@ -1520,6 +1521,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         });
 
         set({ currentGraph: { nodes: mergedNodes, edges: mergedEdges } });
+        if (typeof window !== 'undefined') try { try { console.debug("[VG] ontologyStore: set __VG_REQUEST_LAYOUT_ON_NEXT_MAP (mergedEdges)"); } catch (_) {} (window as any).__VG_REQUEST_LAYOUT_ON_NEXT_MAP = true; (window as any).__VG_REQUEST_FIT_ON_NEXT_MAP = true; } catch (_) { /* ignore */ }
       } catch (_) {
         /* ignore */
       }
