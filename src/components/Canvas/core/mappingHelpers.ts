@@ -1,738 +1,340 @@
-import { DataFactory, NamedNode } from "n3";
-const { namedNode } = DataFactory;
 import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
-import type { RDFManager } from "../../../utils/rdfManager";
-import { computeTermDisplay, shortLocalName } from "../../../utils/termUtils";
-import { getPredicateDisplay } from "./edgeLabel";
 import { generateEdgeId } from "./edgeHelpers";
+import { shortLocalName } from "../../../utils/termUtils";
 import type { NodeData, LinkData } from "../../../types/canvas";
 
 /**
- * Mapping helpers
+ * Lightweight, pure mapping helpers
  *
- * These helpers contain the pure logic for turning the canonical graph (used
- * across the app) into React Flow nodes + edges. The goal is to make the
- * mapping deterministic and easy to unit test.
+ * Centralized mapper that converts quads or subject lists into React Flow nodes/edges.
  *
- * Functions:
- * - mapGraphToDiagram(graph, opts) => { nodes: RFNode<NodeData>[], edges: RFEdge<LinkData>[] }
+ * Exported functions:
+ * - mapQuadsToDiagram(quads) -> { nodes, edges }        // pure, no store lookup
+ * - mapDiagramToQuads(nodes, edges) -> QuadLike[]      // pure, synthesise triple-like POJOs
  *
- * The mapping attempts to be conservative: it prefers information present on
- * the parsed canonical node (iri, rdfTypes, namespace) but will consult the
- * RDF manager (if supplied) to expand/resolve prefix forms when needed.
- *
- * Options:
- * - getRdfManager?: () => RDFManager | undefined
- * - availableClasses?: Array<{ iri: string; label?: string; namespace?: string }>
- * - getEntityIndex?: () => { mapByIri?: Map<string, any>, mapByLocalName?: Map<string, any> } | undefined
- * - viewMode?: "abox" | "tbox"  (used by callers to filter results; mapping returns all nodes/edges)
- *
- * Note: layout/position decisions are left to the caller (ReactFlowCanvas). This module
- * provides node.position when available on the canonical node, otherwise no position.
+ * This file intentionally keeps the functionality minimal and pure (no store lookups).
  */
 
-/* Minimal defensive typing for the graph node/edge shapes used by the app */
-type NodeShape = any;
-type EdgeShape = any;
-
-export interface MapOptions {
-  getRdfManager?: (() => RDFManager | undefined) | undefined;
-  availableClasses?: Array<{ iri: string; label?: string; namespace?: string }>;
-  availableProperties?: Array<any> | undefined;
-  getEntityIndex?: (() => { mapByIri?: Map<string, any>; mapByLocalName?: Map<string, any> } | undefined) | undefined;
-}
+/* Minimal defensive shapes */
+type QuadLike = {
+  subject?: { value: string };
+  predicate?: { value: string };
+  object?: { value: string; termType?: string; datatype?: { value: string } };
+} | any;
 
 /**
- * Build a React Flow NodeData payload from a canonical node.
- * - canonicalNode: parsed/diagram node with possible fields like iri, rdfTypes, namespace, classType, label, literalProperties, annotationProperties
- * - rdfManager: optional manager used to expand/contract prefixes
+ * Convert an array of quads (QuadLike[]) into React Flow nodes/edges.
+ * - quads: array of N3 Quad objects or plain POJOs with subject/predicate/object.value
+ *
+ * Behavior:
+ * - Groups triples by subject IRI.
+ * - For each subject:
+ *   - rdf:type triples are collected into rdfTypes (order preserved, no dedupe).
+ *   - rdfs:label literal sets node label (last-wins).
+ *   - literal objects become literalProperties entries.
+ *   - object IRIs / blank nodes produce an edge and ensure node exists for object.
+ * - Edges are created with id = generateEdgeId(subject, object, predicate).
+ * - No calls to any store API.
  */
-export function buildNodeDataFromParsedNode(
-  canonicalNode: NodeShape,
-  rdfManager?: RDFManager | undefined,
-  availableClasses?: Map<string, any> | Array<{iri:string}> | undefined
-): NodeData {
-  const src = canonicalNode || {};
-  // Resolve rdf types conservatively and strictly (produce only full IRIs).
-  // - Start from parsed node rdfTypes if present.
-  // - If none present, query the RDF store for rdf:type triples.
-  // - From the collected candidates, only keep absolute IRIs or prefixed forms that
-  //   can be expanded by rdfManager.expandPrefix. Do NOT accept bare local names.
-  let rdfTypesCandidates: string[] = Array.isArray(src.rdfTypes)
-    ? src.rdfTypes.map(String).filter(Boolean)
-    : [];
-
-  try {
-    // If no parsed candidates, probe the store for rdf:type triples
-    if ((!rdfTypesCandidates || rdfTypesCandidates.length === 0) && rdfManager && typeof rdfManager.getStore === "function") {
-      try {
-        const store = rdfManager.getStore();
-        const subjectUri = String(src.iri || src.id || src.key || "");
-        if (subjectUri && store && typeof store.getQuads === "function") {
-          const rdfTypePredicate =
-            typeof (rdfManager as any).expandPrefix === "function"
-              ? String((rdfManager as any).expandPrefix("rdf:type"))
-              : "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-
-          let typeQuads = store.getQuads(namedNode(subjectUri), namedNode(rdfTypePredicate), null, null) || [];
-
-          // Try common http/https variants if direct lookup returned nothing
-          if ((!typeQuads || typeQuads.length === 0) && subjectUri) {
-            const altSubjects = [`http:${subjectUri}`, `https:${subjectUri}`];
-            for (const s of altSubjects) {
-              try {
-                const found = store.getQuads(namedNode(s), namedNode(rdfTypePredicate), null, null) || [];
-                if (found && found.length > 0) {
-                  typeQuads = found;
-                  break;
-                }
-              } catch (_) { /* ignore */ }
-            }
-          }
-
-          if (typeQuads && typeQuads.length > 0) {
-            rdfTypesCandidates = Array.from(
-              new Set(typeQuads.map((q: any) => (q.object && q.object.value) || "").filter(Boolean)),
-            );
-          }
-        }
-      } catch (_) {
-        /* ignore store lookup failures */
-      }
+export function mapQuadsToDiagram(quads: QuadLike[] = []) {
+  // Small helpers to detect term kinds robustly across N3 and POJO shapes.
+  const isNamedOrBlank = (obj: any) => {
+    try {
+      if (!obj) return false;
+      if (obj.termType === "NamedNode" || obj.termType === "BlankNode") return true;
+      const v = obj && obj.value ? String(obj.value) : "";
+      if (!v) return false;
+      return /^https?:\/\//i.test(v) || v.startsWith("_:");
+    } catch (_) {
+      return false;
     }
-  } catch (_) {
-    /* ignore outer failures */
-  }
-
-  // Expand/normalize candidates into full IRIs where possible, but keep raw values as fallback.
-  // Purpose: preserve type information even when rdfManager cannot expand a prefixed form.
-  const rdfTypesArr: string[] = [];
-  try {
-    for (const t of rdfTypesCandidates) {
-      try {
-        const ts = String(t || "");
-        if (!ts) continue;
-        // Already an absolute IRI — keep it.
-        if (/^https?:\/\//i.test(ts)) {
-          rdfTypesArr.push(ts);
-          continue;
-        }
-        // If looks like a prefixed name and rdfManager can expand, try expansion.
-        if (ts.includes(":") && rdfManager && typeof (rdfManager as any).expandPrefix === "function") {
-          try {
-            const expanded = (rdfManager as any).expandPrefix(ts);
-            if (expanded && /^https?:\/\//i.test(String(expanded))) {
-              rdfTypesArr.push(String(expanded));
-              continue;
-            }
-            // Expansion returned something non-IRI or failed to produce an IRI:
-            // fall through to keep the raw candidate below as a fallback.
-          } catch (_) {
-            // expansion failed — fall through to keep raw candidate
-          }
-        }
-        // Fallback: keep the raw candidate (prefixed name or local name) so we don't lose information.
-        rdfTypesArr.push(ts);
-      } catch (_) {
-        /* ignore per-candidate */
-      }
-    }
-  } catch (_) {
-    /* ignore normalization failures */
-  }
-
-  // Compute a friendly label
-  let computedLabel = "";
-  try {
-    if (src.label) {
-      computedLabel = String(src.label);
-    } else if (src.classType) {
-      computedLabel = String(src.classType);
-    } else if (src.iri) {
-      computedLabel = shortLocalName(String(src.iri));
-    } else {
-      computedLabel = shortLocalName(String(src.id || src.key || ""));
-    }
-  } catch (_) {
-    computedLabel = String(src.iri || src.id || src.key || "");
-  }
-
-  // Determine if this is a TBox entity by inspecting types
-  // Keep TBox detection conservative: only types that look like class/property constructs.
-  const isTBoxEntity = Array.isArray(rdfTypesArr) && rdfTypesArr.some((type: string) =>
-    String(type).includes("Class") ||
-    String(type).includes("ObjectProperty") ||
-    String(type).includes("AnnotationProperty") ||
-    String(type).includes("DatatypeProperty")
-  );
-
-  // Prefer explicit iri, but do not treat absence as fatal — node.id is authoritative when present.
-  const nodeIri = src.iri ?? src.id ?? src.key ?? "";
-
-  // Compute display classType/namespace from resolved rdfTypes when available.
-  // Prefer a prefixed form from computeTermDisplay (e.g., 'owl:Class') for display.
-  // Special rule: for ABox (instance) nodes, prefer the first rdf:type that is NOT owl:NamedIndividual.
-  let displayClassType = src.classType;
-  let displayNamespace = String(src.namespace || "");
-  try {
-    if (Array.isArray(rdfTypesArr) && rdfTypesArr.length > 0) {
-      try {
-        // Choose which rdf:type IRI to use for display.
-        // Default to the first available type.
-        let selectedTypeIri: string | undefined = rdfTypesArr[0];
-
-        // If this node is an ABox node (not TBox), prefer the first rdf:type that is not owl:NamedIndividual.
-        // This restores previous behavior where instances show their meaningful class instead of NamedIndividual.
-        try {
-          if (!isTBoxEntity) {
-            const namedIndividualIri = "http://www.w3.org/2002/07/owl#NamedIndividual";
-            const nonNamed = rdfTypesArr.find((t: string) => {
-              try {
-                return String(t).trim() !== String(namedIndividualIri);
-              } catch (_) {
-                return false;
-              }
-            });
-            if (nonNamed) selectedTypeIri = nonNamed;
-          }
-        } catch (_) {
-          // ignore selection errors and fall back to first type
-        }
-
-        if (selectedTypeIri && rdfManager) {
-          try {
-            const td = computeTermDisplay(String(selectedTypeIri), rdfManager as any);
-            if (td) {
-              displayClassType = td.prefixed || td.short || displayClassType;
-              displayNamespace = td.namespace !== undefined ? String(td.namespace) : displayNamespace;
-            }
-          } catch (_) {
-            // keep existing displayClassType/namespace if computeTermDisplay fails
-          }
-        }
-      } catch (_) {
-        /* ignore */
-      }
-    }
-  } catch (_) { /* ignore */ }
-
-    const nodeData: NodeData = {
-      key: String(src.iri || src.id || src.key || ""),
-      iri: nodeIri,
-      rdfTypes: rdfTypesArr,
-    label: computedLabel,
-    namespace: displayNamespace,
-    classType: displayClassType,
-    literalProperties: src.literalProperties || [],
-    annotationProperties: src.annotationProperties || [],
-    // default visible true; mapping layer may override based on data-graph membership
-    visible: true,
-    hasReasoningError: !!src.hasReasoningError,
-    isTBox: !!isTBoxEntity,
   };
 
-  return nodeData;
-}
-
-/**
- * Convert canonical nodes array to React Flow nodes (pure)
- *
- * - canonicalNodes: array of parsed nodes from the canvas/currentGraph
- * - options.getRdfManager: optional getter for RDFManager to resolve prefixes when needed
- * - options.getEntityIndex: optional function returning an index used to derive namespace keys
- *
- * The function returns an array of RFNode<NodeData>. It does not set layout/positions
- * beyond any position present on the canonical node (caller may apply layout).
- */
-export function mapNodesToRFNodes(
-  nodesForMapping: NodeShape[] = [],
-  options?: MapOptions
-): RFNode<NodeData>[] {
-  const mgr = options && typeof options.getRdfManager === "function" ? options.getRdfManager() : undefined;
-  const entityIndexGetter = options && typeof options.getEntityIndex === "function" ? options.getEntityIndex : undefined;
-  const availableClasses = options && options.availableClasses ? options.availableClasses : undefined;
-
-  const nodes: RFNode<NodeData>[] = [];
-
-  for (let i = 0; i < (nodesForMapping || []).length; i++) {
-    const node = nodesForMapping[i];
-    const src = node && node.data ? node.data : node;
-
-    // Build node data (pure)
-    const nd = buildNodeDataFromParsedNode(src, mgr as any, availableClasses as any);
-
-    // Resolve a namespace key for palette lookups using entity index if available
-    let canonicalNs = "";
+  const isLiteral = (obj: any) => {
     try {
-      const idx = entityIndexGetter ? entityIndexGetter() : undefined;
-      const mapByIri = (idx && idx.mapByIri) ? idx.mapByIri : new Map();
-      const mapByLocal = (idx && idx.mapByLocalName) ? idx.mapByLocalName : new Map();
-
-      if (nd.iri) {
-        const byIri = mapByIri.get(nd.iri);
-        const byLocal = mapByLocal.get(nd.iri);
-        const byShort = mapByLocal.get(shortLocalName(nd.iri));
-        const ent = byIri || byLocal || byShort;
-        if (ent && ent.namespace) canonicalNs = String(ent.namespace);
-      }
+      if (!obj) return false;
+      if (obj.termType === "Literal") return true;
+      const v = obj && obj.value ? String(obj.value) : "";
+      if (!v) return false;
+      return !(/^https?:\/\//i.test(v) || v.startsWith("_:"));
     } catch (_) {
-      canonicalNs = "";
+      return false;
     }
+  };
 
-    // Enforce strict IRI-first node id policy:
-    // - Prefer node.id when it is an absolute IRI (http/https) or a blank node (_:)
-    // - Otherwise prefer the parsed node iri (nd.iri) when it is an absolute IRI or blank node
-    // - Otherwise skip the node and emit a lightweight diagnostic (do not fabricate ids)
-    let id = "";
-    const rawNodeId = node && node.id ? String(node.id) : "";
-    const parsedIri = nd && nd.iri ? String(nd.iri) : "";
-    const isIriOrBNode = (s: string) => !!s && (/^https?:\/\//i.test(s) || s.startsWith("_:"));
-    try {
-      if (isIriOrBNode(rawNodeId)) {
-        id = rawNodeId;
-      } else if (isIriOrBNode(parsedIri)) {
-        id = parsedIri;
-      } else {
-        // Emit a lightweight diagnostic so producers of non-IRI ids can be found.
-        try {
-          if (typeof console !== "undefined" && typeof console.debug === "function") {
-            console.debug("[VG_WARN] mapNodesToRFNodes skipping node without IRI id", {
-              nodePreview: { id: rawNodeId || undefined, iri: parsedIri || undefined, label: nd && (nd as any).label },
-            });
-          }
-        } catch (_) { /* ignore logging failures */ }
-        continue;
-      }
-    } catch (_) {
-      continue;
+  // Collection structures
+  const nodeMap = new Map<
+    string,
+    {
+      iri: string;
+      rdfTypes: string[];
+      literalProperties: Array<{ key: string; value: string; type: string }>;
+      annotationProperties: Array<{ property: string; value: string }>;
+      label?: string | undefined;
     }
-    const pos = (node && node.position) || (src && src.position) || undefined;
+  >();
 
-    nodes.push({
-      id,
-      type: "ontology",
-      position: pos ? { x: pos.x, y: pos.y } : { x: 0, y: 0 },
-      data: {
-        ...nd,
-        onSizeMeasured: (w: number, h: number) => {
-          // caller will replace nodes via setNodes; provide a hook with the same shape
-          // The actual update is done in ReactFlowCanvas where setNodes is available.
-          try {
-            if (typeof (src as any).onSizeMeasured === "function") {
-              (src as any).onSizeMeasured(w, h);
-            }
-          } catch (_) { /* ignore */ }
-        },
-      } as NodeData,
-      style: undefined,
-    });
-  }
+  const rfEdges: RFEdge<LinkData>[] = [];
 
-  return nodes;
-}
-
-/**
- * Convert canonical edges array to React Flow edges (pure)
- *
- * - canonicalEdges: array of parsed edges from currentGraph
- * - nodesPresent: Set of node ids that exist on the canvas (to filter edges)
- *
- * Returns: RFEdge<LinkData>[]
- */
-export function mapEdgesToRFEdges(
-  edgesForMapping: EdgeShape[] = [],
-  nodesPresent: Set<string> = new Set(),
-  options?: MapOptions
-): RFEdge<LinkData>[] {
-  const mgrLocal = options && typeof options.getRdfManager === "function" ? options.getRdfManager() : undefined;
-  const edges: RFEdge<LinkData>[] = [];
-
-  for (let j = 0; j < (edgesForMapping || []).length; j++) {
-    const edge = edgesForMapping[j];
-    const src = edge && edge.data ? edge.data : edge;
-
-    const from = String(src.source || src.from || "");
-    const to = String(src.target || src.to || "");
-
-    // Skip if endpoints missing on canvas
-    if (!nodesPresent.has(String(from)) || !nodesPresent.has(String(to))) continue;
-
-    const propertyUriRaw = src.propertyUri || src.propertyType || "";
-    const availableProperties = options && options.availableProperties ? options.availableProperties : [];
-    const foundProp = (availableProperties || []).find((p: any) => String(p.iri) === String(propertyUriRaw));
-    const id = String(src.id || generateEdgeId(from, to, propertyUriRaw || ""));
-
-
-    // Strict label resolution:
-    // Prefer computeTermDisplay when a predicate IRI and RDF manager are available.
-    // Otherwise fall back to any explicit label present on the source object or the foundProp label.
-    let labelForEdge = "";
-    try {
-      const rdfMgr = mgrLocal || ((typeof (globalThis as any).__VG_RDF_MANAGER === "function")
-        ? (globalThis as any).__VG_RDF_MANAGER()
-        : undefined);
-      if (propertyUriRaw && rdfMgr) {
-        try {
-          const td = computeTermDisplay(String(propertyUriRaw), rdfMgr as any);
-          labelForEdge = String(td.prefixed || td.short || "");
-        } catch (_) {
-          labelForEdge = src && src.label ? String(src.label) : (foundProp && (foundProp.label || foundProp.name) ? String(foundProp.label || foundProp.name) : "");
-        }
-      } else if (src && src.label) {
-        labelForEdge = String(src.label);
-      } else if (foundProp && (foundProp.label || foundProp.name)) {
-        labelForEdge = String(foundProp.label || foundProp.name);
-      } else {
-        labelForEdge = "";
-      }
-    } catch (_) {
-      labelForEdge = src && src.label ? String(src.label) : "";
-    }
-
-    edges.push({
-      id,
-      source: String(from),
-      target: String(to),
-      type: "floating",
-      markerEnd: { type: "arrow" as any },
-      data: {
-        key: id,
-        from: String(from),
-        to: String(to),
-        propertyUri: propertyUriRaw,
-        propertyType: src.propertyType || "",
-        label: labelForEdge,
-        namespace: src.namespace || "",
-        rdfType: src.rdfType || "",
-      } as LinkData,
-    });
-  }
-
-  return edges;
-}
-
-/**
- * Convenience: map whole graph -> { nodes, edges }
- */
-export function mapGraphToDiagram(
-  graph: { nodes?: NodeShape[]; edges?: EdgeShape[] } | undefined,
-  options?: MapOptions
-): { nodes: RFNode<NodeData>[]; edges: RFEdge<LinkData>[]; meta?: { requestLayoutOnNextMap?: boolean; requestFitOnNextMap?: boolean } } {
-  const cg = graph || { nodes: [], edges: [] };
-  const mgr = options && typeof options.getRdfManager === "function" ? options.getRdfManager() : undefined;
-
-  // Build indexes for resolving edge endpoints:
-  // - nodeKeyToIri: map canonical node key -> iri (when iri exists)
-  // - nodeIds: set of canonical node ids (primary identifiers; expected to be IRIs)
-  // - iriToNodeId: reverse map iri -> node.id for quick lookups
-  const nodeKeyToIri = new Map<string, string>();
-  const cgNodeIds = new Set<string>();
-  const iriToNodeId = new Map<string, string>();
-  try {
-    (cg.nodes || []).forEach((n: any) => {
-      const src = n && n.data ? n.data : n;
-      const iri = (src && (src.iri || (src.data && src.data.iri))) || src.iri || "";
-      // Only register node keys if they are valid IRIs or blank nodes; do not index fabricated or local keys.
-      const key = (n && n.id && (typeof n.id === "string") && ((/^https?:\/\//i.test(n.id)) || n.id.startsWith("_:"))) ? String(n.id) : (iri && ((/^https?:\/\//i.test(iri)) || iri.startsWith("_:")) ? String(iri) : "");
-      if (key) {
-        nodeKeyToIri.set(String(key), String(iri || ""));
-        cgNodeIds.add(String(key));
-        if (iri && ((/^https?:\/\//i.test(iri)) || iri.startsWith("_:"))) {
-          iriToNodeId.set(String(iri), String(key));
-        }
-      }
-    });
-  } catch (_) {
-    /* ignore index build failures */
-  }
-
-  // Compute the set of subject IRIs present in the data graph (urn:vg:data)
-  const dataSubjectsSet = new Set<string>();
-  try {
-    if (mgr && typeof mgr.getStore === "function") {
-      const store = mgr.getStore();
-      if (store && typeof store.getQuads === "function") {
-        try {
-          const g = namedNode("urn:vg:data");
-          const dq = store.getQuads(null, null, null, g) || [];
-          dq.forEach((q: any) => {
-            try {
-              if (q && q.subject && q.subject.value) dataSubjectsSet.add(String(q.subject.value));
-            } catch (_) { /* ignore */ }
-          });
-        } catch (_) { /* ignore store read errors */ }
-      }
-    }
-  } catch (_) {
-    /* ignore rdfManager errors */
-  }
-
-  // Compute visible IRIs: subjects in data graph plus targets of edges whose source is a data-subject.
-  const visibleIris = new Set<string>();
-  try {
-    // Add direct subjects
-    for (const s of Array.from(dataSubjectsSet)) visibleIris.add(s);
-
-    // For each edge, if its source resolves to an IRI in dataSubjectsSet, add the target IRI.
-    (cg.edges || []).forEach((e: any) => {
-      try {
-        const edgeSrcKey = e.source || (e.data && e.data.source) || "";
-        const edgeTgtKey = e.target || (e.data && e.data.target) || "";
-        const srcIri = nodeKeyToIri.get(String(edgeSrcKey)) || "";
-        const tgtIri = nodeKeyToIri.get(String(edgeTgtKey)) || "";
-        if (srcIri && dataSubjectsSet.has(String(srcIri))) {
-          if (tgtIri) visibleIris.add(String(tgtIri));
-        }
-      } catch (_) { /* ignore per-edge */ }
-    });
-  } catch (_) {
-    /* ignore visibility computation errors */
-  }
-
-  // Map nodes using existing helper (this will consult RDF manager for missing rdfTypes)
-  const mappedNodes = mapNodesToRFNodes(cg.nodes || [], options);
-  const mappedNodeIds = new Set(mappedNodes.map((n) => n.id));
-
-  // Resolve edges to use node IRIs (not legacy/canonical numeric keys).
-  // Build mappedEdges by resolving each canonical edge's raw endpoint refs to the node IRI
-  // using the nodeKeyToIri index built above. This restores the invariant that React Flow
-  // node ids are IRIs and edges use those IRIs as source/target.
-  const mappedEdges: RFEdge<LinkData>[] = [];
-  try {
-    for (let j = 0; j < (cg.edges || []).length; j++) {
-      const edge = cg.edges[j];
-      const src = edge && edge.data ? edge.data : edge;
-
-      // Raw refs may be under different properties depending on producer.
-      // Some edges place endpoint refs on the top-level (edge.source/edge.target) while others
-      // put them inside edge.data. Check both places and normalize to a consistent string.
-      const edgeObj = edge || {};
-      const dataObj = (edgeObj && edgeObj.data) ? edgeObj.data : {};
-      const rawFromRef = String(
-        (dataObj && (dataObj.source || dataObj.from || dataObj.s || dataObj.subj || dataObj.subject)) ||
-        edgeObj.source ||
-        edgeObj.from ||
-        edgeObj.subj ||
-        edgeObj.subject ||
-        ""
-      );
-      const rawToRef = String(
-        (dataObj && (dataObj.target || dataObj.to || dataObj.o || dataObj.obj || dataObj.object)) ||
-        edgeObj.target ||
-        edgeObj.to ||
-        edgeObj.obj ||
-        edgeObj.object ||
-        ""
-      );
-
-    // Resolve raw refs strictly to existing mapped node ids (IRI or blank node).
-    // No scheme-insensitive or fuzzy matching allowed here; require exact id equality or iri -> nodeId mapping.
-    let resolvedFrom = "";
-    let resolvedTo = "";
-
-    // 1) Direct match: raw ref equals a mapped node id
-    if (mappedNodeIds.has(String(rawFromRef))) {
-      resolvedFrom = String(rawFromRef);
-    } else {
-      // 2) If rawRef is an IRI that maps to a node id via iriToNodeId, use that
-      if (iriToNodeId.has(String(rawFromRef))) {
-        resolvedFrom = iriToNodeId.get(String(rawFromRef)) || "";
-      } else {
-        // 3) If rawRef is a key that indexes to an iri which then maps to a node id, use that (rare)
-        const iri = nodeKeyToIri.get(String(rawFromRef)) || "";
-        if (iri && iriToNodeId.has(iri)) resolvedFrom = iriToNodeId.get(iri) || "";
-      }
-    }
-
-    if (mappedNodeIds.has(String(rawToRef))) {
-      resolvedTo = String(rawToRef);
-    } else {
-      if (iriToNodeId.has(String(rawToRef))) {
-        resolvedTo = iriToNodeId.get(String(rawToRef)) || "";
-      } else {
-        const iriT = nodeKeyToIri.get(String(rawToRef)) || "";
-        if (iriT && iriToNodeId.has(iriT)) resolvedTo = iriToNodeId.get(iriT) || "";
-      }
-    }
-
-    // If either endpoint could not be resolved exactly, skip the edge and emit a diagnostic.
-    if (!resolvedFrom || !resolvedTo) {
-      try {
-        if (typeof console !== "undefined" && typeof console.debug === "function") {
-          // Serialize key helper structures into lightweight samples to avoid huge logs.
-          const mappedNodeIdsArr = Array.from(mappedNodeIds || []).slice(0, 200);
-          const nodeKeyToIriKeys = Array.from((nodeKeyToIri && nodeKeyToIri.keys && typeof nodeKeyToIri.keys === "function") ? nodeKeyToIri.keys() : []).slice(0, 200);
-          const nodeKeyToIriSample: Record<string,string> = {};
-          try {
-            for (const k of nodeKeyToIriKeys) {
-              try {
-                nodeKeyToIriSample[String(k)] = String(nodeKeyToIri.get ? nodeKeyToIri.get(k) : "");
-              } catch (_) { nodeKeyToIriSample[String(k)] = ""; }
-            }
-          } catch (_) { /* ignore sample building errors */ }
-
-          const diagPayload = {
-            edgePreview: { id: src && src.id, rawFromRef, rawToRef, resolvedFrom, resolvedTo },
-            diagnostics: {
-              mappedNodeIdsCount: (mappedNodeIds && typeof mappedNodeIds.size === "number") ? mappedNodeIds.size : mappedNodeIdsArr.length,
-              mappedNodeIdsSample: mappedNodeIdsArr,
-              nodeKeyToIriSample,
-            },
-          };
-
-          // Human-readable object for interactive consoles
-          console.debug("[VG_WARN] mapGraphToDiagram skipping edge due to unresolved endpoints", diagPayload);
-
-          // JSON-stringified version so logs captured to text files contain the full payload
-          try {
-            console.debug("[VG_WARN_JSON] mapGraphToDiagram", JSON.stringify(diagPayload));
-          } catch (_) {
-            // If stringify fails for any reason, fall back to the raw object (best-effort)
-            try { console.debug("[VG_WARN_JSON] mapGraphToDiagram (stringify failed)", diagPayload); } catch (_) { /* ignore */ }
-          }
-        }
-      } catch (_) { /* ignore logging failures */ }
-      continue;
-    }
-
-    // Ensure resolved ids are present in mappedNodeIds (sanity)
-    if (!mappedNodeIds.has(String(resolvedFrom)) || !mappedNodeIds.has(String(resolvedTo))) {
-      try {
-        if (typeof console !== "undefined" && typeof console.debug === "function") {
-          console.debug("[VG_WARN] mapGraphToDiagram resolved endpoints not present in mappedNodeIds", {
-            edgePreview: { id: src && src.id, resolvedFrom, resolvedTo, mappedNodeCount: mappedNodeIds.size },
-          });
-        }
-      } catch (_) { /* ignore */ }
-      continue;
-    }
-
-      const propertyUriRaw = src.propertyUri || src.propertyType || "";
-      const availableProperties = options && options.availableProperties ? options.availableProperties : [];
-      const foundProp = (availableProperties || []).find((p: any) => String(p.iri) === String(propertyUriRaw));
-      const id = String(src.id || generateEdgeId(resolvedFrom, resolvedTo, propertyUriRaw || ""));
-
-      // Strict label resolution: prefer computeTermDisplay when predicate IRI + rdf manager present.
-      let labelForEdge = "";
-      try {
-        if (mgr && propertyUriRaw) {
-          try {
-            const td = computeTermDisplay(String(propertyUriRaw), mgr as any);
-            labelForEdge = String(td.prefixed || td.short || "");
-          } catch (_) {
-            // if computeTermDisplay fails, fall back to explicit src.label if present
-            labelForEdge = src && src.label ? String(src.label) : "";
-          }
-        } else if (src && src.label) {
-          labelForEdge = String(src.label);
-        } else {
-          labelForEdge = "";
-        }
-      } catch (_) {
-        labelForEdge = src && src.label ? String(src.label) : "";
-      }
-
-      mappedEdges.push({
-        id,
-        source: String(resolvedFrom),
-        target: String(resolvedTo),
-        type: "floating",
-        markerEnd: { type: "arrow" as any },
-        data: {
-          key: id,
-          from: String(resolvedFrom),
-          to: String(resolvedTo),
-          propertyUri: propertyUriRaw,
-          propertyType: src.propertyType || "",
-          label: labelForEdge,
-          namespace: src.namespace || "",
-          rdfType: src.rdfType || "",
-        } as LinkData,
+  const ensureNode = (iri: string) => {
+    if (!iri) return;
+    if (!nodeMap.has(iri)) {
+      nodeMap.set(iri, {
+        iri,
+        rdfTypes: [],
+        literalProperties: [],
+        annotationProperties: [],
+        label: undefined,
       });
     }
-  } catch (_) {
-    /* ignore edge mapping failures */
+  };
+
+  const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+  const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
+  const XSD_STRING = "http://www.w3.org/2001/XMLSchema#string";
+
+  for (const q of quads || []) {
+    try {
+      const subj = q && q.subject ? q.subject : null;
+      const pred = q && q.predicate ? q.predicate : null;
+      const obj = q && q.object ? q.object : null;
+
+      const subjectIri = subj && subj.value ? String(subj.value) : "";
+      const predIri = pred && pred.value ? String(pred.value) : "";
+      if (!subjectIri || !predIri) continue;
+
+      ensureNode(subjectIri);
+      const entry = nodeMap.get(subjectIri)!;
+
+      // rdf:type
+      if (predIri === RDF_TYPE) {
+        const val = obj && obj.value ? String(obj.value) : "";
+        if (val) entry.rdfTypes.push(val);
+        continue;
+      }
+
+      // rdfs:label as node label (literal preferred)
+      if (predIri === RDFS_LABEL && isLiteral(obj)) {
+        entry.label = obj && obj.value ? String(obj.value) : entry.label;
+        continue;
+      }
+
+      // object is IRI/blank -> create edge + ensure object node
+      if (isNamedOrBlank(obj)) {
+        const objectIri = obj && obj.value ? String(obj.value) : "";
+        if (!objectIri) continue;
+        ensureNode(objectIri);
+        const edgeId = String(generateEdgeId(subjectIri, objectIri, predIri || ""));
+        const labelForEdge = predIri || "";
+        rfEdges.push({
+          id: edgeId,
+          source: subjectIri,
+          target: objectIri,
+          type: "floating",
+          markerEnd: { type: "arrow" as any },
+          data: {
+            key: edgeId,
+            from: subjectIri,
+            to: objectIri,
+            propertyUri: predIri,
+            propertyType: "",
+            label: labelForEdge,
+            namespace: "",
+            rdfType: "",
+          } as LinkData,
+        });
+        continue;
+      }
+
+      // literal -> literalProperties
+      if (isLiteral(obj)) {
+        const litVal = obj && obj.value ? String(obj.value) : "";
+        const dt = obj && obj.datatype && obj.datatype.value ? String(obj.datatype.value) : XSD_STRING;
+        entry.literalProperties.push({ key: predIri, value: litVal, type: dt });
+        continue;
+      }
+
+      // fallback -> annotationProperties
+      entry.annotationProperties.push({
+        property: predIri,
+        value: obj && obj.value ? String(obj.value) : "",
+      });
+    } catch (_) {
+      // ignore per-quad failures
+    }
   }
 
-
-  // Apply computed visibility to node data where possible (prefer explicit visible flag if set)
-  try {
-    mappedNodes.forEach((n) => {
+  // Build RF nodes
+  const rfNodes: RFNode<NodeData>[] = Array.from(nodeMap.keys()).map((iri) => {
+    const info = nodeMap.get(iri)!;
+    // Compute a lightweight classType/displayType from first rdf:type if available.
+    let classType: string | undefined = undefined;
+    if (Array.isArray(info.rdfTypes) && info.rdfTypes.length > 0) {
+      const primary = String(info.rdfTypes[0]);
       try {
-        const iri = n.data && (n.data as any).iri ? String((n.data as any).iri) : "";
-        if (iri) {
-          n.data = { ...(n.data as any), visible: visibleIris.has(iri) };
-        } else {
-          // if no IRI, preserve existing visibility
-          n.data = { ...(n.data as any) };
+        // computeTermDisplay may be used by callers that pass an RDF manager into a different layer;
+        // this function purposely does not require a manager. Return local short name as fallback.
+        classType = shortLocalName(primary);
+      } catch (_) {
+        classType = shortLocalName(primary);
+      }
+    }
+
+    // Coarse namespace extraction from IRI (prefix before last / or #)
+    let namespace = "";
+    try {
+      const m = String(iri || "").match(/^(.*[\/#])/);
+      namespace = m && m[1] ? String(m[1]) : "";
+    } catch (_) {
+      namespace = "";
+    }
+
+    const isTBox = Array.isArray(info.rdfTypes) && info.rdfTypes.some((t: any) =>
+      /Class|ObjectProperty|AnnotationProperty|DatatypeProperty|owl:Class|owl:ObjectProperty/i.test(String(t || ""))
+    );
+
+    const nodeData: NodeData = {
+      key: iri,
+      iri,
+      rdfTypes: Array.isArray(info.rdfTypes) ? info.rdfTypes.map(String) : [],
+      label: info.label || shortLocalName(iri),
+      namespace,
+      classType,
+      literalProperties: info.literalProperties || [],
+      annotationProperties: info.annotationProperties || [],
+      visible: true,
+      hasReasoningError: false,
+      isTBox: !!isTBox,
+    };
+
+    return {
+      id: iri,
+      type: "ontology",
+      position: { x: 0, y: 0 },
+      data: {
+        ...nodeData,
+        onSizeMeasured: (_w: number, _h: number) => {
+          /* no-op */
+        },
+      } as NodeData,
+    } as RFNode<NodeData>;
+  });
+
+  return { nodes: rfNodes, edges: rfEdges };
+}
+
+/**
+ * Convert a diagram (nodes + edges) into an array of QuadLike POJOs.
+ *
+ * This is the pure inverse of mapQuadsToDiagram: it synthesises simple triple-like
+ * objects from NodeData / LinkData shapes. It deliberately does not perform any
+ * prefix expansion or store operations — it only returns POJOs representing triples.
+ *
+ * Returned object format aligns with the QuadLike shape used by mapQuadsToDiagram:
+ * { subject: { value }, predicate: { value }, object: { value, termType?, datatype? } }
+ */
+export function mapDiagramToQuads(
+  nodes: Array<NodeData | any> = [],
+  edges: Array<LinkData | any> = []
+): QuadLike[] {
+  const quads: QuadLike[] = [];
+  const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+  const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
+  const XSD_STRING = "http://www.w3.org/2001/XMLSchema#string";
+
+  try {
+    for (const n of nodes || []) {
+      try {
+        const src = n && n.data ? n.data : n;
+        const subj = src && (src.iri || src.key || src.id) ? String(src.iri || src.key || src.id) : "";
+        if (!subj) continue;
+
+        // rdfTypes -> rdf:type triples
+        const rdfTypes = Array.isArray(src.rdfTypes) ? src.rdfTypes : src.rdfTypes ? [src.rdfTypes] : [];
+        for (const t of rdfTypes) {
+          try {
+            if (!t) continue;
+            quads.push({
+              subject: { value: subj },
+              predicate: { value: RDF_TYPE },
+              object: { value: String(t), termType: "NamedNode" },
+            });
+          } catch (_) { /* ignore per-type */ }
+        }
+
+        // rdfs:label from label if present
+        if (src.label) {
+          try {
+            quads.push({
+              subject: { value: subj },
+              predicate: { value: RDFS_LABEL },
+              object: { value: String(src.label), termType: "Literal", datatype: { value: XSD_STRING } },
+            });
+          } catch (_) { /* ignore */ }
+        }
+
+        // literalProperties -> literal triples
+        if (Array.isArray(src.literalProperties)) {
+          for (const lp of src.literalProperties) {
+            try {
+              const key = lp && (lp.key || lp.property || lp.propertyUri) ? String(lp.key || lp.property || lp.propertyUri) : "";
+              const v = lp && lp.value !== undefined && lp.value !== null ? String(lp.value) : "";
+              const dt = lp && (lp.type || lp.datatype) ? String(lp.type || lp.datatype) : XSD_STRING;
+              if (key && v !== "") {
+                quads.push({
+                  subject: { value: subj },
+                  predicate: { value: key },
+                  object: { value: v, termType: "Literal", datatype: { value: dt } },
+                });
+              }
+            } catch (_) { /* ignore per-literal */ }
+          }
+        }
+
+        // annotationProperties -> literal triples (annotationProperties typically use { property, value } shape)
+        if (Array.isArray(src.annotationProperties)) {
+          for (const ap of src.annotationProperties) {
+            try {
+              const key = ap && (ap.property || ap.propertyUri || ap.key) ? String(ap.property || ap.propertyUri || ap.key) : "";
+              const v = ap && ap.value !== undefined && ap.value !== null ? String(ap.value) : "";
+              if (key && v !== "") {
+                quads.push({
+                  subject: { value: subj },
+                  predicate: { value: key },
+                  object: { value: v, termType: "Literal", datatype: { value: XSD_STRING } },
+                });
+              }
+            } catch (_) { /* ignore per-annotation */ }
+          }
         }
       } catch (_) {
         /* ignore per-node */
       }
-    });
-  } catch (_) {
-    /* ignore */
-  }
+    }
 
-  // Emit a console-friendly debug sample to assist with runtime diagnosis (kept lightweight)
-  try {
-    if (typeof console !== "undefined" && typeof console.debug === "function") {
+    // edges -> triples with object being IRI (NamedNode)
+    for (const e of edges || []) {
       try {
-        // stringify lightweight samples to avoid JSHandle/remote object representations in puppeteer logs
-        const visibleSample = Array.isArray(Array.from(visibleIris || [])) ? Array.from(visibleIris).slice(0, 20).join(",") : "";
-        const nodesSampleStr = Array.isArray(mappedNodes)
-          ? mappedNodes.slice(0, 20).map((n: any) => `${n.id}|${(n.data && (n.data as any).iri) || ""}|visible=${Boolean(n.data && (n.data as any).visible)}`).join(";")
-          : "";
-        const edgesSampleStr = Array.isArray(mappedEdges)
-          ? mappedEdges.slice(0, 20).map((e: any) => `${e.id}:${e.source}->${e.target}`).join(";")
-          : "";
+        const src = e && e.data ? e.data : e;
+        const subj = src && (src.from || src.source) ? String(src.from || src.source) : (e && (e.source || e.from) ? String(e.source || e.from) : "");
+        const obj = src && (src.to || src.target) ? String(src.to || src.target) : (e && (e.target || e.to) ? String(e.target || e.to) : "");
+        const pred = src && (src.propertyUri || src.property || src.propertyType) ? String(src.propertyUri || src.property || src.propertyType) : (e && (e.predicate || e.property) ? String(e.predicate || e.property) : "");
+        if (!subj || !pred || !obj) continue;
 
-        console.debug("[VG_DEBUG] mapGraphToDiagram", {
-          visibleIrisCount: (visibleIris && typeof (visibleIris.size) === "number") ? visibleIris.size : undefined,
-          visibleIrisSample: visibleSample,
-          mappedNodesCount: Array.isArray(mappedNodes) ? mappedNodes.length : 0,
-          mappedNodesSample: nodesSampleStr,
-          mappedEdgesCount: Array.isArray(mappedEdges) ? mappedEdges.length : 0,
-          mappedEdgesSample: edgesSampleStr,
+        quads.push({
+          subject: { value: subj },
+          predicate: { value: pred },
+          object: { value: obj, termType: "NamedNode" },
         });
       } catch (_) {
-        /* ignore logging failures */
+        /* ignore per-edge */
       }
     }
   } catch (_) {
-    /* ignore */
+    /* ignore overall failures */
   }
 
-  // Decide layout/fit meta flags for the caller. Mapping is authoritative about which IRIs are visible
-  // in the data graph; expose small signals the consumer (ReactFlowCanvas) can use to apply layout/fit
-  // at the right time (i.e., after mapping has produced the final diagram.nodes/edges).
-  let requestLayoutOnNextMap = false;
-  let requestFitOnNextMap = false;
-  try {
-    if (typeof window !== "undefined") {
-      try {
-        requestLayoutOnNextMap = !!(window as any).__VG_REQUEST_LAYOUT_ON_NEXT_MAP;
-      } catch (_) { requestLayoutOnNextMap = false; }
-      try {
-        requestFitOnNextMap = !!(window as any).__VG_REQUEST_FIT_ON_NEXT_MAP;
-      } catch (_) { requestFitOnNextMap = false; }
-    }
-  } catch (_) { /* ignore */ }
-
-  try {
-    // If there are visible IRIs and mapped nodes include at least one visible node, suggest a fit.
-    const visibleCount = (visibleIris && typeof visibleIris.size === "number") ? visibleIris.size : Array.from(visibleIris || []).length;
-    const mappedVisibleNodesCount = (mappedNodes || []).filter(n => {
-      try { return !!(n.data && (n.data as any).visible); } catch { return false; }
-    }).length;
-    if (visibleCount > 0 && mappedVisibleNodesCount > 0) {
-      requestFitOnNextMap = true;
-    }
-  } catch (_) {
-    /* ignore */
-  }
-
-  const meta = { requestLayoutOnNextMap, requestFitOnNextMap };
-
-  return { nodes: mappedNodes, edges: mappedEdges, meta };
+  return quads;
 }
+
+export default mapQuadsToDiagram;

@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components */
+/* eslint-disable react-refresh/only-export-components, no-empty */
 /**
  * @fileoverview Enhanced Node Property Editor
  * Allows editing of node type, IRI, and annotation properties with proper XSD type support
@@ -80,14 +80,27 @@ export const NodePropertyEditor = ({
   
   const { availableClasses, getRdfManager } = useOntologyStore();
   const [extraClassFromRdf, setExtraClassFromRdf] = useState<any | null>(null);
+
+  // Prefer canonical index suggestions when present (covers classes+properties)
+  const entitySuggestions = useOntologyStore((s) => (s as any).entityIndex?.suggestions || []);
   
   // Memoize classEntities to prevent constant re-creation.
   // Combine provided availableEntities with ontologyStore.availableClasses as a fallback so
   // the editor can resolve short labels or full URIs even when the UI-provided entity list is empty.
   const classEntities = useMemo(() => {
+    // Build class list from canonical suggestions when available, otherwise fall back to availableClasses
+    const fromSuggestions = Array.isArray(entitySuggestions) && entitySuggestions.length > 0
+      ? (entitySuggestions || []).filter((e: any) => (e.rdfType || '').includes('Class') || (e.rdfType || '').includes('owl:Class')).map((ent: any) => ({
+          iri: ent.iri,
+          label: ent.label,
+          namespace: ent.namespace || '',
+          rdfType: 'owl:Class'
+        }))
+      : [];
+
     const fromEntities = (availableEntities || []).filter(e => e.rdfType === 'owl:Class');
     const fromStore = (availableClasses || []).map(cls => ({
-     iri: cls.iri,
+      iri: cls.iri,
       label: cls.label,
       namespace: cls.namespace || '',
       rdfType: 'owl:Class'

@@ -8,10 +8,10 @@
 
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Badge } from "../ui/badge";
+import NamespaceLegendCore from "./NamespaceLegendCore";
 import { useOntologyStore } from "@/stores/ontologyStore";
 import { GripVertical, X } from "lucide-react";
 import { usePaletteFromRdfManager } from "./core/namespacePalette";
-import { getNamespaceColorFromPalette } from "./helpers/namespaceHelpers";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 
@@ -279,24 +279,7 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
         className={`p-3 overflow-y-auto ${needsScroll ? "scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent" : ""}`}
         style={{ height: size.height - 60, overflowY: needsScroll ? "auto" : "hidden" }}
       >
-        <div className="space-y-2">
-          {entries.map(([prefix, uri], index) => (
-            <div key={String(prefix) + index} className="flex items-center gap-2 text-xs">
-              <div className="flex items-center gap-1.5 shrink-0">
-                <div
-                  className="w-3 h-3 rounded-full border border-border/50"
-                  style={{ backgroundColor: getNamespaceColorFromPalette(palette, String(prefix)) || undefined }}
-                />
-                <Badge variant="outline" className="font-mono text-xs px-1.5 py-0.5">
-                  {String(prefix) === "" ? ":" : String(prefix)}
-                </Badge>
-              </div>
-              <span className="text-muted-foreground truncate flex-1 text-xs leading-relaxed" title={uri}>
-                {uri}
-              </span>
-            </div>
-          ))}
-        </div>
+        <NamespaceLegendCore entries={entries} palette={palette} />
       </div>
 
       <div

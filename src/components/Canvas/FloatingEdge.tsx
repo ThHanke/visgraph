@@ -10,6 +10,7 @@ import { Badge } from "../ui/badge";
 import { getEdgeParams } from "./EdgeParams";
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { computeTermDisplay } from "../../utils/termUtils";
+import { usePaletteFromRdfManager } from "./core/namespacePalette";
 
 /**
  * FloatingEdge
@@ -68,7 +69,8 @@ const FloatingEdge = memo((props: EdgeProps) => {
           : undefined;
       try {
         if (rdfMgr && rawPred) {
-          const td = computeTermDisplay(String(rawPred), rdfMgr as any);
+          const palette = usePaletteFromRdfManager();
+          const td = computeTermDisplay(String(rawPred), rdfMgr as any, palette);
           badgeText = String(td.prefixed || td.short || "");
         } else {
           badgeText = "";

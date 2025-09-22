@@ -39,14 +39,24 @@ export const LinkPropertyEditor = ({
   
   const availableProperties = useOntologyStore((s) => s.availableProperties);
   const ontologiesVersion = useOntologyStore((s) => (s as any).ontologiesVersion);
+  // Prefer canonical entity suggestions when available (entityIndex.suggestions).
+  // Fall back to availableProperties if suggestions are empty.
+  const entitySuggestions = useOntologyStore((s) => (s as any).entityIndex?.suggestions || []);
 
-  // Build autocomplete options from availableProperties (derived from RDF store).
-  // availableProperties items are expected to have { uri, label, namespace, domain, range }
-  const allObjectProperties = (availableProperties || []).map((prop) => ({
-    value: prop.iri,
-    label: prop.label || prop.iri,
-    description: prop.namespace ? `From ${prop.namespace}` : undefined,
-  }));
+  // Build autocomplete options preferring entityIndex suggestions (covers both classes and properties).
+  // Fallback to availableProperties shape when suggestions are not present.
+  const allObjectProperties =
+    Array.isArray(entitySuggestions) && entitySuggestions.length > 0
+      ? (entitySuggestions || []).map((ent: any) => ({
+          value: ent.iri,
+          label: ent.label || ent.iri,
+          description: ent.display || undefined,
+        }))
+      : (availableProperties || []).map((prop) => ({
+          value: prop.iri,
+          label: prop.label || prop.iri,
+          description: prop.namespace ? `From ${prop.namespace}` : undefined,
+        }));
 
   // Keep selectedProperty synced when the dialog opens for a different link.
   // Support multiple shapes: linkData may store predicate at top-level (propertyUri/propertyType)

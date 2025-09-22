@@ -1,7 +1,7 @@
 import React from "react";
 import { render, waitFor } from "@testing-library/react";
 import { test, expect, vi } from "vitest";
-import ReactFlowCanvas from "../components/Canvas/ReactFlowCanvas";
+import KnowledgeCanvas from "../components/Canvas/KnowledgeCanvas";
 import { useOntologyStore } from "../stores/ontologyStore";
 
 /**
@@ -44,7 +44,7 @@ test(
     useOntologyStore.setState({ loadKnowledgeGraph: mockLoad } as any);
 
     // Act: render the canvas which runs initialization on mount
-    render(<ReactFlowCanvas />);
+    render(<KnowledgeCanvas />);
 
     // Trigger the explicit initializer (ensure initializeApp runs in test env)
     if (typeof (window as any).__VG_INIT_APP === "function") {

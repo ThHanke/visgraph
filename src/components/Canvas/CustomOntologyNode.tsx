@@ -1,8 +1,6 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
 import { Handle, Position, NodeProps, useConnection, useUpdateNodeInternals } from '@xyflow/react';
 import { cn } from '../../lib/utils';
-import { Badge } from '../ui/badge';
-import { Button } from '../ui/button';
 import { Edit3, AlertTriangle, Info } from 'lucide-react';
 import {
   Popover,
@@ -11,9 +9,9 @@ import {
 } from '../ui/popover';
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { usePaletteFromRdfManager } from './core/namespacePalette';
-import { getNamespaceColorFromPalette, normalizeNamespaceKey } from './helpers/namespaceHelpers';
+import { getNamespaceColorFromPalette } from './helpers/namespaceHelpers';
 import { computeTermDisplay, shortLocalName } from '../../utils/termUtils';
-import { computeBadgeText, computeDisplayInfo } from './core/nodeDisplay';
+import { computeBadgeText } from './core/nodeDisplay';
 import { debug } from '../../utils/startupDebug';
 
 /**

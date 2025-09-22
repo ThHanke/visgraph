@@ -1,4 +1,6 @@
 import { useOntologyStore } from "@/stores/ontologyStore";
+import { DataFactory } from "n3";
+const { namedNode, quad } = DataFactory;
 
 /**
  * Shared helpers for building / identifying edges in the canvas currentGraph.
@@ -57,34 +59,70 @@ export function buildEdgePayload(subjectIri: string, objectIri: string, predicat
  * This uses the store's setCurrentGraph (keeps other consumers unchanged).
  */
 export function addEdgeToCurrentGraph(edge: EdgePayload) {
+  // Migration: instead of writing into ontologyStore.currentGraph, persist the
+  // canonical triple into the RDF manager store (urn:vg:data). This makes the
+  // RDF store the single source of truth and lets downstream mapping pick up
+  // the new edge via mapGraphToDiagram/mapRDFtoNodes.
   try {
     const os = (useOntologyStore as any).getState ? (useOntologyStore as any).getState() : null;
-    if (!os) return false;
-    if (typeof os.setCurrentGraph === "function") {
-      const cg = os.currentGraph || { nodes: [], edges: [] };
-      const exists = (cg.edges || []).some((e: any) => {
-        try {
-          return String(e.id) === String(edge.id);
-        } catch {
-          return false;
-        }
-      });
-      if (exists) return false;
+    const mgr =
+      os && typeof (os as any).getRdfManager === "function"
+        ? (os as any).getRdfManager()
+        : os && (os as any).rdfManager
+        ? (os as any).rdfManager
+        : undefined;
+    if (!mgr) return false;
+
+    // Resolve store and helpers
+    const store = mgr && typeof (mgr as any).getStore === "function" ? (mgr as any).getStore() : null;
+    if (!store || typeof store.addQuad !== "function") {
+      return false;
+    }
+
+    try {
+      const subj = namedNode(String(edge.source));
+      const pred = namedNode(String((edge.data && (edge.data.propertyUri || edge.data.propertyType)) || ""));
+      const obj = namedNode(String(edge.target));
+      // Graph used by the app for data triples
+      const graphNode = namedNode("urn:vg:data");
+
+      // Avoid adding duplicate quads by checking existing quads strictly
       try {
-        os.setCurrentGraph(cg.nodes || [], [...(cg.edges || []), edge]);
-        return true;
-      } catch {
-        // fallback: direct setState if available
+        const existing = store.getQuads(subj, pred, obj, graphNode) || [];
+        if (existing && existing.length > 0) return false;
+      } catch (_) {
+        // if the check fails, proceed to add (best-effort)
+      }
+
+      try {
+        store.addQuad(quad(subj, pred, obj, graphNode));
+      } catch (e) {
         try {
-          (useOntologyStore as any).setState({ currentGraph: { nodes: cg.nodes || [], edges: [...(cg.edges || []), edge] } });
-          return true;
-        } catch {
+          // Some store implementations expose addQuad differently; try alternative forms.
+          if (typeof (store as any).add === "function") {
+            (store as any).add(quad(subj, pred, obj, graphNode));
+          } else {
+            throw e;
+          }
+        } catch (_) {
+          // If adding fails, give up.
           return false;
         }
       }
+
+      // Legacy: previously signalled global one-shot layout/fit flags here.
+      // Suppressed to avoid legacy mapping subscribers triggering repeated remaps.
+      try {
+        if (typeof console !== "undefined" && typeof console.debug === "function") {
+          try { console.debug("[VG] addEdgeToCurrentGraph: suppressed legacy __VG_REQUEST_* writes"); } catch (_) { /* ignore */ }
+        }
+      } catch (_) { /* ignore */ }
+
+      return true;
+    } catch (_) {
+      return false;
     }
   } catch (_) {
-    /* ignore */
+    return false;
   }
-  return false;
 }

@@ -2251,6 +2251,159 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 /**
  * Extract ontology URIs referenced in RDF content that should be loaded
  */
+function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
+  try {
+    if (!mgr || typeof mgr.getStore !== "function") return;
+    const store = mgr.getStore();
+    if (!store || typeof store.getQuads !== "function") return;
+
+    const expand = typeof (mgr as any).expandPrefix === "function"
+      ? (s: string) => { try { return (mgr as any).expandPrefix(s); } catch { return s; } }
+      : (s: string) => s;
+
+    const RDF_TYPE = expand("rdf:type");
+    const RDFS_LABEL = expand("rdfs:label");
+
+    // Full rebuild when no quads provided
+    if (!Array.isArray(quads) || quads.length === 0) {
+      try {
+        const allQuads = store.getQuads(null, null, null, null) || [];
+        const subjects = Array.from(
+          new Set(allQuads.map((q: any) => (q && q.subject && q.subject.value) || "").filter(Boolean))
+        );
+
+        const propsMap: Record<string, any> = {};
+        const classesMap: Record<string, any> = {};
+
+        subjects.forEach((s) => {
+          try {
+            const subj = namedNode(String(s));
+            const typeQuads = store.getQuads(subj, namedNode(RDF_TYPE), null, null) || [];
+            const types = Array.from(new Set(typeQuads.map((q: any) => (q && q.object && (q.object as any).value) || "").filter(Boolean)));
+            const isProp = types.some((t: string) => /Property/i.test(String(t)));
+            const isClass = types.some((t: string) => /Class/i.test(String(t)));
+
+            const labelQ = store.getQuads(subj, namedNode(RDFS_LABEL), null, null) || [];
+            const label = labelQ.length > 0 ? String((labelQ[0].object as any).value) : String(s);
+            const nsMatch = String(s || "").match(/^(.*[\/#])/);
+            const namespace = nsMatch && nsMatch[1] ? String(nsMatch[1]) : "";
+
+            if (isProp) {
+              propsMap[String(s)] = {
+                iri: String(s),
+                label,
+                domain: [],
+                range: [],
+                namespace,
+                source: "store",
+              };
+            }
+
+            if (isClass) {
+              classesMap[String(s)] = {
+                iri: String(s),
+                label,
+                namespace,
+                properties: [],
+                restrictions: {},
+                source: "store",
+              };
+            }
+          } catch (_) {
+            /* ignore per-subject errors */
+          }
+        });
+
+        const mergedProps = Object.values(propsMap) as ObjectProperty[];
+        const mergedClasses = Object.values(classesMap) as OntologyClass[];
+
+        useOntologyStore.setState((st: any) => ({
+          availableProperties: mergedProps,
+          availableClasses: mergedClasses,
+          ontologiesVersion: (st.ontologiesVersion || 0) + 1,
+        }));
+      } catch (_) {
+        /* ignore rebuild failures */
+      }
+      return;
+    }
+
+    // Incremental: process subjects found in the provided quads
+    try {
+      const subjects = Array.from(
+        new Set((quads || []).map((q: any) => (q && q.subject && q.subject.value) || "").filter(Boolean))
+      );
+
+      const classesMap: Record<string, any> = {};
+      const propsMap: Record<string, any> = {};
+
+      subjects.forEach((s) => {
+        try {
+          const subj = namedNode(String(s));
+          const typeQuads = store.getQuads(subj, namedNode(RDF_TYPE), null, null) || [];
+          const types = Array.from(new Set(typeQuads.map((q: any) => (q && q.object && (q.object as any).value) || "").filter(Boolean)));
+          const isClass = types.some((t: any) => /Class/i.test(String(t)));
+          const isProp = types.some((t: any) => /Property/i.test(String(t)));
+
+          const labelQ = store.getQuads(subj, namedNode(RDFS_LABEL), null, null) || [];
+          const label = labelQ.length > 0 ? String((labelQ[0].object as any).value) : String(s);
+          const nsMatch = String(s || "").match(/^(.*[\/#])/);
+          const namespace = nsMatch && nsMatch[1] ? String(nsMatch[1]) : "";
+
+          if (isClass) {
+            classesMap[String(s)] = {
+              iri: String(s),
+              label,
+              namespace,
+              properties: [],
+              restrictions: {},
+              source: "store",
+            };
+          }
+          if (isProp) {
+            propsMap[String(s)] = {
+              iri: String(s),
+              label,
+              domain: [],
+              range: [],
+              namespace,
+              source: "store",
+            };
+          }
+        } catch (_) {
+          /* ignore per-subject */
+        }
+      });
+
+      useOntologyStore.setState((st: any) => {
+        const existingClasses = Array.isArray(st.availableClasses) ? st.availableClasses : [];
+        const classByIri: Record<string, any> = {};
+        existingClasses.forEach((c: any) => {
+          try { classByIri[String(c.iri)] = c; } catch (_) {}
+        });
+        Object.values(classesMap).forEach((c: any) => { try { classByIri[String(c.iri)] = c; } catch (_) {} });
+
+        const existingProps = Array.isArray(st.availableProperties) ? st.availableProperties : [];
+        const propByIri: Record<string, any> = {};
+        existingProps.forEach((p: any) => {
+          try { propByIri[String(p.iri)] = p; } catch (_) {}
+        });
+        Object.values(propsMap).forEach((p: any) => { try { propByIri[String(p.iri)] = p; } catch (_) {} });
+
+        return {
+          availableClasses: Object.values(classByIri),
+          availableProperties: Object.values(propByIri),
+          ontologiesVersion: (st.ontologiesVersion || 0) + 1,
+        };
+      });
+    } catch (_) {
+      /* ignore incremental failures */
+    }
+  } catch (_) {
+    /* ignore */
+  }
+}
+
 function extractReferencedOntologies(rdfContent: string): string[] {
   const ontologyUris = new Set<string>();
 
@@ -2431,350 +2584,3 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
     }
   }
 }
-
-/*
-  Global fat-map backup subscription
-
-  The incremental fat-map synchronizer is normally installed when loading a
-  well-known ontology via loadOntology. In tests and some runtime paths that
-  update the RDF manager directly (rdfManager.updateNode / applyParsedNodes),
-  the in-loadOntology setup may not be executed. Install a lightweight global
-  subscription here that rebuilds the store-derived availableProperties and
-  availableClasses whenever the rdfManager signals changes (subject-level or
-  global). This is intentionally conservative and avoids depending on the
-  in-IIFE helper closure above.
-*/
-(function setupGlobalFatMap() {
-  try {
-    const mgr = rdfManager;
-    if (!mgr || typeof mgr.getStore !== "function") return;
-
-    const expand =
-      typeof (mgr as any).expandPrefix === "function"
-        ? (s: string) => {
-            try {
-              const out = (mgr as any).expandPrefix(s);
-              return typeof out === "string" ? out : String(out || s);
-            } catch (_) {
-              return s;
-            }
-          }
-        : (s: string) => s;
-
-    const rdfsLabel = expand("rdfs:label");
-    const rdfType = expand("rdf:type");
-    const owlObject = expand("owl:ObjectProperty");
-    const owlAnnotation = expand("owl:AnnotationProperty");
-    const rdfProperty = expand("rdf:Property");
-    const owlClass = expand("owl:Class");
-    const rdfsClass = expand("rdfs:Class");
-
-    const propertyTypes = new Set([owlObject, owlAnnotation, rdfProperty]);
-    const classTypes = new Set([owlClass, rdfsClass]);
-
-    const rebuild = () => {
-      try {
-        const store = mgr.getStore();
-        if (!store || typeof store.getQuads !== "function") return;
-
-        const allQuads = store.getQuads(null, null, null, null) || [];
-        const subjects = Array.from(
-          new Set(
-            allQuads
-              .map(
-                (q: any) => (q && q.subject && (q.subject as any).value) || "",
-              )
-              .filter(Boolean),
-          ),
-        );
-
-        const propsMap: Record<string, any> = {};
-        const classesMap: Record<string, any> = {};
-
-        subjects.forEach((s) => {
-          try {
-            const subj = namedNode(String(s));
-            const typeQuads =
-              store.getQuads(subj, namedNode(rdfType), null, null) || [];
-            const types = Array.from(
-              new Set(
-                typeQuads
-                  .map((q: any) => (q.object && (q.object as any).value) || "")
-                  .filter(Boolean),
-              ),
-            );
-            const isProp = types.some((t: string) => propertyTypes.has(t));
-            const isClass = types.some((t: string) => classTypes.has(t));
-
-            if (isProp) {
-              const labelQ =
-                store.getQuads(subj, namedNode(rdfsLabel), null, null) || [];
-              const label =
-                labelQ.length > 0
-                  ? String((labelQ[0].object as any).value)
-                  : String(s);
-              propsMap[String(s)] = {
-                iri: String(s),
-                label,
-                domain: [],
-                range: [],
-                namespace: "",
-                source: "store",
-              };
-            }
-
-            if (isClass) {
-              const labelQ =
-                store.getQuads(subj, namedNode(rdfsLabel), null, null) || [];
-              const label =
-                labelQ.length > 0
-                  ? String((labelQ[0].object as any).value)
-                  : String(s);
-              classesMap[String(s)] = {
-                iri: String(s),
-                label,
-                namespace: "",
-                properties: [],
-                restrictions: {},
-                source: "store",
-              };
-            }
-          } catch (_) {
-            /* ignore per-subject errors */
-          }
-        });
-
-        const mergedProps = Object.values(propsMap) as ObjectProperty[];
-        const mergedClasses = Object.values(classesMap) as OntologyClass[];
-
-        useOntologyStore.setState((st) => ({
-          availableProperties: mergedProps,
-          availableClasses: mergedClasses,
-          ontologiesVersion: (st.ontologiesVersion || 0) + 1,
-        }));
-      } catch (_) {
-        /* ignore rebuild failures */
-      }
-    };
-
-    // Subscribe to subject-level notifications if available
-    try {
-      if (typeof mgr.onSubjectsChange === "function") {
-        mgr.onSubjectsChange((subjects: any) => {
-          try {
-            // subjects may be string[] or unknown[], just rebuild conservatively
-            rebuild();
-          } catch (_) {
-            /* ignore */
-          }
-
-          // NEW: Automatic mapping reaction
-          // When subjects change in the urn:vg:data graph, attempt to map
-          // any newly added subject->predicate->object (where object is an IRI)
-          // into canonical edges inside ontologyStore.currentGraph so the canvas
-          // mapping sees and renders them.
-          try {
-            const subjList: string[] = Array.isArray(subjects)
-              ? subjects.map(String).filter(Boolean)
-              : [];
-            if (!subjList || subjList.length === 0) return;
-
-            // Diagnostic: log received subjects for troubleshooting
-            try {
-              console.debug("[VG_DEBUG] rdf.onSubjectsChange received", {
-                subjects: subjList.slice(0, 50),
-              });
-            } catch (_) {
-              /* ignore */
-            }
-
-            // Guard: require store access
-            const store =
-              mgr && typeof mgr.getStore === "function" ? mgr.getStore() : null;
-            if (!store || typeof store.getQuads !== "function") return;
-
-            const g = namedNode("urn:vg:data");
-            const osState = (useOntologyStore as any).getState
-              ? (useOntologyStore as any).getState()
-              : null;
-            const current =
-              osState && osState.currentGraph
-                ? osState.currentGraph
-                : { nodes: [], edges: [] };
-            const curNodes = current && current.nodes ? current.nodes : [];
-            const curEdges = current && current.edges ? current.edges : [];
-
-            // Helper: resolve a full node id in currentGraph for an IRI.
-            // Strict matching only: match exact IRI or exact node.id (which should be an IRI or blank node).
-            const findNodeIdForIri = (iri: string) => {
-              if (!iri) return "";
-              try {
-                // Match only exact equality against node.data.iri, node.iri or node.id
-                for (const n of curNodes) {
-                  try {
-                    const nd = (n && (n.data || n)) || {};
-                    const candIri = String(
-                      nd.iri || (n && (n.iri || n.id)) || "",
-                    );
-                    if (!candIri) continue;
-                    if (candIri === iri) return String(n.id || candIri);
-                    // Also allow exact match against node.id if it is present
-                    const nodeId = n && (n.id || "");
-                    if (nodeId && String(nodeId) === iri) return String(nodeId);
-                  } catch (_) {
-                    /* ignore per-node */
-                  }
-                }
-              } catch (_) {
-                /* ignore */
-              }
-              return "";
-            };
-
-            const edgesToAdd: any[] = [];
-            subjList.forEach((s) => {
-              try {
-                if (!s) return;
-                const subjTerm = namedNode(String(s));
-                const quads = store.getQuads(subjTerm, null, null, g) || [];
-                for (const q of quads) {
-                  try {
-                    if (!q || !q.subject || !q.predicate || !q.object) continue;
-                    // only consider object IRIs (skip literals)
-                    if (
-                      !q.object.value ||
-                      (q.object.termType && q.object.termType !== "NamedNode")
-                    )
-                      continue;
-
-                    const subjIri = String(q.subject.value);
-                    const objIri = String(q.object.value);
-                    const predIri = String(q.predicate.value);
-
-                    const sourceId = findNodeIdForIri(subjIri);
-                    const targetId = findNodeIdForIri(objIri);
-
-                    if (!sourceId || !targetId) {
-                      // endpoints not present in currentGraph — skip (mapping will include them when nodes are added)
-                      continue;
-                    }
-
-                    // Build a friendly label for the predicate
-                    let label = "";
-                    try {
-                      const mgrLocal = rdfManager;
-                      if (mgrLocal && predIri) {
-                        try {
-                          const td = computeTermDisplay(String(predIri), mgrLocal as any);
-                          label = String(td.prefixed || td.short || "");
-                        } catch (_) {
-                          label = "";
-                        }
-                      } else {
-                        label = "";
-                      }
-                    } catch (_) {
-                      label = "";
-                    }
-
-                    // Use shared helper to create canonical edge payload and insert with deduplication.
-                    try {
-                      const payload = buildEdgePayload(sourceId, targetId, predIri, label);
-                      addEdgeToCurrentGraph(payload);
-                    } catch (_) {
-                      /* ignore per-quad insertion failures */
-                    }
-                  } catch (_) {
-                    /* ignore per-quad */
-                  }
-                }
-              } catch (_) {
-                /* ignore per-subject */
-              }
-            });
-
-            // Diagnostic: log attempted edge creations
-            try {
-              console.debug("[VG_DEBUG] rdf.onSubjectsChange edgesToAdd", {
-                count: edgesToAdd.length,
-                sample: edgesToAdd.slice(0, 8),
-              });
-            } catch (_) {
-              /* ignore */
-            }
-
-            if (edgesToAdd.length > 0) {
-              try {
-                const merged = [...(curEdges || []), ...edgesToAdd];
-                // Deduplicate by id just in case
-                const seen = new Set<string>();
-                const deduped = merged.filter((e: any) => {
-                  try {
-                    if (!e || !e.id) return false;
-                    if (seen.has(String(e.id))) return false;
-                    seen.add(String(e.id));
-                    return true;
-                  } catch {
-                    return false;
-                  }
-                });
-
-                // Diagnostic: log before / after counts
-                try {
-                  console.debug(
-                    "[VG_DEBUG] rdf.onSubjectsChange mergingEdges",
-                    { before: (curEdges || []).length, after: deduped.length },
-                  );
-                } catch (_) {
-                  /* ignore */
-                }
-
-                // Apply update via store setter so ReactFlowCanvas mapping will pick it up
-                try {
-                  (useOntologyStore as any).setState({
-                    currentGraph: { nodes: curNodes, edges: deduped },
-                  });
-                } catch (_) {
-                  // fallback: if direct setState unavailable, call setCurrentGraph if exposed
-                  try {
-                    const os = (useOntologyStore as any).getState
-                      ? (useOntologyStore as any).getState()
-                      : null;
-                    if (os && typeof os.setCurrentGraph === "function") {
-                      os.setCurrentGraph(curNodes, deduped);
-                    }
-                  } catch (_) {
-                    /* ignore */
-                  }
-                }
-              } catch (_) {
-                /* ignore merge failure */
-              }
-            }
-          } catch (_) {
-            /* ignore subject-change handler failures */
-          }
-        });
-      }
-    } catch (_) {
-      /* ignore */
-    }
-
-    // Also subscribe to global change notifications as a fallback
-    try {
-      if (typeof mgr.onChange === "function") {
-        mgr.onChange(() => {
-          try {
-            rebuild();
-          } catch (_) {
-            /* ignore */
-          }
-        });
-      }
-    } catch (_) {
-      /* ignore */
-    }
-  } catch (_) {
-    /* ignore top-level setup failures */
-  }
-})();

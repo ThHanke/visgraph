@@ -225,40 +225,6 @@ export function buildPaletteMap(prefixes: string[] = [], options?: { avoidColors
  * paletteMap so there's no mismatch or fallback behavior.
  */
 
-/**
- * buildPaletteForRdfManager
- * - Convenience wrapper that extracts prefixes from an RDF manager (or namespace map)
- *   and returns a palette map using the same avoidance rules as other components.
- *
- * - Accepts either:
- *    * an object implementing getNamespaces(): Record<string,string>
- *    * a plain Record<string,string> of prefix -> namespaceUri
- *
- * - options: same options accepted by buildPaletteMap (avoidColors, threshold)
- */
-export function buildPaletteForRdfManager(
-  rdfManagerOrMap?: { getNamespaces?: () => Record<string,string> } | Record<string,string>,
-  options?: { avoidColors?: string[]; threshold?: number }
-): Record<string,string> {
-  try {
-    const nsMap = rdfManagerOrMap && typeof (rdfManagerOrMap as any).getNamespaces === 'function'
-      ? (rdfManagerOrMap as any).getNamespaces()
-      : (rdfManagerOrMap as Record<string,string> | undefined) || {};
-    const prefixes = Object.keys(nsMap || {}).sort();
-    // If caller didn't provide avoidColors, compute sensible defaults from CSS vars
-    const avoid = (options && options.avoidColors) || (
-      typeof window !== 'undefined' && window.getComputedStyle
-        ? [
-            window.getComputedStyle(document.documentElement).getPropertyValue('--node-foreground') || '#000000',
-            window.getComputedStyle(document.documentElement).getPropertyValue('--primary-foreground') || '#000000'
-          ]
-        : ['#000000', '#000000']
-    );
-    return buildPaletteMap(prefixes, { avoidColors: avoid, threshold: options?.threshold });
-  } catch {
-    return {};
-  }
-}
 
 /**
  * Hook: usePaletteFromRdfManager

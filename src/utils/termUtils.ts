@@ -1,6 +1,6 @@
 import { NamedNode } from "n3";
 import type { RDFManager } from "../utils/rdfManager";
-import { buildPaletteForRdfManager } from "../components/Canvas/core/namespacePalette";
+import { buildPaletteMap } from "../components/Canvas/core/namespacePalette";
 import { WELL_KNOWN } from "../utils/wellKnownOntologies";
 
 /**
@@ -152,7 +152,8 @@ export function expandPrefixed(prefixedOrIri: string, rdfManager?: RDFManager | 
  */
 export function computeTermDisplay(
   iriOrTerm: string | NamedNode,
-  rdfManager?: RDFManager | Record<string,string>
+  rdfManager?: RDFManager | Record<string,string>,
+  palette?: Record<string,string> | undefined
 ): TermDisplayInfo {
   const iri = typeof iriOrTerm === "string" ? iriOrTerm : (iriOrTerm as NamedNode).value;
   if (!iri) throw new Error("Empty IRI passed to computeTermDisplay");
@@ -263,14 +264,31 @@ export function computeTermDisplay(
     local = local.substring(idx + 1);
   }
 
-  // Determine authoritative color using the rdfManager-derived palette.
-  // Only use palette color when a named prefix is available and palette contains a mapping.
+  // Determine authoritative color using a provided palette (preferred) or the rdfManager-derived palette.
   let color: string | undefined = undefined;
   try {
-    if (prefix && rdfManager) {
-      const palette = buildPaletteForRdfManager(rdfManager);
+    if (prefix) {
+      let paletteToUse: Record<string,string> | undefined = undefined;
       if (palette && typeof palette === "object") {
-        color = (palette as Record<string,string>)[prefix] || (palette as Record<string,string>)[prefix.toLowerCase()];
+        paletteToUse = palette;
+      } else if (rdfManager) {
+        // Synchronously derive a palette from the rdfManager's registered namespaces
+        const nsMap =
+          (rdfManager as any) && typeof (rdfManager as any).getNamespaces === "function"
+            ? (rdfManager as any).getNamespaces()
+            : {};
+        const prefixes = Object.keys(nsMap || {}).filter(Boolean).sort();
+        const textColors =
+          typeof window !== "undefined" && window.getComputedStyle
+            ? [
+                String(getComputedStyle(document.documentElement).getPropertyValue("--node-foreground") || "#000000"),
+                String(getComputedStyle(document.documentElement).getPropertyValue("--primary-foreground") || "#000000"),
+              ]
+            : ["#000000", "#000000"];
+        paletteToUse = buildPaletteMap(prefixes, { avoidColors: textColors });
+      }
+      if (paletteToUse && typeof paletteToUse === "object") {
+        color = (paletteToUse as Record<string,string>)[prefix] || (paletteToUse as Record<string,string>)[prefix.toLowerCase()];
       }
     }
   } catch (_) {

@@ -58,6 +58,8 @@ export class RDFManager {
   private subjectChangeSubscribers = new Set<(subjects: string[]) => void>();
   private subjectChangeBuffer: Set<string> = new Set();
   private subjectFlushTimer: number | null = null;
+  // Buffer quads per subject to allow emitting the actual triples involved in a subject-level change.
+  private subjectQuadBuffer: Map<string, Quad[]> = new Map();
 
   // Blacklist configuration: prefixes and absolute namespace URIs that should be
   // ignored when emitting subject-level change notifications. Default set below
@@ -379,11 +381,34 @@ export class RDFManager {
             return;
           }
           const subjects = Array.from(this.subjectChangeBuffer);
+          // Collect quads for the subjects we're about to emit, preserving the exact triples
+          // that triggered the change. This allows consumers to process triple-level increments
+          // without querying the store.
+          const quads: Quad[] = [];
+          try {
+            for (const s of subjects) {
+              try {
+                const arr = this.subjectQuadBuffer.get(s) || [];
+                if (arr && arr.length > 0) quads.push(...arr);
+                // Clear the buffered quads for this subject
+                this.subjectQuadBuffer.delete(s);
+              } catch (_) { /* ignore per-subject quad collection failures */ }
+            }
+          } catch (_) { /* ignore overall quad collection failures */ }
+
           this.subjectChangeBuffer.clear();
           this.subjectFlushTimer = null;
+
           for (const cb of Array.from(this.subjectChangeSubscribers)) {
             try {
-              cb(subjects);
+              // Call subscribers with both subjects and the associated quads.
+              // Existing subscribers that only accept subjects will simply ignore the second arg.
+              try {
+                (cb as any)(subjects, quads);
+              } catch (_) {
+                // Fallback: call with just subjects if subscriber throws when receiving two args.
+                cb(subjects);
+              }
             } catch (_) {
               /* ignore individual subscriber errors */
             }
@@ -415,7 +440,19 @@ export class RDFManager {
       const subj = String((q.subject as any).value);
       // Respect configured blacklist: do not buffer or emit subjects from reserved vocabularies.
       if (this.isBlacklistedIri(subj)) return;
+
+      // Buffer subject for emission
       this.subjectChangeBuffer.add(subj);
+
+      // Also buffer the quad itself so consumers can receive the exact triples that changed.
+      try {
+        const existing = this.subjectQuadBuffer.get(subj) || [];
+        existing.push(q as Quad);
+        this.subjectQuadBuffer.set(subj, existing);
+      } catch (_) {
+        /* ignore quad buffering failures */
+      }
+
       this.scheduleSubjectFlush();
     } catch (e) {
       try {
@@ -541,6 +578,16 @@ export class RDFManager {
             /* ignore */
           }
         }
+
+        // One-shot signal for mapping/layout consumers:
+        // Set global request flags at the moment we log rdf.load.end so consumers
+        // that listen for RDF-load completion can apply layout/fit once.
+        try {
+          if (typeof window !== "undefined") {
+            try { (window as any).__VG_REQUEST_LAYOUT_ON_NEXT_MAP = true; } catch (_) { /* ignore */ }
+            try { (window as any).__VG_REQUEST_FIT_ON_NEXT_MAP = true; } catch (_) { /* ignore */ }
+          }
+        } catch (_) { /* ignore */ }
       }
 
       // Notify subscribers that RDF changed
