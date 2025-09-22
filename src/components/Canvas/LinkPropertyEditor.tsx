@@ -14,6 +14,7 @@ import {
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { computeTermDisplay, shortLocalName } from '../../utils/termUtils';
 import { getPredicateDisplay } from './core/edgeLabel';
+import { buildEdgePayload, addEdgeToCurrentGraph, generateEdgeId } from './core/edgeHelpers';
 
 interface LinkPropertyEditorProps {
   open: boolean;
@@ -189,77 +190,18 @@ export const LinkPropertyEditor = ({
       const os = useOntologyStore.getState();
       if (os && typeof os.setCurrentGraph === "function") {
               try {
-                const cg = os.currentGraph || { nodes: [], edges: [] };
-                // Build a stable edge id that encodes the predicate so identical endpoint pairs
-                // with different predicates don't collide. Use encodeURIComponent for safety.
-                const predVal = (property && property.value) || uriToSave;
-                const edgeId = String(`${subjIri}-${objIri}-${encodeURIComponent(String(predVal))}`);
-                const exists = (cg.edges || []).some((e: any) => String(e.id) === edgeId);
-                if (!exists) {
-                  // Compute a friendly label for the predicate: prefer rdfs:label / prefixed form, then short local name
-                  let labelForEdge = "";
-                  try {
-                    const ms = useOntologyStore.getState();
-                    const rdfMgrForLabel =
-                      typeof (ms as any).getRdfManager === "function"
-                        ? (ms as any).getRdfManager()
-                        : (ms as any).rdfManager;
-                    try {
-                      // Strict label resolution:
-                      // 1) prefer explicit property.label when present
-                      // 2) otherwise use computeTermDisplay with the rdf manager (strict)
-                      // 3) if no rdf manager or computeTermDisplay fails, leave label empty
-                      if (property && property.label) {
-                        labelForEdge = String(property.label);
-                      } else if (rdfMgrForLabel && predVal) {
-                        try {
-                          const td = computeTermDisplay(String(predVal), rdfMgrForLabel as any);
-                          labelForEdge = String(td.prefixed || td.short || "");
-                        } catch (_) {
-                          labelForEdge = "";
-                        }
-                      } else {
-                        labelForEdge = "";
-                      }
-                    } catch (_) {
-                      labelForEdge = property && property.label ? String(property.label) : "";
-                    }
-                  } catch (_) {
-                    labelForEdge = property && property.label ? String(property.label) : "";
-                  }
-  
-                  const newEdge = {
-                    id: edgeId,
-                    source: String(subjIri),
-                    target: String(objIri),
-                    data: {
-                      propertyUri: predVal,
-                      propertyType: predVal,
-                      label: labelForEdge,
-                    },
-                  } as any;
-                  try {
-                    // Diagnostic: log the intended insertion so we can verify the payload when new edges are created
-                    try {
-                      if (typeof console !== "undefined" && typeof console.debug === "function") {
-                        console.debug("[VG] LinkPropertyEditor.insertingEdge", { edgeId, subjIri, predVal, objIri, newEdge, currentGraphSample: { nodes: (cg.nodes || []).slice(-3), edges: (cg.edges || []).slice(-6) } });
-                      }
-                    } catch (_) { /* ignore logging failures */ }
-  
-                    os.setCurrentGraph(cg.nodes || [], [...(cg.edges || []), newEdge]);
-  
-                    // Also attach a debug hook on window so devs can inspect the last inserted edge immediately.
-                    try {
-                      if (typeof window !== "undefined") {
-                      }
-                    } catch (_) { /* ignore */ }
-                  } catch (_) {
-                    /* ignore setCurrentGraph failures - not critical */
-                  }
-                }
-              } catch (_) {
-                /* ignore ontologyStore update failures */
-              }
+        const predVal = (property && property.value) || uriToSave;
+        // Use the shared helper to build canonical payload and insert with deduplication.
+        const labelForEdge = property && property.label ? String(property.label) : "";
+        const payload = buildEdgePayload(String(subjIri), String(objIri), String(predVal), labelForEdge);
+        try {
+          addEdgeToCurrentGraph(payload);
+        } catch (_) {
+          /* ignore insertion failures */
+        }
+      } catch (_) {
+        /* ignore ontologyStore update failures */
+      }
       }
     } catch (_) {
       /* ignore */
@@ -267,6 +209,175 @@ export const LinkPropertyEditor = ({
 
     onSave(uriToSave, property?.label || uriToSave);
     onOpenChange(false);
+  };
+
+  /**
+   * Delete the selected edge triple (subject, predicate, object) and remove matching edge(s)
+   * from ontologyStore.currentGraph so the canvas updates immediately.
+   */
+  const handleDelete = async () => {
+    if (!confirm('Delete this connection? This will remove the corresponding triple from the data graph.')) return;
+
+    try {
+      const mgrState = useOntologyStore.getState();
+      const mgr =
+        typeof (mgrState as any).getRdfManager === "function"
+          ? (mgrState as any).getRdfManager()
+          : (mgrState as any).rdfManager;
+      if (!mgr) throw new Error('RDF manager unavailable');
+
+      const store = mgr.getStore && mgr.getStore();
+      if (!store) throw new Error('RDF store unavailable');
+
+      // Resolve subject/object IRIs deterministically from sourceNode/targetNode props
+      const subjIri = (sourceNode && ((sourceNode as any).iri || (sourceNode as any).key)) || "";
+      const objIri = (targetNode && ((targetNode as any).iri || (targetNode as any).key)) || "";
+
+      // Resolve predicate full IRI from selectedProperty or linkData
+      const predicateRaw = selectedProperty || displayValue;
+      const predFull =
+        mgr && typeof mgr.expandPrefix === "function"
+          ? String(mgr.expandPrefix(predicateRaw))
+          : String(predicateRaw);
+
+      // Remove matching quads in urn:vg:data graph first
+      try {
+        const g = namedNode("urn:vg:data");
+        const subjTerm = namedNode(String(subjIri));
+        const predTerm = namedNode(String(predFull));
+        const objTerm = namedNode(String(objIri));
+        const quads = store.getQuads(subjTerm, predTerm, objTerm, g) || [];
+        quads.forEach((q: any) => {
+          try { store.removeQuad(q); } catch (_) { /* ignore per-quad */ }
+        });
+      } catch (_) {
+        // Fallback: remove any matching quad across graphs
+        try {
+          const subjTerm = namedNode(String(subjIri));
+          const predTerm = namedNode(String(predFull));
+          const objTerm = namedNode(String(objIri));
+          const quads = store.getQuads(subjTerm, predTerm, objTerm, null) || [];
+          quads.forEach((q: any) => {
+            try { store.removeQuad(q); } catch (_) { /* ignore per-quad */ }
+          });
+        } catch (_) { /* ignore */ }
+      }
+
+      // Notify RDF manager subscribers (best-effort)
+      try {
+        if ((mgr as any).notifyChange) {
+          try { (mgr as any).notifyChange(); } catch (_) { /* ignore */ }
+        } else if (typeof mgr.notifyChange === 'function') {
+          try { (mgr as any).notifyChange(); } catch (_) { /* ignore */ }
+        }
+      } catch (_) { /* ignore */ }
+
+      // Remove corresponding edge(s) from ontologyStore.currentGraph
+        try {
+          const os = (useOntologyStore as any).getState ? (useOntologyStore as any).getState() : null;
+          if (os && typeof os.setCurrentGraph === 'function') {
+            const cg = os.currentGraph || { nodes: [], edges: [] };
+
+            // Build canonical expected id
+            const expectedId = generateEdgeId(String(subjIri), String(objIri), String(predFull || predicateRaw || ""));
+
+            // Defensive: collect removed edge ids for diagnostics
+            const removedIds: string[] = [];
+
+            // Filter edges by matching endpoints AND predicate (prefer canonical predicate match).
+            const newEdges = (cg.edges || []).filter((e: any) => {
+              try {
+                // Keep any edge that does not match the subject+object pair
+                if (String(e.source) !== String(subjIri) || String(e.target) !== String(objIri)) {
+                  return true;
+                }
+
+                // Candidate predicate values from the existing edge payload (various shapes)
+                const candidatePreds: string[] = [];
+                try {
+                  if (e && e.data) {
+                    if (typeof e.data.propertyUri === "string") candidatePreds.push(String(e.data.propertyUri));
+                    if (typeof e.data.propertyType === "string") candidatePreds.push(String(e.data.propertyType));
+                    if (typeof e.data.property === "string") candidatePreds.push(String(e.data.property));
+                    if (typeof e.data.predicate === "string") candidatePreds.push(String(e.data.predicate));
+                  }
+                } catch (_) { /* ignore */ }
+
+                // Also include raw id and label as fallbacks
+                try {
+                  if (e && e.id) candidatePreds.push(String(e.id));
+                  if (e && e.data && e.data.label) candidatePreds.push(String(e.data.label));
+                } catch (_) { /* ignore */ }
+
+                // Normalize candidates and check for a match
+                const predCandidates = Array.from(new Set(candidatePreds.filter(Boolean)));
+
+                const canonicalMatches = predCandidates.some((cp) => {
+                  try {
+                    // Exact full-IRI match
+                    if (String(cp) === String(predFull)) return true;
+                    // Match against raw selected predicate (unexpanded)
+                    if (String(cp) === String(predicateRaw)) return true;
+                    // Match if generating ID from candidate yields the expected id
+                    try {
+                      const gen = generateEdgeId(String(e.source), String(e.target), String(cp));
+                      if (String(gen) === String(expectedId)) return true;
+                    } catch (_) { /* ignore generator errors */ }
+                    return false;
+                  } catch (_) {
+                    return false;
+                  }
+                });
+
+                const linkId = linkData && linkData.id ? String(linkData.id) : "";
+
+                // If any canonical match, treat as the edge to remove
+                if (canonicalMatches || (e && String(e.id) === linkId) || String(e.id) === expectedId) {
+                  try { removedIds.push(String(e.id || "")); } catch (_) { /* ignore */ }
+                  return false; // filter out (remove) this edge
+                }
+
+                // Otherwise keep the edge
+                return true;
+              } catch (err) {
+                // On error keep the edge to avoid accidental data loss
+                return true;
+              }
+            });
+
+            try {
+              // Diagnostic logging to help reproduce issues when deletion still fails
+              try {
+                console.debug("[VG] LinkPropertyEditor.handleDelete - removed edge ids:", removedIds, {
+                  subjIri,
+                  objIri,
+                  predicateRaw,
+                  predFull,
+                  expectedId,
+                  linkDataId: linkData && linkData.id ? linkData.id : undefined,
+                });
+              } catch (_) { /* ignore logging failures */ }
+
+              os.setCurrentGraph(cg.nodes || [], newEdges);
+            } catch (_) { /* ignore */ }
+          }
+        } catch (_) { /* ignore update failures */ }
+
+      onOpenChange(false);
+    } catch (err) {
+      try {
+        console.error('Failed to delete edge', err);
+      } catch (_ ) {
+        try {
+          if (typeof window !== "undefined" && (window as any).__VG_DEBUG__) {
+            console.debug("[VG] suppressed error in LinkPropertyEditor", _);
+          }
+        } catch (_) {
+          /* ignore logging failures */
+        }
+      }
+      onOpenChange(false);
+    }
   };
 
   return (
@@ -329,6 +440,9 @@ export const LinkPropertyEditor = ({
 
           {/* Actions */}
             <div className="flex justify-end gap-2">
+            <Button type="button" variant="destructive" onClick={handleDelete}>
+              Delete
+            </Button>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>

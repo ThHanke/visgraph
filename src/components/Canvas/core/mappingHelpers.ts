@@ -4,6 +4,7 @@ import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
 import type { RDFManager } from "../../../utils/rdfManager";
 import { computeTermDisplay, shortLocalName } from "../../../utils/termUtils";
 import { getPredicateDisplay } from "./edgeLabel";
+import { generateEdgeId } from "./edgeHelpers";
 import type { NodeData, LinkData } from "../../../types/canvas";
 
 /**
@@ -356,9 +357,11 @@ export function mapEdgesToRFEdges(
     // Skip if endpoints missing on canvas
     if (!nodesPresent.has(String(from)) || !nodesPresent.has(String(to))) continue;
 
-    const id = String(src.id || `e-${from}-${to}-${j}`);
-
     const propertyUriRaw = src.propertyUri || src.propertyType || "";
+    const availableProperties = options && options.availableProperties ? options.availableProperties : [];
+    const foundProp = (availableProperties || []).find((p: any) => String(p.iri) === String(propertyUriRaw));
+    const id = String(src.id || generateEdgeId(from, to, propertyUriRaw || ""));
+
 
     // Strict label resolution:
     // Prefer computeTermDisplay when a predicate IRI and RDF manager are available.
@@ -604,8 +607,10 @@ export function mapGraphToDiagram(
       continue;
     }
 
-      const id = String(src.id || `e-${resolvedFrom}-${resolvedTo}-${j}`);
       const propertyUriRaw = src.propertyUri || src.propertyType || "";
+      const availableProperties = options && options.availableProperties ? options.availableProperties : [];
+      const foundProp = (availableProperties || []).find((p: any) => String(p.iri) === String(propertyUriRaw));
+      const id = String(src.id || generateEdgeId(resolvedFrom, resolvedTo, propertyUriRaw || ""));
 
       // Strict label resolution: prefer computeTermDisplay when predicate IRI + rdf manager present.
       let labelForEdge = "";

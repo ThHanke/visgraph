@@ -48,6 +48,7 @@ import { toast } from "sonner";
 import { computeTermDisplay, shortLocalName } from '../../utils/termUtils';
 import { debug, warn, fallback } from "../../utils/startupDebug";
 import { getPredicateDisplay } from './core/edgeLabel';
+import { generateEdgeId } from './core/edgeHelpers';
 import { CustomOntologyNode as OntologyNode } from "./CustomOntologyNode";
 import FloatingEdge from "./FloatingEdge";
 import FloatingConnectionLine from "./FloatingConnectionLine";
@@ -522,79 +523,24 @@ export const ReactFlowCanvas: React.FC = () => {
           canonicalNs = "";
         }
 
-        // Determine palette color strictly via computeTermDisplay (termUtils is authoritative).
-        // We try canonicalTypeIri first, then the node's first rdf:type if canonicalTypeIri is absent.
-        // computeTermDisplay returns an optional `color` which is the single source of truth.
+        // Determine palette color via the central palette mapping.
+        // Prefer the canonical namespace (resolved earlier) then the parsed node's namespace.
         let paletteColor: string | undefined = undefined;
         let paletteMissing = false;
-        // Keep lastTd for diagnostics when palette is missing
         let lastTd: any = undefined;
         try {
-          const mgrLocal = typeof getRdfManagerRef.current === "function" ? getRdfManagerRef.current() : undefined;
-
-          // Strict type candidate selection:
-          // - Prefer canonicalTypeIri if present (must be a full IRI).
-          // - Otherwise prefer the first rdf:type that is a full IRI.
-          // - If no full IRI is present, allow expanding a prefixed rdf:type via rdfManager.expandPrefix.
-          // - DO NOT accept bare local classType/displayType strings as a candidate.
-          let typeCandidate: string | undefined = undefined;
+          const nsCandidate =
+            (canonicalNs && String(canonicalNs).trim()) ||
+            (src && (src.namespace || (node && (node as any).namespace))) ||
+            "";
           try {
-            if (canonicalTypeIri && String(canonicalTypeIri).trim() && /^https?:\/\//i.test(String(canonicalTypeIri).trim())) {
-              typeCandidate = String(canonicalTypeIri).trim();
-            } else {
-              const rdfTypesList = Array.isArray(src.rdfTypes) ? (src.rdfTypes as any[]).map(String).filter(Boolean) : [];
-              // prefer an absolute IRI type
-              const absolute = rdfTypesList.find((t) => t && /^https?:\/\//i.test(String(t)));
-              if (absolute) {
-                typeCandidate = String(absolute);
-              } else {
-                // prefer a prefixed form that we can expand via rdfManager
-                const prefixed = rdfTypesList.find((t) => t && String(t).includes(":"));
-                if (prefixed && mgrLocal && typeof (mgrLocal as any).expandPrefix === "function") {
-                  try {
-                    const expanded = (mgrLocal as any).expandPrefix(String(prefixed));
-                    if (expanded && /^https?:\/\//i.test(String(expanded))) {
-                      typeCandidate = String(expanded);
-                    }
-                  } catch (_) {
-                    // expansion failed -> leave undefined
-                    typeCandidate = undefined;
-                  }
-                } else {
-                  // Do not accept bare local names (e.g., "AnnotationProperty") as typeCandidate.
-                  typeCandidate = undefined;
-                }
-              }
-            }
+            paletteColor = getNamespaceColorFromPalette(
+              (paletteMap as Record<string, string>) || undefined,
+              String(nsCandidate || (src && (src.namespace || "")) || ""),
+            );
           } catch (_) {
-            typeCandidate = undefined;
-          }
-
-          if (typeCandidate && mgrLocal) {
-              try {
-              const td = computeTermDisplay(String(typeCandidate), mgrLocal as any);
-              // capture for diagnostics
-              lastTd = td;
-              // Use td.color as authoritative palette color (may be undefined when palette missing)
-              paletteColor = td && (td.color as string | undefined);
-
-              // allow canonicalNs diagnostic to reflect termUtils namespace when available
-              if (!canonicalNs && td && td.namespace) {
-                canonicalNs = td.namespace || canonicalNs;
-              }
-
-              // Strict policy: do not attempt canvas-side palette fallbacks here.
-              // computeTermDisplay is authoritative and will only return a color when the
-              // RDF manager explicitly defines a matching prefix/palette entry. If td.color
-              // is not present we treat the palette as missing for this node.
-            } catch (_) {
-              // computeTermDisplay is strict and may throw when prefixes missing; treat as missing
-              paletteColor = undefined;
-            }
-          } else {
             paletteColor = undefined;
           }
-
           paletteMissing = typeof paletteColor === "undefined";
         } catch (_) {
           paletteColor = undefined;
@@ -796,7 +742,7 @@ export const ReactFlowCanvas: React.FC = () => {
         const src = edge.data || edge;
         const from = String(resolveKeyForCg(src.source, cg) || src.source || "");
         const to = String(resolveKeyForCg(src.target, cg) || src.target || "");
-        const id = String(src.id || `e-${from}-${to}-${j}`);
+        const id = String(src.id || generateEdgeId(String(from), String(to), String(src.propertyType || src.propertyUri || "")));
 
         // Skip edge creation when either endpoint isn't present as a node on the canvas
         if (!nodeIdsSet.has(String(from)) || !nodeIdsSet.has(String(to))) {
@@ -1947,9 +1893,17 @@ useEffect(() => {
       linkTargetRef.current = (tgtNodeForRef as any)?.data ?? null;
 
       // Minimal selected-edge payload: React Flow ids for source/target and chosen predicate.
+      const edgeIdForEditor = String(
+        (params as any).id ||
+          generateEdgeId(
+            String(claimedSource),
+            String(claimedTarget),
+            String(predUriToUse || ""),
+          ),
+      );
       const selectedEdgeForEditor = {
-        id: String((params as any).id || `${claimedSource}-${claimedTarget}-${encodeURIComponent(String(predUriToUse || ""))}`),
-        key: String((params as any).id || `${claimedSource}-${claimedTarget}-${encodeURIComponent(String(predUriToUse || ""))}`),
+        id: edgeIdForEditor,
+        key: edgeIdForEditor,
         operation: "create",
         source: claimedSource,
         target: claimedTarget,

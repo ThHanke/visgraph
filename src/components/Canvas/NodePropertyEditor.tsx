@@ -6,6 +6,8 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
+import { DataFactory } from 'n3';
+const { namedNode } = DataFactory;
 import { debug, fallback } from '../../utils/startupDebug';
 import { computeDisplayInfo, computeBadgeText } from './core/nodeDisplay';
 import { Button } from '../ui/button';
@@ -475,6 +477,97 @@ export const NodePropertyEditor = ({
   };
 
   /**
+   * Delete the node and all triples that reference it (subject OR object)
+   */
+  const handleDelete = async (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    if (!nodeIri) return;
+    if (!confirm(`Delete node ${nodeIri}? This will remove all triples where this IRI appears as subject or object.`)) return;
+
+    try {
+      const mgrState = useOntologyStore.getState();
+      const mgr = typeof mgrState.getRdfManager === 'function' ? mgrState.getRdfManager() : (mgrState as any).rdfManager;
+      if (!mgr) throw new Error('RDF manager unavailable');
+
+      const store = mgr.getStore && mgr.getStore();
+      if (!store) throw new Error('RDF store unavailable');
+
+      // Remove quads where subject === nodeIri
+      try {
+        const subjTerm = namedNode(String(nodeIri));
+        const subjQuads = store.getQuads(subjTerm, null, null, null) || [];
+        subjQuads.forEach((q: any) => {
+          try { store.removeQuad(q); } catch (_) { /* ignore per-quad */ }
+        });
+      } catch (_ ) {
+        try {
+          if (typeof window !== "undefined" && (window as any).__VG_DEBUG__) {
+            console.debug("[VG] NodePropertyEditor.subjectRemovalError", _);
+          }
+        } catch (_ ) {
+          /* ignore logging failures */
+        }
+      }
+
+      // Remove quads where object === nodeIri
+      try {
+        const objTerm = namedNode(String(nodeIri));
+        const objQuads = store.getQuads(null, null, objTerm, null) || [];
+        objQuads.forEach((q: any) => {
+          try { store.removeQuad(q); } catch (_) { /* ignore per-quad */ }
+        });
+      } catch (_ ) {
+        try {
+          if (typeof window !== "undefined" && (window as any).__VG_DEBUG__) {
+            console.debug("[VG] NodePropertyEditor.objectRemovalError", _);
+          }
+        } catch (_ ) {
+          /* ignore logging failures */
+        }
+      }
+
+      // Notify RDF manager subscribers (best-effort; notifyChange is internal)
+      try {
+        if ((mgr as any).notifyChange) {
+          try { (mgr as any).notifyChange(); } catch (_) { /* ignore */ }
+        } else if (typeof mgr.notifyChange === 'function') {
+          try { (mgr as any).notifyChange(); } catch (_) { /* ignore */ }
+        }
+      } catch (_) { /* ignore */ }
+
+      // Remove node and edges from ontologyStore.currentGraph so mapping/UI updates immediately
+      try {
+        const os = (useOntologyStore as any).getState ? (useOntologyStore as any).getState() : null;
+        if (os && typeof os.setCurrentGraph === 'function') {
+          const cg = os.currentGraph || { nodes: [], edges: [] };
+          const newNodes = (cg.nodes || []).filter((n: any) => {
+            try {
+              const iri = (n && (n.data || n).iri) || n.iri || n.id || '';
+              return String(iri) !== String(nodeIri);
+            } catch { return true; }
+          });
+          const newEdges = (cg.edges || []).filter((e: any) => {
+            try {
+              const from = e && e.source ? String(e.source) : (e && e.data && (e.data.from || e.data.source)) || '';
+              const to = e && e.target ? String(e.target) : (e && e.data && (e.data.to || e.data.target)) || '';
+              return String(from) !== String(nodeIri) && String(to) !== String(nodeIri);
+            } catch { return true; }
+          });
+          try { os.setCurrentGraph(newNodes, newEdges); } catch (_) { /* ignore */ }
+        }
+      } catch (_) { /* ignore update failures */ }
+
+      onOpenChange(false);
+    } catch (err) {
+      try {
+        console.error('Failed to delete node', err);
+      } catch (_) {}
+      onOpenChange(false);
+    }
+  };
+
+  /**
    * Get common annotation properties for autocomplete
    */
   const getAnnotationProperties = () => {
@@ -689,6 +782,9 @@ export const NodePropertyEditor = ({
 
           {/* Actions */}
           <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button type="button" variant="destructive" onClick={(e) => handleDelete(e)}>
+              Delete
+            </Button>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>

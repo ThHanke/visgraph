@@ -15,6 +15,7 @@ import { DataFactory, Quad } from "n3";
 const { namedNode, quad } = DataFactory;
 import { WELL_KNOWN } from "../utils/wellKnownOntologies";
 import { computeTermDisplay } from "../utils/termUtils";
+import { buildEdgePayload, addEdgeToCurrentGraph, generateEdgeId } from "../components/Canvas/core/edgeHelpers";
 
 /**
  * Map to track in-flight RDF loads so identical loads return the same Promise.
@@ -879,7 +880,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             return {
               id:
                 e.id ||
-                `${String(rawSource)}-${String(rawTarget)}-${String(e.propertyType || e.propertyUri || "")}`,
+                generateEdgeId(String(rawSource), String(rawTarget), String(e.propertyType || e.propertyUri || "")),
               source: String(rawSource || ""),
               target: String(rawTarget || ""),
               data: e,
@@ -992,9 +993,9 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
               e.object ||
               e.o ||
               "";
-            const edgeId =
-              e.id ||
-              `${String(rawSource)}-${String(rawTarget)}-${String(e.propertyType || e.propertyUri || "")}`;
+          const edgeId =
+            e.id ||
+            generateEdgeId(String(rawSource), String(rawTarget), String(e.propertyType || e.propertyUri || ""));
             if (!mergedEdges.find((me: any) => me.id === edgeId)) {
               mergedEdges.push({
                 id: edgeId,
@@ -1397,7 +1398,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             label = "";
           }
           return {
-            id: e.id || `${e.source}-${e.target}-${e.propertyType}`,
+            id: e.id || generateEdgeId(String(e.source), String(e.target), String(e.propertyType || e.propertyUri || "")),
             source: e.source,
             target: e.target,
             data: { ...(e || {}), label },
@@ -1484,7 +1485,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         });
 
         const mergedEdges: any[] = [...existing.edges];
-        (parsed.edges || []).forEach((e: any) => {
+          (parsed.edges || []).forEach((e: any) => {
           // Normalize edge id and endpoints robustly: some producers use different field names.
           const rawSource =
             e.source ||
@@ -1507,7 +1508,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             "";
           const edgeId =
             e.id ||
-            `${String(rawSource)}-${String(rawTarget)}-${String(e.propertyType || e.propertyUri || "")}`;
+            generateEdgeId(String(rawSource), String(rawTarget), String(e.propertyType || e.propertyUri || ""));
           if (!mergedEdges.find((me: any) => me.id === edgeId)) {
             mergedEdges.push({
               id: edgeId,
@@ -2641,19 +2642,7 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
                       continue;
                     }
 
-                    const edgeId = `${sourceId}-${targetId}-${encodeURIComponent(predIri)}`;
-
-                    // Skip if already present in current graph edges
-                    const already = (curEdges || []).some((e: any) => {
-                      try {
-                        return String(e.id) === String(edgeId);
-                      } catch {
-                        return false;
-                      }
-                    });
-                    if (already) continue;
-
-                    // Build lightweight edge payload matching currentGraph shape
+                    // Build a friendly label for the predicate
                     let label = "";
                     try {
                       const mgrLocal = rdfManager;
@@ -2671,17 +2660,13 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
                       label = "";
                     }
 
-                    const newEdge = {
-                      id: edgeId,
-                      source: sourceId,
-                      target: targetId,
-                      data: {
-                        propertyUri: predIri,
-                        propertyType: predIri,
-                        label,
-                      },
-                    };
-                    edgesToAdd.push(newEdge);
+                    // Use shared helper to create canonical edge payload and insert with deduplication.
+                    try {
+                      const payload = buildEdgePayload(sourceId, targetId, predIri, label);
+                      addEdgeToCurrentGraph(payload);
+                    } catch (_) {
+                      /* ignore per-quad insertion failures */
+                    }
                   } catch (_) {
                     /* ignore per-quad */
                   }

@@ -12,6 +12,8 @@ import { useOntologyStore } from "@/stores/ontologyStore";
 import { GripVertical, X } from "lucide-react";
 import { usePaletteFromRdfManager } from "./core/namespacePalette";
 import { getNamespaceColorFromPalette } from "./helpers/namespaceHelpers";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 
 interface ResizableNamespaceLegendProps {
   namespaces?: Record<string, string>;
@@ -59,6 +61,14 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
   const [isResizing, setIsResizing] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 });
+
+  // Local UI state for "Add namespace" flow
+  const [showAdd, setShowAdd] = useState(false);
+  const [newPrefix, setNewPrefix] = useState("");
+  const [newUri, setNewUri] = useState("");
+  const [error, setError] = useState("");
+  // tick to force small re-renders when needed after adding a namespace
+  const [tick, setTick] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -167,6 +177,102 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
           </button>
         )}
       </div>
+
+      {/* Add-namespace UI (tailwind-styled controls) */}
+      <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="text-sm px-2 py-1 rounded border bg-transparent hover:bg-muted"
+            onClick={() => setShowAdd(true)}
+          >
+            Add namespace
+          </button>
+        </div>
+
+        {showAdd && (
+          <div className="ml-auto w-full max-w-full">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full">
+            <Input
+              aria-label="prefix"
+              placeholder="prefix"
+              className="w-full sm:w-24 text-sm min-w-0 flex-none bg-transparent !bg-transparent text-foreground !text-foreground placeholder:text-muted-foreground !placeholder:text-muted-foreground"
+              value={newPrefix}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPrefix(String(e.target.value))}
+            />
+            <Input
+              aria-label="namespace-uri"
+              placeholder="https://example.org/"
+              className="w-full sm:flex-1 text-sm min-w-0 bg-transparent !bg-transparent text-foreground !text-foreground placeholder:text-muted-foreground !placeholder:text-muted-foreground"
+              value={newUri}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUri(String(e.target.value))}
+            />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="text-sm px-3 py-1 rounded bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => {
+                    try {
+                      setError("");
+                      const p = String(newPrefix || "").trim();
+                      const u = String(newUri || "").trim();
+                      const prefixValid = /^[A-Za-z][\w-]*$/.test(p);
+                      const uriValid = /^https?:\/\/\S+/.test(u);
+                      if (!prefixValid) {
+                        setError("Invalid prefix (letters, digits, underscore, hyphen; must start with letter)");
+                        return;
+                      }
+                      if (!uriValid) {
+                        setError("Namespace must be an absolute http(s) URI");
+                        return;
+                      }
+                      // Avoid duplicates
+                      const ns = rdfManager && typeof rdfManager.getNamespaces === "function" ? rdfManager.getNamespaces() : {};
+                      if (ns && Object.prototype.hasOwnProperty.call(ns, p)) {
+                        setError("Prefix already registered");
+                        return;
+                      }
+                      try {
+                        // addNamespace will handle toast notification and idempotency
+                        rdfManager && typeof rdfManager.addNamespace === "function" && rdfManager.addNamespace(p, u);
+                      } catch (_) {
+                        // ignore
+                      }
+                      // Force local refresh
+                      setShowAdd(false);
+                      setNewPrefix("");
+                      setNewUri("");
+                      setError("");
+                      setTick((t) => t + 1);
+                    } catch (e) {
+                      setError("Failed to add namespace");
+                    }
+                  }}
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  className="text-sm px-3 py-1 rounded border hover:bg-muted"
+                  onClick={() => {
+                    setShowAdd(false);
+                    setNewPrefix("");
+                    setNewUri("");
+                    setError("");
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+      {error && (
+        <div className="px-3 py-2 text-sm text-red-600">
+          {error}
+        </div>
+      )}
 
       <div
         ref={contentRef}
