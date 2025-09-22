@@ -28,9 +28,8 @@ export function normalizeNamespaceKey(ns: string | undefined): string {
  * - Try a few reasonable fallbacks (empty key)
  * - Return fallback color when nothing matches
  */
-export function getNamespaceColorFromPalette(paletteMap: Record<string, string> | undefined, namespace?: string): string {
-  const fallback = '#64748b';
-  if (!paletteMap || typeof paletteMap !== 'object') return fallback;
+export function getNamespaceColorFromPalette(paletteMap: Record<string, string> | undefined, namespace?: string): string | undefined {
+  if (!paletteMap || typeof paletteMap !== 'object') return undefined;
 
   // treat undefined as empty string key
   const nsKey = namespace == null ? '' : String(namespace);
@@ -49,5 +48,5 @@ export function getNamespaceColorFromPalette(paletteMap: Record<string, string> 
   }
 
   if ((paletteMap as any)['']) return (paletteMap as any)[''];
-  return fallback;
+  return undefined;
 }

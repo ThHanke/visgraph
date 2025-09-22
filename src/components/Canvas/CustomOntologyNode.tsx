@@ -10,7 +10,7 @@ import {
   PopoverTrigger,
 } from '../ui/popover';
 import { useOntologyStore } from '../../stores/ontologyStore';
-import { buildPaletteForRdfManager, usePaletteFromRdfManager } from './core/namespacePalette';
+import { usePaletteFromRdfManager } from './core/namespacePalette';
 import { getNamespaceColorFromPalette, normalizeNamespaceKey } from './helpers/namespaceHelpers';
 import { computeTermDisplay, shortLocalName } from '../../utils/termUtils';
 import { computeBadgeText, computeDisplayInfo } from './core/nodeDisplay';
@@ -194,45 +194,12 @@ function CustomOntologyNodeInner(props: NodeProps) {
 
   const namespace = String(nodeData.namespace ?? '');
 
-  // Color/palette resolution
-  const nodePaletteColor = (nodeData as any).paletteColor as string | undefined;
-  let badgeTextColor: string | undefined = undefined;
-  let paletteMissing = false;
-
-  try {
-    const candidates: string[] = [
-      ...(nodeData.displayType ? [String(nodeData.displayType)] : []),
-      ...(nodeData.classType ? [String(nodeData.classType)] : []),
-      ...(Array.isArray(nodeData.rdfTypes) ? (nodeData.rdfTypes as string[]).map(String) : []),
-      ...((nodeData as any)?.types ? (nodeData as any).types.map(String) : []),
-    ].filter(Boolean);
-
-    const chosenType = candidates.find(t => t && !/NamedIndividual\b/i.test(String(t)));
-
-    if (chosenType && rdfManager) {
-      try {
-        const td = computeTermDisplay(String(chosenType), rdfManager as any);
-        if (td && td.color) badgeTextColor = td.color;
-      } catch (_) {
-        badgeTextColor = undefined;
-      }
-    }
-  } catch (_) { /* ignore */ }
-
-  const effectiveColor = nodePaletteColor || badgeTextColor;
-  if (!effectiveColor) {
-    paletteMissing = true;
-    try {
-      console.error('[VG] palette missing for node', {
-        iri: nodeData.iri,
-        displayType: nodeData.displayType,
-        classType: nodeData.classType,
-      });
-    } catch (_) { /* ignore */ }
-  }
-
-  const badgeColor = effectiveColor || '#FF4D4F';
-  const leftColor = (nodeData as any).paletteColor as string | undefined || effectiveColor || '#FF4D4F';
+  // Color/palette resolution (strict: use central palette only)
+  const palette = usePaletteFromRdfManager();
+  const resolvedPaletteColor = getNamespaceColorFromPalette(palette, String(nodeData.namespace ?? '')) || undefined;
+  const paletteMissing = !resolvedPaletteColor;
+  const badgeColor = resolvedPaletteColor;
+  const leftColor = resolvedPaletteColor;
 
   const themeBg = (typeof document !== 'undefined')
     ? (getComputedStyle(document.documentElement).getPropertyValue('--node-bg') || '').trim() || '#ffffff'
@@ -403,10 +370,13 @@ function CustomOntologyNodeInner(props: NodeProps) {
             {headerDisplay}
           </div>
 
-          <div
+            <div
             className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold text-black flex items-center gap-1"
             title={paletteMissing ? 'Palette mapping missing for this node prefix' : undefined}
-            style={{ background: `var(--node-leftbar-color, ${badgeColor})`, border: `1px solid ${darken(badgeColor, 0.12)}` }}
+            style={{
+              background: badgeColor ? `var(--node-leftbar-color, ${badgeColor})` : undefined,
+              border: badgeColor ? `1px solid ${darken(badgeColor, 0.12)}` : undefined
+            }}
           >
             <span className="truncate">{badgeText || displayedTypeShort || nodeData.classType || (namespace ? namespace : 'unknown')}</span>
             {paletteMissing && (

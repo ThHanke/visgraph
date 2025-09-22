@@ -730,8 +730,6 @@ export const ReactFlowCanvas: React.FC = () => {
           position: { x: pos.x, y: pos.y },
           data: {
             ...nodeData,
-            paletteColor: paletteColor,
-            paletteMissing: paletteMissing,
             onSizeMeasured: (w: number, h: number) => {
               try {
                 setNodes((nds) =>
@@ -739,7 +737,6 @@ export const ReactFlowCanvas: React.FC = () => {
                     n.id === id
                       ? {
                           ...n,
-                          // preserve any existing __rf metadata and update width/height
                           __rf: { ...(n as any).__rf, width: w, height: h },
                         }
                       : n,
@@ -750,9 +747,6 @@ export const ReactFlowCanvas: React.FC = () => {
               }
             },
           },
-          // Only set the CSS var when we have a palette color. If paletteColor is missing
-          // we intentionally omit the CSS var so the node UI can surface an explicit error state.
-          style: paletteColor ? { ["--node-leftbar-color" as any]: String(paletteColor) } : undefined,
         });
 
         // Debug: log mapping-time paletteColor vs computed label to help diagnose mismatches

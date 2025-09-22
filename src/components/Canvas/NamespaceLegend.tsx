@@ -1,6 +1,6 @@
 import { Badge } from "../ui/badge";
 import { useOntologyStore } from "@/stores/ontologyStore";
-import { buildPaletteForRdfManager } from "./core/namespacePalette";
+import { usePaletteFromRdfManager } from "./core/namespacePalette";
 
 /**
  * NamespaceLegend (uses central palette)
@@ -23,7 +23,7 @@ export const NamespaceLegend = () => {
 
   if (!entries || entries.length === 0) return null;
 
-  const palette = buildPaletteForRdfManager(nsMap);
+  const palette = usePaletteFromRdfManager();
 
   return (
     <div className="absolute top-4 right-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border rounded-lg shadow-lg max-w-sm min-w-64 resize overflow-hidden">

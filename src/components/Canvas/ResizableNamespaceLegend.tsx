@@ -10,7 +10,8 @@ import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Badge } from "../ui/badge";
 import { useOntologyStore } from "@/stores/ontologyStore";
 import { GripVertical, X } from "lucide-react";
-import { buildPaletteMap } from "./core/namespacePalette";
+import { usePaletteFromRdfManager } from "./core/namespacePalette";
+import { getNamespaceColorFromPalette } from "./helpers/namespaceHelpers";
 
 interface ResizableNamespaceLegendProps {
   namespaces?: Record<string, string>;
@@ -40,18 +41,7 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
   }, [displayNamespaces, ontologiesVersion]);
 
   // Build palette map so legend colors match canvas palette (if available).
-  const paletteMap = useMemo(() => {
-    try {
-      const prefixes = Object.keys(displayNamespaces).filter(Boolean).sort();
-      const textColors = [
-        getComputedStyle(document.documentElement).getPropertyValue("--node-foreground") || "#000000",
-        getComputedStyle(document.documentElement).getPropertyValue("--primary-foreground") || "#000000",
-      ];
-      return buildPaletteMap(prefixes, { avoidColors: textColors });
-    } catch (_) {
-      return {};
-    }
-  }, [displayNamespaces]);
+  const palette = usePaletteFromRdfManager();
 
   // Basic sizing/position state (kept minimal)
   const calculateInitialSize = () => {
@@ -189,7 +179,7 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
               <div className="flex items-center gap-1.5 shrink-0">
                 <div
                   className="w-3 h-3 rounded-full border border-border/50"
-                  style={{ backgroundColor: paletteMap[String(prefix)] || paletteMap[String(prefix).replace(/[:#].*$/, "")] || "hsl(var(--primary))" }}
+                  style={{ backgroundColor: getNamespaceColorFromPalette(palette, String(prefix)) || undefined }}
                 />
                 <Badge variant="outline" className="font-mono text-xs px-1.5 py-0.5">
                   {String(prefix) === "" ? ":" : String(prefix)}
