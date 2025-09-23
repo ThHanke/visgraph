@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef, useState } from 'react';
+import React, { memo, useEffect, useRef, useState, useMemo } from 'react';
 import { Handle, Position, NodeProps, useConnection, useUpdateNodeInternals } from '@xyflow/react';
 import { cn } from '../../lib/utils';
 import { Edit3, AlertTriangle, Info } from 'lucide-react';
@@ -61,6 +61,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
   const rdfManager = useOntologyStore((s) => s.rdfManager);
   const ontologiesVersion = useOntologyStore((s) => s.ontologiesVersion);
   const availableClasses = useOntologyStore((s) => s.availableClasses);
+  const availableProperties = useOntologyStore((s) => s.availableProperties);
 
   const lastFp = useRef<string | null>(null);
   const rdfTypesKey = Array.isArray(nodeData.rdfTypes) ? nodeData.rdfTypes.join('|') : '';
@@ -86,134 +87,88 @@ function CustomOntologyNodeInner(props: NodeProps) {
 
   // Display helpers
   const displayedTypeShort = String(nodeData.label || shortLocalName(nodeData.iri || ''));
-  let badgeText = displayedTypeShort;
-  let typesList: string[] = [];
+  // Acquire palette before computing display values so memoized computeTermDisplay calls can use it.
+  const palette = usePaletteFromRdfManager();
+      const { badgeText, typesList } = useMemo(() => {
+    let _badgeText = displayedTypeShort;
+    let _typesList: string[] = [];
+    try {
+      // Use authoritative nodeData.classType (should be set by mapping to absolute IRI)
+      const primary = nodeData.classType ? String(nodeData.classType) : undefined;
 
-  // Compute badgeText and typesList strictly:
-  // - Prefer expanded rdfTypes (full IRIs) when available.
-  // - Otherwise, try prefixed/displayType/classType candidates via rdfManager (no synthesis).
-  try {
-    const rdfTypesArr: string[] = Array.isArray(nodeData.rdfTypes)
-      ? (nodeData.rdfTypes as string[]).map(String).filter(Boolean)
-      : [];
-
-    if (rdfTypesArr.length > 0 && rdfManager) {
-      try {
-        // Prefer the first meaningful (non-NamedIndividual) rdf:type for the badge.
-        const primaryCandidate =
-          rdfTypesArr.find((t) => t && !/NamedIndividual\b/i.test(String(t))) || rdfTypesArr[0];
-
+      if (primary && rdfManager) {
         try {
-          const tdPrimary = computeTermDisplay(String(primaryCandidate), rdfManager as any);
+          const tdPrimary = computeTermDisplay(String(primary), rdfManager as any, (palette as any), { availableProperties, availableClasses });
           if (tdPrimary && tdPrimary.prefixed && String(tdPrimary.prefixed).trim() !== "") {
-            badgeText = tdPrimary.prefixed;
+            _badgeText = tdPrimary.prefixed;
           } else if (tdPrimary && tdPrimary.short) {
-            badgeText = tdPrimary.short;
+            _badgeText = tdPrimary.short;
           }
+          _typesList = [tdPrimary.prefixed || tdPrimary.short || primary].filter(Boolean) as string[];
         } catch (_) {
-          // fall through to best-effort below
-        }
-
-        // Order typesList to show the preferred candidate first, then the rest.
-        const ordered = [primaryCandidate, ...rdfTypesArr.filter((t) => t !== primaryCandidate)];
-        typesList = ordered.map((t) => {
-          try {
-            const td = computeTermDisplay(String(t), rdfManager as any);
-            return td.prefixed || td.short || String(t);
-          } catch (_) {
-            return String(t);
-          }
-        }).filter(Boolean);
-      } catch (_) {
-        // fall through to best-effort below
-      }
-    } else {
-      // No expanded rdfTypes available -> conservative candidate handling
-      const candidates: string[] = [
-        ...(nodeData.displayType ? [String(nodeData.displayType)] : []),
-        ...(nodeData.classType ? [String(nodeData.classType)] : []),
-        ...((nodeData as any)?.types ? (nodeData as any).types.map(String) : []),
-      ].filter(Boolean);
-
-      const chosenType = candidates.find(t => t && !/NamedIndividual\b/i.test(String(t)));
-
-      if (chosenType && rdfManager) {
-        try {
-          const td = computeTermDisplay(String(chosenType), rdfManager as any);
-          if (td && td.prefixed && String(td.prefixed).trim() !== "" && String(td.prefixed).includes(':')) {
-            badgeText = td.prefixed;
-          } else if (td && td.short) {
-            badgeText = td.short;
-          }
-        } catch (_) {
-          // fallback to generic helper
-          try {
-            const bt = computeBadgeText(nodeData as any, rdfManager as any, availableClasses as any);
-            if (bt && String(bt).trim() !== "") badgeText = String(bt);
-          } catch (_) { /* ignore */ }
+          // fall through to computed badge text
         }
       } else {
-        // last-resort: use existing helper which applies minimal heuristics for display
+        // If no classType present (shouldn't happen under new contract), fall back to computeBadgeText
         try {
           const bt = computeBadgeText(nodeData as any, rdfManager as any, availableClasses as any);
-          if (bt && String(bt).trim() !== "") badgeText = String(bt);
+          if (bt && String(bt).trim() !== "") _badgeText = String(bt);
         } catch (_) { /* ignore */ }
       }
-
-      // Build typesList conservatively from candidates
-      typesList = candidates.map((t: any) => {
-        try {
-          if (rdfManager) {
-            const td = computeTermDisplay(String(t), rdfManager as any);
-            return td.prefixed || td.short || String(t);
-          }
-        } catch (_) { /* ignore per-item */ }
-        return String(t);
-      }).filter(Boolean);
-
-      // If rdfTypes were present but ignored earlier, still try to render them
-      if (Array.isArray(nodeData.rdfTypes) && nodeData.rdfTypes.length > 0) {
-        typesList = typesList.concat(
-          nodeData.rdfTypes.map((t: any) => {
-            try {
-              if (rdfManager) {
-                const td = computeTermDisplay(String(t), rdfManager as any);
-                return td.prefixed || td.short || String(t);
-              }
-            } catch (_) { /* ignore */ }
-            return String(t);
-          })
-        ).filter(Boolean);
-      }
+    } catch (_) {
+      /* ignore overall failure */
     }
-  } catch (_) {
-    // ignore overall failure
-  }
+    return { badgeText: _badgeText, typesList: _typesList };
+  }, [nodeData.classType, nodeData.label, nodeData.iri, rdfManager, palette, availableClasses, availableProperties]);
 
-  const namespace = String(nodeData.namespace ?? '');
 
   // Color/palette resolution (strict: use central palette only)
-  const palette = usePaletteFromRdfManager();
+  const namespace = String(nodeData.namespace ?? '');
 
-  // Resolve palette color with robust fallbacks:
-  // 1. Direct palette lookup using the node's namespace (may be a prefix or a short key)
-  // 2. If missing and rdfManager provides prefix->uri mappings, try to reverse-lookup
-  //    a prefix for a namespace that is a full URI and use that prefix to find a color.
-  // 3. If still missing, leave undefined so callers can show a diagnostic.
+  // Prefer an explicit paletteColor set on the node data (set by KnowledgeCanvas enrichment).
+  // Then prefer a color derived from the node's classType namespace (most authoritative after mapping).
+  // Finally fall back to namespace-based lookup or reverse-lookup against rdfManager namespaces.
   let resolvedPaletteColor: string | undefined = undefined;
   try {
-    resolvedPaletteColor = getNamespaceColorFromPalette(palette, String(nodeData.namespace ?? '')) || undefined;
+    // 0) If the canvas enrichment already provided an authoritative paletteColor, prefer it.
+    if (nodeData && (nodeData as any).paletteColor) {
+      resolvedPaletteColor = String((nodeData as any).paletteColor || undefined) || undefined;
+    }
+
+    // 1) If we have a canonical classType (absolute IRI), prefer its palette mapping.
+    //    This ensures the color follows the meaningful type, not the node IRI or namespace field.
+    if (!resolvedPaletteColor && nodeData && nodeData.classType && rdfManager) {
+      try {
+        const tdForClass = computeTermDisplay(String(nodeData.classType), rdfManager as any, (palette as any), { availableProperties, availableClasses });
+        if (tdForClass) {
+          // Prefer explicit color from computeTermDisplay (fat-map or computed), then palette by namespace.
+          resolvedPaletteColor = tdForClass.color || (tdForClass.namespace && (palette as any ? (palette as any)[tdForClass.namespace] : undefined)) || undefined;
+        }
+      } catch (_) {
+        // ignore compute failures and continue with other fallbacks
+        resolvedPaletteColor = resolvedPaletteColor;
+      }
+    }
+
+    // 2) Direct palette lookup using the node's namespace (may be a prefix or a short key)
+    if (!resolvedPaletteColor) {
+      try {
+        resolvedPaletteColor = getNamespaceColorFromPalette(palette, String(nodeData.namespace ?? '')) || undefined;
+      } catch (_) {
+        resolvedPaletteColor = undefined;
+      }
+    }
   } catch (_) {
     resolvedPaletteColor = undefined;
   }
 
-  // Fallback: if node namespace looks like a full namespace URI (http(s) or ends with / or #)
-  // try to find a matching prefix from rdfManager.getNamespaces() and use that prefix in the palette.
+  // 2) Fallback: if node namespace looks like a full namespace URI try to find a matching
+  // prefix from rdfManager.getNamespaces() and use that prefix in the palette.
   if (!resolvedPaletteColor && (rdfManager && typeof (rdfManager as any).getNamespaces === 'function')) {
     try {
       const nsMap = (rdfManager as any).getNamespaces() || {};
       const nsVal = String(nodeData.namespace || '').trim();
-      if (nsVal && (/^https?:\/\//i.test(nsVal) || /[#\/]$/.test(nsVal) || nsVal.includes('/'))) {
+      if (nsVal && (nsVal.toLowerCase().startsWith('http://') || nsVal.toLowerCase().startsWith('https://') || nsVal.endsWith('#') || nsVal.endsWith('/') || nsVal.includes('/'))) {
         // reverse lookup: find prefix whose URI equals the namespace value (exact match)
         const match = Object.entries(nsMap).find(([, uri]) => String(uri) === nsVal);
         if (match && match[0]) {
@@ -274,8 +229,8 @@ function CustomOntologyNodeInner(props: NodeProps) {
       const term = (() => {
         if (propertyIri.startsWith('_:')) return propertyIri;
         if (!rdfManager) throw new Error(`computeTermDisplay requires rdfManager to resolve '${propertyIri}'`);
-        const td = computeTermDisplay(propertyIri, rdfManager as any);
-        return td.prefixed || td.short || '';
+          const td = computeTermDisplay(propertyIri, rdfManager as any, (palette as any));
+          return td.prefixed || td.short || '';
       })();
       annotations.push({ term, value: valueStr });
     });
@@ -288,7 +243,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
         const keyStr = String(k);
         if (keyStr.startsWith('_:')) return keyStr;
         if (!rdfManager) throw new Error(`computeTermDisplay requires rdfManager to resolve '${keyStr}'`);
-        const td = computeTermDisplay(keyStr, rdfManager as any);
+        const td = computeTermDisplay(keyStr, rdfManager as any, (palette as any));
         return td.prefixed || td.short || '';
       })();
       annotations.push({ term, value: valueStr });
@@ -395,7 +350,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
     if (!canonicalIri) return '';
     if (canonicalIri.startsWith('_:')) return canonicalIri;
     if (!rdfManager) throw new Error(`computeTermDisplay requires rdfManager to resolve '${canonicalIri}'`);
-    const td = computeTermDisplay(canonicalIri, rdfManager as any);
+    const td = computeTermDisplay(canonicalIri, rdfManager as any, (palette as any));
     return (td.prefixed || td.short || '').replace(/^(https?:\/\/)?(www\.)?/, '');
   })();
 
