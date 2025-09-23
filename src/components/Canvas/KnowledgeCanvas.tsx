@@ -53,6 +53,8 @@ import { LayoutManager } from "./LayoutManager";
  * provide quads in the subject-level emission.
  */
 
+const { namedNode } = DataFactory;
+
 const KnowledgeCanvas: React.FC = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState<RFNode<NodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<RFEdge<LinkData>>([]);
@@ -91,7 +93,17 @@ const KnowledgeCanvas: React.FC = () => {
   const palette = usePaletteFromRdfManager();
 
   // Expose namedNode factory for synchronous store queries in the local classifier.
-  const { namedNode } = DataFactory;
+  // termForIri helper (handles blank nodes like "_:b0")
+  const termForIri = (iri: string) => {
+    try {
+      if (typeof iri === "string" && iri.startsWith("_:")) {
+        return DataFactory.blankNode(iri.slice(2));
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    return namedNode(String(iri));
+  };
 
   // Predicate classifier consults fat-map (availableProperties) then RDF store rdf:type triples.
   const predicateClassifier = (predIri: string) => {
@@ -257,39 +269,42 @@ const KnowledgeCanvas: React.FC = () => {
             const prevById = new Map<string, RFNode<NodeData>>();
             (prev || []).forEach((n) => prevById.set(String(n.id), n));
             const merged = Array.isArray(positioned)
-              ? positioned.map((p) => {
-                  const id = String(p && (p.id || p.key || (p.data && (p.data.key || p.data.id))) || "");
-                  const pos = p && p.position ? p.position : { x: 0, y: 0 };
-                  const prevNode = prevById.get(id);
-                  const base = prevNode || (nodes || []).find((n) => String(n.id) === id) || null;
-                  const mergedNode: RFNode<NodeData> = base
-                    ? { ...base, position: { x: pos.x, y: pos.y } }
-                    : {
-                        id,
-                        type: "ontology",
-                        position: { x: pos.x, y: pos.y },
-                        data: {
-                          key: id,
-                          iri: id,
-                          rdfTypes: [],
-                          literalProperties: [],
-                          annotationProperties: [],
-                          visible: true,
-                          hasReasoningError: false,
-                          namespace: "",
-                          label: id,
-                        } as NodeData,
-                      };
-                  if (prevNode) {
-                    if ((prevNode as any).__rf) (mergedNode as any).__rf = (prevNode as any).__rf;
-                    if ((prevNode as any).selected) (mergedNode as any).selected = true;
-                  }
-                  return mergedNode;
-                })
+              ? positioned
+                  .map((p) => {
+                    const id = String(p && (p.id || p.key || (p.data && (p.data.key || p.data.id))) || "");
+                    if (!id) return null;
+                    const pos = p && p.position ? p.position : { x: 0, y: 0 };
+                    const prevNode = prevById.get(id);
+                    const base = prevNode || (nodes || []).find((n) => String(n.id) === id) || null;
+                    const mergedNode: RFNode<NodeData> = base
+                      ? { ...base, position: { x: pos.x, y: pos.y } }
+                      : {
+                          id,
+                          type: "ontology",
+                          position: { x: pos.x, y: pos.y },
+                          data: {
+                            key: id,
+                            iri: id,
+                            rdfTypes: [],
+                            literalProperties: [],
+                            annotationProperties: [],
+                            visible: true,
+                            hasReasoningError: false,
+                            namespace: "",
+                            label: id,
+                          } as NodeData,
+                        };
+                    if (prevNode) {
+                      if ((prevNode as any).__rf) (mergedNode as any).__rf = (prevNode as any).__rf;
+                      if ((prevNode as any).selected) (mergedNode as any).selected = true;
+                    }
+                    return mergedNode;
+                  })
+                  .filter((x): x is RFNode<NodeData> => x !== null)
               : [];
             // update positionsRef after successful merge
             try { positionsRef.current = newPosMap; } catch (_) { /* ignore */ }
-            return merged;
+            return merged as RFNode<NodeData>[];
           } catch (_) {
             // fallback to naive mapping (preserve safety)
             try { positionsRef.current = newPosMap; } catch (_) { /* ignore */ }
@@ -326,10 +341,20 @@ const KnowledgeCanvas: React.FC = () => {
   // Layout guards & fingerprints to avoid re-entrant layout loops
   const layoutInProgressRef = useRef<boolean>(false);
   const lastLayoutFingerprintRef = useRef<string | null>(null);
+  const lastStructureFingerprintRef = useRef<string | null>(null);
   const positionsRef = useRef<Record<string, string>>({});
   // Dev helper: allow temporarily disabling blacklist during autoload so core vocabularies
   // (owl/rdf/rdfs) can be visible while debugging. This is intentionally a transient flag.
   const ignoreBlacklistRef = useRef<boolean>(false);
+
+  // Interaction refs for editors and connect flow
+  const linkSourceRef = useRef<NodeData | null>(null);
+  const linkTargetRef = useRef<NodeData | null>(null);
+  const pendingFocusRef = useRef<string | null>(null);
+  const getRdfManagerRef = useRef(getRdfManager);
+  useEffect(() => {
+    getRdfManagerRef.current = getRdfManager;
+  }, [getRdfManager, ontologiesVersion, loadedOntologies]);
 
   useEffect(() => {
     nodesRef.current = nodes;
@@ -415,16 +440,6 @@ const KnowledgeCanvas: React.FC = () => {
     [layoutEnabled, config],
   );
 
-  // Removed nodes/edges-based debounce. Layout is triggered explicitly by mapping, viewMode changes,
-  // or forced programmatic loads (onLoadFile/autoload). This avoids feedback loops where layout updates nodes
-  // which retrigger layout.
-
-  // Structural-change / view-mode triggered layout
-  // - Layout runs when the node/edge set changes (structural change) OR when viewMode toggles,
-  //   and only when autoApplyLayout is enabled (unless forced).
-  // - runMapping still calls doLayout directly when mapping completes (force when loadTriggerRef set).
-  const lastStructureFingerprintRef = useRef<string | null>(null);
-
   // Trigger layout on structural changes (node/edge additions/removals).
   useEffect(() => {
     try {
@@ -435,15 +450,14 @@ const KnowledgeCanvas: React.FC = () => {
       const edgeIds = (edgesRef.current || []).map((e) => String(e.id)).sort().join(',');
       const structFp = `N:${nodeIds}|E:${edgeIds}`;
 
-      if (lastStructureFingerprintRef.current !== structFp) {
-        lastStructureFingerprintRef.current = structFp;
+      if (lastLayoutFingerprintRef.current !== structFp) {
+        lastLayoutFingerprintRef.current = structFp;
         try {
           // Trigger an immediate layout for structural changes (not debounced).
           void doLayout(nodesRef.current, edgesRef.current, false);
         } catch (_) { /* ignore layout scheduling */ }
       }
     } catch (_) { /* ignore fingerprint failures */ }
-  // Depend on lengths so this runs when structure changes; positions changes won't retrigger unnecessarily.
   }, [nodes.length, edges.length, config && (config as any).autoApplyLayout, doLayout]);
 
   // Trigger layout when viewMode changes (if auto layout enabled)
@@ -498,7 +512,7 @@ const KnowledgeCanvas: React.FC = () => {
       } catch (e) {
         toast.error("Export failed");
         try {
-          warn("reactflow.export.failed", {
+          console.warn("knowledgecanvas.export.failed", {
             error: e && (e as Error).message ? (e as Error).message : String(e),
           });
         } catch (_) {
@@ -570,7 +584,7 @@ const KnowledgeCanvas: React.FC = () => {
         canvasActions.setLoading(false, 0, "");
       }
     },
-    [loadKnowledgeGraph, canvasActions],
+    [loadKnowledgeGraph, canvasActions, doLayout],
   );
   // Basic layout handler: computes deterministic positions and updates nodes.
   const handleLayoutChange = useCallback(
@@ -578,7 +592,7 @@ const KnowledgeCanvas: React.FC = () => {
       try {
         try {
           console.debug("[VG] handleLayoutChange invoked", { layoutType, force: !!force, options });
-        } catch (_) { /* ignore debug */ }
+        } catch (_) { /* ignore */ }
 
         // Persist selected layout
         try {
@@ -738,6 +752,8 @@ const KnowledgeCanvas: React.FC = () => {
           }
         } catch (_) { /* ignore propMap build */ }
 
+        const mgr = typeof getRdfManager === "function" ? getRdfManager() : undefined;
+
         enrichedNodes = (mappedNodes || []).map((n) => {
           try {
             const primary =
@@ -846,12 +862,12 @@ const KnowledgeCanvas: React.FC = () => {
               } else {
                 // Ensure newly-added nodes always have a position (React Flow requires it).
                 const nodeToSet = (m && (m as any).position) ? m : { ...m, position: { x: 0, y: 0 } };
-                byId.set(id, nodeToSet);
+                byId.set(id, nodeToSet as RFNode<NodeData>);
               }
             } catch (_) {
-              try {
+                try {
                 const fallbackNode = (m && (m as any).position) ? m : { ...(m || {}), position: { x: 0, y: 0 } };
-                byId.set(String((m as any).id || ""), fallbackNode);
+                byId.set(String((m as any).id || ""), fallbackNode as RFNode<NodeData>);
               } catch (_) { /* ignore per-item */ }
             }
           }
@@ -871,11 +887,11 @@ const KnowledgeCanvas: React.FC = () => {
           // If there are no previous edges, just return enrichedEdges (no-op merge)
           if (!Array.isArray(prev) || prev.length === 0) {
             // dedupe enrichedEdges by id before returning
-            const byId = new Map<string, RFEdge<LinkData>>();
-            for (const e of enrichedEdges || []) {
-              try { byId.set(String(e.id), e); } catch (_) { /* ignore per-edge */ }
-            }
-            return Array.from(byId.values());
+                const byId = new Map<string, RFEdge<LinkData>>();
+                for (const e of enrichedEdges || []) {
+                  try { byId.set(String(e.id), e as RFEdge<LinkData>); } catch (_) { /* ignore per-edge */ }
+                }
+                return Array.from(byId.values()) as RFEdge<LinkData>[];
           }
 
           // Keep edges whose source is NOT one of the updated nodes.
@@ -916,7 +932,7 @@ const KnowledgeCanvas: React.FC = () => {
           // On error, fall back to replacing with enrichedEdges
           const byId = new Map<string, RFEdge<LinkData>>();
           for (const e of enrichedEdges || []) {
-            try { byId.set(String(e.id), e); } catch (_) { /* ignore */ }
+            try { byId.set(String(e.id), e); } catch (_) { /* ignore per-edge */ }
           }
           return Array.from(byId.values());
         }
@@ -1132,7 +1148,7 @@ const KnowledgeCanvas: React.FC = () => {
         }
       } catch (_) { /* ignore */ }
     };
-  }, [getRdfManager, setNodes, setEdges]);
+  }, [getRdfManager, setNodes, setEdges, availableProperties, availableClasses]);
 
   // Expose a ready flag for integration tests / tooling
   useEffect(() => {
@@ -1143,18 +1159,12 @@ const KnowledgeCanvas: React.FC = () => {
     };
   }, []);
   
-  // Autoloading is now handled explicitly by the app initializer (__VG_INIT_APP).
-  // The mount-time automatic autoload was removed to avoid race conditions with startup data loads.
-  // If you relied on automatic autoload previously, call window.__VG_INIT_APP() to trigger autoload explicitly.
-  // Expose a small initializer to mirror ReactFlowCanvas behavior for tests/dev tooling.
-  // This initializer now handles explicit autoloading of configured ontologies,
-  // then loads any startup RDF URL. Autoload is no longer performed automatically on mount.
+  // Autoloading initializer (keeps previous behaviour)
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     (window as any).__VG_INIT_APP = async (opts?: { force?: boolean }) => {
       try {
-        // Mark that the initializer executed so tests and diagnostics can observe autoload runs.
         try { (window as any).__VG_INIT_APP_RAN = true; } catch (_) { /* ignore */ }
 
         const cfg =
@@ -1165,7 +1175,6 @@ const KnowledgeCanvas: React.FC = () => {
           ? cfg.additionalOntologies.filter(Boolean)
           : [];
 
-        // Pull startup URL from query string (support legacy 'url' param used in tests)
         let startupUrl = "";
         try {
           const u = new URL(String(window.location.href));
@@ -1178,7 +1187,6 @@ const KnowledgeCanvas: React.FC = () => {
           startupUrl = "";
         }
 
-        // 1) Load configured ontologies first (if any)
         if (additional && additional.length > 0 && typeof loadAdditionalOntologies === "function") {
           try {
             canvasActions.setLoading(true, 5, "Loading configured ontologies...");
@@ -1190,7 +1198,6 @@ const KnowledgeCanvas: React.FC = () => {
               } catch (_) { /* ignore */ }
             });
             try { toast.success("Configured ontologies loaded"); } catch (_) {}
-            // slight delay before re-enabling blacklist to allow debug visibility in dev
             try { setTimeout(() => { try { ignoreBlacklistRef.current = false; } catch (_) {} }, 3000); } catch (_) {}
           } catch (e) {
             try { toast.error("Failed to autoload configured ontologies"); } catch (_) {}
@@ -1200,7 +1207,6 @@ const KnowledgeCanvas: React.FC = () => {
           }
         }
 
-        // 2) Now load startup RDF (if present)
         if (startupUrl && typeof loadKnowledgeGraph === "function") {
           try {
             canvasActions.setLoading(true, 50, "Loading startup file...");
@@ -1227,7 +1233,6 @@ const KnowledgeCanvas: React.FC = () => {
       }
     };
 
-    // Auto-run the initializer so configured ontologies are always autoloaded on mount.
     try {
       if (typeof (window as any).__VG_INIT_APP === "function") {
         (window as any).__VG_INIT_APP({ force: true });
@@ -1238,11 +1243,7 @@ const KnowledgeCanvas: React.FC = () => {
     };
   }, [loadKnowledgeGraph]);
 
-  // Fallback: when the ontology store registers new loaded ontologies we may not
-  // always receive subject-change events from the RDF manager. As a robust
-  // fallback, watch loadedOntologies / ontologiesVersion and run a one-off
-  // mapping pass from the RDF store contents so the canvas always reflects
-  // autoloaded ontologies.
+  // Fallback mapping pass when ontologies change (keeps canvas consistent)
   useEffect(() => {
     try {
       const mgr = typeof getRdfManager === "function" ? getRdfManager() : undefined;
@@ -1250,9 +1251,6 @@ const KnowledgeCanvas: React.FC = () => {
 
       (async () => {
         try {
-          // Read all quads from the store and run the same mapping/enrichment pipeline
-          // used by the subject-level handler. This is best-effort and will not replace
-          // the incremental subject-based flow, but guarantees visibility after autoload.
           const store = mgr.getStore();
           const quads = (store && typeof store.getQuads === "function") ? store.getQuads(null, null, null, null) : [];
           if (!Array.isArray(quads) || quads.length === 0) return;
@@ -1282,6 +1280,8 @@ const KnowledgeCanvas: React.FC = () => {
               }
             } catch (_) { /* ignore */ }
 
+            const mgrLocal = mgr;
+
             enrichedNodes = (mappedNodes || []).map((n) => {
               try {
                 const primary =
@@ -1291,7 +1291,7 @@ const KnowledgeCanvas: React.FC = () => {
                   undefined;
                 let td: any = undefined;
                 try {
-                  if (primary && mgr) td = computeTermDisplay(String(primary), mgr as any, palette, { availableProperties, availableClasses });
+                  if (primary && mgrLocal) td = computeTermDisplay(String(primary), mgrLocal as any, palette, { availableProperties, availableClasses });
                 } catch (_) {
                   td = undefined;
                 }
@@ -1310,7 +1310,7 @@ const KnowledgeCanvas: React.FC = () => {
                 const pred = String((e && e.data && ((e.data as any).propertyUri || (e.data as any).propertyType || (e.data as any).predicate)) || "");
                 let td: any = undefined;
                 try {
-                  if (pred && mgr) td = computeTermDisplay(pred, mgr as any, palette, { availableProperties });
+                  if (pred && mgrLocal) td = computeTermDisplay(pred, mgrLocal as any, palette, { availableProperties });
                 } catch (_) {
                   td = undefined;
                 }
@@ -1337,14 +1337,12 @@ const KnowledgeCanvas: React.FC = () => {
               const merged = enrichedNodes.map((m) => {
                 const prevNode = prevById.get(String(m.id));
                 try {
-                  // Preserve previous position if present; otherwise ensure a default position so React Flow doesn't crash.
                   m.position = (prevNode && (prevNode.position as any)) || (m && (m as any).position) || { x: 0, y: 0 };
                   if (prevNode) {
                     if ((prevNode as any).__rf) (m as any).__rf = (prevNode as any).__rf;
                     if ((prevNode as any).selected) (m as any).selected = true;
                   }
                 } catch (_) {
-                  // best-effort: ensure position exists
                   try { m.position = m && (m as any).position ? (m as any).position : { x: 0, y: 0 }; } catch (_) { /* ignore */ }
                 }
                 return m;
@@ -1376,8 +1374,8 @@ const KnowledgeCanvas: React.FC = () => {
             const nodeIds = (Array.isArray(mappedNodes) ? mappedNodes.map((n) => String(n.id)) : []).sort().join(',');
             const edgeIds = (Array.isArray(mappedEdges) ? mappedEdges.map((e) => String(e.id)) : []).sort().join(',');
             const newStructFp = `N:${nodeIds}|E:${edgeIds}`;
-            if (lastStructureFingerprintRef.current !== newStructFp) {
-              lastStructureFingerprintRef.current = newStructFp;
+            if (lastLayoutFingerprintRef.current !== newStructFp) {
+              lastLayoutFingerprintRef.current = newStructFp;
               try { void doLayout(mappedNodes, mappedEdges, true); } catch (_) {}
             }
           } catch (_) { /* ignore layout scheduling */ }
@@ -1386,7 +1384,6 @@ const KnowledgeCanvas: React.FC = () => {
         }
       })();
     } catch (_) { /* ignore */ }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadedOntologies, ontologiesVersion]);
 
   // Simple debug counters
@@ -1394,7 +1391,6 @@ const KnowledgeCanvas: React.FC = () => {
   const displayedEdgesCount = useMemo(() => (edges || []).length, [edges]);
 
   // Minimal ABox/TBox visibility filter using React Flow native hidden flags.
-  // We update node.hidden / edge.hidden so React Flow preserves node identity and internals.
   useEffect(() => {
     try {
       const nodeHiddenById = new Map<string, boolean>();
@@ -1462,12 +1458,515 @@ const KnowledgeCanvas: React.FC = () => {
     }
   }, [viewMode, nodes.length, edges.length, setNodes, setEdges]);
 
+  // --------------------
+  // Interaction handlers
+  // --------------------
+
+  const onNodeDoubleClick = useCallback(
+    (event: any, node: any) => {
+      // Pass the full React Flow node object to the editor so it can use runtime fields
+      // and the canonical node.data without doing any store lookups here.
+      canvasActions.setSelectedNode(node as any, true);
+    },
+    [canvasActions],
+  );
+
+  const onEdgeDoubleClick = useCallback(
+    (event: any, edge: any) => {
+      try {
+        const srcId = edge.source || edge.from || (edge.data && edge.data.from) || '';
+        const tgtId = edge.target || edge.to || (edge.data && edge.data.to) || '';
+
+        const findNode = (id: string) =>
+          nodes.find((n) => {
+            try {
+              return (
+                String(n.id) === String(id) ||
+                String((n as any).key) === String(id) ||
+                (n.data && (String(n.data.iri) === String(id) || String(n.data.key) === String(id)))
+              );
+            } catch {
+              return false;
+            }
+          });
+
+        const sourceNode = findNode(srcId);
+        const targetNode = findNode(tgtId);
+
+        linkSourceRef.current = sourceNode ? (sourceNode.data as any) : null;
+        linkTargetRef.current = targetNode ? (targetNode.data as any) : null;
+
+        const edgeData = edge.data || {};
+        const propUriFromEdge =
+          edgeData.propertyUri || edgeData.propertyType || edge.propertyUri || edge.propertyType || "";
+        const foundPropEdge =
+          (availableProperties || []).find((p: any) => String(p.iri) === String(propUriFromEdge)) ||
+          (loadedOntologies || []).flatMap((o: any) => o.properties || []).find((p: any) => String(p.iri) === String(propUriFromEdge));
+        let propLabelFromEdge = "";
+        try {
+          if (edgeData.label) {
+            propLabelFromEdge = String(edgeData.label);
+          } else if (foundPropEdge && (foundPropEdge.label || foundPropEdge.name)) {
+            propLabelFromEdge = String(foundPropEdge.label || foundPropEdge.name);
+          } else {
+            const mgrLocal = getRdfManagerRef.current && getRdfManagerRef.current();
+            if (mgrLocal && propUriFromEdge) {
+              try {
+                const td = computeTermDisplay(String(propUriFromEdge), mgrLocal as any);
+                propLabelFromEdge = String(td.prefixed || td.short || "");
+              } catch (_) {
+                propLabelFromEdge = "";
+              }
+            } else {
+              propLabelFromEdge = "";
+            }
+          }
+        } catch (_) {
+          propLabelFromEdge = edgeData.label || "";
+        }
+
+        const selectedLinkPayload = {
+          id: edge.id || edge.key || `${srcId}-${tgtId}`,
+          key: edge.id || edge.key || `${srcId}-${tgtId}`,
+          source: srcId,
+          target: tgtId,
+          data: {
+            propertyType: edgeData.propertyType || edge.propertyType || '',
+            propertyUri: propUriFromEdge,
+            label: propLabelFromEdge,
+          },
+        };
+
+        try {
+          console.debug("[VG] KnowledgeCanvas.onEdgeDoubleClick selectedLinkPayload", {
+            selectedLinkPayload,
+            edge,
+            nodesCount: nodes.length,
+          });
+        } catch (_) { /* ignore */ }
+
+        canvasActions.setSelectedLink(edge as any, true);
+      } catch (e) {
+        try {
+          canvasActions.setSelectedLink(edge.data || edge, true);
+        } catch (_) { /* ignore */ }
+      }
+    },
+    [canvasActions, nodes, availableProperties, loadedOntologies],
+  );
+
+  const onConnect = useCallback(
+    (params: any) => {
+      if (!params || !params.source || !params.target) return;
+      const sourceNode = nodes.find((n) => n.id === params.source);
+      const targetNode = nodes.find((n) => n.id === params.target);
+      if (!sourceNode || !targetNode) {
+        toast.error("Invalid connection endpoints");
+        return;
+      }
+      if (params.source === params.target) {
+        toast.error("Cannot connect a node to itself");
+        return;
+      }
+      const sourceIsTBox = !!(sourceNode.data && (sourceNode.data as any).isTBox);
+      const targetIsTBox = !!(targetNode.data && (targetNode.data as any).isTBox);
+      if (sourceIsTBox !== targetIsTBox) {
+        toast.error("Cannot connect nodes across ABox and TBox");
+        return;
+      }
+
+      // Normalize params
+      const claimedSource = String(params.source);
+      const claimedTarget = String(params.target);
+
+      // Choose predicate candidate
+      let predCandidate: string | null = null;
+      try {
+        if (availableProperties && availableProperties.length > 0) {
+          const srcClass =
+            sourceNode && sourceNode.data
+              ? `${(sourceNode.data as any).namespace || ""}:${(sourceNode.data as any).classType || ""}`
+              : "";
+          const tgtClass =
+            targetNode && targetNode.data
+              ? `${(targetNode.data as any).namespace || ""}:${(targetNode.data as any).classType || ""}`
+              : "";
+
+          const compatible = (availableProperties || []).find((p: any) => {
+            try {
+              const domain = Array.isArray(p.domain) ? p.domain : [];
+              const range = Array.isArray(p.range) ? p.range : [];
+              const domainMatch = domain.length === 0 || !srcClass || domain.includes(srcClass);
+              const rangeMatch = range.length === 0 || !tgtClass || range.includes(tgtClass);
+              return domainMatch && rangeMatch;
+            } catch (_) {
+              return false;
+            }
+          });
+
+          predCandidate = compatible
+            ? (compatible.iri || (compatible as any).key || "")
+            : (availableProperties[0].iri || (availableProperties[0] as any).key);
+        }
+      } catch (_) {
+        predCandidate = availableProperties && availableProperties.length > 0 ? (availableProperties[0].iri || (availableProperties[0] as any).key) : null;
+      }
+
+      const predFallback = predCandidate || "http://www.w3.org/2002/07/owl#topObjectProperty";
+      const predUriToUse = predCandidate || predFallback;
+
+      // Compute label
+      let predLabel = "";
+      try {
+        const mgrLocal = getRdfManagerRef.current && getRdfManagerRef.current();
+        if (mgrLocal && predUriToUse) {
+          const td = computeTermDisplay(String(predUriToUse), mgrLocal as any);
+          predLabel = String(td.prefixed || td.short || "");
+        }
+      } catch (_) {
+        predLabel = "";
+      }
+
+      linkSourceRef.current = sourceNode ? (sourceNode.data as any) : null;
+      linkTargetRef.current = targetNode ? (targetNode.data as any) : null;
+
+      const edgeIdForEditor = String(
+        (params as any).id ||
+          generateEdgeId(
+            String(claimedSource),
+            String(claimedTarget),
+            String(predUriToUse || ""),
+          ),
+      );
+      const selectedEdgeForEditor = {
+        id: edgeIdForEditor,
+        key: edgeIdForEditor,
+        operation: "create",
+        source: claimedSource,
+        target: claimedTarget,
+        data: {
+          propertyUri: predUriToUse,
+          label: predLabel,
+        },
+      };
+
+      canvasActions.setSelectedLink(selectedEdgeForEditor as any, true);
+    },
+    [nodes, canvasActions, availableProperties, loadedOntologies],
+  );
+
+  const onEdgeUpdate = useCallback(
+    (oldEdge: RFEdge<LinkData>, connection: any) => {
+      try {
+        if (!connection.source || !connection.target) return;
+        const sourceNode = nodes.find((n) => n.id === connection.source);
+        const targetNode = nodes.find((n) => n.id === connection.target);
+        if (!sourceNode || !targetNode) {
+          toast.error("Invalid edge update endpoints");
+          return;
+        }
+        if (connection.source === connection.target) {
+          toast.error("Cannot create self-loop");
+          return;
+        }
+        const sourceIsTBox = !!(sourceNode.data && (sourceNode.data as any).isTBox);
+        const targetIsTBox = !!(targetNode.data && (targetNode.data as any).isTBox);
+        if (sourceIsTBox !== targetIsTBox) {
+          toast.error("Cannot relink edge across ABox and TBox");
+          return;
+        }
+
+        // Persist change: remove old triple and add new triple using RDF manager
+        try {
+          const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
+          if (mgr && typeof mgr.getStore === "function") {
+            const store = mgr.getStore();
+            const oldData =
+              oldEdge && oldEdge.data ? (oldEdge.data as LinkData) : undefined;
+            const oldPredCandidate =
+              oldData && (oldData.propertyUri || oldData.propertyType)
+                ? oldData.propertyUri || oldData.propertyType
+                : availableProperties && availableProperties.length > 0
+                  ? availableProperties[0].iri ||
+                    (availableProperties[0] as any).key
+                  : "http://www.w3.org/2000/01/rdf-schema#seeAlso";
+            const oldPredFull =
+              mgr.expandPrefix && typeof mgr.expandPrefix === "function"
+                ? mgr.expandPrefix(oldPredCandidate)
+                : oldPredCandidate;
+            const oldSubj = oldEdge.source;
+            const oldObj = oldEdge.target;
+
+            // remove matching quads
+            try {
+              const oldSubjTerm = termForIri(String(oldSubj));
+              const oldObjTerm = termForIri(String(oldObj));
+              const g = namedNode("urn:vg:data");
+              const found =
+                store.getQuads(
+                  oldSubjTerm,
+                  namedNode(oldPredFull),
+                  oldObjTerm,
+                  g,
+                ) || [];
+              found.forEach((q: any) => {
+                try {
+                  store.removeQuad(q);
+                } catch (_) {
+                  /* ignore */
+                }
+              });
+            } catch (_) {
+              /* ignore */
+            }
+
+            // add new quad (use connection.source/target and previous predicate)
+            try {
+              const subjIri =
+                (sourceNode.data && (sourceNode.data as NodeData).iri) ||
+                sourceNode.id;
+              const objIri =
+                (targetNode.data && (targetNode.data as NodeData).iri) ||
+                targetNode.id;
+              const subjTerm = termForIri(String(subjIri));
+              const objTerm = termForIri(String(objIri));
+              const predTerm2 = namedNode(oldPredFull);
+              const g = namedNode("urn:vg:data");
+              const exists =
+                store.getQuads(
+                  subjTerm,
+                  predTerm2,
+                  objTerm,
+                  g,
+                ) || [];
+              if (exists.length === 0) {
+                store.addQuad(DataFactory.quad(subjTerm, predTerm2, objTerm, g));
+              }
+            } catch (_) {
+              /* ignore add errors */
+            }
+          }
+        } catch (e) {
+          try {
+            console.warn("knowledgecanvas.persistEdgeUpdate.failed", {
+              error: e && (e as Error).message ? (e as Error).message : String(e),
+            });
+          } catch (_) { /* ignore */ }
+        }
+
+        setEdges((eds) =>
+          eds.map((e) =>
+            e.id === oldEdge.id
+              ? { ...e, source: connection.source!, target: connection.target! }
+              : e,
+          ),
+        );
+      } catch (e) {
+        /* ignore handler failure */
+      }
+    },
+    [nodes, setEdges, availableProperties],
+  );
+
+  const onEdgeUpdateEnd = useCallback(() => {
+    // no-op
+  }, []);
+
+  // Save handlers used by the editors — persist to urn:vg:data
+  const handleSaveNodeProperties = useCallback(
+    async (properties: any[]) => {
+      if (!canvasState.selectedNode) return;
+      const entityUri =
+        (canvasState.selectedNode as any)?.iri ||
+        (canvasState.selectedNode as any)?.iri ||
+        (canvasState.selectedNode as any)?.key;
+      if (!entityUri) return;
+      const annotationProperties = (properties || []).map((p: any) => ({
+        property: p.key || p.property,
+        value: p.value,
+        datatype: p.type || "xsd:string",
+      }));
+      try {
+        updateNode(entityUri, { annotationProperties });
+        // Update node locally
+        setNodes((nds) =>
+          nds.map((n) => {
+            if (n.id === (canvasState.selectedNode as any)?.key) {
+              return {
+                ...n,
+                data: {
+                  ...(n.data as NodeData),
+                  annotationProperties,
+                } as NodeData,
+              };
+            }
+            return n;
+          }),
+        );
+
+        // Also persist annotation quads into urn:vg:data using rdfManager (best-effort)
+        try {
+          const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
+          if (mgr && typeof mgr.getStore === "function") {
+            const store = mgr.getStore();
+            const g = namedNode("urn:vg:data");
+            const subjTerm = termForIri(String(entityUri));
+            for (const ap of annotationProperties) {
+              try {
+                const predFull = mgr.expandPrefix && typeof mgr.expandPrefix === "function"
+                  ? mgr.expandPrefix(ap.property)
+                  : ap.property;
+                const predTerm = namedNode(predFull);
+                const objTerm = typeof ap.value === "string" ? DataFactory.literal(String(ap.value)) : DataFactory.literal(String(ap.value));
+                const exists = store.getQuads(subjTerm, predTerm, objTerm, g) || [];
+                if (!exists || exists.length === 0) {
+                  store.addQuad(DataFactory.quad(subjTerm, predTerm, objTerm, g));
+                }
+              } catch (_) { /* ignore per-quad */ }
+            }
+          }
+        } catch (_) { /* ignore persistence */ }
+      } catch (e) {
+        try {
+          console.warn("knowledgecanvas.saveNode.failed", {
+            error: e && (e as Error).message ? (e as Error).message : String(e),
+          });
+        } catch (_) { /* ignore */ }
+      }
+    },
+    [canvasState.selectedNode, updateNode, setNodes],
+  );
+
+  const handleSaveLinkProperty = useCallback(
+    (propertyUri: string, label: string) => {
+      const selected = canvasState.selectedLink;
+      if (!selected) return;
+
+      // Update edge UI state: set both propertyUri and propertyType (legacy) and label
+      setEdges((eds) =>
+        eds.map((e) => {
+          const keyMatch =
+            e.id === (selected as any).key || e.id === (selected as any).id;
+          if (keyMatch) {
+            const newData: LinkData = {
+              ...(e.data as LinkData),
+              propertyType: propertyUri, // keep legacy field populated
+              propertyUri,
+              label,
+            };
+            return { ...e, data: newData };
+          }
+          return e;
+        }),
+      );
+
+      // Persist predicate change to RDF store: replace old predicate quad with new one where possible
+      try {
+        const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
+        if (mgr && typeof mgr.getStore === "function" && selected) {
+          const store = mgr.getStore();
+
+          const subjIri =
+            (selected as any).source ||
+            (selected as any).data?.from ||
+            (selected as any).from ||
+            "";
+          const objIri =
+            (selected as any).target ||
+            (selected as any).data?.to ||
+            (selected as any).to ||
+            "";
+
+          if (subjIri && objIri) {
+            const subjTerm = termForIri(String(subjIri));
+            const objTerm = termForIri(String(objIri));
+
+            // Remove quads that used the previous predicate (if any)
+            const oldPredRaw =
+              (selected as any).data?.propertyUri ||
+              (selected as any).data?.propertyType ||
+              (selected as any).propertyUri ||
+              (selected as any).propertyType ||
+              "";
+            if (oldPredRaw) {
+              const oldPredFull =
+                mgr.expandPrefix && typeof mgr.expandPrefix === "function"
+                  ? mgr.expandPrefix(oldPredRaw)
+                  : oldPredRaw;
+              try {
+                const g = namedNode("urn:vg:data");
+                const found =
+                  store.getQuads(
+                    subjTerm,
+                    namedNode(oldPredFull),
+                    objTerm,
+                    g,
+                  ) || [];
+                found.forEach((q: any) => {
+                  try {
+                    store.removeQuad(q);
+                  } catch (_) {
+                    /* ignore */
+                  }
+                });
+              } catch (_) {
+                /* ignore removal errors */
+              }
+            }
+
+            // Add the new predicate quad
+            try {
+              const newPredFull =
+                mgr.expandPrefix && typeof mgr.expandPrefix === "function"
+                  ? mgr.expandPrefix(propertyUri)
+                  : propertyUri;
+              const newPredTerm = namedNode(newPredFull);
+              const g = namedNode("urn:vg:data");
+              const exists =
+                store.getQuads(subjTerm, newPredTerm, objTerm, g) || [];
+              if (exists.length === 0) {
+                store.addQuad(DataFactory.quad(subjTerm, newPredTerm, objTerm, g));
+              }
+            } catch (_) {
+              /* ignore add errors */
+            }
+          }
+        }
+      } catch (_) {
+        /* ignore persistence errors */
+      }
+    },
+    [canvasState.selectedLink, setEdges],
+  );
+
+  // --------------------
+  // Render
+  // --------------------
+
+  const rfProps: any = {
+    nodes,
+    edges,
+    onNodesChange,
+    onEdgesChange,
+    onInit,
+    onNodeDoubleClick,
+    onEdgeDoubleClick,
+    onConnect,
+    onEdgeUpdate,
+    onEdgeUpdateEnd,
+    nodeTypes: { ontology: OntologyNode },
+    edgeTypes: { floating: FloatingEdge },
+    connectionLineComponent: FloatingConnectionLine,
+    minZoom: 0.1,
+    className: "knowledge-graph-canvas bg-canvas-bg",
+  };
+
   return (
     <div className="w-full h-screen bg-canvas-bg relative">
       <CanvasToolbar
         onAddNode={(payload: any) => {
           try {
-            // Minimal add-node implementation: accept either an object with .iri or a plain string.
+            // Keep node creation minimal per your instructions: existing implementation assumed working.
             let normalizedUri = String(payload && (payload.iri || payload) ? (payload.iri || payload) : "");
             try {
               if (!/^https?:\/\//i.test(normalizedUri)) {
@@ -1543,6 +2042,9 @@ const KnowledgeCanvas: React.FC = () => {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onInit={onInit}
+          onNodeDoubleClick={onNodeDoubleClick}
+          onEdgeDoubleClick={onEdgeDoubleClick}
+          onConnect={onConnect}
           nodeTypes={{ ontology: OntologyNode }}
           edgeTypes={{ floating: FloatingEdge }}
           connectionLineComponent={FloatingConnectionLine}
@@ -1553,6 +2055,26 @@ const KnowledgeCanvas: React.FC = () => {
           <Background gap={16} color="var(--grid-color, rgba(0,0,0,0.03))" />
         </ReactFlow>
       </div>
+
+      {/* Render editors so dialogs can persist triples into urn:vg:data */}
+      <NodePropertyEditor
+        open={canvasState.showNodeEditor}
+        onOpenChange={(open) => {
+          canvasActions.toggleNodeEditor(open);
+        }}
+        nodeData={canvasState.selectedNode}
+        availableEntities={allEntities}
+        onSave={handleSaveNodeProperties}
+      />
+
+      <LinkPropertyEditor
+        open={canvasState.showLinkEditor}
+        onOpenChange={canvasActions.toggleLinkEditor}
+        linkData={canvasState.selectedLink}
+        sourceNode={linkSourceRef.current}
+        targetNode={linkTargetRef.current}
+        onSave={handleSaveLinkProperty}
+      />
     </div>
   );
 };

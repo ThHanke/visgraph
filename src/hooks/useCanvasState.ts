@@ -85,14 +85,28 @@ export const useCanvasState = () => {
    * @param openEditor - Whether to open the link editor
    */
   const handleSetSelectedLink = useCallback((
-    link: LinkData | null, 
+    link: LinkData | null,
     openEditor = false
   ) => {
-    setSelectedLink(link);
-    if (openEditor && link) {
-      setShowLinkEditor(true);
+    // Compare by stable identifier (id or key) rather than object identity to avoid
+    // repeated updates when equivalent objects are recreated during mapping.
+    const incomingId = link ? (String((link as any).id || (link as any).key || "")) : "";
+    const currentId = selectedLink ? (String(((selectedLink as any).id || (selectedLink as any).key || ""))) : "";
+
+    // If identifiers match, avoid re-setting selectedLink to prevent update loops.
+    if (incomingId && incomingId === currentId) {
+      if (openEditor && link && !showLinkEditor) {
+        setShowLinkEditor(true);
+      }
+      return;
     }
-  }, []);
+
+    setSelectedLink(link);
+
+    if (openEditor && link) {
+      if (!showLinkEditor) setShowLinkEditor(true);
+    }
+  }, [showLinkEditor, selectedLink]);
 
   /**
    * Toggle node editor visibility

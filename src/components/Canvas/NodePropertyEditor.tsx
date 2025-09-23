@@ -1,40 +1,43 @@
 /* eslint-disable react-refresh/only-export-components, no-empty */
 /**
- * @fileoverview Enhanced Node Property Editor
- * Allows editing of node type, IRI, and annotation properties with proper XSD type support
- * Handles multiple rdf:types correctly for A-box individuals
+ * Node Property Editor (streamlined)
+ *
+ * - Initializes purely from the node object passed in via props (node or node.data).
+ * - Uses only the fat-map (availableEntities / availableClasses / availableProperties)
+ *   for autocomplete / suggestions — no RDF store lookups during initialization or render.
+ * - On save/delete the editor will perform minimal RDF store writes (add/remove quads)
+ *   to the urn:vg:data graph and then call onSave/onOpenChange. It will NOT attempt to
+ *   read or discover types from the RDF store at render time.
+ *
+ * This rebuild removes any heavy synchronous store reads and any fallback discovery logic.
  */
 
-import { useState, useEffect, useMemo } from 'react';
-import { DataFactory } from 'n3';
+import React, { useEffect, useMemo, useState, useRef } from "react";
+import { DataFactory } from "n3";
 const { namedNode } = DataFactory;
-import { debug, fallback } from '../../utils/startupDebug';
-import { computeDisplayInfo, computeBadgeText } from './core/nodeDisplay';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Label } from '../ui/label';
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '../ui/dialog';
+} from "../ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '../ui/select';
-import { AutoComplete } from '../ui/AutoComplete';
-import { EntityAutocomplete } from '../ui/EntityAutocomplete';
-import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
-import { useOntologyStore } from '../../stores/ontologyStore';
-import { X, Plus, Info } from 'lucide-react';
-import { deriveInitialNodeType } from './helpers/nodePropertyHelpers';
-import { computeTermDisplay, shortLocalName } from '../../utils/termUtils';
-export { deriveInitialNodeType };
+} from "../ui/select";
+import { AutoComplete } from "../ui/AutoComplete";
+import { EntityAutocomplete } from "../ui/EntityAutocomplete";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { useOntologyStore } from "../../stores/ontologyStore";
+import { X, Plus, Info } from "lucide-react";
+import type { NodeData } from "../../types/canvas";
 
 /**
  * Represents a literal property with value and type
@@ -51,10 +54,10 @@ interface LiteralProperty {
 interface NodePropertyEditorProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  nodeData: any;
+  nodeData: any; // expected to be the React Flow node object or an object with .data
   onSave: (updatedData: any) => void;
   availableEntities: Array<{
-   iri: string;
+    iri: string;
     label: string;
     namespace: string;
     rdfType: string;
@@ -63,591 +66,289 @@ interface NodePropertyEditorProps {
 }
 
 /**
- * Enhanced node property editor that allows changing type and editing annotation properties
+ * Simplified NodePropertyEditor that relies on passed nodeData and fat-map suggestions.
+ * Persistence to the RDF store is handled here only on save/delete (writes only).
  */
-export const NodePropertyEditor = ({ 
-  open, 
-  onOpenChange, 
-  nodeData, 
+export const NodePropertyEditor = ({
+  open,
+  onOpenChange,
+  nodeData,
   onSave,
-  availableEntities 
+  availableEntities,
 }: NodePropertyEditorProps) => {
-  const [nodeType, setNodeType] = useState('');
-  const [nodeIri, setNodeIri] = useState('');
+  // Local form state
+  const [nodeIri, setNodeIri] = useState<string>("");
+  const [nodeType, setNodeType] = useState<string>("");
   const [properties, setProperties] = useState<LiteralProperty[]>([]);
-  // Keep track of all rdf types for the entity so the form preserves multiple types
   const [rdfTypesState, setRdfTypesState] = useState<string[]>([]);
-  
-  const { availableClasses, getRdfManager } = useOntologyStore();
-  const [extraClassFromRdf, setExtraClassFromRdf] = useState<any | null>(null);
 
-  // Prefer canonical index suggestions when present (covers classes+properties)
-  const entitySuggestions = useOntologyStore((s) => (s as any).entityIndex?.suggestions || []);
-  
-  // Memoize classEntities to prevent constant re-creation.
-  // Combine provided availableEntities with ontologyStore.availableClasses as a fallback so
-  // the editor can resolve short labels or full URIs even when the UI-provided entity list is empty.
+  // Keep a ref of the initial properties so we can compute diffs on save
+  const initialPropertiesRef = useRef<LiteralProperty[]>([]);
+
+  // Fat-map sources from ontology store (used only for autocomplete)
+  const availableClasses = useOntologyStore((s) => s.availableClasses || []);
+  const availableProperties = useOntologyStore((s) => s.availableProperties || []);
+  const entityIndex = useOntologyStore((s: any) => (s as any).entityIndex);
+
+  // Build classEntities and property suggestions from fat-map
   const classEntities = useMemo(() => {
-    // Build class list from canonical suggestions when available, otherwise fall back to availableClasses
-    const fromSuggestions = Array.isArray(entitySuggestions) && entitySuggestions.length > 0
-      ? (entitySuggestions || []).filter((e: any) => (e.rdfType || '').includes('Class') || (e.rdfType || '').includes('owl:Class')).map((ent: any) => ({
-          iri: ent.iri,
-          label: ent.label,
-          namespace: ent.namespace || '',
-          rdfType: 'owl:Class'
-        }))
+    const fromStore = Array.isArray(availableClasses)
+      ? availableClasses.map((cls: any) => ({ iri: cls.iri, label: cls.label, namespace: cls.namespace }))
       : [];
-
-    const fromEntities = (availableEntities || []).filter(e => e.rdfType === 'owl:Class');
-    const fromStore = (availableClasses || []).map(cls => ({
-      iri: cls.iri,
-      label: cls.label,
-      namespace: cls.namespace || '',
-      rdfType: 'owl:Class'
-    }));
-
-    // Merge by uri, preferring entries from availableEntities when present.
+    // Also include availableEntities provided by caller if any
+    const fromProps = Array.isArray(availableEntities) ? availableEntities.map((e) => ({ iri: e.iri, label: e.label, namespace: e.namespace })) : [];
     const merged = new Map<string, any>();
-    // Add store entries first
-    fromStore.forEach(e => { if (e && e.iri) merged.set(e.iri, e); });
-    // Override with explicit availableEntities entries if they exist
-    fromEntities.forEach(e => { if (e && e.iri) merged.set(e.iri, e); });
-
+    fromStore.forEach((e) => { if (e && e.iri) merged.set(String(e.iri), e); });
+    fromProps.forEach((e) => { if (e && e.iri) merged.set(String(e.iri), e); });
     return Array.from(merged.values());
-  }, [availableEntities, availableClasses]);
+  }, [availableClasses, availableEntities]);
 
-  // If we discover a class definition in the RDF store (labels, comments), include it as a temporary
-  // class entity so the autocomplete and editor can show a meaningful label even when the ontology
-  // meta hasn't been loaded into availableClasses.
-  const classEntitiesCombined = extraClassFromRdf ? [extraClassFromRdf, ...(classEntities || [])] : classEntities;
+  const propertySuggestions = useMemo(() => {
+    const common = [
+      "rdfs:label",
+      "rdfs:comment",
+      "skos:prefLabel",
+      "skos:altLabel",
+      "dc:description",
+      "owl:sameAs",
+    ];
+    const fromFat = Array.isArray(availableProperties) ? availableProperties.map((p: any) => ({ value: String(p.iri || p.key || p), label: String(p.label || p.name || p.iri || p) })) : [];
+    const merged = new Map<string, any>();
+    common.forEach((p) => merged.set(p, { value: p, label: p }));
+    fromFat.forEach((p: any) => merged.set(String(p.value), p));
+    return Array.from(merged.values());
+  }, [availableProperties]);
 
-  // Helper to prefer prefixed form (prefix:LocalName) using rdfManager namespaces, falling back to short label.
-  const getDisplayLabelFromUri = (uri?: string) => {
-    if (!uri) return "";
-    const mgr = getRdfManager && getRdfManager();
-    if (!mgr) throw new Error(`getDisplayLabelFromUri requires rdfManager to resolve '${uri}'`);
-    const td = computeTermDisplay(String(uri), mgr as any);
-    return td.prefixed || td.short || '';
-  };
-
-  // Initialize form data when dialog opens
+  // Initialize local form state from the passed nodeData when dialog opens.
   useEffect(() => {
-    if (open && nodeData) {
-
-      // Normalize node data whether it uses the legacy shape or the new canonical shape
-      const d = (nodeData && (nodeData.data || nodeData)) || {};
-
-      // Determine initial node type using shared helper so it's testable and consistent
-      const initialNodeType = deriveInitialNodeType(d, classEntities);
-
-      // Normalize the derived type so it matches the URIs used by EntityAutocomplete.
-      // Many sources may provide full HTTP URIs, prefixed names (foaf:Person), or short labels ("Person").
-      // EntityAutocomplete expects the value to be an entity.iri from availableEntities (often prefixed).
-      let normalizedNodeType = initialNodeType || '';
-
-      if (initialNodeType) {
-        const shortLabel = initialNodeType.includes(':')
-          ? String(initialNodeType).split(':').pop() || String(initialNodeType)
-          : (String(initialNodeType).split(new RegExp('[#/]')).pop() || initialNodeType);
-
-        const match = classEntities.find(e =>
-          e.iri === initialNodeType ||
-          e.label === initialNodeType ||
-          e.label === shortLabel ||
-          (typeof e.iri === 'string' && (
-            e.iri === `${shortLabel}` ||
-            e.iri.endsWith(`/${shortLabel}`) ||
-            e.iri.endsWith(`#${shortLabel}`) ||
-            e.iri.endsWith(`:${shortLabel}`)
-          ))
-        );
-
-        if (match) {
-          normalizedNodeType = match.iri;
-        } else {
-          // If no exact match, prefer a prefixed form if the initial type looks like a full HTTP URI
-          // and any classEntity.iri contains the short label with a colon (prefixed).
-          if (/^https?:\/\//i.test(initialNodeType)) {
-            const prefixedMatch = classEntities.find(e => {
-              const l = e.iri.split(':').pop();
-              return l === shortLabel;
-            });
-            if (prefixedMatch) normalizedNodeType = prefixedMatch.iri;
-          }
-        }
-      }
-
-      // If we still don't have a normalized type, or it is the literal 'NamedIndividual',
-      // attempt to read rdf:type triples from the RDF manager. This covers cases where
-      // the parsed/diagram node stores 'NamedIndividual' in classType or type fields.
-      if (( !normalizedNodeType || String(normalizedNodeType).includes('NamedIndividual') ) && d.iri && typeof getRdfManager === 'function') {
-        try {
-          const manager = getRdfManager();
-          const store = manager?.getStore?.();
-          if (store) {
-            // Prefer the expanded rdf:type IRI when available from the manager
-            let rdfTypeIri = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
-            try { rdfTypeIri = manager.expandPrefix ? manager.expandPrefix('rdf:type') : rdfTypeIri; } catch (e) { void e; }
-            const all = store.getQuads(null, null, null, null) || [];
-            const typeQuads = all.filter((q: any) =>
-              q.subject && (q.subject.value === d.iri || q.subject.value === (d.iri || d.iri)) &&
-              q.predicate && q.predicate.value === rdfTypeIri
-            );
-            // Diagnostic: expose the exact quads found so we can debug prefix/expansion issues
-            try {
-              ((...__vg_args)=>{try{debug('console.debug',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.debug(...__vg_args);})('NodePropertyEditor: rdf type quads for', d.iri, typeQuads.map((q: any) => ({
-                predicate: q.predicate && q.predicate.value,
-                object: q.object && (q.object.value || (q.object.id || null))
-              })));
-            } catch (diagErr) {
-              void diagErr;
-            }
-            const foundTypes = Array.from(new Set(typeQuads.map((q: any) => (q.object && q.object.value)).filter(Boolean))) as string[];
-            // only consider non-NamedIndividual types as meaningful
-            let meaningful = foundTypes.filter((t) => typeof t === 'string' && t && !t.includes('NamedIndividual'));
-
-            // If none found via direct rdf:type matching, attempt a tolerant fallback:
-            // - look for any quads with the subject and an object whose local name or suffix matches the node's short label.
-            // This covers cases where prefixes/namespaces weren't registered or rdf:type used a prefixed name that didn't expand.
-            if (meaningful.length === 0) {
-              try {
-                  const shortLabelForNode = d.localName || (d.iri || d.iri || '').split(new RegExp('[#/]')).pop() || '';
-                  const subjectQuads = all.filter((q: any) =>
-                  q.subject && (q.subject.value === d.iri || q.subject.value === (d.iri || d.iri))
-                );
-                const candidateTypes = subjectQuads
-                  .map((q: any) => q.object && q.object.value)
-                  .filter(Boolean)
-                  .filter((v: string) => {
-                    const vShort = v.includes(':') ? v.split(':').pop() : (v.split(new RegExp('[#/]')).pop() || v);
-                    return vShort === shortLabelForNode || v.endsWith(`/${shortLabelForNode}`) || v.endsWith(`#${shortLabelForNode}`) || v.includes(`:${shortLabelForNode}`);
-                  });
-                meaningful = Array.from(new Set(candidateTypes));
-              } catch (fallbackErr) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(fallbackErr) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
-            }
-
-            // If there are meaningful (non-NamedIndividual) types, pick the first.
-            const chosen: string | undefined = meaningful.length > 0 ? meaningful[0] : undefined;
-            if (typeof chosen === 'string' && chosen) {
-              // Resolve chosen to a known classEntity if possible (match by full uri or short label)
-                  const shortLabel = chosen.includes(':')
-                    ? String(chosen).split(':').pop() || String(chosen)
-                    : (String(chosen).split(new RegExp('[#/]')).pop() || String(chosen));
-              const match = classEntities.find(e =>
-                e.iri === chosen ||
-                e.label === chosen ||
-                e.label === shortLabel ||
-                (typeof e.iri === 'string' && (
-                  e.iri.endsWith(`/${shortLabel}`) ||
-                  e.iri.endsWith(`#${shortLabel}`) ||
-                  e.iri.endsWith(`:${shortLabel}`)
-                ))
-              );
-              if (match) {
-                normalizedNodeType = match.iri;
-              } else {
-                // Try to expand prefixed names via manager, otherwise use raw chosen value.
-                if (typeof manager?.expandPrefix === 'function' && String(chosen).includes(':')) {
-                  try {
-                    const expanded = manager.expandPrefix(chosen);
-                    normalizedNodeType = expanded || chosen;
-                  } catch {
-                    normalizedNodeType = chosen;
-                  }
-                } else {
-                  normalizedNodeType = chosen;
-                }
-              }
-            }
-          }
-        } catch (err) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(err) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
-      }
-
-      // If normalizedNodeType is an owl:NamedIndividual marker, try one more time to find a non-NI rdf:type.
-      if (normalizedNodeType && String(normalizedNodeType).includes('NamedIndividual')) {
-        // Prefer any preserved rdfTypes on the node that are non-NI
-        const nodeProvidedTypes = Array.isArray(d.rdfTypes) ? d.rdfTypes.slice() : (d.rdfType ? [d.rdfType] : []);
-        const nonNiFromNode = nodeProvidedTypes.find((t: any) => t && !String(t).includes('NamedIndividual'));
-        if (nonNiFromNode) {
-          normalizedNodeType = nonNiFromNode;
-        } else {
-          // Try reading from RDF manager again to find any non-NI type
-          try {
-            const manager = getRdfManager && getRdfManager();
-            const store = manager?.getStore?.();
-            if (store && d.iri) {
-              // Prefer expanded rdf:type if possible
-              let rdfTypeIri = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
-              try { rdfTypeIri = manager.expandPrefix ? manager.expandPrefix('rdf:type') : rdfTypeIri; } catch (e) { void e; }
-              const all = store.getQuads(null, null, null, null) || [];
-              const typeQuads = all.filter((q: any) =>
-                q.subject && (q.subject.value === d.iri || q.subject.value === (d.iri || d.iri)) &&
-                q.predicate && q.predicate.value === rdfTypeIri
-              );
-              const foundTypes = Array.from(new Set(typeQuads.map((q: any) => (q.object && q.object.value)).filter(Boolean))) as string[];
-              const meaningful = foundTypes.filter((t) => typeof t === 'string' && t && !t.includes('NamedIndividual'));
-              if (meaningful.length > 0) normalizedNodeType = meaningful[0];
-              else normalizedNodeType = '';
-            } else {
-              normalizedNodeType = '';
-            }
-          } catch {
-            normalizedNodeType = '';
-          }
-        }
-      }
-
-      // Ensure we never expose a pure NamedIndividual marker as the "meaningful" node type.
-      // Some sources only provide owl:NamedIndividual; showing that in the editor is incorrect.
-      if (normalizedNodeType && /NamedIndividual\b/i.test(String(normalizedNodeType))) {
-        normalizedNodeType = '';
-      }
-
-        try {
-          // Compute display info (non-memoized)
-          try {
-            computeDisplayInfo(d, getRdfManager && getRdfManager(), classEntities);
-          } catch (e) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(e) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
-        } catch (e) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(e) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } }
-
-      // If the normalizedNodeType is not part of the known classEntities, attempt to look it up
-      // in the RDF store for rdfs:label / skos:prefLabel / rdfs:comment so the editor can present
-      // a friendly label instead of only showing "not loaded".
-      if (normalizedNodeType && !classEntities.find(e => e && e.iri === normalizedNodeType)) {
-        try {
-          const manager = getRdfManager && getRdfManager();
-          const store = manager?.getStore?.();
-          if (store) {
-            const all = store.getQuads(null, null, null, null) || [];
-            const rdfsLabelIri = (manager && typeof manager.expandPrefix === 'function') ? (() => { try { return manager.expandPrefix('rdfs:label'); } catch { return 'http://www.w3.org/2000/01/rdf-schema#label'; } })() : 'http://www.w3.org/2000/01/rdf-schema#label';
-            const skosPrefLabelIri = (manager && typeof manager.expandPrefix === 'function') ? (() => { try { return manager.expandPrefix('skos:prefLabel'); } catch { return 'http://www.w3.org/2004/02/skos/core#prefLabel'; } })() : 'http://www.w3.org/2004/02/skos/core#prefLabel';
-            const predicates = [rdfsLabelIri, skosPrefLabelIri];
-
-            let foundLabel: string | undefined;
-            for (const q of all) {
-              try {
-                if (q.subject && q.subject.value === normalizedNodeType && q.predicate && predicates.includes(q.predicate.value) && q.object && q.object.value) {
-                  foundLabel = String(q.object.value);
-                  break;
-                }
-              } catch { /* ignore per-quad */ }
-            }
-
-            if (!foundLabel) {
-              // Fallback: look for any quad with this subject and pull the object's short name
-              const subjectQuads = all.filter((q: any) => q.subject && q.subject.value === normalizedNodeType);
-              if (subjectQuads.length > 0) {
-                const firstObj = subjectQuads.find((q: any) => q.object && q.object.value);
-                if (firstObj) {
-                  const v = String(firstObj.object.value);
-                  const short = v.includes(':') ? v.split(':').pop() : (String(v).split(new RegExp('[#/]')).pop() || v);
-                  foundLabel = short;
-                }
-              }
-            }
-
-            if (foundLabel) {
-              setExtraClassFromRdf({
-               iri: normalizedNodeType,
-                label: foundLabel,
-                namespace: ''
-              });
-            } else {
-              setExtraClassFromRdf(null);
-            }
-          }
-        } catch (err) {
-          setExtraClassFromRdf(null);
-        }
-      } else {
-        // Clear any previous temporary entry if a matching class exists or no type
-        setExtraClassFromRdf(null);
-      }
-
-      setNodeType(normalizedNodeType);
-
-      // IRI / URI
-      setNodeIri(d.iri || d.iri || '');
-
-      // Preserve any rdfTypes (array) or single rdfType value
-      const initialRdfTypes = Array.isArray(d.rdfTypes) ? d.rdfTypes.slice() : (d.rdfType ? [d.rdfType] : []);
-      setRdfTypesState(initialRdfTypes);
-
-      // Convert annotation sources to form properties:
-      // - canonical: d.annotations = [{ "rdfs:label": "value" }, ...]
-      // - legacy: d.annotationProperties = [{ propertyUri, value, type }]
-      const existingProps: LiteralProperty[] = [];
-
-      if (Array.isArray(d.annotations)) {
-        d.annotations.forEach((ann: any) => {
-          if (ann && typeof ann === 'object') {
-            const entry = (Object.entries(ann)[0] as [string, any]) || ['', ''];
-            const key = String(entry[0] ?? '');
-            const value = String(entry[1] ?? '');
-            existingProps.push({ key, value, type: 'xsd:string' });
-          }
-        });
-      } else if (Array.isArray(d.annotationProperties)) {
-        d.annotationProperties.forEach((prop: any) => {
-          existingProps.push({
-            key: prop.property || prop.propertyUri || prop.key || '',
-            value: prop.value,
-            type: prop.type || 'xsd:string'
-          });
-        });
-      }
-
-      setProperties(existingProps);
+    if (!open) return;
+    if (!nodeData) {
+      setNodeIri("");
+      setNodeType("");
+      setProperties([]);
+      setRdfTypesState([]);
+      initialPropertiesRef.current = [];
+      return;
     }
-  }, [open, nodeData, classEntities, getRdfManager]);
 
-  /**
-   * Add a new property row
-   */
+    // node could be React Flow node object or a plain node data object — handle both.
+    const d = nodeData && (nodeData.data || nodeData) ? (nodeData.data || nodeData) : nodeData;
+
+    // IRI
+    const iri = (d && (d.iri || d.id || d.key)) ? String(d.iri || d.id || d.key) : "";
+    setNodeIri(iri);
+
+    // Class/type info: prefer explicit rdfTypes array or classType/displayType fields
+    const rdfTypes = Array.isArray(d.rdfTypes) ? d.rdfTypes.slice() : (d.rdfType ? [d.rdfType] : []);
+    setRdfTypesState(rdfTypes);
+    // For UI selection show the first non-NamedIndividual meaningful class if present, otherwise empty
+    const chosen = (rdfTypes || []).find((t: any) => t && !String(t).includes("NamedIndividual")) || d.classType || d.displayType || "";
+    setNodeType(String(chosen || ""));
+
+    // Annotation properties
+    const existingProps: LiteralProperty[] = [];
+    if (Array.isArray(d.annotationProperties)) {
+      d.annotationProperties.forEach((p: any) => {
+        existingProps.push({
+          key: p.propertyUri || p.property || p.key || "",
+          value: p.value || "",
+          type: p.type || "xsd:string",
+        });
+      });
+    } else if (Array.isArray(d.annotations)) {
+      d.annotations.forEach((ann: any) => {
+        if (ann && typeof ann === "object") {
+          const entry = Object.entries(ann)[0] as [string, any];
+          existingProps.push({ key: String(entry[0] || ""), value: String(entry[1] || ""), type: "xsd:string" });
+        }
+      });
+    }
+
+    setProperties(existingProps);
+    initialPropertiesRef.current = existingProps.map(p => ({ ...p }));
+  }, [open, nodeData]);
+
+  // Handlers for properties
   const handleAddProperty = (e?: React.MouseEvent) => {
     e?.preventDefault();
     e?.stopPropagation();
-    setProperties([...properties, { key: '', value: '', type: 'xsd:string' }]);
+    setProperties((prev) => [...prev, { key: "", value: "", type: "xsd:string" }]);
   };
 
-  /**
-   * Remove a property by index
-   */
   const handleRemoveProperty = (index: number, e?: React.MouseEvent) => {
     e?.preventDefault();
     e?.stopPropagation();
-    setProperties(properties.filter((_, i) => i !== index));
+    setProperties((prev) => prev.filter((_, i) => i !== index));
   };
 
-  /**
-   * Update a property field by index
-   */
   const handleUpdateProperty = (index: number, field: keyof LiteralProperty, value: string) => {
-    const updated = properties.map((prop, i) => 
-      i === index ? { ...prop, [field]: value } : prop
-    );
-    setProperties(updated);
+    setProperties((prev) => prev.map((p, i) => i === index ? { ...p, [field]: value } : p));
   };
 
-  /**
-   * Save changes and close dialog
-   */
-  const handleSave = (e?: React.MouseEvent) => {
+  // Utility to diff annotation properties (simple equality on key+value+type)
+  const diffProperties = (before: LiteralProperty[], after: LiteralProperty[]) => {
+    const key = (p: LiteralProperty) => `${p.key}||${p.value}||${p.type || ""}`;
+    const beforeSet = new Set(before.map(key));
+    const afterSet = new Set(after.map(key));
+    const toAdd = after.filter(p => !beforeSet.has(key(p)));
+    const toRemove = before.filter(p => !afterSet.has(key(p)));
+    return { toAdd, toRemove };
+  };
+
+  // Save: compute minimal changes and persist quads into urn:vg:data (writes only),
+  // then call onSave(updatedNodeData) and close dialog.
+  const handleSave = async (e?: React.MouseEvent) => {
     e?.preventDefault();
     e?.stopPropagation();
-    
-    // Validate that all properties have keys
-    const hasEmptyProperties = properties.some(prop => !prop.key.trim());
-    if (hasEmptyProperties) {
-      alert('Please provide a property name for all annotation properties or remove empty ones.');
+
+    // Validate properties: no empty keys
+    if (properties.some(p => !p.key || !p.key.trim())) {
+      alert("Please provide property names for all annotation properties (no empty keys).");
       return;
     }
-    
-    // Convert URI back to label for classType if we have a matching entity
-    const selectedEntity = classEntities.find(entity => entity.iri === nodeType);
-    const classTypeLabel = selectedEntity ? selectedEntity.label : nodeType;
 
-    // Build the updated rdfTypes array while preserving any existing additional types.
-    // Strategy:
-    //  - Start with any existing rdfTypes provided to the form (rdfTypesState)
-    //  - Remove any NamedIndividual entries (we'll re-add it at the front for A-box individuals)
-    //  - Ensure the chosen meaningful nodeType (full URI) is present and placed after NamedIndividual
-    const existing = Array.isArray(rdfTypesState) ? rdfTypesState.slice() : [];
-    const namedIndividualPresent = existing.some(t => t && t.includes('NamedIndividual'));
-    const preserved = existing
-      .filter(t => t && !t.includes('NamedIndividual') && t !== nodeType);
-
-    // Compose final list:
-    // - include owl:NamedIndividual only if it was present in the original rdfTypes
-    // - then the meaningful chosen type (if any)
-    // - then any other preserved types
-    const finalTypes = Array.from(new Set([
-      ...(namedIndividualPresent ? ['owl:NamedIndividual'] : []),
-      ...(nodeType ? [nodeType] : []),
-      ...preserved
-    ].filter(Boolean)));
+    // Compose updated node payload (canonical annotationProperties shape)
+    const annotationProperties = properties.map((p) => ({
+      propertyUri: p.key,
+      key: p.key,
+      value: p.value,
+      type: p.type || "xsd:string",
+    }));
 
     const updatedNodeData = {
-      ...nodeData,
-      classType: classTypeLabel,
-      type: classTypeLabel,
-      displayType: nodeType, // Save the full URI as displayType
-      rdfTypes: finalTypes, // Preserve multiple rdf types, with NamedIndividual preserved
-      iri: nodeIri,
-      // Persist canonical annotation shape using propertyUri (store-friendly)
-      annotationProperties: properties
-        .filter((prop) => prop.key.trim())
-        .map((prop) => ({
-          propertyUri: prop.key,
-          key: prop.key,
-          value: prop.value,
-          type: prop.type,
-        })),
+      ...(nodeData || {}),
+      data: {
+        ...(nodeData && (nodeData.data || nodeData)),
+        iri: nodeIri,
+        displayType: nodeType,
+        annotationProperties,
+        rdfTypes: rdfTypesState.slice(),
+      },
     };
 
-    onSave(updatedNodeData);
+    // Persist minimal changed annotation quads to urn:vg:data using rdfManager (writes only).
+    try {
+      // Use store only for writes; do not read/derive from it.
+      const mgrState = useOntologyStore.getState();
+      const mgr = typeof mgrState.getRdfManager === "function" ? mgrState.getRdfManager() : (mgrState as any).getRdfManager?.();
+      if (mgr && typeof mgr.getStore === "function") {
+        const store = mgr.getStore();
+        const g = namedNode("urn:vg:data");
+        const subjTerm = namedNode(String(nodeIri));
+
+        const before = initialPropertiesRef.current || [];
+        const after = properties || [];
+        const { toAdd, toRemove } = diffProperties(before, after);
+
+        // Remove quads for removed properties
+        for (const rem of toRemove) {
+          try {
+            const predRaw = rem.key;
+            const predFull = typeof mgr.expandPrefix === "function" ? (mgr.expandPrefix(predRaw) as string) : predRaw;
+            const predTerm = namedNode(predFull);
+            const objTerm = DataFactory.literal(String(rem.value));
+            const found = store.getQuads(subjTerm, predTerm, objTerm, g) || [];
+            for (const q of found) {
+              try { store.removeQuad(q); } catch (_) { /* ignore per-quad */ }
+            }
+          } catch (_) { /* ignore per-property */ }
+        }
+
+        // Add quads for added properties
+        for (const add of toAdd) {
+          try {
+            const predRaw = add.key;
+            const predFull = typeof mgr.expandPrefix === "function" ? (mgr.expandPrefix(predRaw) as string) : predRaw;
+            const predTerm = namedNode(predFull);
+            const objTerm = DataFactory.literal(String(add.value));
+            const exists = store.getQuads(subjTerm, predTerm, objTerm, g) || [];
+            if (!exists || exists.length === 0) {
+              try { store.addQuad(DataFactory.quad(subjTerm, predTerm, objTerm, g)); } catch (_) { /* ignore add */ }
+            }
+          } catch (_) { /* ignore per-property */ }
+        }
+      }
+    } catch (err) {
+      // swallow store write errors — canvas will remain consistent via incremental updates if writes succeed
+      try { console.warn("NodePropertyEditor.save.storeWriteFailed", err); } catch (_) { /* ignore */ }
+    }
+
+    // Call back to parent with the updated payload. Parent/canvas is responsible for persistent state mapping.
+    try {
+      onSave(updatedNodeData);
+    } catch (_) { /* ignore */ }
+
     onOpenChange(false);
   };
 
-  /**
-   * Delete the node and all triples that reference it (subject OR object)
-   */
+  // Delete: remove triples with subject OR object equal to nodeIri from urn:vg:data (writes only).
   const handleDelete = async (e?: React.MouseEvent) => {
     e?.preventDefault();
     e?.stopPropagation();
     if (!nodeIri) return;
-    if (!confirm(`Delete node ${nodeIri}? This will remove all triples where this IRI appears as subject or object.`)) return;
+    if (!confirm(`Delete node ${nodeIri}? This will remove triples in urn:vg:data where this IRI is subject or object.`)) return;
 
     try {
       const mgrState = useOntologyStore.getState();
-      const mgr = typeof mgrState.getRdfManager === 'function' ? mgrState.getRdfManager() : (mgrState as any).rdfManager;
-      if (!mgr) throw new Error('RDF manager unavailable');
-
-      const store = mgr.getStore && mgr.getStore();
-      if (!store) throw new Error('RDF store unavailable');
-
-      // Remove quads where subject === nodeIri
-      try {
+      const mgr = typeof mgrState.getRdfManager === "function" ? mgrState.getRdfManager() : (mgrState as any).getRdfManager?.();
+      if (mgr && typeof mgr.getStore === "function") {
+        const store = mgr.getStore();
         const subjTerm = namedNode(String(nodeIri));
-        const subjQuads = store.getQuads(subjTerm, null, null, null) || [];
-        subjQuads.forEach((q: any) => {
-          try { store.removeQuad(q); } catch (_) { /* ignore per-quad */ }
-        });
-      } catch (_ ) {
+        const g = namedNode("urn:vg:data");
+
+        // Remove quads where subject === nodeIri
         try {
-          if (typeof window !== "undefined" && (window as any).__VG_DEBUG__) {
-            console.debug("[VG] NodePropertyEditor.subjectRemovalError", _);
+          const subjQuads = store.getQuads(subjTerm, null, null, g) || [];
+          for (const q of subjQuads) {
+            try { store.removeQuad(q); } catch (_) { /* ignore per-quad */ }
           }
-        } catch (_ ) {
-          /* ignore logging failures */
-        }
-      }
+        } catch (_) { /* ignore */ }
 
-      // Remove quads where object === nodeIri
-      try {
-        const objTerm = namedNode(String(nodeIri));
-        const objQuads = store.getQuads(null, null, objTerm, null) || [];
-        objQuads.forEach((q: any) => {
-          try { store.removeQuad(q); } catch (_) { /* ignore per-quad */ }
-        });
-      } catch (_ ) {
+        // Remove quads where object === nodeIri
         try {
-          if (typeof window !== "undefined" && (window as any).__VG_DEBUG__) {
-            console.debug("[VG] NodePropertyEditor.objectRemovalError", _);
+          const objQuads = store.getQuads(null, null, subjTerm, g) || [];
+          for (const q of objQuads) {
+            try { store.removeQuad(q); } catch (_) { /* ignore per-quad */ }
           }
-        } catch (_ ) {
-          /* ignore logging failures */
-        }
+        } catch (_) { /* ignore */ }
       }
-
-      // Notify RDF manager subscribers (best-effort; notifyChange is internal)
-      try {
-        if ((mgr as any).notifyChange) {
-          try { (mgr as any).notifyChange(); } catch (_) { /* ignore */ }
-        } else if (typeof mgr.notifyChange === 'function') {
-          try { (mgr as any).notifyChange(); } catch (_) { /* ignore */ }
-        }
-      } catch (_) { /* ignore */ }
-
-      // Remove node and edges from ontologyStore.currentGraph so mapping/UI updates immediately
-      try {
-        const os = (useOntologyStore as any).getState ? (useOntologyStore as any).getState() : null;
-        if (os && typeof os.setCurrentGraph === 'function') {
-          const cg = os.currentGraph || { nodes: [], edges: [] };
-          const newNodes = (cg.nodes || []).filter((n: any) => {
-            try {
-              const iri = (n && (n.data || n).iri) || n.iri || n.id || '';
-              return String(iri) !== String(nodeIri);
-            } catch { return true; }
-          });
-          const newEdges = (cg.edges || []).filter((e: any) => {
-            try {
-              const from = e && e.source ? String(e.source) : (e && e.data && (e.data.from || e.data.source)) || '';
-              const to = e && e.target ? String(e.target) : (e && e.data && (e.data.to || e.data.target)) || '';
-              return String(from) !== String(nodeIri) && String(to) !== String(nodeIri);
-            } catch { return true; }
-          });
-          try { os.setCurrentGraph(newNodes, newEdges); } catch (_) { /* ignore */ }
-        }
-      } catch (_) { /* ignore update failures */ }
-
-      onOpenChange(false);
     } catch (err) {
-      try {
-        console.error('Failed to delete node', err);
-      } catch (_) {}
-      onOpenChange(false);
+      try { console.warn("NodePropertyEditor.delete.storeWriteFailed", err); } catch (_) { /* ignore */ }
     }
+
+    // Signal close; parent incremental mapping should remove the node from the canvas when the store notifies.
+    onOpenChange(false);
   };
 
-  /**
-   * Get common annotation properties for autocomplete
-   */
+  // Annotation property helpers for UI
   const getAnnotationProperties = () => {
-    const commonProps = [
-      'rdfs:label',
-      'rdfs:comment',
-      'dc:description',
-      'dc:title',
-      'dc:creator',
-      'dc:date',
-      'dc:identifier',
-      'owl:sameAs',
-      'skos:prefLabel',
-      'skos:altLabel',
-      'skos:definition'
-    ];
-
-    // Add class-specific properties from loaded ontologies
-    const classSpecific = availableClasses
-      .filter(cls => {
-        if (!nodeType) return false;
-        // nodeType may be a prefixed name (foaf:Person), a full HTTP URI, or a short label like "Person".
-        // Match against several possibilities so class-specific properties are found whether the
-        // form stores short labels, prefixed URIs, or full URIs.
-        const shortLabel = nodeType.includes(':') ? nodeType.split(':').pop() : nodeType;
-        return (
-          cls.iri === nodeType ||
-          cls.label === nodeType ||
-          cls.label === shortLabel ||
-          (typeof cls.iri === 'string' && (cls.iri.endsWith(`/${shortLabel}`) || cls.iri.endsWith(`#${shortLabel}`)))
-        );
-      })
-      .flatMap(cls => cls.properties || []);
-
-    return [...commonProps, ...classSpecific].map(prop => ({
-      value: prop,
-      label: prop
-    }));
+    return propertySuggestions;
   };
 
-  /**
-   * Get available XSD data types
-   */
   const getXSDTypes = () => [
-    'xsd:string',
-    'xsd:boolean',
-    'xsd:integer',
-    'xsd:decimal',
-    'xsd:double',
-    'xsd:float',
-    'xsd:date',
-    'xsd:dateTime',
-    'xsd:time',
-    'xsd:anyURI'
+    "xsd:string",
+    "xsd:boolean",
+    "xsd:integer",
+    "xsd:decimal",
+    "xsd:double",
+    "xsd:float",
+    "xsd:date",
+    "xsd:dateTime",
+    "xsd:time",
+    "xsd:anyURI",
   ];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange} modal>
-      <DialogContent 
+      <DialogContent
         className="sm:max-w-2xl max-h-[90vh] max-w-[min(90vw,48rem)] overflow-y-auto"
         onInteractOutside={(e) => {
           // Prevent closing when clicking on popover content
           const target = e.target as Element;
-          if (target.closest('[data-radix-popper-content-wrapper]') || 
-              target.closest('[data-radix-select-content]') ||
-              target.closest('[cmdk-root]') ||
-              target.closest('[data-radix-command]')) {
+          if (target.closest("[data-radix-popper-content-wrapper]") ||
+              target.closest("[data-radix-select-content]") ||
+              target.closest("[cmdk-root]") ||
+              target.closest("[data-radix-command]")) {
             e.preventDefault();
           }
         }}
@@ -656,50 +357,42 @@ export const NodePropertyEditor = ({
           <DialogTitle>Edit Node Properties</DialogTitle>
           <DialogDescription>
             Change the type, IRI, and annotation properties of this node.
-            In A-box mode, owl:NamedIndividual is automatically maintained.
+            In A-box mode, owl:NamedIndividual is preserved by the mapping pipeline.
           </DialogDescription>
         </DialogHeader>
-        
+
         <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space-y-6">
-          {/* Node Type Selection */}
           <div className="space-y-2">
             <Label htmlFor="nodeType">Node Type (Meaningful Class)</Label>
-          <div className="flex items-center gap-2">
-            <EntityAutocomplete 
-              entities={classEntities}
-              value={nodeType}
-              onValueChange={setNodeType}
-              placeholder="Type to search for classes..."
-              emptyMessage="No OWL classes found. Load an ontology first."
-              className="w-full"
-            />
-            {/* When class entity isn't loaded show a clear short/prefixed label next to the autocomplete */}
-            {nodeType && !classEntities.find(e => e.iri === nodeType) && (
-              <div className="text-xs text-muted-foreground px-2">
-                {getDisplayLabelFromUri(nodeType)}
-              </div>
-            )}
-            {nodeType && !classEntities.find(e => e.iri === nodeType) && (
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground">
-                    <Info className="h-4 w-4" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64" side="top">
-                  <div className="text-xs">
-                    This node has an rdf:type value, but the class definition for that type is not currently loaded into the ontology store. This is intended behavior and not an error.
-                  </div>
-                </PopoverContent>
-              </Popover>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            owl:NamedIndividual will be automatically preserved for individuals
-          </p>
+            <div className="flex items-center gap-2">
+              <EntityAutocomplete
+                entities={classEntities}
+                value={nodeType}
+                onValueChange={setNodeType}
+                placeholder="Type to search for classes..."
+                emptyMessage="No OWL classes found. Load an ontology first."
+                className="w-full"
+              />
+              {nodeType && !classEntities.find(e => e.iri === nodeType) && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground">
+                      <Info className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64" side="top">
+                    <div className="text-xs">
+                      The selected rdf:type is not present in the loaded fat-map. It will be saved as the displayType but not resolved to a known class.
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              owl:NamedIndividual will be preserved by the mapping pipeline if applicable.
+            </p>
           </div>
 
-          {/* Node IRI */}
           <div className="space-y-2">
             <Label htmlFor="nodeIri">Node IRI</Label>
             <Input
@@ -710,16 +403,10 @@ export const NodePropertyEditor = ({
             />
           </div>
 
-          {/* Annotation Properties */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <Label>Annotation Properties</Label>
-              <Button 
-                type="button" 
-                variant="outline" 
-                size="sm"
-                onClick={(e) => handleAddProperty(e)}
-              >
+              <Button type="button" variant="outline" size="sm" onClick={(e) => handleAddProperty(e)}>
                 <Plus className="h-4 w-4 mr-2" />
                 Add Property
               </Button>
@@ -733,7 +420,7 @@ export const NodePropertyEditor = ({
                     <AutoComplete
                       options={getAnnotationProperties()}
                       value={property.key}
-                      onValueChange={(value) => handleUpdateProperty(index, 'key', value)}
+                      onValueChange={(value) => handleUpdateProperty(index, "key", value)}
                       placeholder="Select property..."
                       className={!property.key.trim() ? "border-red-500" : ""}
                     />
@@ -741,27 +428,24 @@ export const NodePropertyEditor = ({
                       <p className="text-xs text-red-500 mt-1">Property is required</p>
                     )}
                   </div>
-                  
+
                   <div className="col-span-5">
                     <Label className="text-xs">Value</Label>
                     <Input
                       value={property.value}
-                      onChange={(e) => handleUpdateProperty(index, 'value', e.target.value)}
+                      onChange={(e) => handleUpdateProperty(index, "value", e.target.value)}
                       placeholder="Property value..."
                     />
                   </div>
-                  
+
                   <div className="col-span-2">
                     <Label className="text-xs">Type</Label>
-                    <Select 
-                      value={property.type || 'xsd:string'} 
-                      onValueChange={(value) => handleUpdateProperty(index, 'type', value)}
-                    >
+                    <Select value={property.type || "xsd:string"} onValueChange={(value) => handleUpdateProperty(index, "type", value)}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select type..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {getXSDTypes().map(type => (
+                        {getXSDTypes().map((type) => (
                           <SelectItem key={type} value={type}>
                             {type}
                           </SelectItem>
@@ -769,21 +453,15 @@ export const NodePropertyEditor = ({
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   <div className="col-span-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => handleRemoveProperty(index, e)}
-                      className="h-9 px-2"
-                    >
+                    <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveProperty(index, e)} className="h-9 px-2">
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
               ))}
-              
+
               {properties.length === 0 && (
                 <div className="text-center py-4 text-muted-foreground border-2 border-dashed rounded-lg">
                   <p className="text-sm">No annotation properties</p>
@@ -793,7 +471,6 @@ export const NodePropertyEditor = ({
             </div>
           </div>
 
-          {/* Actions */}
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button type="button" variant="destructive" onClick={(e) => handleDelete(e)}>
               Delete
