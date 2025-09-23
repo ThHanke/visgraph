@@ -316,6 +316,19 @@ export const NodePropertyEditor = ({
       try { console.warn("NodePropertyEditor.delete.storeWriteFailed", err); } catch (_) { /* ignore */ }
     }
 
+    // Notify RDF manager subscribers (best-effort) so incremental mapping picks up the deletion.
+    try {
+      const mgrState = useOntologyStore.getState();
+      const mgr = typeof mgrState.getRdfManager === "function" ? mgrState.getRdfManager() : (mgrState as any).rdfManager;
+      try {
+        if ((mgr as any).notifyChange) {
+          try { (mgr as any).notifyChange(); } catch (_) { /* ignore */ }
+        } else if (typeof (mgr as any).notifyChange === "function") {
+          try { (mgr as any).notifyChange(); } catch (_) { /* ignore */ }
+        }
+      } catch (_) { /* ignore notify errors */ }
+    } catch (_) { /* ignore */ }
+
     // Signal close; parent incremental mapping should remove the node from the canvas when the store notifies.
     onOpenChange(false);
   };

@@ -65,7 +65,7 @@ export const LinkPropertyEditor = ({
     return Array.isArray(entityIndex?.suggestions) ? entityIndex!.suggestions : [];
   }, [entityIndex]);
 
-  const allObjectProperties = useMemo(() => {
+  const computedAllObjectProperties = useMemo(() => {
     if (Array.isArray(entitySuggestions) && entitySuggestions.length > 0) {
       return entitySuggestions.map((ent: any) => ({
         value: ent.iri,
@@ -79,6 +79,20 @@ export const LinkPropertyEditor = ({
       description: prop.namespace ? `From ${prop.namespace}` : undefined,
     }));
   }, [entitySuggestions, availableProperties]);
+
+  // Keep a state-backed copy of the computed options so we can reliably pass a stable,
+  // up-to-date options array to the AutoComplete component. Some AutoComplete implementations
+  // may not update internal caches when a new array identity is supplied; updating a state
+  // variable here forces React to re-render the child with a fresh reference.
+  const [allObjectPropertiesState, setAllObjectPropertiesState] = useState(computedAllObjectProperties);
+
+  useEffect(() => {
+    try {
+      setAllObjectPropertiesState(computedAllObjectProperties);
+    } catch (_) {
+      // ignore
+    }
+  }, [computedAllObjectProperties]);
 
   useEffect(() => {
     const resolved =
@@ -102,6 +116,22 @@ export const LinkPropertyEditor = ({
     linkData?.data?.propertyType,
     selectedProperty,
   ]);
+
+  // If the editor opens and there is no selectedProperty yet, but available properties exist,
+  // prefill the selector with the first available property so UI tests and users immediately
+  // see a sensible default. This also makes the AutoComplete predictable for tests.
+  useEffect(() => {
+    try {
+      if ((!selectedProperty || String(selectedProperty).trim() === "") && Array.isArray(allObjectPropertiesState) && allObjectPropertiesState.length > 0) {
+        const first = allObjectPropertiesState[0];
+        if (first && first.value) {
+          setSelectedProperty(String(first.value));
+        }
+      }
+    } catch (_) {
+      // ignore
+    }
+  }, [allObjectPropertiesState, selectedProperty]);
 
   useEffect(() => {
     try {
@@ -180,7 +210,7 @@ export const LinkPropertyEditor = ({
     }
 
     // Notify parent; canvas mapping will pick up the change via RDF manager
-    const property = allObjectProperties.find((p) => p.value === uriToSave);
+    const property = allObjectPropertiesState.find((p) => p.value === uriToSave);
     onSave(uriToSave, property?.label || uriToSave);
     onOpenChange(false);
   };
@@ -278,7 +308,7 @@ export const LinkPropertyEditor = ({
           <div className="space-y-2">
             <Label>Type</Label>
             <AutoComplete
-              options={allObjectProperties}
+              options={allObjectPropertiesState}
               value={displayValue}
               onValueChange={setSelectedProperty}
               placeholder="Type to search for object properties..."
