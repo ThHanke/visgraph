@@ -338,12 +338,18 @@ export class RDFManager {
     this.changeSubscribers.delete(cb);
   }
 
-  private notifyChange() {
+  private notifyChange(meta?: any) {
     try {
       this.changeCounter += 1;
       for (const cb of Array.from(this.changeSubscribers)) {
         try {
-          cb(this.changeCounter);
+          // Pass both the numeric counter and an optional meta payload to subscribers.
+          try {
+            (cb as any)(this.changeCounter, meta);
+          } catch (_) {
+            // Fallback: call with just the numeric counter for subscribers that expect the old signature.
+            cb(this.changeCounter);
+          }
         } catch (_) {
           /* ignore individual subscriber errors */
         }
@@ -2339,14 +2345,16 @@ export class RDFManager {
    */
   addNamespace(prefix: string, uri: string): void {
     try {
-      const existed =
-        Object.prototype.hasOwnProperty.call(this.namespaces, prefix) ||
-        Object.values(this.namespaces).includes(uri);
+      // Determine whether the mapping is newly added or actually changed.
+      const prev = Object.prototype.hasOwnProperty.call(this.namespaces, prefix)
+        ? this.namespaces[prefix]
+        : undefined;
+      const changed = prev === undefined || String(prev) !== String(uri);
+
       // Always set/overwrite the mapping so callers can update URIs for a prefix.
       this.namespaces[prefix] = uri;
 
-      // Only notify when this is a newly added mapping (not a noop/overwrite of same value).
-      if (!existed) {
+      if (changed) {
         // Dynamic import so we don't create a hard runtime dependency on the UI layer.
         // Fire-and-forget the toast; failures to import or show the toast should not
         // break RDF processing.
@@ -2377,6 +2385,13 @@ export class RDFManager {
           } catch (__) {
             /* ignore fallback errors */
           }
+        }
+
+        // Notify subscribers that namespaces changed so UI can rebuild palette / displays
+        try {
+          this.notifyChange({ kind: "namespaces", prefixes: [prefix] });
+        } catch (_) {
+          /* ignore notification failures */
         }
       }
     } catch (e) {
@@ -2524,6 +2539,13 @@ export class RDFManager {
           }
         }
       }
+
+      // Notify subscribers that namespaces changed (best-effort)
+      try {
+        this.notifyChange({ kind: "namespaces", prefixes: prefixToRemove ? [prefixToRemove] : [] });
+      } catch (_) {
+        /* ignore */
+      }
     } catch (err) {
       // best-effort: log and continue
       try {
@@ -2552,7 +2574,7 @@ export class RDFManager {
       } catch (_) {
         try {
           if (typeof fallback === "function") {
-            fallback("emptyCatch", { error: String(_) });
+            fallback("emptyCatch", { error: String(err) });
           }
         } catch (_) {
           /* ignore */

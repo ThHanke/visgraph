@@ -23,6 +23,7 @@ interface ResizableNamespaceLegendProps {
 export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNamespaceLegendProps) => {
   const rdfManager = useOntologyStore((s) => s.rdfManager);
   const ontologiesVersion = useOntologyStore((s) => s.ontologiesVersion);
+  const palette = usePaletteFromRdfManager();
 
   // Derive the map we display: prefer explicit prop, otherwise ask the rdfManager.
   const displayNamespaces = useMemo(() => {
@@ -33,17 +34,16 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
     } catch (_) {
       return namespaces || {};
     }
-  }, [namespaces, rdfManager, ontologiesVersion]);
+  }, [namespaces, rdfManager, ontologiesVersion, palette]);
 
   // Simple entries array reflecting the registered map exactly, sorted by prefix for stable order.
   const entries = useMemo(() => {
     return Object.entries(displayNamespaces)
       .map(([p, u]) => [String(p ?? ""), String(u ?? "")] as [string, string])
       .sort(([a], [b]) => a.localeCompare(b));
-  }, [displayNamespaces, ontologiesVersion]);
+  }, [displayNamespaces, ontologiesVersion, palette]);
 
   // Build palette map so legend colors match canvas palette (if available).
-  const palette = usePaletteFromRdfManager();
 
   // Basic sizing/position state (kept minimal)
   const calculateInitialSize = () => {

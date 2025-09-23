@@ -28,6 +28,7 @@ import FloatingEdge from "./FloatingEdge";
 import FloatingConnectionLine from "./FloatingConnectionLine";
 import { generateEdgeId } from "./core/edgeHelpers";
 import { computeTermDisplay, shortLocalName } from "../../utils/termUtils";
+import { usePaletteFromRdfManager } from "./core/namespacePalette";
 import { useCanvasState } from "../../hooks/useCanvasState";
 import { toast } from "sonner";
 import { fallback } from "../../utils/startupDebug";
@@ -84,6 +85,9 @@ const KnowledgeCanvas: React.FC = () => {
   const [currentLayout, setCurrentLayoutState] = useState(config.currentLayout);
   // Enable programmatic/layout toggle on by default per user request.
   const [layoutEnabled, setLayoutEnabled] = useState(true);
+
+  // Palette from RDF manager — used to compute colors without rebuilding palettes.
+  const palette = usePaletteFromRdfManager();
 
   // Keep toolbar toggle in sync with persisted config.autoApplyLayout so
   // "Auto" in the toolbar controls whether mapping triggers automatic layout.
@@ -470,6 +474,72 @@ const KnowledgeCanvas: React.FC = () => {
         console.debug('[VG] runMapping produced', { mappedNodeCount: Array.isArray(mappedNodes) ? mappedNodes.length : 0, mappedEdgeCount: Array.isArray(mappedEdges) ? mappedEdges.length : 0 });
       } catch (_) { /* ignore debug */ }
 
+      // Enrich nodes and edges with display/palette information so first-render shows
+      // type-driven colors and fat-map labels. computeTermDisplay is authoritative here.
+      let enrichedNodes = mappedNodes;
+      let enrichedEdges = mappedEdges;
+      try {
+        // Build quick lookup for availableProperties (fat map) to speed up per-edge resolution.
+        const propMap = new Map<string, any>();
+        try {
+          if (Array.isArray(availableProperties)) {
+            for (const p of availableProperties) {
+              try {
+                const iriKey = String((p && (p as any).iri) || "").trim();
+                if (iriKey) propMap.set(iriKey, p);
+              } catch (_) { /* ignore per-entry */ }
+            }
+          }
+        } catch (_) { /* ignore propMap build */ }
+
+        enrichedNodes = (mappedNodes || []).map((n) => {
+          try {
+            const primary =
+              Array.isArray(n.data?.rdfTypes) && n.data.rdfTypes.find((t: any) => t && !/NamedIndividual/i.test(String(t))) ||
+              n.data?.classType ||
+              n.data?.displayType ||
+              undefined;
+            let td: any = undefined;
+            try {
+              if (primary && mgr) td = computeTermDisplay(String(primary), mgr as any, palette, { availableProperties, availableClasses });
+            } catch (_) {
+              td = undefined;
+            }
+            const paletteColor = td?.color || (td && td.namespace && palette ? (palette as any)[td.namespace] : undefined);
+            const displayPrefixed = td?.prefixed || (td && td.label) || n.data?.displayPrefixed || (n.data && (n.data.label || n.data.classType)) || undefined;
+            const displayShort = td?.short || n.data?.displayShort || undefined;
+            const updatedData = { ...(n.data as NodeData), classType: (td && td.iri) || n.data?.classType, displayPrefixed, displayShort, typeNamespace: td?.namespace || n.data?.typeNamespace, paletteColor, label: n.data?.label || td?.label } as NodeData;
+            return { ...n, data: updatedData } as RFNode<NodeData>;
+          } catch (_) {
+            return n;
+          }
+        });
+
+        enrichedEdges = (mappedEdges || []).map((e) => {
+          try {
+            const pred = String((e && e.data && ((e.data as any).propertyUri || (e.data as any).propertyType || (e.data as any).predicate)) || "");
+            let td: any = undefined;
+            try {
+              if (pred && mgr) td = computeTermDisplay(pred, mgr as any, palette, { availableProperties });
+            } catch (_) {
+              td = undefined;
+            }
+            const fromFat = propMap.get(pred);
+            const labelFromProps = fromFat && fromFat.label ? String(fromFat.label) : undefined;
+            const newLabel = labelFromProps || td?.label || td?.prefixed || td?.short || String(pred);
+            const newColor = td?.color || (td && td.namespace && palette ? (palette as any)[td.namespace] : undefined);
+            const updatedEdgeData = { ...(e.data as LinkData), label: newLabel, paletteColor: newColor } as LinkData;
+            return { ...e, data: updatedEdgeData } as RFEdge<LinkData>;
+          } catch (_) {
+            return e;
+          }
+        });
+      } catch (_) {
+        // if enrichment fails, fall back to the raw mapped arrays
+        enrichedNodes = mappedNodes;
+        enrichedEdges = mappedEdges;
+      }
+
       // If this is the first meaningful mapping after mount / autoload (previous node count was 0)
       // and we have nodes now, attempt a forced layout so autoloads reposition nodes automatically.
       let forceLayoutDueToAutoload = false;
@@ -488,7 +558,7 @@ const KnowledgeCanvas: React.FC = () => {
         try {
           const prevById = new Map<string, RFNode<NodeData>>();
           (prev || []).forEach((n) => prevById.set(String(n.id), n));
-          const merged = mappedNodes.map((m) => {
+          const merged = enrichedNodes.map((m) => {
             const prevNode = prevById.get(String(m.id));
             if (prevNode) {
               if (prevNode.position) m.position = prevNode.position;
@@ -507,15 +577,15 @@ const KnowledgeCanvas: React.FC = () => {
       // Replace edges
       setEdges((prev) => {
         try {
-          if (
-            Array.isArray(prev) &&
-            prev.length === mappedEdges.length &&
-            prev.every((p, idx) => p.id === mappedEdges[idx].id && p.source === mappedEdges[idx].source && p.target === mappedEdges[idx].target)
-          ) {
-            return prev;
-          }
-        } catch (_) { /* fall through to replace */ }
-        return mappedEdges;
+        if (
+          Array.isArray(prev) &&
+          prev.length === enrichedEdges.length &&
+          prev.every((p, idx) => p.id === enrichedEdges[idx].id && p.source === enrichedEdges[idx].source && p.target === enrichedEdges[idx].target)
+        ) {
+          return prev;
+        }
+      } catch (_) { /* fall through to replace */ }
+      return enrichedEdges;
       });
 
       // Trigger layout (async). If a programmatic load triggered this mapping, force layout once.
@@ -574,6 +644,126 @@ const KnowledgeCanvas: React.FC = () => {
       if (typeof mgr.onSubjectsChange === "function" && subjectsCallback) {
         try { mgr.onSubjectsChange(subjectsCallback as any); } catch (_) { /* ignore */ }
       }
+
+      // Subscribe to manager-level changes (namespaces/palette etc.) so we can re-enrich node/edge
+      // display fields when prefixes or global RDF state change. We intentionally keep this
+      // debounced & targeted to avoid full-store rebuilds on every minor change.
+      try {
+        if (typeof mgr.onChange === "function") {
+          const mgrChangeHandler = (countOrMeta?: any, meta?: any) => {
+            try {
+              const payload = (meta && typeof meta === "object") ? meta : (countOrMeta && typeof countOrMeta === "object" ? countOrMeta : undefined);
+
+              // If this is a namespaces change we may receive { kind: 'namespaces', prefixes: [...] }
+              const isNsChange = payload && payload.kind === "namespaces";
+              const changedPrefixes: string[] = isNsChange && Array.isArray(payload.prefixes) ? payload.prefixes.slice() : [];
+
+              // Fast path: re-enrich visible nodes/edges immediately using current palette
+              try {
+                setNodes((prev) => {
+                  try {
+                    return (prev || []).map((n) => {
+                      try {
+                        const primary =
+                          Array.isArray(n.data?.rdfTypes) && n.data.rdfTypes.find((t: any) => t && !/NamedIndividual/i.test(String(t))) ||
+                          n.data?.classType ||
+                          n.data?.displayType ||
+                          undefined;
+                        let td;
+                        try {
+                          if (primary && mgr) td = computeTermDisplay(String(primary), mgr as any, palette);
+                        } catch (_) {
+                          td = undefined;
+                        }
+                        const newColor = (td && td.color) || (td && td.namespace && palette ? (palette as any)[td.namespace] : undefined);
+                        if (String(n.data?.paletteColor || "") !== String(newColor || "")) {
+                          const updatedData = { ...(n.data as NodeData), paletteColor: newColor, displayPrefixed: td?.prefixed || n.data?.displayPrefixed, displayShort: td?.short || n.data?.displayShort } as NodeData;
+                          return { ...n, data: updatedData } as RFNode<NodeData>;
+                        }
+                      } catch (_) { /* ignore per-node */ }
+                      return n;
+                    });
+                  } catch (_) {
+                    return prev || [];
+                  }
+                });
+              } catch (_) { /* ignore visible update failures */ }
+
+              // Targeted background pass: if payload lists prefixes, update nodes/edges that reference them.
+              // Schedule a debounced targeted update to avoid bursts.
+              try {
+                if (isNsChange && changedPrefixes.length > 0) {
+                  // Debounce using window timeout stored on manager object (best-effort)
+                  try {
+                    const schedule = () => {
+                      try {
+                        setTimeout(() => {
+                          try {
+                            // Update nodes that reference the changed prefixes
+                            setNodes((prev) => {
+                              try {
+                                return (prev || []).map((n) => {
+                                  try {
+                                    const dp = String(n.data?.displayPrefixed || "");
+                                    const ns = String(n.data?.typeNamespace || "");
+                                    const matches = dp && changedPrefixes.some((p) => dp.startsWith(p + ":")) || ns && changedPrefixes.includes(ns);
+                                    if (matches) {
+                                      const primary =
+                                        Array.isArray(n.data?.rdfTypes) && n.data.rdfTypes.find((t: any) => t && !/NamedIndividual/i.test(String(t))) ||
+                                        n.data?.classType ||
+                                        n.data?.displayType ||
+                                        undefined;
+                                      let td;
+                                      try { if (primary && mgr) td = computeTermDisplay(String(primary), mgr as any, palette); } catch (_) { td = undefined; }
+                                      const newColor = (td && td.color) || (td && td.namespace && palette ? (palette as any)[td.namespace] : undefined);
+                                      if (String(n.data?.paletteColor || "") !== String(newColor || "")) {
+                                        const updatedData = { ...(n.data as NodeData), paletteColor: newColor, displayPrefixed: td?.prefixed || n.data?.displayPrefixed, displayShort: td?.short || n.data?.displayShort } as NodeData;
+                                        return { ...n, data: updatedData } as RFNode<NodeData>;
+                                      }
+                                    }
+                                  } catch (_) { /* ignore per-node */ }
+                                  return n;
+                                });
+                              } catch (_) { return prev || []; }
+                            });
+
+                            // Update edges similarly (labels/colors)
+                            setEdges((prev) => {
+                              try {
+                                const props = Array.isArray(availableProperties) ? availableProperties : [];
+                                return (prev || []).map((e) => {
+                                  try {
+                                    const pred = String((e && e.data && (e.data.propertyUri || e.data.propertyType)) || "");
+                                    const td = (mgr && pred) ? computeTermDisplay(pred, mgr as any, palette) : undefined;
+                                    const labelFromProps = props.find((p: any) => String(p.iri) === pred)?.label;
+                                    const newLabel = labelFromProps || (td ? (td.prefixed || td.short || String(pred)) : String(pred));
+                                    const newColor = (td && td.color) || (td && td.namespace && palette ? (palette as any)[td.namespace] : undefined);
+                                    if (String(e.data?.label || "") !== String(newLabel || "") || String(e.data?.paletteColor || "") !== String(newColor || "")) {
+                                      const updatedEdgeData = { ...(e.data as LinkData), label: newLabel, paletteColor: newColor } as LinkData;
+                                      return { ...e, data: updatedEdgeData } as RFEdge<LinkData>;
+                                    }
+                                  } catch (_) { /* ignore per-edge */ }
+                                  return e;
+                                });
+                              } catch (_) { return prev || []; }
+                            });
+                          } catch (_) { /* ignore scheduled update errors */ }
+                        }, 120);
+                      } catch (_) { /* ignore schedule errors */ }
+                    };
+                    schedule();
+                  } catch (_) { /* ignore debounce errors */ }
+                }
+              } catch (_) { /* ignore targeted update errors */ }
+            } catch (_) { /* ignore overall handler errors */ }
+          };
+
+          try { mgr.onChange(mgrChangeHandler); } catch (_) { /* ignore subscribe errors */ }
+
+          // ensure we remove onChange during cleanup -- stored on local variable via closure
+          (subjectsCallback as any).__mgrChangeHandler = mgrChangeHandler;
+        }
+      } catch (_) { /* ignore */ }
     } catch (_) { /* ignore */ }
 
     // Cleanup

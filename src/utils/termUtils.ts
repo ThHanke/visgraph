@@ -25,6 +25,9 @@ export interface TermDisplayInfo {
   // Optional authoritative color resolved from the RDF manager's palette.
   // When present, callers should use this color as the single source of truth.
   color?: string | undefined;
+  // Optional human-friendly label and its source (fatmap preferred).
+  label?: string | undefined;
+  labelSource?: 'fatmap' | 'computed' | undefined;
 }
 
 /**
@@ -153,7 +156,8 @@ export function expandPrefixed(prefixedOrIri: string, rdfManager?: RDFManager | 
 export function computeTermDisplay(
   iriOrTerm: string | NamedNode,
   rdfManager?: RDFManager | Record<string,string>,
-  palette?: Record<string,string> | undefined
+  palette?: Record<string,string> | undefined,
+  opts?: { availableProperties?: any[]; availableClasses?: any[] },
 ): TermDisplayInfo {
   const iri = typeof iriOrTerm === "string" ? iriOrTerm : (iriOrTerm as NamedNode).value;
   if (!iri) throw new Error("Empty IRI passed to computeTermDisplay");
@@ -167,6 +171,8 @@ export function computeTermDisplay(
       namespace: "",
       tooltipLines: [iri],
       color: undefined,
+      label: iri,
+      labelSource: 'computed',
     };
   }
 
@@ -174,49 +180,53 @@ export function computeTermDisplay(
   let targetIri = iri;
   if (!targetIri.includes("://")) {
     if (!rdfManager) {
-      throw new Error(`computeTermDisplay requires a full IRI or NamedNode; received '${iri}'`);
-    }
-    try {
-      // Try to expand a runtime-known prefixed name first (strict)
-      targetIri = expandPrefixed(targetIri, rdfManager);
-    } catch (_) {
-      // If expansion fails, prefer to produce a sensible prefixed/local representation
-      // rather than throwing — try WELL_KNOWN, then runtime namespaces, then fallback to local name.
+      // If caller didn't provide rdfManager we treat the input as-is and compute local forms
+      targetIri = iri;
+    } else {
+      try {
+        targetIri = expandPrefixed(targetIri, rdfManager);
+      } catch (_) {
+        // fallthrough; continue with original term
+        targetIri = iri;
+      }
     }
   }
 
   // Determine a prefixed presentation for the targetIri.
   let prefixed: string | undefined;
   try {
-    // 1) Try strict conversion using runtime-known prefixes
     prefixed = toPrefixed(targetIri, rdfManager);
   } catch (_) {
-    // 2) FALLBACKS: WELL_KNOWN prefixes, then runtime namespace map (prefer named prefixes), then default/empty prefix mapping.
+    // Fallbacks similar to previous implementation
     try {
       const target = String(targetIri);
-
       // a) WELL_KNOWN canonical prefixes
       try {
         if (WELL_KNOWN && (WELL_KNOWN as any).prefixes) {
           const wkPrefixes = (WELL_KNOWN as any).prefixes as Record<string, string>;
-          for (const [wkPrefix, wkUri] of Object.entries(wkPrefixes)) {
-            try {
-              if (!wkUri) continue;
-              const norm = (s: string) => String(s).replace(/[#\/]+$/, "");
-              if (norm(target).startsWith(norm(wkUri))) {
-                prefixed = `${wkPrefix}:${shortLocalName(targetIri)}`;
-                break;
+              for (const [wkPrefix, wkUri] of Object.entries(wkPrefixes)) {
+                try {
+                  if (!wkUri) continue;
+                  // Normalize by trimming trailing separators without using regex literals
+                  // (avoids lint issues across different tooling). This is intentionally
+                  // implemented as a small loop to remove trailing '/' or '#' characters.
+                  const norm = (s: string) => {
+                    let st = String(s);
+                    while (st.endsWith('/') || st.endsWith('#')) {
+                      st = st.slice(0, -1);
+                    }
+                    return st;
+                  };
+                  if (norm(target).startsWith(norm(wkUri))) {
+                    prefixed = `${wkPrefix}:${shortLocalName(targetIri)}`;
+                    break;
+                  }
+                } catch (_) { /* ignore per-entry */ }
               }
-            } catch (_) {
-              /* ignore per-entry */
-            }
-          }
         }
-      } catch (_) {
-        /* ignore WELL_KNOWN failures */
-      }
+      } catch (_) { /* ignore WELL_KNOWN failures */ }
 
-      // b) runtime-registered namespaces
+      // b) runtime namespaces
       if (!prefixed && rdfManager) {
         try {
           const nsMap =
@@ -225,33 +235,26 @@ export function computeTermDisplay(
               : (rdfManager && typeof rdfManager === "object" ? (rdfManager as unknown as Record<string,string>) : undefined);
 
           if (nsMap) {
-            // Prefer named prefixes; remember default empty prefix if present.
             let defaultPrefixed: string | undefined = undefined;
-            for (const [p, nsUri] of Object.entries(nsMap)) {
-              try {
-                if (!nsUri) continue;
-                if (target.startsWith(nsUri)) {
-                  if (p && String(p).trim() !== "") {
-                    prefixed = `${p}:${shortLocalName(targetIri)}`;
-                    break;
-                  } else if (!defaultPrefixed) {
-                    defaultPrefixed = `:${shortLocalName(targetIri)}`;
+              for (const [p, nsUri] of Object.entries(nsMap)) {
+                try {
+                  if (!nsUri) continue;
+                  const nsUriStr = String(nsUri);
+                  if (target.startsWith(nsUriStr)) {
+                    if (p && String(p).trim() !== "") {
+                      prefixed = `${p}:${shortLocalName(targetIri)}`;
+                      break;
+                    } else if (!defaultPrefixed) {
+                      defaultPrefixed = `:${shortLocalName(targetIri)}`;
+                    }
                   }
-                }
-              } catch (_) {
-                /* ignore per-entry */
+                } catch (_) { /* ignore per-entry */ }
               }
-            }
             if (!prefixed && defaultPrefixed) prefixed = defaultPrefixed;
           }
-        } catch (_) {
-          /* ignore runtime nsMap failures */
-        }
+        } catch (_) { /* ignore */ }
       }
-    } catch (_) {
-      /* ignore fallback failures */
-    }
-    // Final fallback to local name
+    } catch (_) { /* ignore fallback */ }
     if (!prefixed) prefixed = shortLocalName(targetIri);
   }
 
@@ -264,35 +267,85 @@ export function computeTermDisplay(
     local = local.substring(idx + 1);
   }
 
-  // Determine authoritative color using a provided palette (preferred) or the rdfManager-derived palette.
+  // Determine authoritative color using provided palette first, otherwise derive from rdfManager
   let color: string | undefined = undefined;
   try {
     if (prefix) {
-      let paletteToUse: Record<string,string> | undefined = undefined;
       if (palette && typeof palette === "object") {
-        paletteToUse = palette;
+        color = palette[prefix] || palette[prefix.toLowerCase()];
       } else if (rdfManager) {
-        // Synchronously derive a palette from the rdfManager's registered namespaces
-        const nsMap =
-          (rdfManager as any) && typeof (rdfManager as any).getNamespaces === "function"
-            ? (rdfManager as any).getNamespaces()
-            : {};
-        const prefixes = Object.keys(nsMap || {}).filter(Boolean).sort();
-        const textColors =
-          typeof window !== "undefined" && window.getComputedStyle
-            ? [
-                String(getComputedStyle(document.documentElement).getPropertyValue("--node-foreground") || "#000000"),
-                String(getComputedStyle(document.documentElement).getPropertyValue("--primary-foreground") || "#000000"),
-              ]
-            : ["#000000", "#000000"];
-        paletteToUse = buildPaletteMap(prefixes, { avoidColors: textColors });
-      }
-      if (paletteToUse && typeof paletteToUse === "object") {
-        color = (paletteToUse as Record<string,string>)[prefix] || (paletteToUse as Record<string,string>)[prefix.toLowerCase()];
+        try {
+          const nsMap =
+            (rdfManager as any) && typeof (rdfManager as any).getNamespaces === "function"
+              ? (rdfManager as any).getNamespaces()
+              : {};
+          const prefixes = Object.keys(nsMap || {}).filter(Boolean).sort();
+          const textColors =
+            typeof window !== "undefined" && window.getComputedStyle
+              ? [
+                  String(getComputedStyle(document.documentElement).getPropertyValue("--node-foreground") || "#000000"),
+                  String(getComputedStyle(document.documentElement).getPropertyValue("--primary-foreground") || "#000000"),
+                ]
+              : ["#000000", "#000000"];
+          const derived = buildPaletteMap(prefixes, { avoidColors: textColors });
+          color = derived[prefix] || derived[prefix.toLowerCase()];
+        } catch (_) {
+          color = undefined;
+        }
       }
     }
   } catch (_) {
     color = undefined;
+  }
+
+  // Primary: fat-map lookup (availableProperties) — authoritative label & optional color hint
+  let label: string | undefined;
+  let labelSource: 'fatmap' | 'computed' | undefined;
+
+  try {
+    const props = opts && Array.isArray(opts.availableProperties) ? opts.availableProperties : undefined;
+    if (props && props.length > 0) {
+      // Build a quick lookup by IRI (prefer absolute IRIs in fat map)
+      const mapByIri = new Map<string, any>();
+      for (const p of props) {
+        try {
+          if (!p) continue;
+          const iriKey = String((p && p.iri) || '').trim();
+          if (!iriKey) continue;
+          if (!mapByIri.has(iriKey)) mapByIri.set(iriKey, p);
+        } catch (_) { /* ignore per-entry */ }
+      }
+      // Direct match on targetIri
+      const direct = mapByIri.get(String(targetIri));
+      if (direct) {
+        if (direct.label) {
+          label = String(direct.label);
+          labelSource = 'fatmap';
+        }
+        // fat-map hint color
+        if (!color && (direct.color || direct.style?.color)) {
+          color = String(direct.color || direct.style?.color);
+        }
+      } else {
+        // Also try match by prefixed form or short local name if entries might store prefixed keys
+        const byPref = mapByIri.get(String(prefixed || ''));
+        if (byPref && byPref.label) {
+          label = String(byPref.label);
+          labelSource = 'fatmap';
+          if (!color && (byPref.color || byPref.style?.color)) {
+            color = String(byPref.color || byPref.style?.color);
+          }
+        }
+      }
+    }
+  } catch (_) {
+    /* ignore fat-map failures */
+  }
+
+  // Fallback: computed prefixed/short
+  if (!label) {
+    label = prefixed || local;
+    labelSource = 'computed';
   }
 
   return {
@@ -302,5 +355,7 @@ export function computeTermDisplay(
     namespace: prefix || "",
     tooltipLines: [local],
     color,
+    label,
+    labelSource,
   };
 }

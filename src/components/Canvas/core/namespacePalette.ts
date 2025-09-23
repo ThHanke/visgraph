@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { useOntologyStore } from '@/stores/ontologyStore';
 
 /**
@@ -237,6 +237,28 @@ export function buildPaletteMap(prefixes: string[] = [], options?: { avoidColors
 export function usePaletteFromRdfManager() {
   const rdfManager = useOntologyStore((s) => s.rdfManager);
   const ontologiesVersion = useOntologyStore((s) => s.ontologiesVersion);
+
+  // Local tick increments when RDF manager signals changes (namespaces, clears, etc.)
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const mgr = rdfManager as any;
+    if (!mgr || typeof mgr.onChange !== 'function') return;
+    const cb = () => {
+      try {
+        setTick((t) => t + 1);
+      } catch (_) { /* ignore */ }
+    };
+    try {
+      mgr.onChange(cb);
+    } catch (_) { /* ignore subscribe errors */ }
+    return () => {
+      try {
+        mgr.offChange(cb);
+      } catch (_) { /* ignore unsubscribe errors */ }
+    };
+  }, [rdfManager]);
+
   return useMemo(() => {
     try {
       const nsMap =
@@ -256,5 +278,5 @@ export function usePaletteFromRdfManager() {
     } catch (_) {
       return {};
     }
-  }, [rdfManager, ontologiesVersion]);
+  }, [rdfManager, ontologiesVersion, tick]);
 }
