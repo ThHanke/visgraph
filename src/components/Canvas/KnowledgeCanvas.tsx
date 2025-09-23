@@ -9,6 +9,7 @@ import {
   Background,
 } from "@xyflow/react";
 import { useOntologyStore } from "../../stores/ontologyStore";
+import { DataFactory } from "n3";
 import { useReasoningStore } from "../../stores/reasoningStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useAppConfigStore } from "../../stores/appConfigStore";
@@ -83,11 +84,49 @@ const KnowledgeCanvas: React.FC = () => {
   const [viewMode, setViewMode] = useState(config.viewMode);
   const [showLegend, setShowLegendState] = useState(config.showLegend);
   const [currentLayout, setCurrentLayoutState] = useState(config.currentLayout);
-  // Enable programmatic/layout toggle on by default per user request.
-  const [layoutEnabled, setLayoutEnabled] = useState(true);
+  // Layout toggle initialized from persisted config
+  const [layoutEnabled, setLayoutEnabled] = useState(() => !!(config && config.autoApplyLayout));
 
   // Palette from RDF manager — used to compute colors without rebuilding palettes.
   const palette = usePaletteFromRdfManager();
+
+  // Expose namedNode factory for synchronous store queries in the local classifier.
+  const { namedNode } = DataFactory;
+
+  // Predicate classifier consults fat-map (availableProperties) then RDF store rdf:type triples.
+  const predicateClassifier = (predIri: string) => {
+    try {
+      // Quick fat-map hint
+      try {
+        if (Array.isArray(availableProperties)) {
+          const found = (availableProperties as any[]).find((p) => String(p.iri) === String(predIri));
+          if (found) {
+            if (Array.isArray(found.range) && found.range.length > 0) return "object";
+            if (Array.isArray(found.domain) && found.domain.length > 0) return "object";
+          }
+        }
+      } catch (_) { /* ignore fat-map failures */ }
+
+      // Precise check against RDF store rdf:type triples (authoritative)
+      try {
+        const mgr = typeof getRdfManager === "function" ? getRdfManager() : undefined;
+        if (!mgr || typeof mgr.getStore !== "function") return "unknown";
+        const store = mgr.getStore();
+        const rdfTypeIri = typeof (mgr as any).expandPrefix === "function" ? (mgr as any).expandPrefix("rdf:type") : "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+        const quads = store.getQuads(namedNode(predIri), namedNode(rdfTypeIri), null, null) || [];
+        for (const q of quads) {
+          try {
+            const t = q && (q.object as any) && (q.object as any).value ? String((q.object as any).value) : "";
+            if (!t) continue;
+            if (t === "http://www.w3.org/2002/07/owl#AnnotationProperty") return "annotation";
+            if (t === "http://www.w3.org/2002/07/owl#ObjectProperty") return "object";
+            if (t === "http://www.w3.org/2002/07/owl#DatatypeProperty") return "datatype";
+          } catch (_) { /* ignore per-quad */ }
+        }
+      } catch (_) { /* ignore store failures */ }
+    } catch (_) { /* ignore overall */ }
+    return "unknown";
+  };
 
   // Keep toolbar toggle in sync with persisted config.autoApplyLayout so
   // "Auto" in the toolbar controls whether mapping triggers automatic layout.
@@ -101,11 +140,45 @@ const KnowledgeCanvas: React.FC = () => {
     } catch (_) { /* ignore */ }
   }, []);
 
+  // --- Blacklist helpers (copied/adapted from ReactFlowCanvas) ---
+  // Filter out reserved/core RDF namespaces/prefixes so they are not shown as canvas nodes.
+  const _blacklistedPrefixes = new Set(['owl', 'rdf', 'rdfs', 'xml', 'xsd']);
+  const _blacklistedUris = [
+    'http://www.w3.org/2002/07/owl',
+    'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
+    'http://www.w3.org/2000/01/rdf-schema#',
+    'http://www.w3.org/XML/1998/namespace',
+    'http://www.w3.org/2001/XMLSchema#'
+  ];
+
+  function isBlacklistedIri(val?: string | null): boolean {
+    if (!val) return false;
+    try {
+      const s = String(val).trim();
+      if (!s) return false;
+      // Prefixed form (e.g., rdf:label) - check prefix before colon if not an absolute IRI
+      if (s.includes(':') && !/^https?:\/\//i.test(s)) {
+        const prefix = s.split(':', 1)[0];
+        if (_blacklistedPrefixes.has(prefix)) return true;
+      }
+      // Absolute IRI check
+      for (const u of _blacklistedUris) {
+        try {
+          if (s.startsWith(u)) return true;
+        } catch (_) { /* ignore per-candidate */ }
+      }
+    } catch (_) {
+      return false;
+    }
+    return false;
+  }
+
   useEffect(() => {
     setViewMode(config.viewMode);
     setShowLegendState(config.showLegend);
     setCurrentLayoutState(config.currentLayout);
-  }, [config.viewMode, config.showLegend, config.currentLayout]);
+    setLayoutEnabled(Boolean(config.autoApplyLayout));
+  }, [config.viewMode, config.showLegend, config.currentLayout, config.autoApplyLayout]);
 
   const allEntities = useMemo(() => {
     return loadedOntologies.flatMap((ontology) => [
@@ -141,16 +214,53 @@ const KnowledgeCanvas: React.FC = () => {
     // We convert those into full RF nodes and update React Flow state while preserving runtime flags.
     setNodePositions: (positioned: any[]) => {
       try {
+        // Build a positions map from the incoming positioned array
+        const newPosMap: Record<string, string> = {};
+        try {
+          if (Array.isArray(positioned)) {
+            for (const p of positioned) {
+              try {
+                const id = String(p && (p.id || p.key || (p.data && (p.data.key || p.data.id))) || "");
+                if (!id) continue;
+                const pos = p && p.position ? p.position : { x: 0, y: 0 };
+                newPosMap[id] = `${Math.round(pos.x)}:${Math.round(pos.y)}`;
+              } catch (_) { /* ignore per-item */ }
+            }
+          }
+        } catch (_) { /* ignore build errors */ }
+
+        // Compare with previous positions to avoid unnecessary setNodes calls.
+        const prevPosMap = positionsRef.current || {};
+        let changed = false;
+        try {
+          const prevKeys = Object.keys(prevPosMap).sort();
+          const newKeys = Object.keys(newPosMap).sort();
+          if (prevKeys.length !== newKeys.length) changed = true;
+          else {
+            for (let i = 0; i < newKeys.length && !changed; i++) {
+              const k = newKeys[i];
+              if (prevPosMap[k] !== newPosMap[k]) changed = true;
+            }
+          }
+        } catch (_) {
+          changed = true;
+        }
+
+        if (!changed) {
+          // Nothing to apply
+          return;
+        }
+
+        // Apply merged nodes preserving runtime flags where possible
         setNodes((prev) => {
           try {
             const prevById = new Map<string, RFNode<NodeData>>();
             (prev || []).forEach((n) => prevById.set(String(n.id), n));
             const merged = Array.isArray(positioned)
               ? positioned.map((p) => {
-                  const id = String(p && (p.id || p.key || p.data && p.data.key));
+                  const id = String(p && (p.id || p.key || (p.data && (p.data.key || p.data.id))) || "");
                   const pos = p && p.position ? p.position : { x: 0, y: 0 };
                   const prevNode = prevById.get(id);
-                  // Preserve runtime flags and data where possible
                   const base = prevNode || (nodes || []).find((n) => String(n.id) === id) || null;
                   const mergedNode: RFNode<NodeData> = base
                     ? { ...base, position: { x: pos.x, y: pos.y } }
@@ -170,7 +280,6 @@ const KnowledgeCanvas: React.FC = () => {
                           label: id,
                         } as NodeData,
                       };
-                  // preserve __rf and selected flags if present on previous node
                   if (prevNode) {
                     if ((prevNode as any).__rf) (mergedNode as any).__rf = (prevNode as any).__rf;
                     if ((prevNode as any).selected) (mergedNode as any).selected = true;
@@ -178,8 +287,12 @@ const KnowledgeCanvas: React.FC = () => {
                   return mergedNode;
                 })
               : [];
+            // update positionsRef after successful merge
+            try { positionsRef.current = newPosMap; } catch (_) { /* ignore */ }
             return merged;
           } catch (_) {
+            // fallback to naive mapping (preserve safety)
+            try { positionsRef.current = newPosMap; } catch (_) { /* ignore */ }
             return prev || [];
           }
         });
@@ -209,6 +322,15 @@ const KnowledgeCanvas: React.FC = () => {
   const edgesRef = useRef<RFEdge<LinkData>[]>([]);
   // Track previous visible node count to detect the initial mapping after an autoload.
   const prevNodeCountRef = useRef<number>(0);
+
+  // Layout guards & fingerprints to avoid re-entrant layout loops
+  const layoutInProgressRef = useRef<boolean>(false);
+  const lastLayoutFingerprintRef = useRef<string | null>(null);
+  const positionsRef = useRef<Record<string, string>>({});
+  // Dev helper: allow temporarily disabling blacklist during autoload so core vocabularies
+  // (owl/rdf/rdfs) can be visible while debugging. This is intentionally a transient flag.
+  const ignoreBlacklistRef = useRef<boolean>(false);
+
   useEffect(() => {
     nodesRef.current = nodes;
     try { prevNodeCountRef.current = Array.isArray(nodes) ? nodes.length : 0; } catch (_) { /* ignore */ }
@@ -234,46 +356,106 @@ const KnowledgeCanvas: React.FC = () => {
 
         // If not forced, require both the local layout toggle and persisted autoApplyLayout to be enabled.
         if (!force && (!layoutEnabled || !(config && config.autoApplyLayout))) return;
+
+        // Avoid overlapping layouts
+        if (layoutInProgressRef.current) {
+          if (!force) return;
+          // If forced, we still do not run concurrently; skip to avoid re-entrancy.
+          return;
+        }
+
         const lm = layoutManagerRef.current;
         if (!lm) return;
-        // Prepare lightweight nodes/edges for layout
-        diagramRef.current.nodes = (candidateNodes || []).map((n) => ({ id: String(n.id), position: n.position, data: n.data }));
-        diagramRef.current.edges = (candidateEdges || []).map((e) => ({ id: String(e.id), source: String(e.source), target: String(e.target), data: e.data }));
-        // call layout manager with suggested layout type or config.currentLayout if present
-        const layoutType = (config && (config.currentLayout)) || lm.suggestOptimalLayout();
-        await lm.applyLayout(layoutType as any, { nodeSpacing: (config && (config.layoutSpacing as any)) || undefined });
+
+        // Build a fingerprint of candidate nodes/edges (IDs + positions) to detect identical inputs.
+        const fingerprintParts: string[] = [];
+        try {
+          for (const n of candidateNodes || []) {
+            try {
+              const id = String(n.id);
+              const px = n.position ? Math.round((n.position as any).x) : 0;
+              const py = n.position ? Math.round((n.position as any).y) : 0;
+              fingerprintParts.push(`${id}|${px}|${py}`);
+            } catch (_) { /* ignore per-node */ }
+          }
+          for (const e of candidateEdges || []) {
+            try {
+              fingerprintParts.push(`E:${String(e.id)}`);
+            } catch (_) { /* ignore per-edge */ }
+          }
+        } catch (_) { /* ignore fingerprint build */ }
+        const fingerprint = fingerprintParts.join(';');
+
+        if (!force && lastLayoutFingerprintRef.current === fingerprint) {
+          // Nothing changed since last layout -> skip
+          return;
+        }
+
+        // Mark in-progress
+        layoutInProgressRef.current = true;
+        try {
+          // Prepare lightweight nodes/edges for layout
+          diagramRef.current.nodes = (candidateNodes || []).map((n) => ({ id: String(n.id), position: n.position, data: n.data }));
+          diagramRef.current.edges = (candidateEdges || []).map((e) => ({ id: String(e.id), source: String(e.source), target: String(e.target), data: e.data }));
+          // call layout manager with suggested layout type or config.currentLayout if present
+          const layoutType = (config && (config.currentLayout)) || lm.suggestOptimalLayout();
+          await lm.applyLayout(layoutType as any, { nodeSpacing: (config && (config.layoutSpacing as any)) || undefined });
+        } catch (err) {
+          try { console.warn('[VG] doLayout error', err); } catch (_) {}
+        } finally {
+          // update fingerprint after layout completes (positions applied via setNodePositions)
+          try { lastLayoutFingerprintRef.current = fingerprint; } catch (_) {}
+          layoutInProgressRef.current = false;
+        }
       } catch (_) {
-        // ignore layout failures
+        // ignore outer failures
+        layoutInProgressRef.current = false;
       }
     },
-    [layoutEnabled, config, nodes],
+    [layoutEnabled, config],
   );
 
-  // Debounced re-layout on user-driven node/edge changes
-  const layoutDebounceRef = useRef<number | null>(null);
+  // Removed nodes/edges-based debounce. Layout is triggered explicitly by mapping, viewMode changes,
+  // or forced programmatic loads (onLoadFile/autoload). This avoids feedback loops where layout updates nodes
+  // which retrigger layout.
+
+  // Structural-change / view-mode triggered layout
+  // - Layout runs when the node/edge set changes (structural change) OR when viewMode toggles,
+  //   and only when autoApplyLayout is enabled (unless forced).
+  // - runMapping still calls doLayout directly when mapping completes (force when loadTriggerRef set).
+  const lastStructureFingerprintRef = useRef<string | null>(null);
+
+  // Trigger layout on structural changes (node/edge additions/removals).
   useEffect(() => {
     try {
-      if (!layoutEnabled || !(config && config.autoApplyLayout)) return;
-      if (layoutDebounceRef.current) {
-        try { window.clearTimeout(layoutDebounceRef.current); } catch (_) {}
-      }
-      layoutDebounceRef.current = window.setTimeout(() => {
-        try {
-          void doLayout(nodesRef.current, edgesRef.current);
-        } catch (_) {}
-        try { layoutDebounceRef.current = null; } catch (_) {}
-      }, 300);
-    } catch (_) { /* ignore */ }
+      const auto = !!(config && (config as any).autoApplyLayout);
+      if (!auto) return;
 
-    return () => {
+      const nodeIds = (nodesRef.current || []).map((n) => String(n.id)).sort().join(',');
+      const edgeIds = (edgesRef.current || []).map((e) => String(e.id)).sort().join(',');
+      const structFp = `N:${nodeIds}|E:${edgeIds}`;
+
+      if (lastStructureFingerprintRef.current !== structFp) {
+        lastStructureFingerprintRef.current = structFp;
+        try {
+          // Trigger an immediate layout for structural changes (not debounced).
+          void doLayout(nodesRef.current, edgesRef.current, false);
+        } catch (_) { /* ignore layout scheduling */ }
+      }
+    } catch (_) { /* ignore fingerprint failures */ }
+  // Depend on lengths so this runs when structure changes; positions changes won't retrigger unnecessarily.
+  }, [nodes.length, edges.length, config && (config as any).autoApplyLayout, doLayout]);
+
+  // Trigger layout when viewMode changes (if auto layout enabled)
+  useEffect(() => {
+    try {
+      const auto = !!(config && (config as any).autoApplyLayout);
+      if (!auto) return;
       try {
-        if (layoutDebounceRef.current) {
-          try { window.clearTimeout(layoutDebounceRef.current); } catch (_) {}
-          layoutDebounceRef.current = null;
-        }
+        void doLayout(nodesRef.current, edgesRef.current, false);
       } catch (_) { /* ignore */ }
-    };
-  }, [nodes, edges, layoutEnabled, doLayout]);
+    } catch (_) { /* ignore */ }
+  }, [viewMode, config && (config as any).autoApplyLayout, doLayout]);
 
   // Toolbar callbacks
   const handleToggleLegend = useCallback(() => {
@@ -423,6 +605,11 @@ const KnowledgeCanvas: React.FC = () => {
 
   const onInit = useCallback((instance: ReactFlowInstance) => {
     reactFlowInstance.current = instance;
+    try {
+      if (typeof window !== "undefined") (window as any).__VG_RF_INSTANCE = instance;
+    } catch (_) {
+      /* ignore test exposure failures */
+    }
     if (typeof console !== "undefined" && typeof console.debug === "function") {
       console.debug("[VG] KnowledgeCanvas onInit", { hasInstance: !!instance });
     }
@@ -439,19 +626,42 @@ const KnowledgeCanvas: React.FC = () => {
     // Accumulator for incremental quad updates emitted by rdfManager.
     let pendingQuads: any[] = [];
 
-    // Use the centralized pure mapper directly.
-    const translateQuadsToDiagram = (quads: any[]) => {
-      return mapQuadsToDiagram(quads);
-    };
+      // Use the centralized pure mapper directly and consult the predicate classifier so
+      // annotation properties (owl:AnnotationProperty) are preserved as node annotations.
+      const translateQuadsToDiagram = (quads: any[]) => {
+        return mapQuadsToDiagram(quads, { predicateKind: predicateClassifier });
+      };
 
     const runMapping = () => {
       if (!mounted) return;
+      let diagram: any;
       // If there are no accumulated quads, do nothing
       if (!pendingQuads || pendingQuads.length === 0) {
         return;
       }
 
-      let diagram;
+      // Partition incoming quads into data quads (eligible for canvas mapping)
+      // and ontology quads (persisted into ontology graphs, which we should not
+      // translate into canvas nodes). Ontology quads will update the fat map.
+      const dataQuads: any[] = [];
+      const ontologyQuads: any[] = [];
+
+      const isOntologyGraph = (q: any) => {
+        try {
+          if (!q) return false;
+          const g = q.graph;
+          const graphVal = g ? (g.value || g.id || (typeof g === "string" ? g : undefined)) : undefined;
+          if (typeof graphVal === "undefined") return false;
+          const gstr = String(graphVal || "");
+          if (!gstr) return false;
+          if (gstr.includes("urn:vg:ontologies")) return true;
+          if (/^https?:\/\/(www\.)?w3.org/i.test(gstr)) return true;
+          return false;
+        } catch (_) {
+          return false;
+        }
+      };
+
       try {
         // Diagnostic: log sample count for debugging
         try {
@@ -459,13 +669,49 @@ const KnowledgeCanvas: React.FC = () => {
           console.debug("[VG_DEBUG] KnowledgeCanvas.runMapping incrementalQuads", { total: (pendingQuads || []).length, subjectsSample: sampleSubjects });
         } catch (_) { /* ignore */ }
 
-        diagram = translateQuadsToDiagram(pendingQuads);
+        for (const q of pendingQuads || []) {
+          try {
+            if (isOntologyGraph(q)) ontologyQuads.push(q);
+            else dataQuads.push(q);
+          } catch (_) {
+            // conservative: treat as dataQuad on error
+            dataQuads.push(q);
+          }
+        }
+
+        // Clear accumulator now that we've partitioned
+        pendingQuads = [];
+
+        // Process ontology quads by reconciling into the ontology store (updates fat map)
+        try {
+          if (ontologyQuads.length > 0) {
+            try {
+              const os = useOntologyStore.getState();
+              if (os && typeof os.reconcileQuads === "function") {
+                try { os.reconcileQuads(ontologyQuads); } catch (_) { /* ignore per-call */ }
+              }
+            } catch (_) { /* ignore reconcile failures */ }
+          }
+        } catch (_) { /* ignore */ }
+
+        // Map only data quads to diagram nodes/edges
+        if (!dataQuads || dataQuads.length === 0) {
+          // Nothing to map: keep existing canvas state (do not wipe)
+          // Use an empty diagram to simplify downstream code paths.
+          diagram = { nodes: [], edges: [] };
+        } else {
+          try {
+            diagram = translateQuadsToDiagram(dataQuads);
+          } catch (e) {
+            try { console.error("[VG] KnowledgeCanvas: incremental quad mapping failed", e); } catch (_) {}
+            diagram = { nodes: [], edges: [] };
+          }
+        }
       } catch (err) {
-        try { console.error("[VG] KnowledgeCanvas: incremental quad mapping failed", err); } catch (_) {}
-        diagram = { nodes: [], edges: [] };
-      } finally {
-        // drain accumulator
+        try { console.error("[VG] KnowledgeCanvas: incremental quad partitioning failed", err); } catch (_) {}
+        // ensure accumulator cleared on catastrophic failure
         try { pendingQuads = []; } catch (_) {}
+        diagram = { nodes: [], edges: [] };
       }
 
       const mappedNodes: RFNode<NodeData>[] = (diagram && diagram.nodes) || [];
@@ -474,10 +720,10 @@ const KnowledgeCanvas: React.FC = () => {
         console.debug('[VG] runMapping produced', { mappedNodeCount: Array.isArray(mappedNodes) ? mappedNodes.length : 0, mappedEdgeCount: Array.isArray(mappedEdges) ? mappedEdges.length : 0 });
       } catch (_) { /* ignore debug */ }
 
-      // Enrich nodes and edges with display/palette information so first-render shows
-      // type-driven colors and fat-map labels. computeTermDisplay is authoritative here.
-      let enrichedNodes = mappedNodes;
-      let enrichedEdges = mappedEdges;
+        // Enrich nodes and edges with display/palette information so first-render shows
+        // type-driven colors and fat-map labels. computeTermDisplay is authoritative here.
+        let enrichedNodes = mappedNodes;
+        let enrichedEdges = mappedEdges;
       try {
         // Build quick lookup for availableProperties (fat map) to speed up per-edge resolution.
         const propMap = new Map<string, any>();
@@ -508,7 +754,7 @@ const KnowledgeCanvas: React.FC = () => {
             const paletteColor = td?.color || (td && td.namespace && palette ? (palette as any)[td.namespace] : undefined);
             const displayPrefixed = td?.prefixed || (td && td.label) || n.data?.displayPrefixed || (n.data && (n.data.label || n.data.classType)) || undefined;
             const displayShort = td?.short || n.data?.displayShort || undefined;
-            const updatedData = { ...(n.data as NodeData), classType: (td && td.iri) || n.data?.classType, displayPrefixed, displayShort, typeNamespace: td?.namespace || n.data?.typeNamespace, paletteColor, label: n.data?.label || td?.label } as NodeData;
+            const updatedData = { ...(n.data as NodeData), classType: (td && td.iri) || n.data?.classType, namespace: td?.namespace || n.data?.namespace, displayPrefixed, displayShort, typeNamespace: td?.namespace || n.data?.typeNamespace, paletteColor, label: n.data?.label || td?.label } as NodeData;
             return { ...n, data: updatedData } as RFNode<NodeData>;
           } catch (_) {
             return n;
@@ -540,6 +786,25 @@ const KnowledgeCanvas: React.FC = () => {
         enrichedEdges = mappedEdges;
       }
 
+      // Apply blacklist filtering so reserved/core RDF terms are not rendered as nodes.
+      try {
+        if (!ignoreBlacklistRef.current) {
+          enrichedNodes = (enrichedNodes || []).filter((n) => {
+            try {
+              const iri = (n && n.data && (n.data.iri || n.id)) ? String((n.data && (n.data.iri || n.id))) : "";
+              return !isBlacklistedIri(iri);
+            } catch (_) {
+              return true;
+            }
+          });
+        } else {
+          // Dev mode: blacklist is temporarily disabled — keep all nodes.
+          try { console.debug("[VG] Ignoring blacklist for this autoload/mapping pass"); } catch (_) {}
+        }
+      } catch (_) {
+        // ignore blacklist filter failures
+      }
+
       // If this is the first meaningful mapping after mount / autoload (previous node count was 0)
       // and we have nodes now, attempt a forced layout so autoloads reposition nodes automatically.
       let forceLayoutDueToAutoload = false;
@@ -553,48 +818,134 @@ const KnowledgeCanvas: React.FC = () => {
         }
       } catch (_) { /* ignore */ }
 
-      // Merge positions and runtime flags from current nodes state
+      // Merge positions and runtime flags from current nodes state using upsert semantics
+      // (preserve existing nodes not mentioned in this incremental mapping).
       setNodes((prev) => {
         try {
-          const prevById = new Map<string, RFNode<NodeData>>();
-          (prev || []).forEach((n) => prevById.set(String(n.id), n));
-          const merged = enrichedNodes.map((m) => {
-            const prevNode = prevById.get(String(m.id));
-            if (prevNode) {
-              if (prevNode.position) m.position = prevNode.position;
-              if ((prevNode as any).__rf) (m as any).__rf = (prevNode as any).__rf;
-              if ((prevNode as any).selected) (m as any).selected = true;
-            }
-            return m;
+          const byId = new Map<string, RFNode<NodeData>>();
+          // seed with previous nodes so we preserve any nodes not present in this pass
+          (prev || []).forEach((n) => {
+            try { byId.set(String(n.id), n); } catch (_) { /* ignore */ }
           });
-          return merged;
+
+          // Upsert enriched nodes: update existing entries or add new ones.
+          for (const m of (enrichedNodes || [])) {
+            try {
+              const id = String(m.id);
+              const existing = byId.get(id);
+              if (existing) {
+                // preserve runtime flags & previous position if present
+                const mergedNode: RFNode<NodeData> = {
+                  ...existing,
+                  ...m,
+                  position: existing.position || m.position || { x: 0, y: 0 },
+                } as RFNode<NodeData>;
+                if ((existing as any).__rf) (mergedNode as any).__rf = (existing as any).__rf;
+                if ((existing as any).selected) (mergedNode as any).selected = true;
+                byId.set(id, mergedNode);
+              } else {
+                // Ensure newly-added nodes always have a position (React Flow requires it).
+                const nodeToSet = (m && (m as any).position) ? m : { ...m, position: { x: 0, y: 0 } };
+                byId.set(id, nodeToSet);
+              }
+            } catch (_) {
+              try {
+                const fallbackNode = (m && (m as any).position) ? m : { ...(m || {}), position: { x: 0, y: 0 } };
+                byId.set(String((m as any).id || ""), fallbackNode);
+              } catch (_) { /* ignore per-item */ }
+            }
+          }
+
+          return Array.from(byId.values()).filter(Boolean) as RFNode<NodeData>[];
         } catch (e) {
-          try { console.warn("[VG] KnowledgeCanvas: merge failed, falling back to mappedNodes", e); } catch (_) {}
-          return mappedNodes;
+          try { console.warn("[VG] KnowledgeCanvas: upsert merge failed, falling back to previous nodes", e); } catch (_) {}
+          return prev || [];
         }
       });
 
-      // Replace edges
+      // Replace/update edges: remove edges whose source is an updated node in this pass,
+      // then add the newly mapped edges. Dedupe by edge id to avoid duplicates.
       setEdges((prev) => {
         try {
-        if (
-          Array.isArray(prev) &&
-          prev.length === enrichedEdges.length &&
-          prev.every((p, idx) => p.id === enrichedEdges[idx].id && p.source === enrichedEdges[idx].source && p.target === enrichedEdges[idx].target)
-        ) {
-          return prev;
+          const mappedIds = new Set<string>((enrichedNodes || []).map((n) => String(n.id)));
+          // If there are no previous edges, just return enrichedEdges (no-op merge)
+          if (!Array.isArray(prev) || prev.length === 0) {
+            // dedupe enrichedEdges by id before returning
+            const byId = new Map<string, RFEdge<LinkData>>();
+            for (const e of enrichedEdges || []) {
+              try { byId.set(String(e.id), e); } catch (_) { /* ignore per-edge */ }
+            }
+            return Array.from(byId.values());
+          }
+
+          // Keep edges whose source is NOT one of the updated nodes.
+          // This preserves incoming edges (where updated node is the target).
+          const kept: RFEdge<LinkData>[] = [];
+          for (const e of prev || []) {
+            try {
+              const s = String(e.source);
+              if (!mappedIds.has(s)) {
+                kept.push(e);
+              }
+            } catch (_) { /* ignore per-edge */ }
+          }
+
+          // Merge: start with kept edges, then add enrichedEdges (new edges replace old ones by id)
+          const byId = new Map<string, RFEdge<LinkData>>();
+          for (const e of kept) {
+            try { byId.set(String(e.id), e); } catch (_) { /* ignore per-edge */ }
+          }
+          for (const e of enrichedEdges || []) {
+            try { byId.set(String(e.id), e); } catch (_) { /* ignore per-edge */ }
+          }
+
+          const result = Array.from(byId.values());
+
+          // If nothing changed structurally, return prev to avoid unnecessary state updates.
+          try {
+            if (
+              prev.length === result.length &&
+              prev.every((p, idx) => p.id === result[idx].id && p.source === result[idx].source && p.target === result[idx].target)
+            ) {
+              return prev;
+            }
+          } catch (_) { /* ignore compare errors */ }
+
+          return result;
+        } catch (_) {
+          // On error, fall back to replacing with enrichedEdges
+          const byId = new Map<string, RFEdge<LinkData>>();
+          for (const e of enrichedEdges || []) {
+            try { byId.set(String(e.id), e); } catch (_) { /* ignore */ }
+          }
+          return Array.from(byId.values());
         }
-      } catch (_) { /* fall through to replace */ }
-      return enrichedEdges;
       });
 
-      // Trigger layout (async). If a programmatic load triggered this mapping, force layout once.
+      // Trigger layout (async) only when structure changed or when a programmatic load forced it.
+      // Compute a structural fingerprint (node ids + edge ids) and compare with lastStructureFingerprintRef.
       try {
-        if (loadTriggerRef.current) {
+        try {
+          const nodeIds = (Array.isArray(mappedNodes) ? mappedNodes.map((n) => String(n.id)) : []).sort().join(',');
+          const edgeIds = (Array.isArray(mappedEdges) ? mappedEdges.map((e) => String(e.id)) : []).sort().join(',');
+          const newStructFp = `N:${nodeIds}|E:${edgeIds}`;
+
+          const forced = !!loadTriggerRef.current;
+          if (forced) {
+            try { loadTriggerRef.current = false; } catch (_) { /* ignore */ }
+          }
+
+          // If structure changed OR this was a forced load, run layout. Otherwise skip.
+          if (forced || lastStructureFingerprintRef.current !== newStructFp) {
+            lastStructureFingerprintRef.current = newStructFp;
+            try {
+              void doLayout(mappedNodes, mappedEdges, !!forced);
+            } catch (_) { /* ignore scheduled layout errors */ }
+          }
+        } catch (_) {
+          // fallback: best-effort direct layout if fingerprinting fails
+          try { void doLayout(mappedNodes, mappedEdges, !!loadTriggerRef.current); } catch (_) { /* ignore */ }
           try { loadTriggerRef.current = false; } catch (_) { /* ignore */ }
-          void doLayout(mappedNodes, mappedEdges, true);
-        } else {
-          void doLayout(mappedNodes, mappedEdges, false);
         }
       } catch (_) { /* ignore */ }
     };
@@ -788,44 +1139,87 @@ const KnowledgeCanvas: React.FC = () => {
     if (typeof window === "undefined") return;
     (window as any).__VG_KNOWLEDGE_CANVAS_READY = true;
     return () => {
-      try { delete (window as any).__VG_KNOWLEDGE_CANVAS_READY; } catch (_) {}
+      try { delete (window as any).__VG_KNOWLEDGE_CANVAS_READY; } catch (_) { void 0; }
     };
   }, []);
-
+  
+  // Autoloading is now handled explicitly by the app initializer (__VG_INIT_APP).
+  // The mount-time automatic autoload was removed to avoid race conditions with startup data loads.
+  // If you relied on automatic autoload previously, call window.__VG_INIT_APP() to trigger autoload explicitly.
   // Expose a small initializer to mirror ReactFlowCanvas behavior for tests/dev tooling.
+  // This initializer now handles explicit autoloading of configured ontologies,
+  // then loads any startup RDF URL. Autoload is no longer performed automatically on mount.
   useEffect(() => {
     if (typeof window === "undefined") return;
+
     (window as any).__VG_INIT_APP = async (opts?: { force?: boolean }) => {
       try {
-        // honour test/dev flag for persisted autoload (tests set this flag)
-        const allowAutoLoad = !!(window as any).__VG_ALLOW_PERSISTED_AUTOLOAD;
+        // Mark that the initializer executed so tests and diagnostics can observe autoload runs.
+        try { (window as any).__VG_INIT_APP_RAN = true; } catch (_) { /* ignore */ }
+
+        const cfg =
+          (useAppConfigStore as any).getState
+            ? (useAppConfigStore as any).getState().config
+            : config;
+        const additional = Array.isArray(cfg?.additionalOntologies)
+          ? cfg.additionalOntologies.filter(Boolean)
+          : [];
+
         // Pull startup URL from query string (support legacy 'url' param used in tests)
         let startupUrl = "";
         try {
           const u = new URL(String(window.location.href));
-          startupUrl = u.searchParams.get("url") || u.searchParams.get("rdfUrl") || u.searchParams.get("vg_url") || "";
+          startupUrl =
+            u.searchParams.get("url") ||
+            u.searchParams.get("rdfUrl") ||
+            u.searchParams.get("vg_url") ||
+            "";
         } catch (_) {
           startupUrl = "";
         }
 
-        if (startupUrl && typeof loadKnowledgeGraph === "function") {
+        // 1) Load configured ontologies first (if any)
+        if (additional && additional.length > 0 && typeof loadAdditionalOntologies === "function") {
           try {
-            await loadKnowledgeGraph(startupUrl, {
-              onProgress: (_p: number, _m: string) => {
-                // no-op in test
-              },
+            canvasActions.setLoading(true, 5, "Loading configured ontologies...");
+          } catch (_) {}
+          try {
+            await loadAdditionalOntologies(additional, (progress: number, message: string) => {
+              try {
+                canvasActions.setLoading(true, Math.max(progress * 0.5, 5), message);
+              } catch (_) { /* ignore */ }
             });
+            try { toast.success("Configured ontologies loaded"); } catch (_) {}
+            // slight delay before re-enabling blacklist to allow debug visibility in dev
+            try { setTimeout(() => { try { ignoreBlacklistRef.current = false; } catch (_) {} }, 3000); } catch (_) {}
           } catch (e) {
-            try { console.warn("[VG] KnowledgeCanvas init load failed", e); } catch (_) { void 0; }
+            try { toast.error("Failed to autoload configured ontologies"); } catch (_) {}
+            try { console.warn("[VG] autoload configured ontologies failed", e); } catch (_) {}
+          } finally {
+            try { canvasActions.setLoading(false, 0, ""); } catch (_) {}
           }
-          return;
         }
 
-        if (allowAutoLoad && typeof loadKnowledgeGraph === "function") {
+        // 2) Now load startup RDF (if present)
+        if (startupUrl && typeof loadKnowledgeGraph === "function") {
           try {
-            // Intentionally no-op; persistent autoloading decision left to higher-level code.
+            canvasActions.setLoading(true, 50, "Loading startup file...");
+          } catch (_) {}
+          try {
+            await loadKnowledgeGraph(startupUrl, {
+              onProgress: (progress: number, message: string) => {
+                try {
+                  canvasActions.setLoading(true, Math.max(progress * 0.5 + 50, 50), message);
+                } catch (_) { /* ignore */ }
+              },
+            });
+            try { toast.success("Startup knowledge graph loaded"); } catch (_) {}
+            try { loadTriggerRef.current = true; } catch (_) {}
           } catch (e) {
-            try { console.warn("[VG] KnowledgeCanvas persisted autoload check failed", e); } catch (_) { void 0; }
+            try { toast.error("Failed to load startup graph"); } catch (_) {}
+            try { console.warn("[VG] loadKnowledgeGraph(startupUrl) failed", e); } catch (_) {}
+          } finally {
+            try { canvasActions.setLoading(false, 0, ""); } catch (_) {}
           }
         }
       } catch (e) {
@@ -833,33 +1227,167 @@ const KnowledgeCanvas: React.FC = () => {
       }
     };
 
-      try {
-      const win = typeof window !== "undefined" ? window : undefined;
-      const maybeUrl = (function () {
-        try {
-          const u = new URL(String(win && win.location && win.location.href ? win.location.href : ""));
-          return u.searchParams.get("rdfUrl") || u.searchParams.get("url") || u.searchParams.get("vg_url") || null;
-        } catch (_) {
-          return null;
-        }
-      })();
-      // If a startup RDF URL is present, mark loadTrigger so the first mapping will force layout.
-      if (maybeUrl) {
-        try { loadTriggerRef.current = true; } catch (_) { /* ignore */ }
+    // Auto-run the initializer so configured ontologies are always autoloaded on mount.
+    try {
+      if (typeof (window as any).__VG_INIT_APP === "function") {
+        (window as any).__VG_INIT_APP({ force: true });
       }
-      if (maybeUrl && typeof (window as any).__VG_INIT_APP === "function") {
-        try {
-          void (window as any).__VG_INIT_APP({ force: true });
-        } catch (_) { /* ignore */ }
-      }
-    } catch (_) { /* ignore auto-init */ }
-
+    } catch (_) { /* ignore */ }
     return () => {
       try { delete (window as any).__VG_INIT_APP; } catch (_) { void 0; }
     };
   }, [loadKnowledgeGraph]);
 
-  
+  // Fallback: when the ontology store registers new loaded ontologies we may not
+  // always receive subject-change events from the RDF manager. As a robust
+  // fallback, watch loadedOntologies / ontologiesVersion and run a one-off
+  // mapping pass from the RDF store contents so the canvas always reflects
+  // autoloaded ontologies.
+  useEffect(() => {
+    try {
+      const mgr = typeof getRdfManager === "function" ? getRdfManager() : undefined;
+      if (!mgr || typeof mgr.getStore !== "function") return;
+
+      (async () => {
+        try {
+          // Read all quads from the store and run the same mapping/enrichment pipeline
+          // used by the subject-level handler. This is best-effort and will not replace
+          // the incremental subject-based flow, but guarantees visibility after autoload.
+          const store = mgr.getStore();
+          const quads = (store && typeof store.getQuads === "function") ? store.getQuads(null, null, null, null) : [];
+          if (!Array.isArray(quads) || quads.length === 0) return;
+
+          let diagram;
+          try {
+            diagram = mapQuadsToDiagram(quads, { predicateKind: predicateClassifier });
+          } catch (_) {
+            diagram = { nodes: [], edges: [] };
+          }
+          const mappedNodes: RFNode<NodeData>[] = (diagram && diagram.nodes) || [];
+          const mappedEdges: RFEdge<LinkData>[] = (diagram && diagram.edges) || [];
+
+          // Enrich nodes/edges similar to runMapping
+          let enrichedNodes = mappedNodes;
+          let enrichedEdges = mappedEdges;
+          try {
+            const propMap = new Map<string, any>();
+            try {
+              if (Array.isArray(availableProperties)) {
+                for (const p of availableProperties) {
+                  try {
+                    const iriKey = String((p && (p as any).iri) || "").trim();
+                    if (iriKey) propMap.set(iriKey, p);
+                  } catch (_) { /* ignore per-entry */ }
+                }
+              }
+            } catch (_) { /* ignore */ }
+
+            enrichedNodes = (mappedNodes || []).map((n) => {
+              try {
+                const primary =
+                  Array.isArray(n.data?.rdfTypes) && n.data.rdfTypes.find((t: any) => t && !/NamedIndividual/i.test(String(t))) ||
+                  n.data?.classType ||
+                  n.data?.displayType ||
+                  undefined;
+                let td: any = undefined;
+                try {
+                  if (primary && mgr) td = computeTermDisplay(String(primary), mgr as any, palette, { availableProperties, availableClasses });
+                } catch (_) {
+                  td = undefined;
+                }
+                const paletteColor = td?.color || (td && td.namespace && palette ? (palette as any)[td.namespace] : undefined);
+                const displayPrefixed = td?.prefixed || (td && td.label) || n.data?.displayPrefixed || (n.data && (n.data.label || n.data.classType)) || undefined;
+                const displayShort = td?.short || n.data?.displayShort || undefined;
+                const updatedData = { ...(n.data as NodeData), classType: (td && td.iri) || n.data?.classType, namespace: td?.namespace || n.data?.namespace, displayPrefixed, displayShort, typeNamespace: td?.namespace || n.data?.typeNamespace, paletteColor, label: n.data?.label || td?.label } as NodeData;
+                return { ...n, data: updatedData } as RFNode<NodeData>;
+              } catch (_) {
+                return n;
+              }
+            });
+
+            enrichedEdges = (mappedEdges || []).map((e) => {
+              try {
+                const pred = String((e && e.data && ((e.data as any).propertyUri || (e.data as any).propertyType || (e.data as any).predicate)) || "");
+                let td: any = undefined;
+                try {
+                  if (pred && mgr) td = computeTermDisplay(pred, mgr as any, palette, { availableProperties });
+                } catch (_) {
+                  td = undefined;
+                }
+                const fromFat = propMap.get(pred);
+                const labelFromProps = fromFat && fromFat.label ? String(fromFat.label) : undefined;
+                const newLabel = labelFromProps || td?.label || td?.prefixed || td?.short || String(pred);
+                const newColor = td?.color || (td && td.namespace && palette ? (palette as any)[td.namespace] : undefined);
+                const updatedEdgeData = { ...(e.data as LinkData), label: newLabel, paletteColor: newColor } as LinkData;
+                return { ...e, data: updatedEdgeData } as RFEdge<LinkData>;
+              } catch (_) {
+                return e;
+              }
+            });
+          } catch (_) {
+            enrichedNodes = mappedNodes;
+            enrichedEdges = mappedEdges;
+          }
+
+          // Merge positions/runtime flags conservatively (preserve previous positions)
+          setNodes((prev) => {
+            try {
+              const prevById = new Map<string, RFNode<NodeData>>();
+              (prev || []).forEach((n) => prevById.set(String(n.id), n));
+              const merged = enrichedNodes.map((m) => {
+                const prevNode = prevById.get(String(m.id));
+                try {
+                  // Preserve previous position if present; otherwise ensure a default position so React Flow doesn't crash.
+                  m.position = (prevNode && (prevNode.position as any)) || (m && (m as any).position) || { x: 0, y: 0 };
+                  if (prevNode) {
+                    if ((prevNode as any).__rf) (m as any).__rf = (prevNode as any).__rf;
+                    if ((prevNode as any).selected) (m as any).selected = true;
+                  }
+                } catch (_) {
+                  // best-effort: ensure position exists
+                  try { m.position = m && (m as any).position ? (m as any).position : { x: 0, y: 0 }; } catch (_) { /* ignore */ }
+                }
+                return m;
+              });
+              return merged;
+            } catch (_) {
+              return mappedNodes;
+            }
+          });
+
+          setEdges((prev) => {
+            try {
+              if (
+                Array.isArray(prev) &&
+                prev.length === enrichedEdges.length &&
+                prev.every((p, idx) => p.id === enrichedEdges[idx].id && p.source === enrichedEdges[idx].source && p.target === enrichedEdges[idx].target)
+              ) {
+                return prev;
+              }
+            } catch (_) { /* fall through */ }
+            return enrichedEdges;
+          });
+
+          // Force layout once after this fallback mapping so autoloaded ontologies are visible.
+          try {
+            loadTriggerRef.current = true;
+          } catch (_) {}
+          try {
+            const nodeIds = (Array.isArray(mappedNodes) ? mappedNodes.map((n) => String(n.id)) : []).sort().join(',');
+            const edgeIds = (Array.isArray(mappedEdges) ? mappedEdges.map((e) => String(e.id)) : []).sort().join(',');
+            const newStructFp = `N:${nodeIds}|E:${edgeIds}`;
+            if (lastStructureFingerprintRef.current !== newStructFp) {
+              lastStructureFingerprintRef.current = newStructFp;
+              try { void doLayout(mappedNodes, mappedEdges, true); } catch (_) {}
+            }
+          } catch (_) { /* ignore layout scheduling */ }
+        } catch (_) {
+          /* ignore overall fallback errors */
+        }
+      })();
+    } catch (_) { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadedOntologies, ontologiesVersion]);
 
   // Simple debug counters
   const displayedNodesCount = useMemo(() => (nodes || []).length, [nodes]);

@@ -94,22 +94,121 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   // Select functions from the store as stable callbacks; subscribe separately to the loadedOntologies array
   const { loadOntology, availableClasses, loadKnowledgeGraph, loadOntologyFromRDF, getRdfManager } = useOntologyStore();
   const loadedOntologies = useOntologyStore((s) => s.loadedOntologies);
-  // Select a dedicated count value so the toolbar reliably re-renders when the list changes.
-  const loadedCount = useOntologyStore((s) => (s.loadedOntologies || []).length);
+  // registeredCount excludes core vocabularies; configuredCount shows user-configured autoload list size
+  // Count all loaded ontologies except explicit core vocabularies.
+  // Some entries may not have a 'source' field set reliably, so detect core
+  // vocabularies by URL as a fallback (W3C RDF/RDFS/OWL namespaces).
+  const isCoreUrl = (u?: string | null) => {
+    if (!u) return false;
+    try {
+      const s = String(u);
+      return (
+        s.includes("www.w3.org/2002/07/owl") ||
+        s.includes("www.w3.org/1999/02/22-rdf-syntax-ns") ||
+        s.includes("www.w3.org/2000/01/rdf-schema") ||
+        s.includes("www.w3.org/XML/1998/namespace") ||
+        s.includes("www.w3.org/2001/XMLSchema")
+      );
+    } catch {
+      return false;
+    }
+  };
+
+  // Count non-core loaded ontologies robustly.
+  // Strategy:
+  // - Consider loadedOntologies entries that are not 'core' and whose URL is not a core W3C URL.
+  // - Also consider configured additionalOntologies that are "present" (either registered in loadedOntologies
+  //   or visible via the RDF manager namespaces) so autoloaded items count even when a loadedOntologies
+  //   entry wasn't registered in every codepath.
+  // - Use a lightweight normalization for comparison to avoid depending on canonical() which is declared later.
+  const loadedList = useOntologyStore((s) => s.loadedOntologies || []);
+  const configuredList = useAppConfigStore((s) =>
+    s.config && Array.isArray((s.config as any).additionalOntologies)
+      ? ((s.config as any).additionalOntologies as string[])
+      : [],
+  );
+
+  const normalizeForCompare = (u?: string | null) => {
+    if (!u) return "";
+    try {
+      let s = String(u).trim();
+      if (!s) return s;
+      // Remove protocol if present without using regex literals that trigger lint issues.
+      const low = s.toLowerCase();
+      if (low.startsWith("http://")) s = s.slice(7);
+      else if (low.startsWith("https://")) s = s.slice(8);
+      // Strip trailing slashes and hash characters
+      while (s.length > 0 && (s.endsWith("/") || s.endsWith("#"))) {
+        s = s.slice(0, -1);
+      }
+      return s.toLowerCase();
+    } catch {
+      return String(u || "").toLowerCase();
+    }
+  };
+
+  // Build set of loaded non-core ontology keys
+  const loadedNonCore = (loadedList || []).filter((o: any) => {
+    try {
+      if (!o) return false;
+      if ((o.source as any) && String(o.source) === "core") return false;
+      if (isCoreUrl(o.url)) return false;
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  const loadedKeys = new Set<string>((loadedNonCore || []).map((o: any) => normalizeForCompare(o.url)));
+
+  // Namespaces currently known to the RDF manager (use as additional evidence an ontology was loaded)
+  const rdfMgr = (typeof getRdfManager === "function" && getRdfManager && getRdfManager()) || null;
+  const rdfNsVals = (rdfMgr && typeof rdfMgr.getNamespaces === "function")
+    ? Object.values(rdfMgr.getNamespaces() || {}).map((v: any) => normalizeForCompare(String(v)))
+    : [];
+
+  // Consider configured additional ontologies present if they match a loaded entry or an RDF manager namespace
+  const presentConfigured = (configuredList || []).filter((c) => {
+    try {
+      const n = normalizeForCompare(c);
+      if (!n) return false;
+      if (loadedKeys.has(n)) return true;
+      if (rdfNsVals.includes(n)) return true;
+      return false;
+    } catch {
+      return false;
+    }
+  });
+
+  // Only count/store the explicitly-registered ontologies created by user-requested or fetched loads.
+  // This makes the toolbar show exactly what's been intentionally added (requested || fetched).
+  const explicitLoaded = (loadedList || []).filter((o: any) => {
+    try {
+      const s = (o && (o.source as any)) || "";
+      return String(s) === "requested" || String(s) === "fetched";
+    } catch {
+      return false;
+    }
+  });
+
+  const registeredCount = explicitLoaded.length;
+
+  const configuredCount = configuredList.length;
 
   // Debug subscription: surface loadedOntologies/loadedCount changes to console so we can trace why the toolbar count may stay at 0.
   React.useEffect(() => {
     try {
       if (typeof console !== "undefined" && typeof console.debug === "function") {
         console.debug("[VG_DEBUG] CanvasToolbar.loadedOntologies change", {
-          count: loadedCount,
-          sample: Array.isArray(loadedOntologies) ? loadedOntologies.slice(0, 6).map(o => ({ url: o.url, name: o.name })) : loadedOntologies,
+          registeredCount,
+          configuredCount,
+          sample: Array.isArray(loadedOntologies) ? loadedOntologies.slice(0, 6).map(o => ({ url: o.url, name: o.name, source: (o as any).source })) : loadedOntologies,
         });
       }
     } catch (_) {
       /* ignore debug failures */
     }
-  }, [loadedCount, loadedOntologies]);
+  }, [registeredCount, loadedOntologies, configuredCount]);
 
   // Build a merged list of namespaces: prefer namespaces discovered in the RDF manager
   // but include namespaces from loaded ontology metadata as a fallback.
@@ -217,10 +316,36 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   const normalizeNamespaceKey = (u?: string) => {
     if (!u) return '';
     try {
-      // Remove protocol and any trailing slashes or hash characters for a stable comparison key.
-      // This helps collapse variants like "http://.../", "https://.../", and "...#" to the same key.
-      return String(u).replace(/^https?:\/\//, '').replace(new RegExp('[/#]+$'), '');
+      let s = String(u);
+      // Remove protocol without regex to avoid escape-related lint warnings
+      const low = s.toLowerCase();
+      if (low.startsWith('http://')) s = s.slice(7);
+      else if (low.startsWith('https://')) s = s.slice(8);
+      // Strip trailing slashes and hashes
+      while (s.length > 0 && (s.endsWith('/') || s.endsWith('#'))) s = s.slice(0, -1);
+      return s;
     } catch {
+      return String(u || '');
+    }
+  };
+
+  // Robust canonicalization helper used when comparing configured URIs with loaded ontology URLs.
+  // Canonical form prefers https and a URL.toString() when possible, falling back to a trimmed,
+  // trailing-slash-stripped string so loose variants still match.
+  const canonical = (u?: string | null) => {
+    try {
+      if (!u) return String(u || '');
+      let s = String(u).trim();
+      if (!s) return s;
+      if (s.toLowerCase().startsWith('http://')) s = s.replace(/^http:\/\//i, 'https://');
+      try {
+        return new URL(s).toString();
+      } catch {
+        // Fallback: strip trailing slashes and hashes without using a regex literal that contains '/'
+        while (s.length > 0 && (s.endsWith('/') || s.endsWith('#'))) s = s.slice(0, -1);
+        return s;
+      }
+    } catch (_) {
       return String(u || '');
     }
   };
@@ -358,7 +483,8 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                     onClick={async () => {
                       if (!rdfBody.trim()) return;
                       try {
-                        await loadOntologyFromRDF?.(rdfBody, undefined, true);
+                        // Ensure pasted RDF is treated as an ontology by persisting into the ontology graph
+                        await loadOntologyFromRDF?.(rdfBody, undefined, true, "urn:vg:ontologies");
                         setRdfBody('');
                         setIsLoadOntologyOpen(false);
                         toast.success('RDF content applied as ontology (prefixes registered)');
@@ -744,63 +870,63 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
         <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="shadow-glass backdrop-blur-sm flex items-center gap-2">
             <Network className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">{loadedCount} ontologies</span>
+            <span className="text-sm text-muted-foreground">{registeredCount} ontologies ({configuredCount} configured)</span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-80 max-h-64 overflow-y-auto z-50">
           <div className="p-2">
             <div className="text-xs text-muted-foreground mb-2">Loaded ontologies and auto-load status</div>
-            {loadedOntologies.length === 0 ? (
+              {explicitLoaded.length === 0 ? (
               <div className="text-xs text-muted-foreground">No ontologies loaded</div>
             ) : (
-              loadedOntologies.map((ont, idx) => {
-                const isAuto = (useAppConfigStore.getState().config.additionalOntologies || []).includes(ont.url);
+              explicitLoaded.map((ont, idx) => {
+                const isAuto = (useAppConfigStore.getState().config.additionalOntologies || []).some((a) => canonical(a) === canonical(ont.url));
                 return (
-                  <div key={`${ont.url}-${idx}`} className="flex items-center justify-between gap-2 p-2 rounded hover:bg-accent/5">
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium" title={ont.url}>
-                        {ont.name || ont.url.split('/').pop() || ont.url}
+                      <div key={`${ont.url}-${idx}`} className="flex items-center justify-between gap-2 p-2 rounded hover:bg-accent/5">
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium" title={ont.url}>
+                            {ont.name || ont.url.split('/').pop() || ont.url}
+                          </div>
+                          <div className="text-xs text-muted-foreground truncate" title={ont.url}>{ont.url}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isAuto ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-xs"
+                              onClick={() => {
+                                try {
+                                  useAppConfigStore.getState().removeAdditionalOntology(ont.url);
+                                  toast.success('Removed ontology from auto-load list');
+                                } catch (e) {
+                                  ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})('Failed to remove additional ontology', e);
+                                  toast.error('Failed to update auto-load list');
+                                }
+                              }}
+                            >
+                              Auto (Remove)
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs"
+                              onClick={() => {
+                                try {
+                                  useAppConfigStore.getState().addAdditionalOntology(ont.url);
+                                  toast.success('Added ontology to auto-load list');
+                                } catch (e) {
+                                  ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})('Failed to add additional ontology', e);
+                                  toast.error('Failed to update auto-load list');
+                                }
+                              }}
+                            >
+                              Add Auto
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-xs text-muted-foreground truncate" title={ont.url}>{ont.url}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {isAuto ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-xs"
-                          onClick={() => {
-                            try {
-                              useAppConfigStore.getState().removeAdditionalOntology(ont.url);
-                              toast.success('Removed ontology from auto-load list');
-                            } catch (e) {
-                              ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})('Failed to remove additional ontology', e);
-                              toast.error('Failed to update auto-load list');
-                            }
-                          }}
-                        >
-                          Auto (Remove)
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-xs"
-                          onClick={() => {
-                            try {
-                              useAppConfigStore.getState().addAdditionalOntology(ont.url);
-                              toast.success('Added ontology to auto-load list');
-                            } catch (e) {
-                              ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})('Failed to add additional ontology', e);
-                              toast.error('Failed to update auto-load list');
-                            }
-                          }}
-                        >
-                          Add Auto
-                        </Button>
-                      )}
-                    </div>
-                  </div>
                 );
               })
             )}

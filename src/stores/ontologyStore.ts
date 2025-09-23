@@ -173,6 +173,14 @@ interface LoadedOntology {
   classes: OntologyClass[];
   properties: ObjectProperty[];
   namespaces: Record<string, string>;
+  // Optional named graph where the ontology/data was stored (e.g. 'urn:vg:ontologies' or 'urn:vg:data')
+  graphName?: string;
+  // How the entry was introduced:
+  // 'requested' - user requested / explicit load
+  // 'fetched'   - autoload/fetch finished and was registered
+  // 'discovered' - inferred/canonicalized from parsed namespaces
+  // 'core'      - core vocabularies (rdf/rdfs/owl)
+  source?: 'requested' | 'fetched' | 'discovered' | 'core' | string;
 }
 
 interface ValidationError {
@@ -227,6 +235,7 @@ interface OntologyStore {
   ) => void;
   updateNode: (entityUri: string, updates: Record<string, unknown>) => void;
   exportGraph: (format: "turtle" | "json-ld" | "rdf-xml") => Promise<string>;
+  reconcileQuads: (quads: any[] | undefined) => void;
   getRdfManager: () => RDFManager;
   removeLoadedOntology: (url: string) => void;
 }
@@ -319,6 +328,8 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                 classes: [],
                 properties: [],
                 namespaces: namespaces || {},
+                source: wkEntry && (wkEntry as any).isCore ? "core" : "requested",
+                graphName: "urn:vg:ontologies",
               };
               set((state) => ({
                 loadedOntologies: [...(state.loadedOntologies || []), meta],
@@ -638,6 +649,8 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           classes: ontologyClasses,
           properties: ontologyProperties,
           namespaces: parsed.namespaces || {},
+          source: wkEntry ? "requested" : "requested",
+          graphName: "urn:vg:ontologies",
         };
 
         // Merge into state with deduplication by canonical URL.
@@ -1193,7 +1206,18 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       onProgress?.(10, "Starting RDF parsing...");
 
       try {
-        await rdfManager.loadRDFIntoGraph(rdfContent, graphName);
+        // Enforce an explicit target graph so callers that omit graphName do not
+        // accidentally write ontology triples into the default/data graph.
+        // Conservative defaulting:
+        //  - if preserveGraph === true => ontology graph
+        //  - if preserveGraph === false => data graph
+        let targetGraph = graphName;
+        if (!targetGraph) {
+          targetGraph = preserveGraph ? "urn:vg:ontologies" : "urn:vg:data";
+          try { console.warn(`[VG] loadOntologyFromRDF: graphName omitted, defaulting to ${targetGraph}`); } catch (_) { /* ignore */ }
+        }
+
+        await rdfManager.loadRDFIntoGraph(rdfContent, targetGraph);
       } catch (loadErr) {
         warn(
           "rdfManager.loadIntoGraph.failed",
@@ -1773,7 +1797,36 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
               if (response && response.ok) {
                 const content = await response.text();
-                await get().loadOntologyFromRDF(content, undefined, true, uri);
+                await get().loadOntologyFromRDF(content, undefined, true, "urn:vg:ontologies");
+                // Register this fetched URI as an explicit loaded ontology so UI counts reflect autoloaded entries
+                try {
+                  const norm = normalizeUri(uri);
+                  const exists = (get().loadedOntologies || []).some((o: any) => {
+                    try { return String(o.url) === String(norm); } catch { return false; }
+                  });
+                  if (!exists) {
+                    try {
+                      set((st: any) => ({
+                        loadedOntologies: [
+                          ...(st.loadedOntologies || []),
+                          {
+                            url: norm,
+                            name: deriveOntologyName(norm),
+                            classes: [],
+                            properties: [],
+                            namespaces: {},
+                            source: "fetched",
+                            graphName: "urn:vg:ontologies",
+                          } as LoadedOntology,
+                        ],
+                      }));
+                    } catch (_) {
+                      /* ignore registration failure */
+                    }
+                  }
+                } catch (_) {
+                  /* ignore */
+                }
                 fetched = true;
                 break;
               } else {
@@ -1822,8 +1875,8 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           }
         } else {
           // If it's not an http(s) URI, we treat it as inline RDF content and attempt to parse it.
-          try {
-            await get().loadOntologyFromRDF(uri, undefined, true, uri);
+            try {
+            await get().loadOntologyFromRDF(uri, undefined, true, "urn:vg:ontologies");
           } catch (e) {
             try {
               fallback(
@@ -2057,8 +2110,9 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                 // The rdfManager will recompute namespaces from store contents.
                 try {
                   rdfManager
-                    .loadRDF(
+                    .loadRDFIntoGraph(
                       "@prefix dc: <http://purl.org/dc/elements/1.1/> . dc:__vg_dummy a dc:__Dummy .",
+                      "urn:vg:data",
                     )
                     .catch(() => {});
                 } catch (_) {
@@ -2239,6 +2293,20 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         return await rdfManager.exportToRdfXml();
       default:
         throw new Error(`Unsupported format: ${format}`);
+    }
+  },
+
+  reconcileQuads: (quads: any[] | undefined) => {
+    try {
+      // Use the existing incremental reconciliation helper to update the fat map.
+      // This keeps ontology processing centralized in the ontology store.
+      try {
+        incrementalReconcileFromQuads(quads, get().rdfManager);
+      } catch (_) {
+        /* ignore reconciliation failures */
+      }
+    } catch (_) {
+      /* ignore overall */
     }
   },
 
@@ -2547,10 +2615,11 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
           try {
             // Prefer writing a minimal RDF snippet into the store so namespaces are
             // discovered by recomputeNamespacesFromStore rather than by ad-hoc registration.
-            try {
+              try {
               rdfMgr
-                .loadRDF(
+                .loadRDFIntoGraph(
                   `@prefix ${String(p)}: <${String(ns)}> . ${String(p)}:__vg_dummy a ${String(p)}:__Dummy .`,
+                  "urn:vg:ontologies",
                 )
                 .catch(() => {});
             } catch (_) {

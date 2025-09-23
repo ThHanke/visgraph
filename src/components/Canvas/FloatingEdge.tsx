@@ -26,6 +26,9 @@ import { usePaletteFromRdfManager } from "./core/namespacePalette";
 const FloatingEdge = memo((props: EdgeProps) => {
   const { id, source, target, markerEnd, style, data } = props;
 
+  // Pre-call hook at top-level for palette (must be a hook call and run on every render)
+  const palette = usePaletteFromRdfManager();
+
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
 
@@ -38,6 +41,12 @@ const FloatingEdge = memo((props: EdgeProps) => {
     sourceNode,
     targetNode,
   );
+
+  // Defensive guard: if geometry is not numeric, avoid rendering an invalid path.
+  if (![sx, sy, tx, ty].every((v) => Number.isFinite(v))) {
+    // Avoid rendering to prevent SVG "<path d='MNaN,...'>" errors.
+    return null;
+  }
 
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX: sx,
@@ -55,6 +64,8 @@ const FloatingEdge = memo((props: EdgeProps) => {
   // 1) explicit label from props/data
   badgeText = String((props as any)?.label || (data as any)?.label || "").trim();
 
+  
+
   // 2) if no explicit label, compute strict display via computeTermDisplay using RDF manager.
   //    Strict policy: if no rdf manager is available or computeTermDisplay fails, leave label empty.
   if (!badgeText) {
@@ -69,7 +80,6 @@ const FloatingEdge = memo((props: EdgeProps) => {
           : undefined;
       try {
         if (rdfMgr && rawPred) {
-          const palette = usePaletteFromRdfManager();
           const td = computeTermDisplay(String(rawPred), rdfMgr as any, palette);
           badgeText = String(td.prefixed || td.short || "");
         } else {

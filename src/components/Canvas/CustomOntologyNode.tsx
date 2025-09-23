@@ -309,14 +309,14 @@ function CustomOntologyNodeInner(props: NodeProps) {
       const colorToApply = badgeColor || leftColor;
       try {
         if (typeof console !== 'undefined' && typeof console.debug === 'function') {
-          try {
-            console.debug('[VG_DEBUG] CustomOntologyNode.syncWrapperColor', {
-              id: (nodeData as any)?.iri || (nodeData as any)?.key,
-              badgeColor,
-              leftColor,
-              wrapperCurrentVar: wrapper.style.getPropertyValue('--node-leftbar-color'),
-            });
-          } catch (_) { /* ignore logging failures */ }
+          // try {
+          //   console.debug('[VG_DEBUG] CustomOntologyNode.syncWrapperColor', {
+          //     id: (nodeData as any)?.iri || (nodeData as any)?.key,
+          //     badgeColor,
+          //     leftColor,
+          //     wrapperCurrentVar: wrapper.style.getPropertyValue('--node-leftbar-color'),
+          //   });
+          // } catch (_) { /* ignore logging failures */ }
         }
       } catch (_) { /* ignore */ }
       if (colorToApply) {
@@ -325,17 +325,6 @@ function CustomOntologyNodeInner(props: NodeProps) {
         } catch (_) {
           try { wrapper.style.setProperty("--node-leftbar-color", String(colorToApply)); } catch (_) { /* ignore */ }
         }
-        try {
-          if (typeof console !== 'undefined' && typeof console.debug === 'function') {
-            try {
-              console.debug('[VG_DEBUG] CustomOntologyNode.syncWrapperColor.applied', {
-                id: (nodeData as any)?.iri || (nodeData as any)?.key,
-                applied: String(colorToApply),
-                wrapperNow: wrapper.style.getPropertyValue('--node-leftbar-color'),
-              });
-            } catch (_) { /* ignore */ }
-          }
-        } catch (_) { /* ignore */ }
       } else {
         try { wrapper.style.removeProperty("--node-leftbar-color"); } catch (_) { /* ignore */ }
       }

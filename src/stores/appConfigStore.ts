@@ -93,7 +93,7 @@ const defaultConfig: AppConfig = {
   currentLayout: 'horizontal',
   layoutAnimations: true,
   layoutSpacing: 120,
-  autoApplyLayout: true,
+  autoApplyLayout: false,
   showLegend: false,
   viewMode: 'abox',
   canvasTheme: 'auto',

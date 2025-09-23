@@ -129,6 +129,10 @@
   pointer-events: none; /* leave events to the handle itself */
 }
 
+.react-flow__attribution {
+  visibility: hidden;
+}
+
 /* For touch devices prefer larger handles */
 @media (pointer: coarse) {
   .knowledge-graph-canvas .react-flow__handle {

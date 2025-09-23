@@ -22,6 +22,8 @@ type QuadLike = {
   object?: { value: string; termType?: string; datatype?: { value: string } };
 } | any;
 
+type PredicateKind = "annotation" | "object" | "datatype" | "unknown";
+
 /**
  * Convert an array of quads (QuadLike[]) into React Flow nodes/edges.
  * - quads: array of N3 Quad objects or plain POJOs with subject/predicate/object.value
@@ -32,11 +34,18 @@ type QuadLike = {
  *   - rdf:type triples are collected into rdfTypes (order preserved, no dedupe).
  *   - rdfs:label literal sets node label (last-wins).
  *   - literal objects become literalProperties entries.
- *   - object IRIs / blank nodes produce an edge and ensure node exists for object.
+ *   - object IRIs / blank nodes produce an edge and ensure node exists for object
+ *     only when they represent ABox entities; ontology-like IRIs and unreferenced
+ *     blank nodes are recorded as annotationProperties on the subject.
  * - Edges are created with id = generateEdgeId(subject, object, predicate).
- * - No calls to any store API.
+ * - No calls to any store API by default; callers may provide a predicateKind classifier
+ *   that lets the mapper make semantic decisions (e.g., treat owl:AnnotationProperty
+ *   predicates as annotations even when the object is an IRI).
  */
-export function mapQuadsToDiagram(quads: QuadLike[] = []) {
+export function mapQuadsToDiagram(
+  quads: QuadLike[] = [],
+  options?: { predicateKind?: (predIri: string) => PredicateKind }
+) {
   // Small helpers to detect term kinds robustly across N3 and POJO shapes.
   const isNamedOrBlank = (obj: any) => {
     try {
@@ -93,8 +102,86 @@ export function mapQuadsToDiagram(quads: QuadLike[] = []) {
   const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
   const XSD_STRING = "http://www.w3.org/2001/XMLSchema#string";
 
+  // small local cache for classifier results to avoid repeated work per-predicate
+  const predicateKindCache = new Map<string, PredicateKind>();
+
+  // Heuristic: syntactic check whether an IRI looks like an ontology / vocabulary identifier.
+  // Deterministic, heuristic-based (no store lookups). Matches hosts/namespaces commonly used
+  // for ontologies and vocabulary IRIs, URN ontologies, and path patterns like '/ontology/' or trailing '#'.
+  const isOntologyLikeIri = (iri?: string | null) => {
+    try {
+      if (!iri) return false;
+      const s = String(iri).trim();
+      if (!s) return false;
+      // URN-based ontology graphs
+      if (s.includes("urn:vg:ontologies")) return true;
+      // common ontology hosts / domains
+      const hostHints = ["w3.org", "xmlns.com", "purl.org", "spec.industrialontologies.org"];
+      try {
+        const u = new URL(s);
+        const host = (u.hostname || "").toLowerCase();
+        for (const h of hostHints) {
+          if (host.includes(h)) return true;
+        }
+      } catch (_) {
+        // not a full URL - continue with substring checks
+      }
+      // namespace / path heuristics
+      const lower = s.toLowerCase();
+      if (lower.includes("/ontology/")) return true;
+      if (s.endsWith("#")) return true;
+      // blacklist common RDF/OWL namespaces
+      const blackUris = [
+        "http://www.w3.org/2002/07/owl",
+        "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+        "http://www.w3.org/2000/01/rdf-schema#",
+        "http://www.w3.org/XML/1998/namespace",
+        "http://www.w3.org/2001/XMLSchema#"
+      ];
+      for (const b of blackUris) {
+        if (s.startsWith(b)) return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  };
+
+  // Helper: determine whether a blank node id (e.g. '_:b0') appears as a subject
+  // elsewhere in the incoming quad batch. If so, treat the blank node as an ABox entity.
+  const isBlankNodeReferenced = (bn?: string | null) => {
+    try {
+      if (!bn) return false;
+      const id = String(bn);
+      if (!id.startsWith("_:")) return false;
+      if (!Array.isArray(quads) || quads.length === 0) return false;
+      return quads.some((qq: any) => {
+        try { return qq && qq.subject && String(qq.subject.value) === id; } catch (_) { return false; }
+      });
+    } catch (_) {
+      return false;
+    }
+  };
+
   for (const q of quads || []) {
     try {
+      // Small defensive normalization for quad.graph values
+      const graphVal =
+        q && q.graph
+          ? (q.graph.value || q.graph.id || (typeof q.graph === "string" ? q.graph : undefined))
+          : undefined;
+
+      // Map ONLY triples that were explicitly written into urn:vg:data.
+      // This prevents ontology/TBox graphs from creating canvas nodes.
+      // If graph is absent or not the data graph, skip.
+      try {
+        if (typeof graphVal === "undefined" || graphVal === null) continue;
+        const gstr = String(graphVal || "");
+        if (!gstr.includes("urn:vg:data")) continue;
+      } catch (_) {
+        continue;
+      }
+
       const subj = q && q.subject ? q.subject : null;
       const pred = q && q.predicate ? q.predicate : null;
       const obj = q && q.object ? q.object : null;
@@ -105,6 +192,26 @@ export function mapQuadsToDiagram(quads: QuadLike[] = []) {
 
       ensureNode(subjectIri);
       const entry = nodeMap.get(subjectIri)!;
+
+      // Compute predicate kind using optional caller-provided classifier and cache results.
+      let predicateKindLocal: PredicateKind = "unknown";
+      try {
+        if (options && typeof options.predicateKind === "function") {
+          if (predicateKindCache.has(predIri)) {
+            predicateKindLocal = predicateKindCache.get(predIri)!;
+          } else {
+            try {
+              const k = options.predicateKind(String(predIri));
+              predicateKindLocal = k || "unknown";
+            } catch (_) {
+              predicateKindLocal = "unknown";
+            }
+            try { predicateKindCache.set(predIri, predicateKindLocal); } catch (_) { /* ignore cache errors */ }
+          }
+        }
+      } catch (_) {
+        predicateKindLocal = "unknown";
+      }
 
       // rdf:type
       if (predIri === RDF_TYPE) {
@@ -119,10 +226,69 @@ export function mapQuadsToDiagram(quads: QuadLike[] = []) {
         continue;
       }
 
-      // object is IRI/blank -> create edge + ensure object node
-      if (isNamedOrBlank(obj)) {
+      // If the predicate is classified as an AnnotationProperty treat it as an annotation
+      // regardless of whether the object is a literal or an IRI/blank node.
+      if (predicateKindLocal === "annotation") {
+        try {
+          const val = obj && obj.value ? String(obj.value) : "";
+          entry.annotationProperties.push({ property: predIri, value: val });
+        } catch (_) {
+          // ignore per-annotation failures
+        }
+        continue;
+      }
+
+      // literal -> annotationProperties
+      // Per requested policy, treat predicates pointing to literals as annotation properties
+      // on the subject node rather than as separate literalProperties entries.
+      if (isLiteral(obj)) {
+        try {
+          const litVal = obj && obj.value ? String(obj.value) : "";
+          entry.annotationProperties.push({ property: predIri, value: litVal });
+        } catch (_) {
+          /* ignore per-literal failures */
+        }
+        continue;
+      }
+
+      // Handle blank nodes: create node/edge only when blank node is referenced as a subject elsewhere in this batch.
+      if (obj && (obj.termType === "BlankNode" || (obj.value && String(obj.value).startsWith("_:")))) {
+        const bn = obj.value ? String(obj.value) : "";
+        if (isBlankNodeReferenced(bn)) {
+          ensureNode(bn);
+          const edgeId = String(generateEdgeId(subjectIri, bn, predIri || ""));
+          rfEdges.push({
+            id: edgeId,
+            source: subjectIri,
+            target: bn,
+            type: "floating",
+            markerEnd: { type: "arrow" as any },
+            data: {
+              key: edgeId,
+              from: subjectIri,
+              to: bn,
+              propertyUri: predIri,
+              propertyType: "",
+              label: predIri || "",
+              namespace: "",
+              rdfType: "",
+            } as LinkData,
+          });
+        } else {
+          // Treat unreferenced blank nodes as annotation metadata
+          try {
+            entry.annotationProperties.push({ property: predIri, value: bn });
+          } catch (_) { /* ignore */ }
+        }
+        continue;
+      }
+
+      // object is NamedNode (IRI) -> always create an edge + ensure object node
+      if (obj && (obj.termType === "NamedNode" || (obj.value && /^https?:\/\//i.test(String(obj.value))))) {
         const objectIri = obj && obj.value ? String(obj.value) : "";
         if (!objectIri) continue;
+
+        // Always treat NamedNode objects as object properties (create node + edge).
         ensureNode(objectIri);
         const edgeId = String(generateEdgeId(subjectIri, objectIri, predIri || ""));
         const labelForEdge = predIri || "";
@@ -146,34 +312,27 @@ export function mapQuadsToDiagram(quads: QuadLike[] = []) {
         continue;
       }
 
-      // literal -> literalProperties
-      if (isLiteral(obj)) {
-        const litVal = obj && obj.value ? String(obj.value) : "";
-        const dt = obj && obj.datatype && obj.datatype.value ? String(obj.datatype.value) : XSD_STRING;
-        entry.literalProperties.push({ key: predIri, value: litVal, type: dt });
-        continue;
-      }
-
       // fallback -> annotationProperties
-      entry.annotationProperties.push({
-        property: predIri,
-        value: obj && obj.value ? String(obj.value) : "",
-      });
+      try {
+        entry.annotationProperties.push({
+          property: predIri,
+          value: obj && obj.value ? String(obj.value) : "",
+        });
+      } catch (_) {
+        /* ignore */
+      }
     } catch (_) {
       // ignore per-quad failures
     }
   }
 
-  // Build RF nodes
-  const rfNodes: RFNode<NodeData>[] = Array.from(nodeMap.keys()).map((iri) => {
-    const info = nodeMap.get(iri)!;
+  // Build RF nodes — filter out pure TBox entities (classes / properties) so they do not appear as canvas nodes.
+  const allNodeEntries = Array.from(nodeMap.entries()).map(([iri, info]) => {
     // Compute a lightweight classType/displayType from first rdf:type if available.
     let classType: string | undefined = undefined;
     if (Array.isArray(info.rdfTypes) && info.rdfTypes.length > 0) {
       const primary = String(info.rdfTypes[0]);
       try {
-        // computeTermDisplay may be used by callers that pass an RDF manager into a different layer;
-        // this function purposely does not require a manager. Return local short name as fallback.
         classType = shortLocalName(primary);
       } catch (_) {
         classType = shortLocalName(primary);
@@ -183,7 +342,7 @@ export function mapQuadsToDiagram(quads: QuadLike[] = []) {
     // Coarse namespace extraction from IRI (prefix before last / or #)
     let namespace = "";
     try {
-      const m = String(iri || "").match(/^(.*[\/#])/);
+      const m = String(iri || "").match(/^(.*[/#])/);
       namespace = m && m[1] ? String(m[1]) : "";
     } catch (_) {
       namespace = "";
@@ -207,20 +366,36 @@ export function mapQuadsToDiagram(quads: QuadLike[] = []) {
       isTBox: !!isTBox,
     };
 
-    return {
+    const rfNode: RFNode<NodeData> = {
       id: iri,
       type: "ontology",
-      position: { x: 0, y: 0 },
       data: {
         ...nodeData,
-        onSizeMeasured: (_w: number, _h: number) => {
-          /* no-op */
-        },
+        onSizeMeasured: (_w: number, _h: number) => { /* no-op */ },
       } as NodeData,
     } as RFNode<NodeData>;
+
+    return { iri, isTBox, rfNode };
   });
 
-  return { nodes: rfNodes, edges: rfEdges };
+  // Keep only non-TBox nodes (ABox) for rendering.
+  const rfNodes: RFNode<NodeData>[] = allNodeEntries
+    .filter((e) => !e.isTBox)
+    .map((e) => e.rfNode);
+
+  // Build set of node IDs that will be rendered for edge filtering
+  const renderedNodeIds = new Set<string>((rfNodes || []).map((n) => String(n.id)));
+
+  // Filter edges to only include those that connect two rendered nodes (avoid dangling edges to TBox)
+  const rfEdgesFiltered = (rfEdges || []).filter((edge) => {
+    try {
+      const s = String(edge.source);
+      const t = String(edge.target);
+      return renderedNodeIds.has(s) && renderedNodeIds.has(t);
+    } catch (_) { return false; }
+  });
+
+  return { nodes: rfNodes, edges: rfEdgesFiltered };
 }
 
 /**

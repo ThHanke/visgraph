@@ -74,8 +74,29 @@ const RecentOntologiesDisplay = () => {
           }
         })();
 
-        const isLoaded = loadedUrls.includes(uri);
-        const isAuto = (config && Array.isArray(config.additionalOntologies)) ? config.additionalOntologies.includes(uri) : false;
+        // Canonicalize comparison to handle http/https and trailing-slash/canonicalization
+        const canonical = (u?: string | null) => {
+          try {
+            if (!u) return String(u || "");
+            let s = String(u).trim();
+            if (!s) return s;
+            // Prefer https canonicalization for loose matching
+            if (s.toLowerCase().startsWith("http://")) s = s.replace(/^http:\/\//i, "https://");
+            try {
+              return new URL(s).toString();
+            } catch {
+              // Fallback: remove trailing slashes
+              return s.replace(/\/+$/, "");
+            }
+          } catch (_) {
+            return String(u || "");
+          }
+        };
+
+        const isLoaded = (loadedUrls || []).some((l) => canonical(l) === canonical(uri));
+        const isAuto = (config && Array.isArray(config.additionalOntologies))
+          ? (config.additionalOntologies || []).some((a) => canonical(a) === canonical(uri))
+          : false;
 
         return (
           <div key={uri} className="flex items-center justify-between gap-2 p-2 bg-muted/5 rounded text-xs">

@@ -135,9 +135,19 @@ export const LinkPropertyEditor = ({
           if (typeof mgr.loadRDFIntoGraph === "function") {
             // Prefer the graph-aware loader so the triple is added into urn:vg:data
             await mgr.loadRDFIntoGraph(ttl, "urn:vg:data");
+          } else if (typeof mgr.loadRDFIntoGraph === "function") {
+            // Prefer the graph-aware loader so the triple is added into urn:vg:data
+            await mgr.loadRDFIntoGraph(ttl, "urn:vg:data");
           } else if (typeof mgr.loadRDF === "function") {
-            // Fallback: loadRDF then let parsing finalize trigger notifications
-            await mgr.loadRDF(ttl);
+            // Fallback kept for very old RDF manager implementations: write into the data graph via the graph-aware call
+            try {
+              await (mgr as any).loadRDFIntoGraph
+                ? (mgr as any).loadRDFIntoGraph(ttl, "urn:vg:data")
+                : await mgr.loadRDF(ttl);
+            } catch (_) {
+              // last-resort: call mgr.loadRDF if available
+              await mgr.loadRDF(ttl);
+            }
           } else {
             // As a last resort (very unlikely), fall back to direct store writes and attempt to trigger change.
             const store = mgr.getStore && mgr.getStore();

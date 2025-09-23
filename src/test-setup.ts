@@ -1,195 +1,144 @@
-/**
- * Test setup for vitest: mock global fetch for ontology URLs used in tests.
- * Also ensure a minimal jsdom environment is present for tests that call DOM APIs,
- * and load testing-library matchers.
- */
+// Test environment polyfills for jsdom -> provide minimal DOMMatrix/DOMMatrixReadOnly
+// used by @xyflow/react internals when running under jsdom in Vitest.
+//
+// This file is loaded by the test runner setup (see vitest config or package.json).
+// It implements a forgiving DOMMatrixReadOnly that accepts CSS transform strings
+// like "matrix(a, b, c, d, tx, ty)" and exposes m11/m12/m21/m22/m41/m42 (m41/m42 as tx/ty).
+// If parsing fails, it falls back to the identity matrix.
+//
+// Keep this file minimal and robust; it's only needed so xyflow/react can compute
+// element transforms during tests that render ReactFlow components.
+class SimpleDOMMatrixReadOnly {
+  m11: number;
+  m12: number;
+  m21: number;
+  m22: number;
+  m41: number;
+  m42: number;
 
-import { JSDOM } from "jsdom";
+  constructor(init?: string) {
+    // identity defaults
+    this.m11 = 1;
+    this.m12 = 0;
+    this.m21 = 0;
+    this.m22 = 1;
+    this.m41 = 0;
+    this.m42 = 0;
 
-// Provide a lightweight jsdom environment if one isn't already present.
-// Vitest typically does this for us (environment: "jsdom"), but some runners
-// or earlier misconfigurations can leave globals undefined; this guarantees tests run.
-if (typeof globalThis.document === "undefined") {
-  const dom = new JSDOM("<!doctype html><html><body></body></html>");
-  // Expose minimal browser globals expected by testing-library and components
-  (globalThis as any).window = dom.window;
-  (globalThis as any).document = dom.window.document;
-  (globalThis as any).navigator = dom.window.navigator;
-  (globalThis as any).HTMLElement = dom.window.HTMLElement;
-  (globalThis as any).HTMLCanvasElement = dom.window.HTMLCanvasElement;
-  (globalThis as any).Node = dom.window.Node;
-}
-
-/*
-  Provide lightweight DOM polyfills used by UI libraries during tests.
-
-  - Ensure scrollIntoView exists on elements since some libraries call it during
-    mount/layout, and jsdom doesn't implement it.
-  - Provide a ResizeObserver minimal polyfill used by components (cmdk/popover/etc).
-*/
-
-// Minimal scrollIntoView polyfill for jsdom: no-op implementation so callers don't throw.
-if (typeof (globalThis as any).HTMLElement !== "undefined" && typeof (globalThis as any).HTMLElement.prototype.scrollIntoView !== "function") {
-  (globalThis as any).HTMLElement.prototype.scrollIntoView = function() {
-    // no-op for test environment
-  };
-}
-
-// Provide a lightweight ResizeObserver polyfill for jsdom tests where some UI
-// libraries (or cmdk) expect ResizeObserver to exist. The polyfill is intentionally
-// minimal (no-op) because tests only need components to mount without throwing.
-if (typeof (globalThis as any).ResizeObserver === "undefined") {
-  (globalThis as any).ResizeObserver = class {
-    observe() { /* no-op */ }
-    unobserve() { /* no-op */ }
-    disconnect() { /* no-op */ }
-  };
-}
-
-// Polyfills for jsdom missing browser APIs used by the app when rendering in tests.
-// These are intentionally lightweight stubs to allow components that check for
-// matchMedia or create/operate on <canvas> to mount without requiring heavyweight
-// native modules or a real browser environment.
-
-// Basic matchMedia polyfill (used by some UI libraries to detect reduced-motion / prefers-color-scheme).
-if (typeof (globalThis as any).window?.matchMedia !== "function") {
-  (globalThis as any).window.matchMedia = (query: string) =>
-    ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: () => {},
-      removeListener: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      dispatchEvent: () => false,
-    }) as any;
-}
-
-// Stub getContext on HTMLCanvasElement so libraries that expect a 2D context (e.g. )
-// do not throw. We return a minimal object implementing commonly used methods and props.
-if (typeof (globalThis as any).HTMLCanvasElement !== "undefined") {
-  const proto = (globalThis as any).HTMLCanvasElement.prototype;
-  // Capture any original implementation and wrap it: try original first and fall back to a safe stub
-  const originalGetContext = proto.getContext;
-  proto.getContext = function (this: any, type: string) {
     try {
-      if (typeof originalGetContext === "function") {
-        const res = originalGetContext.call(this, type);
-        if (res) return res;
+      const s = String(init || "").trim();
+      if (!s || s === "none") return;
+
+      // matrix(a, b, c, d, tx, ty)
+      const m = s.match(/matrix\(([^)]+)\)/i);
+      if (m && m[1]) {
+        const parts = m[1].split(",").map((p) => parseFloat(p.trim())).filter((n) => !Number.isNaN(n));
+        if (parts.length === 6) {
+          this.m11 = parts[0];
+          this.m12 = parts[1];
+          this.m21 = parts[2];
+          this.m22 = parts[3];
+          this.m41 = parts[4];
+          this.m42 = parts[5];
+          return;
+        }
       }
-    } catch {
-      // fall through to stub implementation when original throws "Not implemented"
+
+      // matrix3d(...) -> take relevant entries (m11,m12,m21,m22, m41,m42)
+      const m3 = s.match(/matrix3d\(([^)]+)\)/i);
+      if (m3 && m3[1]) {
+        const parts = m3[1].split(",").map((p) => parseFloat(p.trim())).filter((n) => !Number.isNaN(n));
+        if (parts.length === 16) {
+          // matrix3d is column-major in CSS; indices:
+          // m11 = parts[0], m12 = parts[1], m21 = parts[4], m22 = parts[5], m41 = parts[12], m42 = parts[13]
+          this.m11 = parts[0];
+          this.m12 = parts[1];
+          this.m21 = parts[4];
+          this.m22 = parts[5];
+          this.m41 = parts[12];
+          this.m42 = parts[13];
+          return;
+        }
+      }
+    } catch (_) {
+      // swallow parse errors and keep identity defaults
     }
-
-    if (type === "2d") {
-      return {
-        fillStyle: "",
-        strokeStyle: "",
-        globalAlpha: 1,
-        lineWidth: 1,
-        beginPath: () => {},
-        rect: () => {},
-        fillRect: () => {},
-        moveTo: () => {},
-        lineTo: () => {},
-        closePath: () => {},
-        stroke: () => {},
-        fill: () => {},
-        clearRect: () => {},
-        measureText: () => ({ width: 0 }),
-        createLinearGradient: () => ({ addColorStop: () => {} }),
-        setLineDash: () => {},
-      };
-    }
-    return null;
-  };
-}
-
-// Add jest-dom matchers for better assertions in tests (load asynchronously to avoid ReferenceError
-// if the test runner hasn't initialized the global `expect` yet).
-// Dynamic import is used so the module's top-level evaluation (which calls `expect.extend`) is
-// captured as a rejected promise instead of throwing synchronously.
-/*
-  Provide lightweight global diagnostic stubs used by instrumented code during tests.
-  These are no-ops by design so tests can opt-in to inspect them via the startup debug API.
-*/
-(globalThis as any).fallback = (eventName?: string, meta?: any, opts?: any) => {
-  /* no-op in tests */
-};
-(globalThis as any).debug = (..._args: any[]) => {
-  /* no-op in tests */
-};
-(globalThis as any).debugLog = (..._args: any[]) => {
-  /* no-op in tests */
-};
-
-/*
-   test mock removed —  is no longer a project dependency.
-  If tests require diagram-related stubs, add targeted mocks in those tests.
-*/
-
-/* Load jest-dom matchers for better assertions in tests.
-   Use dynamic import so environments without ESM support don't throw synchronously.
-*/
-// @ts-expect-error - dynamic import may resolve to a types-only declaration in some environments
-void import("@testing-library/jest-dom").catch(() => {
-  /* intentionally ignore import failures in some runtimes */
-});
-
-/*
-  Use centralized RDF fixtures from src/__tests__/fixtures/rdfFixtures.ts
-  to avoid duplicating inline TTL across tests. This keeps fixtures
-  in one place and makes them easy to update.
-*/
-import { FIXTURES as FIXTURE_SOURCE } from "./__tests__/fixtures/rdfFixtures";
-
-const fixtures: Record<string, string> = { ...FIXTURE_SOURCE };
-
-// Duplicate http->https variants so loadOntology's https-first candidate URL will match fixtures
-Object.keys(fixtures).forEach((k) => {
-  if (k.startsWith("http://")) {
-    fixtures[k.replace(/^http:/, "https:")] = fixtures[k];
   }
-});
 
-// Create a simple fetch mock that returns fixture text if known, otherwise a minimal TTL
-function makeResponse(text: string) {
-  return Promise.resolve({
-    ok: true,
-    status: 200,
-    text: async () => text,
-    arrayBuffer: async () => new TextEncoder().encode(text).buffer,
-    headers: {
-      get: (k: string) =>
-        k === "content-type" ? "text/turtle; charset=utf-8" : undefined,
-      forEach: (fn: (v: string, k: string) => void) => {
-        fn("text/turtle; charset=utf-8", "content-type");
-      },
-    },
-  } as any);
+  // allow destructuring like: const { m22: zoom } = new DOMMatrixReadOnly(...)
+  // expose toString for debugging if needed
+  toString() {
+    return `matrix(${this.m11},${this.m12},${this.m21},${this.m22},${this.m41},${this.m42})`;
+  }
 }
 
-if (typeof globalThis.fetch === "undefined") {
-  globalThis.fetch = (input: RequestInfo | URL, init?: any) => {
-    const url = String(input);
-    const key = Object.keys(fixtures).find((k) => url.startsWith(k));
-    if (key) return makeResponse(fixtures[key]);
-    // fallback: return an empty Turtle document with common prefixes
-    const fallback = `
-      @prefix : <http://example.org/> .
-      @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-      @prefix owl: <http://www.w3.org/2002/07/owl#> .
-    `;
-    return makeResponse(fallback);
-  };
-} else {
-  // If native fetch exists (node 18+), monkeypatch to intercept known URLs
-  const originalFetch = globalThis.fetch.bind(globalThis);
-  globalThis.fetch = (input: RequestInfo | URL, init?: any) => {
-    const url = String(input);
-    const key = Object.keys(fixtures).find((k) => url.startsWith(k));
-    if (key) return makeResponse(fixtures[key]);
-    return originalFetch(input, init);
-  };
+// Attach to globals used by libraries
+try {
+  // Node + jsdom environment: globalThis.window may exist
+  (globalThis as any).DOMMatrixReadOnly = (globalThis as any).DOMMatrixReadOnly || SimpleDOMMatrixReadOnly;
+  (globalThis as any).DOMMatrix = (globalThis as any).DOMMatrix || SimpleDOMMatrixReadOnly;
+  if (typeof (globalThis as any).window !== "undefined") {
+    (globalThis as any).window.DOMMatrixReadOnly = (globalThis as any).window.DOMMatrixReadOnly || SimpleDOMMatrixReadOnly;
+    (globalThis as any).window.DOMMatrix = (globalThis as any).window.DOMMatrix || SimpleDOMMatrixReadOnly;
+  }
+} catch (_) {
+  // best-effort
+}
+
+// Polyfill ResizeObserver for jsdom environment (minimal)
+try {
+  if (typeof (globalThis as any).ResizeObserver === "undefined") {
+    class MockResizeObserver {
+      private cb: any;
+      constructor(cb: any) {
+        this.cb = cb;
+      }
+      observe(_target?: any) {
+        // no-op
+      }
+      unobserve(_target?: any) {
+        // no-op
+      }
+      disconnect() {
+        // no-op
+      }
+    }
+    (globalThis as any).ResizeObserver = MockResizeObserver;
+    if (typeof (globalThis as any).window !== "undefined") {
+      (globalThis as any).window.ResizeObserver = MockResizeObserver;
+    }
+  }
+} catch (_) {
+  // ignore
+}
+
+// Some libraries access window.devicePixelRatio or call window.getComputedStyle expecting sensible defaults.
+// Ensure a safe default exists for tests.
+try {
+  if (typeof (globalThis as any).window !== "undefined") {
+    if (typeof (globalThis as any).window.devicePixelRatio === "undefined") {
+      (globalThis as any).window.devicePixelRatio = 1;
+    }
+    // Guarantee getComputedStyle exists (jsdom provides it), but ensure style.transform returns "none" by default.
+    const origGetComputedStyle = (globalThis as any).window.getComputedStyle;
+    (globalThis as any).window.getComputedStyle = function (el: any) {
+      const style = origGetComputedStyle ? origGetComputedStyle.call((globalThis as any).window, el) : {};
+      // Provide a safe transform property if absent
+      if (!style || typeof style.transform === "undefined") {
+        return { ...style, transform: "none" };
+      }
+      return style;
+    };
+  }
+} catch (_) {
+  // ignore
+}
+
+// Polyfill Element.scrollIntoView for jsdom (some UI libs call it)
+try {
+  if (typeof (globalThis as any).Element !== "undefined" && typeof (globalThis as any).Element.prototype.scrollIntoView === "undefined") {
+    (globalThis as any).Element.prototype.scrollIntoView = function () { /* no-op for tests */ };
+  }
+} catch (_) {
+  // ignore
 }
