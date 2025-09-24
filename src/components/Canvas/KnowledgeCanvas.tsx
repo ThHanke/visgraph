@@ -68,7 +68,6 @@ const KnowledgeCanvas: React.FC = () => {
     updateNode,
     loadAdditionalOntologies,
     getRdfManager,
-    currentGraph,
     availableProperties,
     availableClasses: ac,
     ontologiesVersion,
@@ -80,7 +79,6 @@ const KnowledgeCanvas: React.FC = () => {
     setCurrentLayout,
     setShowLegend,
     setViewMode: setPersistedViewMode,
-    addAdditionalOntology,
   } = useAppConfigStore();
 
   const [viewMode, setViewMode] = useState(config.viewMode);
@@ -212,6 +210,16 @@ const KnowledgeCanvas: React.FC = () => {
       })),
     ]);
   }, [ontologiesVersion, loadedOntologies]);
+
+  // Snapshot of availableProperties passed into the pure mapper to avoid races.
+  // Use ontologiesVersion so snapshot updates when the fat-map changes.
+  const availablePropertiesSnapshot = useMemo(() => {
+    try {
+      return Array.isArray(availableProperties) ? (availableProperties as any[]).slice() : [];
+    } catch (_) {
+      return [];
+    }
+  }, [availableProperties, ontologiesVersion]);
 
   const initialMapRef = useRef(true);
   // When a programmatic "load" occurs we mark this ref so the next mapping pass can
@@ -643,7 +651,7 @@ const KnowledgeCanvas: React.FC = () => {
       // Use the centralized pure mapper directly and consult the predicate classifier so
       // annotation properties (owl:AnnotationProperty) are preserved as node annotations.
       const translateQuadsToDiagram = (quads: any[]) => {
-        return mapQuadsToDiagram(quads, { predicateKind: predicateClassifier });
+        return mapQuadsToDiagram(quads, { predicateKind: predicateClassifier, availableProperties: availablePropertiesSnapshot });
       };
 
     const runMapping = () => {
@@ -669,7 +677,6 @@ const KnowledgeCanvas: React.FC = () => {
           const gstr = String(graphVal || "");
           if (!gstr) return false;
           if (gstr.includes("urn:vg:ontologies")) return true;
-          if (/^https?:\/\/(www\.)?w3.org/i.test(gstr)) return true;
           return false;
         } catch (_) {
           return false;
@@ -734,73 +741,8 @@ const KnowledgeCanvas: React.FC = () => {
         console.debug('[VG] runMapping produced', { mappedNodeCount: Array.isArray(mappedNodes) ? mappedNodes.length : 0, mappedEdgeCount: Array.isArray(mappedEdges) ? mappedEdges.length : 0 });
       } catch (_) { /* ignore debug */ }
 
-        // Enrich nodes and edges with display/palette information so first-render shows
-        // type-driven colors and fat-map labels. computeTermDisplay is authoritative here.
-        let enrichedNodes = mappedNodes;
-        let enrichedEdges = mappedEdges;
-      try {
-        // Build quick lookup for availableProperties (fat map) to speed up per-edge resolution.
-        const propMap = new Map<string, any>();
-        try {
-          if (Array.isArray(availableProperties)) {
-            for (const p of availableProperties) {
-              try {
-                const iriKey = String((p && (p as any).iri) || "").trim();
-                if (iriKey) propMap.set(iriKey, p);
-              } catch (_) { /* ignore per-entry */ }
-            }
-          }
-        } catch (_) { /* ignore propMap build */ }
-
-        const mgr = typeof getRdfManager === "function" ? getRdfManager() : undefined;
-
-        enrichedNodes = (mappedNodes || []).map((n) => {
-          try {
-            const primary =
-              Array.isArray(n.data?.rdfTypes) && n.data.rdfTypes.find((t: any) => t && !/NamedIndividual/i.test(String(t))) ||
-              n.data?.classType ||
-              n.data?.displayType ||
-              undefined;
-            let td: any = undefined;
-            try {
-              if (primary && mgr) td = computeTermDisplay(String(primary), mgr as any, palette, { availableProperties, availableClasses });
-            } catch (_) {
-              td = undefined;
-            }
-            const paletteColor = td?.color || (td && td.namespace && palette ? (palette as any)[td.namespace] : undefined);
-            const displayPrefixed = td?.prefixed || (td && td.label) || n.data?.displayPrefixed || (n.data && (n.data.label || n.data.classType)) || undefined;
-            const displayShort = td?.short || n.data?.displayShort || undefined;
-            const updatedData = { ...(n.data as NodeData), classType: (td && td.iri) || n.data?.classType, namespace: td?.namespace || n.data?.namespace, displayPrefixed, displayShort, typeNamespace: td?.namespace || n.data?.typeNamespace, paletteColor, label: n.data?.label || td?.label } as NodeData;
-            return { ...n, data: updatedData } as RFNode<NodeData>;
-          } catch (_) {
-            return n;
-          }
-        });
-
-        enrichedEdges = (mappedEdges || []).map((e) => {
-          try {
-            const pred = String((e && e.data && ((e.data as any).propertyUri || (e.data as any).propertyType || (e.data as any).predicate)) || "");
-            let td: any = undefined;
-            try {
-              if (pred && mgr) td = computeTermDisplay(pred, mgr as any, palette, { availableProperties });
-            } catch (_) {
-              td = undefined;
-            }
-            const fromFat = propMap.get(pred);
-            const labelFromProps = fromFat && fromFat.label ? String(fromFat.label) : undefined;
-            const newLabel = labelFromProps || td?.label || td?.prefixed || td?.short || String(pred);
-            const newColor = td?.color || (td && td.namespace && palette ? (palette as any)[td.namespace] : undefined);
-            const updatedEdgeData = { ...(e.data as LinkData), label: newLabel, paletteColor: newColor } as LinkData;
-            return { ...e, data: updatedEdgeData } as RFEdge<LinkData>;
-          } catch (_) {
-            return e;
-          }
-        });
-      } catch (_) {
-        // if enrichment fails, fall back to the raw mapped arrays
-        enrichedNodes = mappedNodes;
-        enrichedEdges = mappedEdges;
-      }
+      let enrichedNodes = mappedNodes;
+      const enrichedEdges = mappedEdges;
 
       // Apply blacklist filtering so reserved/core RDF terms are not rendered as nodes.
       try {
@@ -834,138 +776,88 @@ const KnowledgeCanvas: React.FC = () => {
         }
       } catch (_) { /* ignore */ }
 
-      // Merge positions and runtime flags from current nodes state using upsert semantics
-      // (preserve existing nodes not mentioned in this incremental mapping).
+      // Replace node.data wholesale for mapped nodes while preserving position & runtime flags.
+      // Preserve any previous nodes that are not part of this mapping batch.
       setNodes((prev) => {
         try {
-          // Primary map keyed by canonical id (node.id)
-          const byId = new Map<string, RFNode<NodeData>>();
-          // Helper to find an existing node using alternative identifiers (data.iri or data.key)
-          const findExisting = (candidateId: string, m?: RFNode<NodeData>) => {
-            try {
-              if (!candidateId) return undefined;
-              const direct = byId.get(candidateId);
-              if (direct) return direct;
-              // Fallback scan: compare against data.iri or data.key on existing nodes
-              for (const existing of byId.values()) {
-                try {
-                  const existingIri = existing && existing.data ? String((existing.data as any).iri || "") : "";
-                  const existingKey = existing && existing.data ? String((existing.data as any).key || "") : "";
-                  if (existingIri && existingIri === candidateId) return existing;
-                  if (existingKey && existingKey === candidateId) return existing;
-                  // Also consider incoming node's data.iri matching existing.id
-                  if (m && m.data) {
-                    const mIri = String((m.data as any).iri || "");
-                    if (mIri && String(existing.id) === mIri) return existing;
-                  }
-                } catch (_) { /* ignore per-entry */ }
-              }
-            } catch (_) { /* ignore */ }
-            return undefined;
-          };
-
-          // Seed map with previous nodes: index by id and also keep them accessible for scanner
+          const prevById = new Map<string, RFNode<NodeData>>();
           (prev || []).forEach((n) => {
-            try {
-              const key = String(n.id);
-              if (key) byId.set(key, n);
-            } catch (_) { /* ignore per-node */ }
+            try { prevById.set(String(n.id), n); } catch (_) {}
           });
 
-          // Upsert enriched nodes: update existing entries or add new ones.
+          // Start result map with all previous nodes preserved.
+          const resultById = new Map<string, RFNode<NodeData>>(prevById);
+
+          // For each mapped/enriched node, replace node.data while preserving position and runtime flags.
           for (const m of (enrichedNodes || [])) {
             try {
-              const incomingId = String((m && m.id) || "");
-              const incomingIri = m && m.data ? String((m.data as any).iri || "") : "";
-              // Try to find existing by id first, then by iri/key heuristics
-              let existing = incomingId ? findExisting(incomingId, m) : undefined;
-              if (!existing && incomingIri) existing = findExisting(incomingIri, m);
-
+              const id = String((m && m.id) || "");
+              if (!id) continue;
+              const existing = prevById.get(id);
               if (existing) {
-                // preserve runtime flags & previous position if present
-                const mergedNode: RFNode<NodeData> = {
+                // Replace data completely, but keep position & runtime flags.
+                const replaced: RFNode<NodeData> = {
                   ...existing,
-                  ...m,
-                  position: (existing && existing.position) || m.position || { x: 0, y: 0 },
+                  // keep existing top-level fields (position, selected, hidden, __rf)
+                  position: existing.position,
+                  id: existing.id,
+                  type: m.type || existing.type || "ontology",
+                  data: (m && m.data) ? (m.data as NodeData) : (existing.data as NodeData),
                 } as RFNode<NodeData>;
-                try { if ((existing as any).__rf) (mergedNode as any).__rf = (existing as any).__rf; } catch (_) {}
-                try { if ((existing as any).selected) (mergedNode as any).selected = true; } catch (_) {}
-                // Ensure canonical key in map is the primary id value
-                const canonicalKey = String(existing.id || incomingId || incomingIri || "");
-                if (canonicalKey) byId.set(canonicalKey, mergedNode);
+                try { if ((existing as any).__rf) (replaced as any).__rf = (existing as any).__rf; } catch (_) {}
+                try { if ((existing as any).selected) (replaced as any).selected = true; } catch (_) {}
+                try { if ((existing as any).hidden) (replaced as any).hidden = (existing as any).hidden; } catch (_) {}
+                resultById.set(id, replaced);
               } else {
-                // Add new node, ensuring it has a position
-                const nodeToSet = (m && (m as any).position) ? m : { ...m, position: { x: 0, y: 0 } };
-                const canonicalKey = incomingId || incomingIri || String((m as any).key || "");
-                byId.set(canonicalKey || String(m.id || Math.random()), nodeToSet as RFNode<NodeData>);
+                // New node: add as-is but do not assign or modify position (leave m.position if present).
+                const newNode = { ...(m as RFNode<NodeData>) };
+                // Ensure id and type are present
+                newNode.id = id;
+                newNode.type = newNode.type || "ontology";
+                resultById.set(id, newNode as RFNode<NodeData>);
               }
             } catch (_) {
-              try {
-                const fallbackNode = (m && (m as any).position) ? m : { ...(m || {}), position: { x: 0, y: 0 } };
-                byId.set(String((m as any).id || Math.random()), fallbackNode as RFNode<NodeData>);
-              } catch (_) { /* ignore per-item */ }
+              // ignore per-item failures
             }
           }
 
-          // Return merged list preserving previous nodes that were not in the incoming enrichment
-          return Array.from(byId.values()).filter(Boolean) as RFNode<NodeData>[];
+          return Array.from(resultById.values()).filter(Boolean) as RFNode<NodeData>[];
         } catch (e) {
-          try { console.warn("[VG] KnowledgeCanvas: upsert merge failed, falling back to previous nodes", e); } catch (_) {}
+          try { console.warn("[VG] KnowledgeCanvas: replace-node-data failed, falling back to previous nodes", e); } catch (_) {}
           return prev || [];
         }
       });
 
-      // Replace/update edges: merge existing edges with newly mapped edges.
-      // We previously removed all edges whose source was among the updated nodes,
-      // but that could drop unrelated outgoing edges of those nodes. Instead, only
-      // allow enrichedEdges to replace existing edges when they share the same id.
-      // This preserves unrelated edges for updated nodes that the incoming mapping
-      // does not include.
+      // Replace outgoing edges for subjects that emitted in this mapping pass.
       setEdges((prev) => {
         try {
-          const mappedIds = new Set<string>((enrichedNodes || []).map((n) => String(n.id)));
-          const enrichedEdgeIds = new Set<string>((enrichedEdges || []).map((e) => String(e.id)));
+          const prevEdges = Array.isArray(prev) ? prev.slice() : [];
+          // Collect subjects present in this mapping batch (mapped/enriched nodes)
+          const subjects = new Set<string>((enrichedNodes || []).map((n) => String(n.id)).filter(Boolean));
 
-          // If there are no previous edges, just return deduped enrichedEdges.
-          if (!Array.isArray(prev) || prev.length === 0) {
-            const byId = new Map<string, RFEdge<LinkData>>();
-            for (const e of enrichedEdges || []) {
-              try { byId.set(String(e.id), e as RFEdge<LinkData>); } catch (_) { /* ignore per-edge */ }
-            }
-            return Array.from(byId.values()) as RFEdge<LinkData>[];
-          }
-
-          // Keep existing edges except those that are meant to be replaced by enrichedEdges.
-          // An existing edge should be removed only if an enriched edge with the same id exists;
-          // otherwise preserve it even if its source is among the mapped nodes.
-          const kept: RFEdge<LinkData>[] = [];
-          for (const e of prev || []) {
+          // Filter out all previous edges whose source is one of the emitted subjects.
+          const kept = prevEdges.filter((e) => {
             try {
-              const id = String(e.id);
-              if (enrichedEdgeIds.has(id)) {
-                // This edge will be replaced by the incoming enriched edge (skip keeping)
-                continue;
-              }
-              kept.push(e);
-            } catch (_) { /* ignore per-edge */ }
-          }
+              const src = String(e.source || "");
+              return !subjects.has(src);
+            } catch (_) { return true; }
+          });
 
-          // Merge: start with kept edges, then add enrichedEdges (new edges replace old ones by id)
+          // Add all enrichedEdges (they include edges for the emitted subjects).
+          const merged = [...kept, ...(enrichedEdges || [])];
+
+          // Deduplicate by id preserving the last occurrence (enriched edges override)
           const byId = new Map<string, RFEdge<LinkData>>();
-          for (const e of kept) {
-            try { byId.set(String(e.id), e); } catch (_) { /* ignore per-edge */ }
+          for (const e of merged) {
+            try { byId.set(String(e.id), e); } catch (_) {}
           }
-          for (const e of enrichedEdges || []) {
-            try { byId.set(String(e.id), e); } catch (_) { /* ignore per-edge */ }
-          }
-
           const result = Array.from(byId.values());
 
-          // If nothing changed structurally, return prev to avoid unnecessary state updates.
+          // If structurally identical to prev, return prev to avoid updates
           try {
             if (
-              prev.length === result.length &&
-              prev.every((p, idx) => p.id === result[idx].id && p.source === result[idx].source && p.target === result[idx].target)
+              prevEdges.length === result.length &&
+              prevEdges.every((p, idx) => p.id === result[idx].id && p.source === result[idx].source && p.target === result[idx].target)
             ) {
               return prev;
             }
@@ -973,10 +865,10 @@ const KnowledgeCanvas: React.FC = () => {
 
           return result;
         } catch (_) {
-          // On error, fall back to replacing with enrichedEdges
+          // fallback: return enrichedEdges
           const byId = new Map<string, RFEdge<LinkData>>();
           for (const e of enrichedEdges || []) {
-            try { byId.set(String(e.id), e); } catch (_) { /* ignore per-edge */ }
+            try { byId.set(String(e.id), e); } catch (_) {}
           }
           return Array.from(byId.values());
         }
@@ -1301,7 +1193,7 @@ const KnowledgeCanvas: React.FC = () => {
 
           let diagram;
           try {
-            diagram = mapQuadsToDiagram(quads, { predicateKind: predicateClassifier });
+            diagram = mapQuadsToDiagram(quads, { predicateKind: predicateClassifier, availableProperties: availablePropertiesSnapshot });
           } catch (_) {
             diagram = { nodes: [], edges: [] };
           }
@@ -1309,9 +1201,9 @@ const KnowledgeCanvas: React.FC = () => {
           const mappedEdges: RFEdge<LinkData>[] = (diagram && diagram.edges) || [];
 
           // Enrich nodes/edges similar to runMapping
-          let enrichedNodes = mappedNodes;
-          let enrichedEdges = mappedEdges;
-          try {
+            let enrichedNodes = mappedNodes;
+            let enrichedEdges = mappedEdges;
+            try {
             const propMap = new Map<string, any>();
             try {
               if (Array.isArray(availableProperties)) {

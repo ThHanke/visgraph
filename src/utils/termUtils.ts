@@ -189,7 +189,7 @@ export function computeTermDisplay(
 
   // Compute namespace prefix and local name so the rest of the function can refer to them.
   // Derive prefix via findPrefixForUri when an rdfManager / namespace map is available.
-  let prefix: string | undefined = rdfManager ? findPrefixForUri(targetIri, rdfManager) : undefined;
+  const prefix: string | undefined = rdfManager ? findPrefixForUri(targetIri, rdfManager) : undefined;
 
   // Derive a local name: prefer extracting by removing the namespace URI when available,
   // otherwise fall back to shortLocalName.
@@ -231,7 +231,7 @@ export function computeTermDisplay(
     }
   }
 
-  // Primary: fat-map lookup (availableProperties) — authoritative label & optional color hint
+  // Primary: fat-map lookup (available Properties) — authoritative label & optional color hint
   let label: string | undefined;
   let labelSource: 'fatmap' | 'computed' | undefined;
 

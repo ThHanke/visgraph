@@ -10,11 +10,9 @@ import { create } from "zustand";
 import { RDFManager, rdfManager } from "../utils/rdfManager";
 import { useAppConfigStore } from "./appConfigStore";
 import { debug, info, warn, error, fallback } from "../utils/startupDebug";
-import { DataFactory, Quad } from "n3";
-const { namedNode, quad } = DataFactory;
 import { WELL_KNOWN } from "../utils/wellKnownOntologies";
 import { computeTermDisplay } from "../utils/termUtils";
-import { buildEdgePayload, addEdgeToCurrentGraph, generateEdgeId } from "../components/Canvas/core/edgeHelpers";
+import { generateEdgeId } from "../components/Canvas/core/edgeHelpers";
 
 /**
  * Map to track in-flight RDF loads so identical loads return the same Promise.
@@ -146,17 +144,16 @@ type ParsedEdge = {
 type DiagramNode = Record<string, any>;
 type DiagramEdge = Record<string, any>;
 
-function getNodeData(node: ParsedNode | DiagramNode): any {
-  return (node as any).data || node;
-}
-
 /**
  * Compare two ontology URLs for equivalence for deduplication purposes.
  * Comparison is scheme-agnostic (treats http/https as equivalent) but preserves
  * the remainder of the IRI including trailing slashes, fragments and queries.
  * This function is used only for duplicate-detection; it does NOT rewrite stored URLs.
  */
-function urlsEquivalent(a: string | undefined | null, b: string | undefined | null): boolean {
+function urlsEquivalent(
+  a: string | undefined | null,
+  b: string | undefined | null,
+): boolean {
   try {
     const sa = String(a || "").trim();
     const sb = String(b || "").trim();
@@ -203,7 +200,7 @@ interface LoadedOntology {
   // 'fetched'   - autoload/fetch finished and was registered
   // 'discovered' - inferred/canonicalized from parsed namespaces
   // 'core'      - core vocabularies (rdf/rdfs/owl)
-  source?: 'requested' | 'fetched' | 'discovered' | 'core' | string;
+  source?: "requested" | "fetched" | "discovered" | "core" | string;
 }
 
 interface ValidationError {
@@ -256,7 +253,6 @@ interface OntologyStore {
     nodes: (ParsedNode | DiagramNode)[],
     edges: (ParsedEdge | DiagramEdge)[],
   ) => void;
-  updateNode: (entityUri: string, updates: Record<string, unknown>) => void;
   exportGraph: (format: "turtle" | "json-ld" | "rdf-xml") => Promise<string>;
   reconcileQuads: (quads: any[] | undefined) => void;
   getRdfManager: () => RDFManager;
@@ -337,7 +333,8 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                 classes: [],
                 properties: [],
                 namespaces: namespaces || {},
-                source: wkEntry && (wkEntry as any).isCore ? "core" : "requested",
+                source:
+                  wkEntry && (wkEntry as any).isCore ? "core" : "requested",
                 graphName: "urn:vg:ontologies",
               };
               set((state) => ({
@@ -403,8 +400,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
               } catch (_) {
                 /* ignore persist failures - parsing will proceed regardless */
               }
-              const { computeParsedFromStore } = await import("../utils/parsedFromStore");
-              const parsedLocal = await computeParsedFromStore(rdfManager, "urn:vg:ontologies");
+              const { computeParsedFromStore } = await import(
+                "../utils/parsedFromStore"
+              );
+              const parsedLocal = await computeParsedFromStore(
+                rdfManager,
+                "urn:vg:ontologies",
+              );
               return parsedLocal;
             } catch (e) {
               throw e;
@@ -421,44 +423,61 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         }
         // Filter out synthetic helper prefixes/entries (e.g. those created by ensureNamespacesPresent which
         // emit minimal dummy triples like PREFIX:__vg_dummy). These should not create standalone loadedOntology entries.
-        const filteredNamespaces = parsed && parsed.namespaces
-          ? Object.fromEntries(
-              Object.entries(parsed.namespaces).filter(([p, ns]) => {
-                try {
-                  const sp = String(p || "");
-                  const sn = String(ns || "");
-                  return !sp.includes("__vg_dummy") && !sn.includes("__vg_dummy");
-                } catch {
-                  return true;
-                }
-              }),
-            )
-          : {};
-
+        const filteredNamespaces =
+          parsed && parsed.namespaces
+            ? Object.fromEntries(
+                Object.entries(parsed.namespaces).filter(([p, ns]) => {
+                  try {
+                    const sp = String(p || "");
+                    const sn = String(ns || "");
+                    return (
+                      !sp.includes("__vg_dummy") && !sn.includes("__vg_dummy")
+                    );
+                  } catch {
+                    return true;
+                  }
+                }),
+              )
+            : {};
 
         // Ensure any namespaces discovered during parsing are applied into the RDF manager
         // immediately so subsequent logic that uses computeTermDisplay or expandPrefix
         // sees the newly-registered prefixes. This is idempotent and safe to call.
         try {
-            if (filteredNamespaces && Object.keys(filteredNamespaces).length > 0) {
+          if (
+            filteredNamespaces &&
+            Object.keys(filteredNamespaces).length > 0
+          ) {
             try {
               // filteredNamespaces may come from parsing and have unknown-value types;
               // coerce to the expected Record<string,string> when calling the RDF manager.
               try {
-                rdfManager.applyParsedNamespaces(filteredNamespaces as Record<string, string>);
+                rdfManager.applyParsedNamespaces(
+                  filteredNamespaces as Record<string, string>,
+                );
               } catch (_) {
                 // fallback: stringify values
                 const stringified: Record<string, string> = {};
                 Object.entries(filteredNamespaces || {}).forEach(([k, v]) => {
-                  try { stringified[k] = String(v); } catch (_) { /* ignore */ }
+                  try {
+                    stringified[k] = String(v);
+                  } catch (_) {
+                    /* ignore */
+                  }
                 });
-                try { rdfManager.applyParsedNamespaces(stringified); } catch (_) { /* ignore */ }
+                try {
+                  rdfManager.applyParsedNamespaces(stringified);
+                } catch (_) {
+                  /* ignore */
+                }
               }
             } catch (_) {
               /* ignore namespace application failures */
             }
           }
-        } catch (_) { /* ignore overall */ }
+        } catch (_) {
+          /* ignore overall */
+        }
 
         // To avoid duplicate rdf:type triples appearing across graphs (the raw
         // ontology persisted into the ontologies graph vs. the parsed nodes being
@@ -542,8 +561,8 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           // Use scheme-agnostic comparison (urlsEquivalent) to detect existing variants
           // and add textual variants as aliases instead of creating duplicate entries.
           try {
-            const existingIndex = (get().loadedOntologies || []).findIndex((o: any) =>
-              urlsEquivalent(o.url, canonicalForThis),
+            const existingIndex = (get().loadedOntologies || []).findIndex(
+              (o: any) => urlsEquivalent(o.url, canonicalForThis),
             );
 
             if (existingIndex === -1) {
@@ -579,10 +598,15 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                     new Set([...(existing.classes || []), ...ontologyClasses]),
                   );
                   existing.properties = Array.from(
-                    new Set([...(existing.properties || []), ...ontologyProperties]),
+                    new Set([
+                      ...(existing.properties || []),
+                      ...ontologyProperties,
+                    ]),
                   );
                   if (String(existing.url) !== String(canonicalForThis)) {
-                    existing.aliases = Array.isArray(existing.aliases) ? existing.aliases : [];
+                    existing.aliases = Array.isArray(existing.aliases)
+                      ? existing.aliases
+                      : [];
                     if (!existing.aliases.includes(canonicalForThis)) {
                       existing.aliases.push(canonicalForThis);
                     }
@@ -668,7 +692,87 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             (isIndividual || hasLiterals) &&
             Object.keys(updates).length > 0
           ) {
-            rdfManager.updateNode(node.iri, updates);
+            try {
+              const subj = String(node.iri || node.id || "");
+              if (subj) {
+                // Persist rdfTypes (non-destructive: add missing types)
+                if (updates.rdfTypes && Array.isArray(updates.rdfTypes)) {
+                  try {
+                    const rdfTypePred =
+                      typeof rdfManager.expandPrefix === "function"
+                        ? rdfManager.expandPrefix("rdf:type")
+                        : "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+                    for (const t of updates.rdfTypes) {
+                      try {
+                        const typeVal = String(t || "");
+                        const expanded =
+                          typeof rdfManager.expandPrefix === "function"
+                            ? rdfManager.expandPrefix(typeVal)
+                            : typeVal;
+                        if (expanded) {
+                          try {
+                            rdfManager.addTriple(
+                              subj,
+                              rdfTypePred,
+                              expanded,
+                              "urn:vg:ontologies",
+                            );
+                          } catch (_) {
+                            /* ignore per-type add failures */
+                          }
+                        }
+                      } catch (_) {
+                        /* ignore per-type */
+                      }
+                    }
+                  } catch (_) {
+                    /* ignore rdfTypes persistence */
+                  }
+                }
+
+                // Persist annotation/literal properties idempotently into the ontology graph
+                const ann = updates.annotationProperties;
+                if (ann && Array.isArray(ann) && ann.length > 0) {
+                  try {
+                    const adds: any[] = [];
+                    for (const ap of ann) {
+                      try {
+                        const predRaw =
+                          (ap && (ap.propertyUri || ap.property || ap.key)) ||
+                          "";
+                        const predFull =
+                          typeof rdfManager.expandPrefix === "function"
+                            ? rdfManager.expandPrefix(String(predRaw))
+                            : String(predRaw);
+                        if (!predFull) continue;
+                        adds.push({
+                          subject: subj,
+                          predicate: predFull,
+                          object: String(ap.value),
+                        });
+                      } catch (_) {
+                        /* ignore per-ann */
+                      }
+                    }
+                    // Apply add operations directly (idempotent)
+                    for (const a of adds) {
+                      try {
+                        rdfManager.addTriple(
+                          a.subject,
+                          a.predicate,
+                          a.object,
+                          "urn:vg:ontologies",
+                        );
+                      } catch (_) {}
+                    }
+                  } catch (_) {
+                    /* ignore annotation persistence */
+                  }
+                }
+              }
+            } catch (_) {
+              /* ignore overall persistence errors */
+            }
           }
 
           const classKey = `${node.namespace}:${node.classType}`;
@@ -769,12 +873,15 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           canonicalUrl = url;
         }
 
-          const loadedOntology: LoadedOntology = {
+        const loadedOntology: LoadedOntology = {
           url: canonicalUrl,
           name: deriveOntologyName(canonicalUrl),
           classes: ontologyClasses,
           properties: ontologyProperties,
-          namespaces: Object.keys(filteredNamespaces || {}).length > 0 ? filteredNamespaces : (parsed.namespaces || {}),
+          namespaces:
+            Object.keys(filteredNamespaces || {}).length > 0
+              ? filteredNamespaces
+              : parsed.namespaces || {},
           source: wkEntry ? "requested" : "requested",
           graphName: "urn:vg:ontologies",
         };
@@ -792,8 +899,14 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           // If the loaded ontology is a core vocab, do not register it as a separate loadedOntology here.
           if (coreOntologies.has(String(loadedOntology.url))) {
             // still merge classes/properties into available lists below, but avoid showing as a loaded ontology
-            const mergedClasses = [...state.availableClasses, ...ontologyClasses];
-            const mergedProps = [...state.availableProperties, ...ontologyProperties];
+            const mergedClasses = [
+              ...state.availableClasses,
+              ...ontologyClasses,
+            ];
+            const mergedProps = [
+              ...state.availableProperties,
+              ...ontologyProperties,
+            ];
 
             const classMap: Record<string, any> = {};
             mergedClasses.forEach((c: any) => {
@@ -815,8 +928,8 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             };
           }
 
-          const existingIndex = (state.loadedOntologies || []).findIndex((o: any) =>
-            urlsEquivalent(o.url, loadedOntology.url),
+          const existingIndex = (state.loadedOntologies || []).findIndex(
+            (o: any) => urlsEquivalent(o.url, loadedOntology.url),
           );
 
           let newLoaded = (state.loadedOntologies || []).slice();
@@ -830,16 +943,25 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                 ...(loadedOntology.namespaces || {}),
               };
               existing.classes = Array.from(
-                new Set([...(existing.classes || []), ...(loadedOntology.classes || [])]),
+                new Set([
+                  ...(existing.classes || []),
+                  ...(loadedOntology.classes || []),
+                ]),
               );
               existing.properties = Array.from(
-                new Set([...(existing.properties || []), ...(loadedOntology.properties || [])]),
+                new Set([
+                  ...(existing.properties || []),
+                  ...(loadedOntology.properties || []),
+                ]),
               );
               // record alias if textual URLs differ
               try {
                 if (String(existing.url) !== String(loadedOntology.url)) {
-                  existing.aliases = Array.isArray(existing.aliases) ? existing.aliases : [];
-                  if (!existing.aliases.includes(loadedOntology.url)) existing.aliases.push(loadedOntology.url);
+                  existing.aliases = Array.isArray(existing.aliases)
+                    ? existing.aliases
+                    : [];
+                  if (!existing.aliases.includes(loadedOntology.url))
+                    existing.aliases.push(loadedOntology.url);
                 }
               } catch (_) {}
               newLoaded[existingIndex] = existing;
@@ -852,7 +974,10 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           }
 
           const mergedClasses = [...state.availableClasses, ...ontologyClasses];
-          const mergedProps = [...state.availableProperties, ...ontologyProperties];
+          const mergedProps = [
+            ...state.availableProperties,
+            ...ontologyProperties,
+          ];
 
           // Deduplicate available lists by iri
           const classMap: Record<string, any> = {};
@@ -1084,7 +1209,11 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             return {
               id:
                 e.id ||
-                generateEdgeId(String(rawSource), String(rawTarget), String(e.propertyType || e.propertyUri || "")),
+                generateEdgeId(
+                  String(rawSource),
+                  String(rawTarget),
+                  String(e.propertyType || e.propertyUri || ""),
+                ),
               source: String(rawSource || ""),
               target: String(rawTarget || ""),
               data: e,
@@ -1197,9 +1326,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
               e.object ||
               e.o ||
               "";
-          const edgeId =
-            e.id ||
-            generateEdgeId(String(rawSource), String(rawTarget), String(e.propertyType || e.propertyUri || ""));
+            const edgeId =
+              e.id ||
+              generateEdgeId(
+                String(rawSource),
+                String(rawTarget),
+                String(e.propertyType || e.propertyUri || ""),
+              );
             if (!mergedEdges.find((me: any) => me.id === edgeId)) {
               mergedEdges.push({
                 id: edgeId,
@@ -1210,124 +1343,317 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             }
           });
 
-                // Ensure edges loaded from RDF receive computed display labels now that the RDF manager
-                // has been updated. We compute labels conservatively using computeTermDisplay when an RDF
-                // manager is available; otherwise labels remain empty (strict policy).
-                try {
-                  const mgrLocal = get().rdfManager;
-                  const labeledEdges = (mergedEdges || []).map((e: any) => {
-                    try {
-                      const pred = (e && e.data && (e.data.propertyUri || e.data.propertyType)) || "";
-                      let label = "";
-                      if (mgrLocal && pred) {
-                        try {
-                          const td = computeTermDisplay(String(pred), mgrLocal as any);
-                          label = String(td.prefixed || td.short || "");
-                        } catch (_) {
-                          label = "";
-                        }
-                      } else if (e && e.data && e.data.label) {
-                        // preserve any explicit label present in parsed edge payload
-                        label = String(e.data.label);
-                      } else {
-                        label = "";
-                      }
-                      return { ...e, data: { ...(e.data || {}), label } };
-                    } catch (_) {
-                      return e;
-                    }
-                  });
-                  // Merge into existing currentGraph (preserve nodes/edges not present in this parsed batch)
+          // Ensure edges loaded from RDF receive computed display labels now that the RDF manager
+          // has been updated. We compute labels conservatively using computeTermDisplay when an RDF
+          // manager is available; otherwise labels remain empty (strict policy).
+          try {
+            const mgrLocal = get().rdfManager;
+            const labeledEdges = (mergedEdges || []).map((e: any) => {
+              try {
+                const pred =
+                  (e &&
+                    e.data &&
+                    (e.data.propertyUri || e.data.propertyType)) ||
+                  "";
+                let label = "";
+                if (mgrLocal && pred) {
                   try {
-                    const existing = get().currentGraph || { nodes: [], edges: [] };
-                    const byId = new Map<string, any>();
-                    try {
-                      (existing.nodes || []).forEach((n: any) => {
-                        try { byId.set(String(n.id), n); } catch (_) { /* ignore */ }
-                      });
-                    } catch (_) { /* ignore */ }
-
-                    try {
-                      (mergedNodes || []).forEach((n: any) => {
-                        try {
-                          const id = String(n.id);
-                          const prev = byId.get(id);
-                          if (prev) {
-                            const mergedNode = { ...prev, ...n, position: prev.position || n.position || { x: 0, y: 0 } };
-                            if ((prev as any).__rf) (mergedNode as any).__rf = (prev as any).__rf;
-                            if ((prev as any).selected) (mergedNode as any).selected = true;
-                            byId.set(id, mergedNode);
-                          } else {
-                            const nodeToSet = (n && (n as any).position) ? n : { ...n, position: n.position || { x: 0, y: 0 } };
-                            byId.set(id, nodeToSet);
-                          }
-                        } catch (_) { /* ignore per-node */ }
-                      });
-                    } catch (_) { /* ignore per-mergedNodes */ }
-
-                    const finalNodes = Array.from(byId.values()).filter(Boolean);
-                    const labeledEdgesFinal = Array.isArray(labeledEdges) ? labeledEdges.slice() : (labeledEdges || []);
-                    set({ currentGraph: { nodes: finalNodes, edges: labeledEdgesFinal } });
-                  } catch (err) {
-                    // Fallback to original behaviour on any merge failure
-                    set({ currentGraph: { nodes: mergedNodes, edges: labeledEdges } });
+                    const td = computeTermDisplay(
+                      String(pred),
+                      mgrLocal as any,
+                    );
+                    label = String(td.prefixed || td.short || "");
+                  } catch (_) {
+                    label = "";
                   }
-                  if (typeof window !== 'undefined') try { try { console.debug("[VG] ontologyStore: set __VG_REQUEST_LAYOUT_ON_NEXT_MAP (labeledEdges)"); } catch (_) {} (window as any).__VG_REQUEST_LAYOUT_ON_NEXT_MAP = true; (window as any).__VG_REQUEST_FIT_ON_NEXT_MAP = true; } catch (_) { /* ignore */ }
-                } catch (_) {
-                  // fallback to original merged set if anything goes wrong
-                  // Merge into existing currentGraph rather than replacing it outright
-        try {
-          const existing = get().currentGraph || { nodes: [], edges: [] };
-          const nodeById = new Map<string, any>();
-          try {
-            (existing.nodes || []).forEach((n: any) => {
-              try { nodeById.set(String(n.id), n); } catch (_) { /* ignore */ }
-            });
-          } catch (_) { /* ignore */ }
-
-          try {
-            (mergedNodes || []).forEach((n: any) => {
-              try {
-                const id = String(n.id);
-                const prev = nodeById.get(id);
-                if (prev) {
-                  const mergedNode = { ...prev, ...n, position: prev.position || n.position || { x: 0, y: 0 } };
-                  if ((prev as any).__rf) (mergedNode as any).__rf = (prev as any).__rf;
-                  if ((prev as any).selected) (mergedNode as any).selected = true;
-                  nodeById.set(id, mergedNode);
+                } else if (e && e.data && e.data.label) {
+                  // preserve any explicit label present in parsed edge payload
+                  label = String(e.data.label);
                 } else {
-                  nodeById.set(id, (n && (n as any).position) ? n : { ...n, position: n.position || { x: 0, y: 0 } });
+                  label = "";
                 }
-              } catch (_) { /* ignore per-node */ }
+                return { ...e, data: { ...(e.data || {}), label } };
+              } catch (_) {
+                return e;
+              }
             });
-          } catch (_) { /* ignore mergedNodes processing */ }
-
-          const finalNodes = Array.from(nodeById.values()).filter(Boolean);
-
-          const edgeById = new Map<string, any>();
-          try {
-            (existing.edges || []).forEach((e: any) => {
-              try { edgeById.set(String(e.id), e); } catch (_) { /* ignore */ }
-            });
-          } catch (_) { /* ignore */ }
-
-          try {
-            (mergedEdges || []).forEach((e: any) => {
+            // Merge into existing currentGraph (preserve nodes/edges not present in this parsed batch)
+            try {
+              const existing = get().currentGraph || { nodes: [], edges: [] };
+              const byId = new Map<string, any>();
               try {
-                const id = String(e.id);
-                edgeById.set(id, e);
-              } catch (_) { /* ignore per-edge */ }
-            });
-          } catch (_) { /* ignore mergedEdges processing */ }
+                (existing.nodes || []).forEach((n: any) => {
+                  try {
+                    byId.set(String(n.id), n);
+                  } catch (_) {
+                    /* ignore */
+                  }
+                });
+              } catch (_) {
+                /* ignore */
+              }
 
-          const finalEdges = Array.from(edgeById.values()).filter(Boolean);
+              try {
+                (mergedNodes || []).forEach((n: any) => {
+                  try {
+                    const id = String(n.id);
+                    const prev = byId.get(id);
+                    if (prev) {
+                      const mergedNode = {
+                        ...prev,
+                        ...n,
+                        position: prev.position || n.position || { x: 0, y: 0 },
+                        data: {
+                          ...(n && (n as any).data ? (n as any).data : {}),
+                          ...((prev as any).data ? (prev as any).data : {}),
+                        },
+                      };
+                      try {
+                        if ((prev as any).__rf)
+                          (mergedNode as any).__rf = (prev as any).__rf;
+                      } catch (_) {}
+                      try {
+                        if ((prev as any).selected)
+                          (mergedNode as any).selected = true;
+                      } catch (_) {}
+                      byId.set(id, mergedNode);
+                    } else {
+                      const nodeToSet =
+                        n && (n as any).position
+                          ? n
+                          : { ...n, position: n.position || { x: 0, y: 0 } };
+                      byId.set(id, nodeToSet);
+                    }
+                  } catch (_) {
+                    /* ignore per-node */
+                  }
+                });
+              } catch (_) {
+                /* ignore per-mergedNodes */
+              }
 
-          set({ currentGraph: { nodes: finalNodes, edges: finalEdges } });
-        } catch (err) {
-          // fallback to replace on error
-          set({ currentGraph: { nodes: mergedNodes, edges: mergedEdges } });
-        }
+              const finalNodes = Array.from(byId.values()).filter(Boolean);
+              const labeledEdgesFinal = Array.isArray(labeledEdges)
+                ? labeledEdges.slice()
+                : labeledEdges || [];
+              set({
+                currentGraph: { nodes: finalNodes, edges: labeledEdgesFinal },
+              });
+            } catch (err) {
+              // Fallback to original behaviour on any merge failure
+              set({
+                currentGraph: { nodes: mergedNodes, edges: labeledEdges },
+              });
+            }
+            if (typeof window !== "undefined")
+              try {
+                try {
+                  console.debug(
+                    "[VG] ontologyStore: set __VG_REQUEST_LAYOUT_ON_NEXT_MAP (labeledEdges)",
+                  );
+                } catch (_) {}
+                (window as any).__VG_REQUEST_LAYOUT_ON_NEXT_MAP = true;
+                (window as any).__VG_REQUEST_FIT_ON_NEXT_MAP = true;
+              } catch (_) {
+                /* ignore */
+              }
+          } catch (_) {
+            // fallback to original merged set if anything goes wrong
+            // Merge into existing currentGraph rather than replacing it outright
+            try {
+              const existing = get().currentGraph || { nodes: [], edges: [] };
+              const nodeById = new Map<string, any>();
+              try {
+                (existing.nodes || []).forEach((n: any) => {
+                  try {
+                    nodeById.set(String(n.id), n);
+                  } catch (_) {
+                    /* ignore */
+                  }
+                });
+              } catch (_) {
+                /* ignore */
+              }
+
+              try {
+                (mergedNodes || []).forEach((n: any) => {
+                  try {
+                    const id = String(n.id);
+                    const prev = nodeById.get(id);
+                    if (prev) {
+                      const mergedNode = {
+                        ...prev,
+                        ...n,
+                        position: prev.position || n.position || { x: 0, y: 0 },
+                        data: {
+                          ...(n && (n as any).data ? (n as any).data : {}),
+                          ...((prev as any).data ? (prev as any).data : {}),
+                        },
+                      };
+                      try {
+                        if ((prev as any).__rf)
+                          (mergedNode as any).__rf = (prev as any).__rf;
+                      } catch (_) {}
+                      try {
+                        if ((prev as any).selected)
+                          (mergedNode as any).selected = true;
+                      } catch (_) {}
+                      nodeById.set(id, mergedNode);
+                    } else {
+                      nodeById.set(
+                        id,
+                        n && (n as any).position
+                          ? n
+                          : { ...n, position: n.position || { x: 0, y: 0 } },
+                      );
+                    }
+                  } catch (_) {
+                    /* ignore per-node */
+                  }
+                });
+              } catch (_) {
+                /* ignore mergedNodes processing */
+              }
+
+              const finalNodes = Array.from(nodeById.values()).filter(Boolean);
+
+              const edgeById = new Map<string, any>();
+              try {
+                (existing.edges || []).forEach((e: any) => {
+                  try {
+                    edgeById.set(String(e.id), e);
+                  } catch (_) {
+                    /* ignore */
+                  }
+                });
+              } catch (_) {
+                /* ignore */
+              }
+
+              try {
+                (mergedEdges || []).forEach((e: any) => {
+                  try {
+                    const id = String(e.id);
+                    edgeById.set(id, e);
+                  } catch (_) {
+                    /* ignore per-edge */
+                  }
+                });
+              } catch (_) {
+                /* ignore mergedEdges processing */
+              }
+
+              const finalEdges = Array.from(edgeById.values()).filter(Boolean);
+
+              set({ currentGraph: { nodes: finalNodes, edges: finalEdges } });
+            } catch (err) {
+              // fallback to replace on error
+              // Deterministic merge that removes runtime flags and heuristics.
+              // Policy: parsed/merged nodes/edges win for fields they provide (parsed wins).
+              // Do NOT copy runtime-only fields like __rf, selected, position.
+              try {
+                const existing = get().currentGraph || { nodes: [], edges: [] };
+                const existingNodeMap = new Map<string, any>();
+                (existing.nodes || []).forEach((n: any) => {
+                  try {
+                    existingNodeMap.set(String(n.id), n);
+                  } catch (_) {}
+                });
+
+                const finalNodes: any[] = [];
+                // Add/overwrite with mergedNodes (parsed wins)
+                for (const n of mergedNodes || []) {
+                  try {
+                    const id = String(n.id || "");
+                    if (!id) continue;
+                    const existingNode = existingNodeMap.get(id);
+                    const mergedData = {
+                      ...((existingNode && existingNode.data) || {}),
+                      ...(n && n.data ? n.data : {}),
+                    };
+                    finalNodes.push({
+                      id,
+                      iri:
+                        (n && n.iri) ||
+                        (existingNode && existingNode.iri) ||
+                        "",
+                      data: mergedData,
+                    });
+                    existingNodeMap.delete(id);
+                  } catch (_) {
+                    /* ignore per-node */
+                  }
                 }
+
+                // Append any remaining existing nodes that were not in mergedNodes (strip runtime fields)
+                for (const rem of Array.from(existingNodeMap.values())) {
+                  try {
+                    const id = String(rem.id || "");
+                    if (!id) continue;
+                    finalNodes.push({
+                      id,
+                      iri: rem.iri || "",
+                      data: rem.data || {},
+                    });
+                  } catch (_) {
+                    /* ignore */
+                  }
+                }
+
+                // Edges: dedupe by id; parsed/merged edges win for fields they provide
+                const existingEdgeMap = new Map<string, any>();
+                (existing.edges || []).forEach((e: any) => {
+                  try {
+                    existingEdgeMap.set(String(e.id), e);
+                  } catch (_) {}
+                });
+
+                const finalEdgeMap = new Map<string, any>();
+                // Apply mergedEdges first (parsed wins)
+                for (const e of mergedEdges || []) {
+                  try {
+                    const id = String(e.id || "");
+                    if (!id) continue;
+                    finalEdgeMap.set(id, {
+                      id,
+                      source: String(e.source || ""),
+                      target: String(e.target || ""),
+                      data: (e && e.data) || {},
+                    });
+                    existingEdgeMap.delete(id);
+                  } catch (_) {
+                    /* ignore per-edge */
+                  }
+                }
+                // Append remaining existing edges (strip runtime-only)
+                for (const e of Array.from(existingEdgeMap.values())) {
+                  try {
+                    const id = String(e.id || "");
+                    if (!id) continue;
+                    if (!finalEdgeMap.has(id)) {
+                      finalEdgeMap.set(id, {
+                        id,
+                        source: String(e.source || ""),
+                        target: String(e.target || ""),
+                        data: e.data || {},
+                      });
+                    }
+                  } catch (_) {
+                    /* ignore */
+                  }
+                }
+
+                const finalEdges = Array.from(finalEdgeMap.values());
+
+                set({ currentGraph: { nodes: finalNodes, edges: finalEdges } });
+              } catch (err) {
+                // Fallback to replace on error
+                set({
+                  currentGraph: { nodes: mergedNodes, edges: mergedEdges },
+                });
+              }
+            }
+          }
         } catch (mergeErr) {
           try {
             fallback(
@@ -1474,7 +1800,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         let targetGraph = graphName;
         if (!targetGraph) {
           targetGraph = preserveGraph ? "urn:vg:ontologies" : "urn:vg:data";
-          try { console.warn(`[VG] loadOntologyFromRDF: graphName omitted, defaulting to ${targetGraph}`); } catch (_) { /* ignore */ }
+          try {
+            console.warn(
+              `[VG] loadOntologyFromRDF: graphName omitted, defaulting to ${targetGraph}`,
+            );
+          } catch (_) {
+            /* ignore */
+          }
         }
 
         await rdfManager.loadRDFIntoGraph(rdfContent, targetGraph);
@@ -1491,8 +1823,17 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         );
       }
 
-        const { computeParsedFromStore } = await import("../utils/parsedFromStore");
-        const parsed = await computeParsedFromStore(rdfManager, graphName ? graphName : (preserveGraph ? "urn:vg:ontologies" : "urn:vg:data"));
+      const { computeParsedFromStore } = await import(
+        "../utils/parsedFromStore"
+      );
+      const parsed = await computeParsedFromStore(
+        rdfManager,
+        graphName
+          ? graphName
+          : preserveGraph
+            ? "urn:vg:ontologies"
+            : "urn:vg:data",
+      );
 
       try {
         const { rdfManager } = get();
@@ -1699,7 +2040,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             label = "";
           }
           return {
-            id: e.id || generateEdgeId(String(e.source), String(e.target), String(e.propertyType || e.propertyUri || "")),
+            id:
+              e.id ||
+              generateEdgeId(
+                String(e.source),
+                String(e.target),
+                String(e.propertyType || e.propertyUri || ""),
+              ),
             source: e.source,
             target: e.target,
             data: { ...(e || {}), label },
@@ -1786,7 +2133,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         });
 
         const mergedEdges: any[] = [...existing.edges];
-          (parsed.edges || []).forEach((e: any) => {
+        (parsed.edges || []).forEach((e: any) => {
           // Normalize edge id and endpoints robustly: some producers use different field names.
           const rawSource =
             e.source ||
@@ -1809,7 +2156,11 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             "";
           const edgeId =
             e.id ||
-            generateEdgeId(String(rawSource), String(rawTarget), String(e.propertyType || e.propertyUri || ""));
+            generateEdgeId(
+              String(rawSource),
+              String(rawTarget),
+              String(e.propertyType || e.propertyUri || ""),
+            );
           if (!mergedEdges.find((me: any) => me.id === edgeId)) {
             mergedEdges.push({
               id: edgeId,
@@ -1821,7 +2172,18 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         });
 
         set({ currentGraph: { nodes: mergedNodes, edges: mergedEdges } });
-        if (typeof window !== 'undefined') try { try { console.debug("[VG] ontologyStore: set __VG_REQUEST_LAYOUT_ON_NEXT_MAP (mergedEdges)"); } catch (_) {} (window as any).__VG_REQUEST_LAYOUT_ON_NEXT_MAP = true; (window as any).__VG_REQUEST_FIT_ON_NEXT_MAP = true; } catch (_) { /* ignore */ }
+        if (typeof window !== "undefined")
+          try {
+            try {
+              console.debug(
+                "[VG] ontologyStore: set __VG_REQUEST_LAYOUT_ON_NEXT_MAP (mergedEdges)",
+              );
+            } catch (_) {}
+            (window as any).__VG_REQUEST_LAYOUT_ON_NEXT_MAP = true;
+            (window as any).__VG_REQUEST_FIT_ON_NEXT_MAP = true;
+          } catch (_) {
+            /* ignore */
+          }
       } catch (_) {
         /* ignore */
       }
@@ -2058,13 +2420,24 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
               if (response && response.ok) {
                 const content = await response.text();
-                await get().loadOntologyFromRDF(content, undefined, true, "urn:vg:ontologies");
+                await get().loadOntologyFromRDF(
+                  content,
+                  undefined,
+                  true,
+                  "urn:vg:ontologies",
+                );
                 // Register this fetched URI as an explicit loaded ontology so UI counts reflect autoloaded entries
                 try {
                   const norm = normalizeUri(uri);
-                  const exists = (get().loadedOntologies || []).some((o: any) => {
-                    try { return String(o.url) === String(norm); } catch { return false; }
-                  });
+                  const exists = (get().loadedOntologies || []).some(
+                    (o: any) => {
+                      try {
+                        return String(o.url) === String(norm);
+                      } catch {
+                        return false;
+                      }
+                    },
+                  );
                   if (!exists) {
                     try {
                       set((st: any) => ({
@@ -2136,8 +2509,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           }
         } else {
           // If it's not an http(s) URI, we treat it as inline RDF content and attempt to parse it.
-            try {
-            await get().loadOntologyFromRDF(uri, undefined, true, "urn:vg:ontologies");
+          try {
+            await get().loadOntologyFromRDF(
+              uri,
+              undefined,
+              true,
+              "urn:vg:ontologies",
+            );
           } catch (e) {
             try {
               fallback(
@@ -2186,13 +2564,11 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       // Lightweight diagnostic to help trace UI updates that originate from different code paths.
       try {
         const sampleEdges = Array.isArray(edges)
-          ? (edges as any[])
-              .slice(0, 6)
-              .map((e: any) => ({
-                id: e.id,
-                source: e.source,
-                target: e.target,
-              }))
+          ? (edges as any[]).slice(0, 6).map((e: any) => ({
+              id: e.id,
+              source: e.source,
+              target: e.target,
+            }))
           : [];
         console.debug("[VG_DEBUG] ontologyStore.setCurrentGraph", {
           nodesCount: Array.isArray(nodes) ? nodes.length : 0,
@@ -2206,16 +2582,24 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       try {
         if (typeof window !== "undefined") {
           try {
-          } catch (_) { /* ignore cross-origin / readonly failures */ }
+          } catch (_) {
+            /* ignore cross-origin / readonly failures */
+          }
         }
-      } catch (_) { /* ignore */ }
+      } catch (_) {
+        /* ignore */
+      }
       set({ currentGraph: { nodes, edges } });
       try {
         if (typeof window !== "undefined") {
           try {
-          } catch (_) { /* ignore */ }
+          } catch (_) {
+            /* ignore */
+          }
         }
-      } catch (_) { /* ignore */ }
+      } catch (_) {
+        /* ignore */
+      }
     } catch (e) {
       try {
         fallback(
@@ -2229,9 +2613,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       try {
         if (typeof window !== "undefined") {
           try {
-          } catch (_) { /* ignore */ }
+          } catch (_) {
+            /* ignore */
+          }
         }
-      } catch (_) { /* ignore */ }
+      } catch (_) {
+        /* ignore */
+      }
       set({ currentGraph: { nodes, edges } });
     }
   },
@@ -2346,203 +2734,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       }
     }
   },
-
-  updateNode: (entityUri: string, updates: any) => {
-    logCallGraph?.(
-      "updateNode",
-      entityUri,
-      updates && Object.keys(updates || {}).length,
-    );
-    const { rdfManager, currentGraph } = get();
-
-    if (
-      updates.annotationProperties &&
-      Array.isArray(updates.annotationProperties)
-    ) {
-      try {
-        const ns = rdfManager.getNamespaces();
-        updates.annotationProperties.forEach((p: any) => {
-          if (p && typeof p.propertyUri === "string") {
-            const colon = p.propertyUri.indexOf(":");
-            if (colon > 0) {
-              const prefix = p.propertyUri.substring(0, colon);
-              if (prefix === "dc" && !ns["dc"]) {
-                // Ensure minimal DC presence by adding a tiny RDF snippet into the store.
-                // The rdfManager will recompute namespaces from store contents.
-                try {
-                  rdfManager
-                    .loadRDFIntoGraph(
-                      "@prefix dc: <http://purl.org/dc/elements/1.1/> . dc:__vg_dummy a dc:__Dummy .",
-                      "urn:vg:data",
-                    )
-                    .catch(() => {});
-                } catch (_) {
-                  /* ignore */
-                }
-              }
-            }
-          }
-        });
-      } catch (e) {
-        try {
-          fallback(
-            "console.warn",
-            {
-              args: [
-                "Failed to ensure namespaces for annotationProperties:",
-                String(e),
-              ],
-            },
-            { level: "warn" },
-          );
-        } catch (_) {
-          /* ignore */
-        }
-      }
-    }
-
-    rdfManager.updateNode(entityUri, updates);
-
-    const updatedNodes = currentGraph.nodes.map((node) => {
-      const nodeData = getNodeData(node as ParsedNode | DiagramNode);
-      const nodeUri =
-        nodeData.iri || nodeData.iri || (node as any).iri || (node as any).id;
-      if (nodeUri === entityUri) {
-        const updatedData = { ...nodeData };
-
-        if (
-          updates.rdfTypes &&
-          Array.isArray(updates.rdfTypes) &&
-          updates.rdfTypes.length > 0
-        ) {
-          try {
-            const nonNamed = updates.rdfTypes.find(
-              (t: any) => t && !String(t).includes("NamedIndividual"),
-            );
-            const chosen = nonNamed || updates.rdfTypes[0];
-            if (chosen) {
-              const chosenStr = String(chosen);
-              if (chosenStr.includes(":") && !/^https?:\/\//i.test(chosenStr)) {
-                const idx = chosenStr.indexOf(":");
-                updatedData.namespace = chosenStr.substring(0, idx);
-                updatedData.classType = chosenStr.substring(idx + 1);
-                updatedData.type = chosenStr.substring(idx + 1);
-                updatedData.type_namespace = updatedData.namespace;
-              } else if (/^https?:\/\//i.test(chosenStr)) {
-                try {
-                  const mgr = get().rdfManager;
-                  const nsMap =
-                    mgr && typeof mgr.getNamespaces === "function"
-                      ? mgr.getNamespaces()
-                      : {};
-                  let matched = false;
-                  for (const [p, uri] of Object.entries(nsMap || {})) {
-                    if (uri && chosenStr.startsWith(uri)) {
-                      updatedData.namespace = p === ":" ? "" : p;
-                      updatedData.classType = chosenStr.substring(uri.length);
-                      updatedData.type = updatedData.classType;
-                      updatedData.type_namespace = updatedData.namespace;
-                      matched = true;
-                      break;
-                    }
-                  }
-                  if (!matched) {
-                    const parts = chosenStr.split(/[#\/]/).filter(Boolean);
-                    updatedData.classType = parts.length
-                      ? parts[parts.length - 1]
-                      : chosenStr;
-                    updatedData.type = updatedData.classType;
-                    updatedData.type_namespace =
-                      updatedData.type_namespace || updatedData.namespace || "";
-                  }
-                } catch {
-                  const parts = chosenStr.split(/[#\/]/).filter(Boolean);
-                  updatedData.classType = parts.length
-                    ? parts[parts.length - 1]
-                    : chosenStr;
-                  updatedData.type = updatedData.classType;
-                }
-              } else {
-                const parts = chosenStr.split(/[#\/]/).filter(Boolean);
-                updatedData.classType = parts.length
-                  ? parts[parts.length - 1]
-                  : chosenStr;
-                updatedData.type = updatedData.classType;
-                updatedData.type_namespace =
-                  updatedData.type_namespace || updatedData.namespace || "";
-              }
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-
-        if (updates.type) {
-          const [namespace, classType] = (updates.type as string).split(":");
-          updatedData.namespace = namespace;
-          updatedData.classType = classType;
-          updatedData.type = classType || updatedData.type;
-          updatedData.type_namespace = namespace || updatedData.type_namespace;
-        }
-
-        if (updates.annotationProperties) {
-          const legacy = updates.annotationProperties.map((prop: any) => ({
-            propertyUri: prop.propertyUri,
-            value: prop.value,
-            type: prop.type || "xsd:string",
-          }));
-          updatedData.annotationProperties = legacy;
-
-          updatedData.annotations = legacy.map((p: any) => {
-            const key = p.propertyUri || p.property || p.key || "unknown";
-            return { [key]: p.value };
-          });
-
-          updatedData.literalProperties = legacy.map((p: any) => ({
-            key: p.propertyUri,
-            value: p.value,
-            type: p.type || "xsd:string",
-          }));
-        }
-
-        updatedData.iri = updatedData.iri || entityUri;
-
-        const newNode = {
-          ...node,
-          type: updatedData.type || updatedData.classType || "",
-          type_namespace:
-            updatedData.type_namespace || updatedData.namespace || "",
-          annotations:
-            updatedData.annotations || updatedData.annotationProperties || [],
-          iri: updatedData.iri || entityUri,
-          classType: updatedData.classType,
-          rdfTypes: updatedData.rdfTypes,
-          annotationProperties: updatedData.annotationProperties,
-          literalProperties: updatedData.literalProperties,
-          namespace: updatedData.namespace,
-          id: (node as any).id || updatedData.id || nodeUri,
-          position: updatedData.position,
-          data: {
-            ...((node as any).data || {}),
-            ...updatedData,
-            id: (node as any).id || updatedData.id || nodeUri,
-            iri: updatedData.iri,
-            type: updatedData.type || updatedData.classType || "",
-            type_namespace:
-              updatedData.type_namespace || updatedData.namespace || "",
-            annotations:
-              updatedData.annotations || updatedData.annotationProperties || [],
-          },
-        };
-
-        return newNode;
-      }
-      return node;
-    });
-
-    set({ currentGraph: { ...currentGraph, nodes: updatedNodes } });
-  },
-
   exportGraph: async (format: "turtle" | "json-ld" | "rdf-xml") => {
     const { rdfManager } = get();
     switch (format) {
@@ -2586,9 +2777,16 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
     const store = mgr.getStore();
     if (!store || typeof store.getQuads !== "function") return;
 
-    const expand = typeof (mgr as any).expandPrefix === "function"
-      ? (s: string) => { try { return (mgr as any).expandPrefix(s); } catch { return s; } }
-      : (s: string) => s;
+    const expand =
+      typeof (mgr as any).expandPrefix === "function"
+        ? (s: string) => {
+            try {
+              return (mgr as any).expandPrefix(s);
+            } catch {
+              return s;
+            }
+          }
+        : (s: string) => s;
 
     const RDF_TYPE = expand("rdf:type");
     const RDFS_LABEL = expand("rdfs:label");
@@ -2598,7 +2796,11 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
       try {
         const allQuads = store.getQuads(null, null, null, null) || [];
         const subjects = Array.from(
-          new Set(allQuads.map((q: any) => (q && q.subject && q.subject.value) || "").filter(Boolean))
+          new Set(
+            allQuads
+              .map((q: any) => (q && q.subject && q.subject.value) || "")
+              .filter(Boolean),
+          ),
         );
 
         const propsMap: Record<string, any> = {};
@@ -2607,13 +2809,29 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
         subjects.forEach((s) => {
           try {
             const subj = namedNode(String(s));
-            const typeQuads = store.getQuads(subj, namedNode(RDF_TYPE), null, null) || [];
-            const types = Array.from(new Set(typeQuads.map((q: any) => (q && q.object && (q.object as any).value) || "").filter(Boolean)));
-            const isProp = types.some((t: string) => /Property/i.test(String(t)));
+            const typeQuads =
+              store.getQuads(subj, namedNode(RDF_TYPE), null, null) || [];
+            const types = Array.from(
+              new Set(
+                typeQuads
+                  .map(
+                    (q: any) =>
+                      (q && q.object && (q.object as any).value) || "",
+                  )
+                  .filter(Boolean),
+              ),
+            );
+            const isProp = types.some((t: string) =>
+              /Property/i.test(String(t)),
+            );
             const isClass = types.some((t: string) => /Class/i.test(String(t)));
 
-            const labelQ = store.getQuads(subj, namedNode(RDFS_LABEL), null, null) || [];
-            const label = labelQ.length > 0 ? String((labelQ[0].object as any).value) : String(s);
+            const labelQ =
+              store.getQuads(subj, namedNode(RDFS_LABEL), null, null) || [];
+            const label =
+              labelQ.length > 0
+                ? String((labelQ[0].object as any).value)
+                : String(s);
             const nsMatch = String(s || "").match(/^(.*[\/#])/);
             const namespace = nsMatch && nsMatch[1] ? String(nsMatch[1]) : "";
 
@@ -2660,7 +2878,11 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
     // Incremental: process subjects found in the provided quads
     try {
       const subjects = Array.from(
-        new Set((quads || []).map((q: any) => (q && q.subject && q.subject.value) || "").filter(Boolean))
+        new Set(
+          (quads || [])
+            .map((q: any) => (q && q.subject && q.subject.value) || "")
+            .filter(Boolean),
+        ),
       );
 
       const classesMap: Record<string, any> = {};
@@ -2669,13 +2891,26 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
       subjects.forEach((s) => {
         try {
           const subj = namedNode(String(s));
-          const typeQuads = store.getQuads(subj, namedNode(RDF_TYPE), null, null) || [];
-          const types = Array.from(new Set(typeQuads.map((q: any) => (q && q.object && (q.object as any).value) || "").filter(Boolean)));
+          const typeQuads =
+            store.getQuads(subj, namedNode(RDF_TYPE), null, null) || [];
+          const types = Array.from(
+            new Set(
+              typeQuads
+                .map(
+                  (q: any) => (q && q.object && (q.object as any).value) || "",
+                )
+                .filter(Boolean),
+            ),
+          );
           const isClass = types.some((t: any) => /Class/i.test(String(t)));
           const isProp = types.some((t: any) => /Property/i.test(String(t)));
 
-          const labelQ = store.getQuads(subj, namedNode(RDFS_LABEL), null, null) || [];
-          const label = labelQ.length > 0 ? String((labelQ[0].object as any).value) : String(s);
+          const labelQ =
+            store.getQuads(subj, namedNode(RDFS_LABEL), null, null) || [];
+          const label =
+            labelQ.length > 0
+              ? String((labelQ[0].object as any).value)
+              : String(s);
           const nsMatch = String(s || "").match(/^(.*[\/#])/);
           const namespace = nsMatch && nsMatch[1] ? String(nsMatch[1]) : "";
 
@@ -2705,19 +2940,35 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
       });
 
       useOntologyStore.setState((st: any) => {
-        const existingClasses = Array.isArray(st.availableClasses) ? st.availableClasses : [];
+        const existingClasses = Array.isArray(st.availableClasses)
+          ? st.availableClasses
+          : [];
         const classByIri: Record<string, any> = {};
         existingClasses.forEach((c: any) => {
-          try { classByIri[String(c.iri)] = c; } catch (_) {}
+          try {
+            classByIri[String(c.iri)] = c;
+          } catch (_) {}
         });
-        Object.values(classesMap).forEach((c: any) => { try { classByIri[String(c.iri)] = c; } catch (_) {} });
+        Object.values(classesMap).forEach((c: any) => {
+          try {
+            classByIri[String(c.iri)] = c;
+          } catch (_) {}
+        });
 
-        const existingProps = Array.isArray(st.availableProperties) ? st.availableProperties : [];
+        const existingProps = Array.isArray(st.availableProperties)
+          ? st.availableProperties
+          : [];
         const propByIri: Record<string, any> = {};
         existingProps.forEach((p: any) => {
-          try { propByIri[String(p.iri)] = p; } catch (_) {}
+          try {
+            propByIri[String(p.iri)] = p;
+          } catch (_) {}
         });
-        Object.values(propsMap).forEach((p: any) => { try { propByIri[String(p.iri)] = p; } catch (_) {} });
+        Object.values(propsMap).forEach((p: any) => {
+          try {
+            propByIri[String(p.iri)] = p;
+          } catch (_) {}
+        });
 
         return {
           availableClasses: Object.values(classByIri),
@@ -2876,7 +3127,7 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
           try {
             // Prefer writing a minimal RDF snippet into the store so namespaces are
             // discovered by recomputeNamespacesFromStore rather than by ad-hoc registration.
-              try {
+            try {
               rdfMgr
                 .loadRDFIntoGraph(
                   `@prefix ${String(p)}: <${String(ns)}> . ${String(p)}:__vg_dummy a ${String(p)}:__Dummy .`,

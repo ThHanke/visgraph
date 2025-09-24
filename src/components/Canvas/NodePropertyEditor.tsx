@@ -37,7 +37,6 @@ import { EntityAutocomplete } from "../ui/EntityAutocomplete";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { X, Plus, Info } from "lucide-react";
-import type { NodeData } from "../../types/canvas";
 
 /**
  * Represents a literal property with value and type
@@ -215,17 +214,6 @@ export const NodePropertyEditor = ({
       type: p.type || "xsd:string",
     }));
 
-    const updatedNodeData = {
-      ...(nodeData || {}),
-      data: {
-        ...(nodeData && (nodeData.data || nodeData)),
-        iri: nodeIri,
-        displayType: nodeType,
-        annotationProperties,
-        rdfTypes: rdfTypesState.slice(),
-      },
-    };
-
     // Persist minimal changed annotation quads to urn:vg:data using rdfManager primitives (addTriple/removeTriple).
     try {
       const mgrState = useOntologyStore.getState();
@@ -322,11 +310,6 @@ export const NodePropertyEditor = ({
     } catch (err) {
       try { console.warn("NodePropertyEditor.save.storeWriteFailed", err); } catch (_) { /* ignore */ }
     }
-
-    // Call back to parent with the updated payload. Parent/canvas is responsible for persistent state mapping.
-    try {
-      onSave(updatedNodeData);
-    } catch (_) { /* ignore */ }
 
     onOpenChange(false);
   };

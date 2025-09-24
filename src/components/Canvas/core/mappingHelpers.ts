@@ -44,7 +44,7 @@ type PredicateKind = "annotation" | "object" | "datatype" | "unknown";
  */
 export function mapQuadsToDiagram(
   quads: QuadLike[] = [],
-  options?: { predicateKind?: (predIri: string) => PredicateKind }
+  options?: { predicateKind?: (predIri: string) => PredicateKind; availableProperties?: any[] }
 ) {
   // Small helpers to detect term kinds robustly across N3 and POJO shapes.
   const isNamedOrBlank = (obj: any) => {
@@ -104,6 +104,27 @@ export function mapQuadsToDiagram(
 
   // small local cache for classifier results to avoid repeated work per-predicate
   const predicateKindCache = new Map<string, PredicateKind>();
+
+  // Initialize cache from provided fat-map snapshot (availableProperties) if present.
+  try {
+    const avail =
+      options && Array.isArray((options as any).availableProperties)
+        ? (options as any).availableProperties
+        : [];
+    for (const p of avail) {
+      try {
+        const iri = p && (p.iri || p.key || p) ? String(p.iri || p.key || p) : "";
+        if (iri) {
+          // Treat presence in availableProperties as an object property (authoritative fat-map)
+          predicateKindCache.set(iri, "object");
+        }
+      } catch (_) {
+        /* ignore per-entry */
+      }
+    }
+  } catch (_) {
+    /* ignore init errors */
+  }
 
   // Heuristic: syntactic check whether an IRI looks like an ontology / vocabulary identifier.
   // Deterministic, heuristic-based (no store lookups). Matches hosts/namespaces commonly used
@@ -193,24 +214,26 @@ export function mapQuadsToDiagram(
       ensureNode(subjectIri);
       const entry = nodeMap.get(subjectIri)!;
 
-      // Compute predicate kind using optional caller-provided classifier and cache results.
-      let predicateKindLocal: PredicateKind = "unknown";
+      // Compute predicate kind using authoritative fat-map (availableProperties) when available,
+      // or an optional caller-provided classifier. Default policy: fold into subject (annotation).
+      let predicateKindLocal: PredicateKind = "annotation";
       try {
-        if (options && typeof options.predicateKind === "function") {
-          if (predicateKindCache.has(predIri)) {
-            predicateKindLocal = predicateKindCache.get(predIri)!;
-          } else {
-            try {
-              const k = options.predicateKind(String(predIri));
-              predicateKindLocal = k || "unknown";
-            } catch (_) {
-              predicateKindLocal = "unknown";
-            }
-            try { predicateKindCache.set(predIri, predicateKindLocal); } catch (_) { /* ignore cache errors */ }
+        if (predicateKindCache.has(predIri)) {
+          predicateKindLocal = predicateKindCache.get(predIri)!;
+        } else if (options && typeof options.predicateKind === "function") {
+          try {
+            const k = options.predicateKind(String(predIri));
+            predicateKindLocal = k || "annotation";
+          } catch (_) {
+            predicateKindLocal = "annotation";
           }
+          try { predicateKindCache.set(predIri, predicateKindLocal); } catch (_) { /* ignore cache errors */ }
+        } else {
+          // keep default "annotation" when no classifier and not present in availableProperties
+          predicateKindLocal = "annotation";
         }
       } catch (_) {
-        predicateKindLocal = "unknown";
+        predicateKindLocal = "annotation";
       }
 
       // rdf:type
@@ -283,32 +306,39 @@ export function mapQuadsToDiagram(
         continue;
       }
 
-      // object is NamedNode (IRI) -> always create an edge + ensure object node
+      // object is NamedNode (IRI)
       if (obj && (obj.termType === "NamedNode" || (obj.value && /^https?:\/\//i.test(String(obj.value))))) {
         const objectIri = obj && obj.value ? String(obj.value) : "";
         if (!objectIri) continue;
 
-        // Always treat NamedNode objects as object properties (create node + edge).
-        ensureNode(objectIri);
-        const edgeId = String(generateEdgeId(subjectIri, objectIri, predIri || ""));
-        const labelForEdge = predIri || "";
-        rfEdges.push({
-          id: edgeId,
-          source: subjectIri,
-          target: objectIri,
-          type: "floating",
-          markerEnd: { type: "arrow" as any },
-          data: {
-            key: edgeId,
-            from: subjectIri,
-            to: objectIri,
-            propertyUri: predIri,
-            propertyType: "",
-            label: labelForEdge,
-            namespace: "",
-            rdfType: "",
-          } as LinkData,
-        });
+        // Create an edge only when predicate is classified as an object property.
+        // Per policy: do NOT create/ensure a UI node for the object here.
+        if (predicateKindLocal === "object") {
+          const edgeId = String(generateEdgeId(subjectIri, objectIri, predIri || ""));
+          const labelForEdge = predIri || "";
+          rfEdges.push({
+            id: edgeId,
+            source: subjectIri,
+            target: objectIri,
+            type: "floating",
+            markerEnd: { type: "arrow" as any },
+            data: {
+              key: edgeId,
+              from: subjectIri,
+              to: objectIri,
+              propertyUri: predIri,
+              propertyType: "",
+              label: labelForEdge,
+              namespace: "",
+              rdfType: "",
+            } as LinkData,
+          });
+        } else {
+          // Fold non-object predicates (even with IRI objects) into the subject as annotation metadata.
+          try {
+            entry.annotationProperties.push({ property: predIri, value: objectIri });
+          } catch (_) { /* ignore */ }
+        }
         continue;
       }
 
@@ -386,12 +416,12 @@ export function mapQuadsToDiagram(
   // Build set of node IDs that will be rendered for edge filtering
   const renderedNodeIds = new Set<string>((rfNodes || []).map((n) => String(n.id)));
 
-  // Filter edges to only include those that connect two rendered nodes (avoid dangling edges to TBox)
+  // Filter edges to only include those whose source is rendered (allow edges to external/non-rendered objects).
+  // Policy: we create edges for object properties even when we do not create an object node; keep those edges visible.
   const rfEdgesFiltered = (rfEdges || []).filter((edge) => {
     try {
       const s = String(edge.source);
-      const t = String(edge.target);
-      return renderedNodeIds.has(s) && renderedNodeIds.has(t);
+      return renderedNodeIds.has(s);
     } catch (_) { return false; }
   });
 
