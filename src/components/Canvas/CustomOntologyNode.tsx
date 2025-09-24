@@ -1,18 +1,19 @@
-import React, { memo, useEffect, useRef, useState, useMemo } from 'react';
-import { Handle, Position, NodeProps, useConnection, useUpdateNodeInternals } from '@xyflow/react';
-import { cn } from '../../lib/utils';
-import { Edit3, AlertTriangle, Info } from 'lucide-react';
+import React, { memo, useEffect, useRef, useState, useMemo } from "react";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '../ui/popover';
-import { useOntologyStore } from '../../stores/ontologyStore';
-import { usePaletteFromRdfManager } from './core/namespacePalette';
-import { getNamespaceColorFromPalette } from './helpers/namespaceHelpers';
-import { computeTermDisplay, shortLocalName } from '../../utils/termUtils';
-import { computeBadgeText } from './core/nodeDisplay';
-import { debug } from '../../utils/startupDebug';
+  Handle,
+  Position,
+  NodeProps,
+  useConnection,
+  useUpdateNodeInternals,
+} from "@xyflow/react";
+import { cn } from "../../lib/utils";
+import { Edit3, AlertTriangle, Info } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { useOntologyStore } from "../../stores/ontologyStore";
+import { usePaletteFromRdfManager } from "./core/namespacePalette";
+import { getNamespaceColorFromPalette } from "./helpers/namespaceHelpers";
+import { shortLocalName, toPrefixed } from "../../utils/termUtils";
+import { debug } from "../../utils/startupDebug";
 
 /**
  * A tighter-typed node data payload that mirrors the shapes used across the canvas.
@@ -43,16 +44,22 @@ function CustomOntologyNodeInner(props: NodeProps) {
   // you need to update the node internals".
   useEffect(() => {
     try {
-      if (typeof id === 'string') updateNodeInternals(String(id));
+      if (typeof id === "string") updateNodeInternals(String(id));
     } catch (_) {
       /* ignore */
     }
   }, [updateNodeInternals, connection?.inProgress, id]);
 
-  const isTarget =
-    !!(connection && (connection as any).inProgress && (connection as any).fromNode && String((connection as any).fromNode.id) !== String(id));
+  const isTarget = !!(
+    connection &&
+    (connection as any).inProgress &&
+    (connection as any).fromNode &&
+    String((connection as any).fromNode.id) !== String(id)
+  );
   const nodeData = (data ?? {}) as CustomOntologyNodeData;
-  const individualNameInitial = String(nodeData.individualName ?? nodeData.iri ?? '');
+  const individualNameInitial = String(
+    nodeData.individualName ?? nodeData.iri ?? "",
+  );
 
   const [isEditing, setIsEditing] = useState(false);
   const [individualName, setIndividualName] = useState(individualNameInitial);
@@ -64,11 +71,13 @@ function CustomOntologyNodeInner(props: NodeProps) {
   const availableProperties = useOntologyStore((s) => s.availableProperties);
 
   const lastFp = useRef<string | null>(null);
-  const rdfTypesKey = Array.isArray(nodeData.rdfTypes) ? nodeData.rdfTypes.join('|') : '';
+  const rdfTypesKey = Array.isArray(nodeData.rdfTypes)
+    ? nodeData.rdfTypes.join("|")
+    : "";
   useEffect(() => {
     try {
-      const uri = String(nodeData.iri || '');
-      const fp = `${uri}|${String(nodeData.classType ?? '')}|${rdfTypesKey}|${String(nodeData.displayType ?? '')}`;
+      const uri = String(nodeData.iri || "");
+      const fp = `${uri}|${String(nodeData.classType ?? "")}|${rdfTypesKey}|${String(nodeData.displayType ?? "")}`;
       if (lastFp.current === fp) return;
       lastFp.current = fp;
       if (_loggedFingerprints.has(fp)) return;
@@ -79,51 +88,58 @@ function CustomOntologyNodeInner(props: NodeProps) {
         rdfTypes: nodeData.rdfTypes,
         displayType: nodeData.displayType,
       };
-      if (typeof window !== 'undefined' && (window as any).__VG_DEBUG__) {
-        try { debug('CustomOntologyNode.displayInfo', payload); } catch (_) { /* ignore */ }
+      if (typeof window !== "undefined" && (window as any).__VG_DEBUG__) {
+        try {
+          debug("CustomOntologyNode.displayInfo", payload);
+        } catch (_) {
+          /* ignore */
+        }
       }
-    } catch (_) { /* ignore */ }
-  }, [nodeData.iri, nodeData.classType, rdfTypesKey, nodeData.displayType, nodeData.rdfTypes]);
+    } catch (_) {
+      /* ignore */
+    }
+  }, [
+    nodeData.iri,
+    nodeData.classType,
+    rdfTypesKey,
+    nodeData.displayType,
+    nodeData.rdfTypes,
+  ]);
 
   // Display helpers
-  const displayedTypeShort = String(nodeData.label || shortLocalName(nodeData.iri || ''));
+  const displayedTypeShort = String(
+    nodeData.label || shortLocalName(nodeData.iri || ""),
+  );
   // Acquire palette before computing display values so memoized computeTermDisplay calls can use it.
   const palette = usePaletteFromRdfManager();
-      const { badgeText, typesList } = useMemo(() => {
+  const { badgeText, typesList } = useMemo(() => {
     let _badgeText = displayedTypeShort;
-    let _typesList: string[] = [];
     try {
-      // Use authoritative nodeData.classType (should be set by mapping to absolute IRI)
       const primary = nodeData.classType ? String(nodeData.classType) : undefined;
-
       if (primary && rdfManager) {
         try {
-          const tdPrimary = computeTermDisplay(String(primary), rdfManager as any, (palette as any), { availableProperties, availableClasses });
-          if (tdPrimary && tdPrimary.prefixed && String(tdPrimary.prefixed).trim() !== "") {
-            _badgeText = tdPrimary.prefixed;
-          } else if (tdPrimary && tdPrimary.short) {
-            _badgeText = tdPrimary.short;
-          }
-          _typesList = [tdPrimary.prefixed || tdPrimary.short || primary].filter(Boolean) as string[];
+          const pref = toPrefixed(primary, rdfManager as any);
+          _badgeText = pref || displayedTypeShort;
         } catch (_) {
-          // fall through to computed badge text
+          _badgeText = shortLocalName(primary) || displayedTypeShort;
         }
-      } else {
-        // If no classType present (shouldn't happen under new contract), fall back to computeBadgeText
-        try {
-          const bt = computeBadgeText(nodeData as any, rdfManager as any, availableClasses as any);
-          if (bt && String(bt).trim() !== "") _badgeText = String(bt);
-        } catch (_) { /* ignore */ }
       }
     } catch (_) {
       /* ignore overall failure */
     }
-    return { badgeText: _badgeText, typesList: _typesList };
-  }, [nodeData.classType, nodeData.label, nodeData.iri, rdfManager, palette, availableClasses, availableProperties]);
-
+    return { badgeText: _badgeText, typesList: [] as string[] };
+  }, [
+    nodeData.classType,
+    nodeData.label,
+    nodeData.iri,
+    rdfManager,
+    palette,
+    availableClasses,
+    availableProperties,
+  ]);
 
   // Color/palette resolution (strict: use central palette only)
-  const namespace = String(nodeData.namespace ?? '');
+  const namespace = String(nodeData.namespace ?? "");
 
   // Prefer an explicit paletteColor set on the node data (set by KnowledgeCanvas enrichment).
   // Then prefer a color derived from the node's classType namespace (most authoritative after mapping).
@@ -132,28 +148,36 @@ function CustomOntologyNodeInner(props: NodeProps) {
   try {
     // 0) If the canvas enrichment already provided an authoritative paletteColor, prefer it.
     if (nodeData && (nodeData as any).paletteColor) {
-      resolvedPaletteColor = String((nodeData as any).paletteColor || undefined) || undefined;
+      resolvedPaletteColor =
+        String((nodeData as any).paletteColor || undefined) || undefined;
     }
 
     // 1) If we have a canonical classType (absolute IRI), prefer its palette mapping.
     //    This ensures the color follows the meaningful type, not the node IRI or namespace field.
     if (!resolvedPaletteColor && nodeData && nodeData.classType && rdfManager) {
       try {
-        const tdForClass = computeTermDisplay(String(nodeData.classType), rdfManager as any, (palette as any), { availableProperties, availableClasses });
-        if (tdForClass) {
-          // Prefer explicit color from computeTermDisplay (fat-map or computed), then palette by namespace.
-          resolvedPaletteColor = tdForClass.color || (tdForClass.namespace && (palette as any ? (palette as any)[tdForClass.namespace] : undefined)) || undefined;
+        try {
+          const pref = toPrefixed(String(nodeData.classType), rdfManager as any);
+          const prefix = pref && pref.includes(":") ? pref.split(":")[0] : "";
+          if (prefix) {
+            resolvedPaletteColor = getNamespaceColorFromPalette(palette, prefix) || undefined;
+          }
+        } catch (_) {
+          /* ignore prefixed resolution failures */
         }
       } catch (_) {
-        // ignore compute failures and continue with other fallbacks
-        resolvedPaletteColor = resolvedPaletteColor;
+        /* ignore */
       }
     }
 
     // 2) Direct palette lookup using the node's namespace (may be a prefix or a short key)
     if (!resolvedPaletteColor) {
       try {
-        resolvedPaletteColor = getNamespaceColorFromPalette(palette, String(nodeData.namespace ?? '')) || undefined;
+        resolvedPaletteColor =
+          getNamespaceColorFromPalette(
+            palette,
+            String(nodeData.namespace ?? ""),
+          ) || undefined;
       } catch (_) {
         resolvedPaletteColor = undefined;
       }
@@ -164,17 +188,33 @@ function CustomOntologyNodeInner(props: NodeProps) {
 
   // 2) Fallback: if node namespace looks like a full namespace URI try to find a matching
   // prefix from rdfManager.getNamespaces() and use that prefix in the palette.
-  if (!resolvedPaletteColor && (rdfManager && typeof (rdfManager as any).getNamespaces === 'function')) {
+  if (
+    !resolvedPaletteColor &&
+    rdfManager &&
+    typeof (rdfManager as any).getNamespaces === "function"
+  ) {
     try {
       const nsMap = (rdfManager as any).getNamespaces() || {};
-      const nsVal = String(nodeData.namespace || '').trim();
-      if (nsVal && (nsVal.toLowerCase().startsWith('http://') || nsVal.toLowerCase().startsWith('https://') || nsVal.endsWith('#') || nsVal.endsWith('/') || nsVal.includes('/'))) {
+      const nsVal = String(nodeData.namespace || "").trim();
+      if (
+        nsVal &&
+        (nsVal.toLowerCase().startsWith("http://") ||
+          nsVal.toLowerCase().startsWith("https://") ||
+          nsVal.endsWith("#") ||
+          nsVal.endsWith("/") ||
+          nsVal.includes("/"))
+      ) {
         // reverse lookup: find prefix whose URI equals the namespace value (exact match)
-        const match = Object.entries(nsMap).find(([, uri]) => String(uri) === nsVal);
+        const match = Object.entries(nsMap).find(
+          ([, uri]) => String(uri) === nsVal,
+        );
         if (match && match[0]) {
           const prefix = String(match[0]);
           try {
-            resolvedPaletteColor = palette[prefix] || palette[prefix.replace(/[:#].*$/, '')] || undefined;
+            resolvedPaletteColor =
+              palette[prefix] ||
+              palette[prefix.replace(/[:#].*$/, "")] ||
+              undefined;
           } catch (_) {
             resolvedPaletteColor = undefined;
           }
@@ -182,7 +222,9 @@ function CustomOntologyNodeInner(props: NodeProps) {
           // Try fuzzy match: namespace may be stored without trailing separators in some places.
           const matchFuzzy = Object.entries(nsMap).find(([, uri]) => {
             try {
-              return String(uri).replace(/\/+$/, '') === nsVal.replace(/\/+$/, '');
+              return (
+                String(uri).replace(/\/+$/, "") === nsVal.replace(/\/+$/, "")
+              );
             } catch {
               return false;
             }
@@ -190,7 +232,10 @@ function CustomOntologyNodeInner(props: NodeProps) {
           if (matchFuzzy && matchFuzzy[0]) {
             const prefix = String(matchFuzzy[0]);
             try {
-              resolvedPaletteColor = palette[prefix] || palette[prefix.replace(/[:#].*$/, '')] || undefined;
+              resolvedPaletteColor =
+                palette[prefix] ||
+                palette[prefix.replace(/[:#].*$/, "")] ||
+                undefined;
             } catch (_) {
               resolvedPaletteColor = undefined;
             }
@@ -202,55 +247,75 @@ function CustomOntologyNodeInner(props: NodeProps) {
     }
   }
 
-  const paletteMissing = !resolvedPaletteColor;
-  const badgeColor = resolvedPaletteColor;
-  const leftColor = resolvedPaletteColor;
+  const DEFAULT_PALETTE_COLOR = "#e5e7eb";
+  const badgeColor = resolvedPaletteColor || DEFAULT_PALETTE_COLOR;
+  const leftColor = badgeColor;
 
-  const themeBg = (typeof document !== 'undefined')
-    ? (getComputedStyle(document.documentElement).getPropertyValue('--node-bg') || '').trim() || '#ffffff'
-    : '#ffffff';
-  const hasErrors = Array.isArray(nodeData.errors) && nodeData.errors.length > 0;
+  const themeBg =
+    typeof document !== "undefined"
+      ? (
+          getComputedStyle(document.documentElement).getPropertyValue(
+            "--node-bg",
+          ) || ""
+        ).trim() || "#ffffff"
+      : "#ffffff";
+  const hasErrors =
+    Array.isArray(nodeData.errors) && nodeData.errors.length > 0;
 
   const annotations: Array<{ term: string; value: string }> = [];
-  if (Array.isArray(nodeData.annotationProperties) && nodeData.annotationProperties.length > 0) {
+  if (
+    Array.isArray(nodeData.annotationProperties) &&
+    nodeData.annotationProperties.length > 0
+  ) {
     nodeData.annotationProperties.forEach((ap) => {
       const propertyIri = String(
         (ap && (ap as any).propertyUri) ||
           (ap && (ap as any).property) ||
           (ap && (ap as any).term) ||
           (ap && (ap as any).key) ||
-          '',
+          "",
       );
-      const rawValue = (ap && (ap as any).value);
+      const rawValue = ap && (ap as any).value;
       if (!propertyIri) return;
       if (rawValue === undefined || rawValue === null) return;
       const valueStr = String(rawValue);
-      if (valueStr.trim() === '') return;
+      if (valueStr.trim() === "") return;
       const term = (() => {
-        if (propertyIri.startsWith('_:')) return propertyIri;
-        if (!rdfManager) throw new Error(`computeTermDisplay requires rdfManager to resolve '${propertyIri}'`);
-          const td = computeTermDisplay(propertyIri, rdfManager as any, (palette as any));
-          return td.prefixed || td.short || '';
+        if (propertyIri.startsWith("_:")) return propertyIri;
+        try {
+          return toPrefixed(propertyIri, rdfManager as any);
+        } catch (_) {
+          return shortLocalName(propertyIri);
+        }
       })();
       annotations.push({ term, value: valueStr });
     });
-  } else if (nodeData.properties && typeof nodeData.properties === 'object') {
-    Object.entries(nodeData.properties).slice(0, 6).forEach(([k, v]) => {
-      if (v === undefined || v === null) return;
-      const valueStr = String(v);
-      if (valueStr.trim() === '') return;
-      const term = (() => {
-        const keyStr = String(k);
-        if (keyStr.startsWith('_:')) return keyStr;
-        if (!rdfManager) throw new Error(`computeTermDisplay requires rdfManager to resolve '${keyStr}'`);
-        const td = computeTermDisplay(keyStr, rdfManager as any, (palette as any));
-        return td.prefixed || td.short || '';
-      })();
-      annotations.push({ term, value: valueStr });
-    });
+  } else if (nodeData.properties && typeof nodeData.properties === "object") {
+    Object.entries(nodeData.properties)
+      .slice(0, 6)
+      .forEach(([k, v]) => {
+        if (v === undefined || v === null) return;
+        const valueStr = String(v);
+        if (valueStr.trim() === "") return;
+          const term = (() => {
+          const keyStr = String(k);
+          if (keyStr.startsWith("_:")) return keyStr;
+          try {
+            return toPrefixed(keyStr, rdfManager as any);
+          } catch (_) {
+            return shortLocalName(keyStr);
+          }
+        })();
+        annotations.push({ term, value: valueStr });
+      });
   }
 
-  const typePresentButNotLoaded = !nodeData.classType && Array.isArray(nodeData.rdfTypes) && nodeData.rdfTypes.some((t) => Boolean(t) && !/NamedIndividual/i.test(String(t)));
+  const typePresentButNotLoaded =
+    !nodeData.classType &&
+    Array.isArray(nodeData.rdfTypes) &&
+    nodeData.rdfTypes.some(
+      (t) => Boolean(t) && !/NamedIndividual/i.test(String(t)),
+    );
 
   useEffect(() => {
     setIndividualName(individualNameInitial);
@@ -271,10 +336,16 @@ function CustomOntologyNodeInner(props: NodeProps) {
           return;
         }
         lastMeasuredRef.current = { w, h };
-        if (typeof cb === 'function') {
-          try { cb(Math.round(w), Math.round(h)); } catch (_) { /* ignore callback errors */ }
+        if (typeof cb === "function") {
+          try {
+            cb(Math.round(w), Math.round(h));
+          } catch (_) {
+            /* ignore callback errors */
+          }
         }
-      } catch (_) { /* ignore */ }
+      } catch (_) {
+        /* ignore */
+      }
     };
     report(el.offsetWidth, el.offsetHeight);
     let ro: ResizeObserver | null = null;
@@ -288,13 +359,17 @@ function CustomOntologyNodeInner(props: NodeProps) {
       ro.observe(el);
     } catch (_) {
       const onWin = () => report(el.offsetWidth, el.offsetHeight);
-      window.addEventListener('resize', onWin);
+      window.addEventListener("resize", onWin);
       return () => {
-        window.removeEventListener('resize', onWin);
+        window.removeEventListener("resize", onWin);
       };
     }
     return () => {
-      try { if (ro) ro.disconnect(); } catch (_) { /* ignore */ }
+      try {
+        if (ro) ro.disconnect();
+      } catch (_) {
+        /* ignore */
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootRef]);
@@ -304,47 +379,63 @@ function CustomOntologyNodeInner(props: NodeProps) {
       const el = rootRef.current;
       if (!el) return;
       const wrapper: HTMLElement | null =
-        typeof el.closest === "function" ? (el as any).closest(".react-flow__node") : (el.parentElement || null);
+        typeof el.closest === "function"
+          ? (el as any).closest(".react-flow__node")
+          : el.parentElement || null;
       if (!wrapper || !wrapper.style) return;
       const colorToApply = badgeColor || leftColor;
       try {
-        if (typeof console !== 'undefined' && typeof console.debug === 'function') {
-          // try {
-          //   console.debug('[VG_DEBUG] CustomOntologyNode.syncWrapperColor', {
-          //     id: (nodeData as any)?.iri || (nodeData as any)?.key,
-          //     badgeColor,
-          //     leftColor,
-          //     wrapperCurrentVar: wrapper.style.getPropertyValue('--node-leftbar-color'),
-          //   });
-          // } catch (_) { /* ignore logging failures */ }
-        }
-      } catch (_) { /* ignore */ }
+        if (
+          typeof console !== "undefined" &&
+          typeof console.debug === "function"
+        ) {}
+      } catch (_) {
+        /* ignore */
+      }
       if (colorToApply) {
         try {
-          wrapper.style.setProperty("--node-leftbar-color", String(colorToApply));
+          wrapper.style.setProperty(
+            "--node-leftbar-color",
+            String(colorToApply),
+          );
         } catch (_) {
-          try { wrapper.style.setProperty("--node-leftbar-color", String(colorToApply)); } catch (_) { /* ignore */ }
+          try {
+            wrapper.style.setProperty(
+              "--node-leftbar-color",
+              String(colorToApply),
+            );
+          } catch (_) {
+            /* ignore */
+          }
         }
       } else {
-        try { wrapper.style.removeProperty("--node-leftbar-color"); } catch (_) { /* ignore */ }
+        try {
+          wrapper.style.removeProperty("--node-leftbar-color");
+        } catch (_) {
+          /* ignore */
+        }
       }
     } catch (_) {
       /* ignore */
     }
   }, [badgeColor, leftColor]);
 
-  const canonicalIri = String(nodeData.iri ?? '');
+  const canonicalIri = String(nodeData.iri ?? "");
   const headerTitle = canonicalIri;
   const headerDisplay = (() => {
-    if (!canonicalIri) return '';
-    if (canonicalIri.startsWith('_:')) return canonicalIri;
-    if (!rdfManager) throw new Error(`computeTermDisplay requires rdfManager to resolve '${canonicalIri}'`);
-    const td = computeTermDisplay(canonicalIri, rdfManager as any, (palette as any));
-    return (td.prefixed || td.short || '').replace(/^(https?:\/\/)?(www\.)?/, '');
+    const target = nodeData.classType ? String(nodeData.classType) : canonicalIri;
+    if (!target) return "";
+    if (target.startsWith("_:")) return target;
+    try {
+      const p = rdfManager ? toPrefixed(target, rdfManager as any) : undefined;
+      return (p || shortLocalName(target)).replace(/^(https?:\/\/)?(www\.)?/, "");
+    } catch {
+      return shortLocalName(target).replace(/^(https?:\/\/)?(www\.)?/, "");
+    }
   })();
 
   // Use the node id (IRI) directly as the handle id per project convention.
-  const handleId = String(id || '');
+  const handleId = String(id || "");
 
   // Connection helpers removed — canvas now relies on React Flow native handle drag.
   // Click-to-connect bridge (vg:start-connection / vg:end-connection) was removed to
@@ -356,35 +447,50 @@ function CustomOntologyNodeInner(props: NodeProps) {
   return (
     <div
       ref={rootRef}
-      className={cn('inline-flex overflow-hidden', selected ? 'ring-2 ring-primary' : '', paletteMissing ? 'ring-2 ring-destructive' : '')}
+      className={cn(
+        "inline-flex overflow-hidden",
+        selected ? "ring-2 ring-primary" : "",
+      )}
     >
-      <div className="px-4 py-3 min-w-0 flex-1 w-auto" style={{ background: themeBg }}>
+      <div
+        className="px-4 py-3 min-w-0 flex-1 w-auto"
+        style={{ background: themeBg }}
+      >
         <div className="flex items-center gap-3 mb-2">
-          <div className="text-sm font-bold text-foreground truncate" title={headerTitle}>
+          <div
+            className="text-sm font-bold text-foreground truncate"
+            title={headerTitle}
+          >
             {headerDisplay}
           </div>
 
-            <div
+          <div
             className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold text-black flex items-center gap-1"
-            title={paletteMissing ? 'Palette mapping missing for this node prefix' : undefined}
             style={{
-              background: badgeColor ? `var(--node-leftbar-color, ${badgeColor})` : undefined,
-              border: badgeColor ? `1px solid ${darken(badgeColor, 0.12)}` : undefined
+              background: badgeColor
+                ? `var(--node-leftbar-color, ${badgeColor})`
+                : undefined,
+              border: badgeColor
+                ? `1px solid ${darken(badgeColor, 0.12)}`
+                : undefined,
             }}
           >
-            <span className="truncate">{badgeText || displayedTypeShort || nodeData.classType || (namespace ? namespace : 'unknown')}</span>
-            {paletteMissing && (
-              <span title="Palette mapping missing" className="text-red-600" aria-hidden>
-                <AlertTriangle className="h-3 w-3" />
-              </span>
-            )}
+            <span className="truncate">
+              {badgeText ||
+                displayedTypeShort ||
+                nodeData.classType ||
+                (namespace ? namespace : "unknown")}
+            </span>
           </div>
 
           {hasErrors && (
             <div className="ml-auto">
               <Popover>
                 <PopoverTrigger asChild>
-                  <button className="h-6 w-6 p-0 text-destructive flex items-center justify-center" aria-label="Errors">
+                  <button
+                    className="h-6 w-6 p-0 text-destructive flex items-center justify-center"
+                    aria-label="Errors"
+                  >
                     <AlertTriangle className="h-4 w-4" />
                   </button>
                 </PopoverTrigger>
@@ -406,7 +512,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
         <div className="text-sm text-muted-foreground mb-3">
           {typesList && typesList.length > 0 && (
             <div className="text-xs text-muted-foreground mt-1 truncate">
-              {typesList.join(', ')}
+              {typesList.join(", ")}
             </div>
           )}
         </div>
@@ -417,9 +523,16 @@ function CustomOntologyNodeInner(props: NodeProps) {
           ) : (
             <div className="space-y-2">
               {annotations.map((a, idx) => (
-                <div key={idx} className="grid grid-cols-[110px_1fr] gap-2 text-sm">
-                  <div className="font-medium text-xs text-muted-foreground truncate">{a.term}</div>
-                  <div className="text-xs text-foreground truncate">{a.value}</div>
+                <div
+                  key={idx}
+                  className="grid grid-cols-[110px_1fr] gap-2 text-sm"
+                >
+                  <div className="font-medium text-xs text-muted-foreground truncate">
+                    {a.term}
+                  </div>
+                  <div className="text-xs text-foreground truncate">
+                    {a.value}
+                  </div>
                 </div>
               ))}
             </div>
@@ -433,28 +546,28 @@ function CustomOntologyNodeInner(props: NodeProps) {
         )}
       </div>
 
-        {/* Match example: render source on the Right and target on the Left, with the same conditional logic.
+      {/* Match example: render source on the Right and target on the Left, with the same conditional logic.
             This mirrors the provided example so native handle-drag shows the live connection correctly. */}
-        {showHandles && (
-          <>
+      {showHandles && (
+        <>
+          <Handle
+            id={handleId}
+            type="source"
+            position={Position.Right}
+            className="!bg-transparent !border-0"
+            isConnectable={true}
+          />
+          {(!(connection as any)?.inProgress || isTarget) && (
             <Handle
               id={handleId}
-              type="source"
-              position={Position.Right}
+              type="target"
+              position={Position.Left}
               className="!bg-transparent !border-0"
               isConnectable={true}
             />
-            {(!((connection as any)?.inProgress) || isTarget) && (
-              <Handle
-                id={handleId}
-                type="target"
-                position={Position.Left}
-                className="!bg-transparent !border-0"
-                isConnectable={true}
-              />
-            )}
-          </>
-        )}
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -464,8 +577,16 @@ function CustomOntologyNodeInner(props: NodeProps) {
  */
 function darken(hex: string, amount: number) {
   try {
-    const c = hex.replace('#', '');
-    const num = parseInt(c.length === 3 ? c.split('').map(s => s + s).join('') : c, 16);
+    const c = hex.replace("#", "");
+    const num = parseInt(
+      c.length === 3
+        ? c
+            .split("")
+            .map((s) => s + s)
+            .join("")
+        : c,
+      16,
+    );
     let r = (num >> 16) & 0xff;
     let g = (num >> 8) & 0xff;
     let b = num & 0xff;
@@ -479,4 +600,4 @@ function darken(hex: string, amount: number) {
 }
 
 export const CustomOntologyNode = memo(CustomOntologyNodeInner);
-CustomOntologyNode.displayName = 'CustomOntologyNode';
+CustomOntologyNode.displayName = "CustomOntologyNode";

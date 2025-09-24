@@ -10,7 +10,6 @@ import { create } from "zustand";
 import { RDFManager, rdfManager } from "../utils/rdfManager";
 import { useAppConfigStore } from "./appConfigStore";
 import { debug, info, warn, error, fallback } from "../utils/startupDebug";
-import type { ParsedGraph } from "../utils/rdfParser";
 import { DataFactory, Quad } from "n3";
 const { namedNode, quad } = DataFactory;
 import { WELL_KNOWN } from "../utils/wellKnownOntologies";
