@@ -352,24 +352,38 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             /* no-op or forward */
           },
         });
-        const { parseRDFFile } = await import("../utils/rdfParser");
-        const parsed = await parseRDFFile(content);
-
-        // Persist the raw ontology RDF into the shared ontologies graph so
-        // its triples are clearly marked as ontology provenance.
+        // Persist the raw ontology RDF into the shared ontologies graph so its triples are clearly marked as ontology provenance.
         try {
           await rdfManager.loadRDFIntoGraph(content, "urn:vg:ontologies");
         } catch (_) {
           /* ignore persist failures - parsing will proceed regardless */
         }
+        const { computeParsedFromStore } = await import("../utils/parsedFromStore");
+        const parsed = await computeParsedFromStore(rdfManager, "urn:vg:ontologies");
+        // Filter out synthetic helper prefixes/entries (e.g. those created by ensureNamespacesPresent which
+        // emit minimal dummy triples like PREFIX:__vg_dummy). These should not create standalone loadedOntology entries.
+        const filteredNamespaces = parsed && parsed.namespaces
+          ? Object.fromEntries(
+              Object.entries(parsed.namespaces).filter(([p, ns]) => {
+                try {
+                  const sp = String(p || "");
+                  const sn = String(ns || "");
+                  return !sp.includes("__vg_dummy") && !sn.includes("__vg_dummy");
+                } catch {
+                  return true;
+                }
+              }),
+            )
+          : {};
+
 
         // Ensure any namespaces discovered during parsing are applied into the RDF manager
         // immediately so subsequent logic that uses computeTermDisplay or expandPrefix
         // sees the newly-registered prefixes. This is idempotent and safe to call.
         try {
-          if (parsed && parsed.namespaces && Object.keys(parsed.namespaces).length > 0) {
+          if (filteredNamespaces && Object.keys(filteredNamespaces).length > 0) {
             try {
-              rdfManager.applyParsedNamespaces(parsed.namespaces);
+              rdfManager.applyParsedNamespaces(filteredNamespaces);
             } catch (_) {
               /* ignore namespace application failures */
             }
@@ -642,12 +656,12 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           canonicalUrl = url;
         }
 
-        const loadedOntology: LoadedOntology = {
+          const loadedOntology: LoadedOntology = {
           url: canonicalUrl,
           name: deriveOntologyName(canonicalUrl),
           classes: ontologyClasses,
           properties: ontologyProperties,
-          namespaces: parsed.namespaces || {},
+          namespaces: Object.keys(filteredNamespaces || {}).length > 0 ? filteredNamespaces : (parsed.namespaces || {}),
           source: wkEntry ? "requested" : "requested",
           graphName: "urn:vg:ontologies",
         };
@@ -1199,7 +1213,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       length: (rdfContent || "").length,
     });
     try {
-      const { parseRDFFile } = await import("../utils/rdfParser");
       const { rdfManager } = get();
 
       onProgress?.(10, "Starting RDF parsing...");
@@ -1230,7 +1243,8 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         );
       }
 
-      const parsed = await parseRDFFile(rdfContent, onProgress);
+        const { computeParsedFromStore } = await import("../utils/parsedFromStore");
+        const parsed = await computeParsedFromStore(rdfManager, graphName ? graphName : (preserveGraph ? "urn:vg:ontologies" : "urn:vg:data"));
 
       try {
         const { rdfManager } = get();
