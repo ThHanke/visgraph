@@ -226,21 +226,71 @@ export const NodePropertyEditor = ({
       },
     };
 
-    // Persist minimal changed annotation quads to urn:vg:data using rdfManager (writes only).
+    // Persist minimal changed annotation quads to urn:vg:data using rdfManager primitives (addTriple/removeTriple).
     try {
-      // Use store only for writes; do not read/derive from it.
       const mgrState = useOntologyStore.getState();
       const mgr = typeof mgrState.getRdfManager === "function" ? mgrState.getRdfManager() : (mgrState as any).getRdfManager?.();
-      if (mgr && typeof mgr.getStore === "function") {
+      const before = initialPropertiesRef.current || [];
+      const after = properties || [];
+      const { toAdd, toRemove } = diffProperties(before, after);
+
+      if (mgr && typeof (mgr as any).addTriple === "function" && typeof (mgr as any).removeTriple === "function") {
+        try {
+          // Apply removals first (exact matches)
+          for (const rem of toRemove) {
+            try {
+              const predRaw = rem.key;
+              const predFull = typeof mgr.expandPrefix === "function" ? String(mgr.expandPrefix(predRaw)) : String(predRaw);
+              try { (mgr as any).removeTriple(String(nodeIri), predFull, String(rem.value), "urn:vg:data"); } catch (_) { /* ignore per-remove */ }
+            } catch (_) { /* ignore per-remove build */ }
+          }
+
+          // Then apply adds idempotently
+          for (const add of toAdd) {
+            try {
+              const predRaw = add.key;
+              const predFull = typeof mgr.expandPrefix === "function" ? String(mgr.expandPrefix(predRaw)) : String(predRaw);
+              try { (mgr as any).addTriple(String(nodeIri), predFull, String(add.value), "urn:vg:data"); } catch (_) { /* ignore per-add */ }
+            } catch (_) { /* ignore per-add build */ }
+          }
+
+          // Single notify after batch of primitives
+          try { if (typeof (mgr as any).notifyChange === "function") (mgr as any).notifyChange(); } catch (_) { /* ignore */ }
+        } catch (e) {
+          try { console.warn("NodePropertyEditor.save.primitivesFailed", e); } catch (_) {}
+        }
+      } else if (mgr && typeof mgr.applyBatch === "function") {
+        // Fallback: build arrays and use applyBatch
+        const removes: Array<{ subject: string; predicate: string; object: string }> = [];
+        const adds: Array<{ subject: string; predicate: string; object: string }> = [];
+
+        for (const rem of toRemove) {
+          try {
+            const predRaw = rem.key;
+            const predFull = typeof mgr.expandPrefix === "function" ? String(mgr.expandPrefix(predRaw)) : String(predRaw);
+            removes.push({ subject: String(nodeIri), predicate: predFull, object: String(rem.value) });
+          } catch (_) { /* ignore */ }
+        }
+
+        for (const add of toAdd) {
+          try {
+            const predRaw = add.key;
+            const predFull = typeof mgr.expandPrefix === "function" ? String(mgr.expandPrefix(predRaw)) : String(predRaw);
+            adds.push({ subject: String(nodeIri), predicate: predFull, object: String(add.value) });
+          } catch (_) { /* ignore */ }
+        }
+
+        try {
+          await mgr.applyBatch({ removes, adds }, "urn:vg:data");
+        } catch (batchErr) {
+          try { console.warn("NodePropertyEditor.save.applyBatchFailed", batchErr); } catch (_) {}
+        }
+      } else if (mgr && typeof mgr.getStore === "function") {
+        // Last-resort fallback: direct store writes (preserve previous behavior)
         const store = mgr.getStore();
         const g = namedNode("urn:vg:data");
         const subjTerm = namedNode(String(nodeIri));
 
-        const before = initialPropertiesRef.current || [];
-        const after = properties || [];
-        const { toAdd, toRemove } = diffProperties(before, after);
-
-        // Remove quads for removed properties
         for (const rem of toRemove) {
           try {
             const predRaw = rem.key;
@@ -254,7 +304,6 @@ export const NodePropertyEditor = ({
           } catch (_) { /* ignore per-property */ }
         }
 
-        // Add quads for added properties
         for (const add of toAdd) {
           try {
             const predRaw = add.key;
@@ -267,9 +316,10 @@ export const NodePropertyEditor = ({
             }
           } catch (_) { /* ignore per-property */ }
         }
+        // Notify after direct store writes
+        try { if (typeof (mgr as any).notifyChange === "function") (mgr as any).notifyChange(); } catch (_) { /* ignore */ }
       }
     } catch (err) {
-      // swallow store write errors — canvas will remain consistent via incremental updates if writes succeed
       try { console.warn("NodePropertyEditor.save.storeWriteFailed", err); } catch (_) { /* ignore */ }
     }
 

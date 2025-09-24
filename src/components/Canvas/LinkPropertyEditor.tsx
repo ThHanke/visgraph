@@ -108,13 +108,16 @@ export const LinkPropertyEditor = ({
       setSelectedProperty(resolvedStr);
     }
   }, [
+    // Re-run when the dialog is opened or when linkData identity/fields change.
+    // Avoid including `selectedProperty` here because setSelectedProperty updates would
+    // re-trigger this effect and can contribute to an update loop.
+    open,
     linkData?.id,
     linkData?.key,
     linkData?.propertyUri,
     linkData?.propertyType,
     linkData?.data?.propertyUri,
     linkData?.data?.propertyType,
-    selectedProperty,
   ]);
 
   // If the editor opens and there is no selectedProperty yet, but available properties exist,
@@ -131,7 +134,7 @@ export const LinkPropertyEditor = ({
     } catch (_) {
       // ignore
     }
-  }, [allObjectPropertiesState, selectedProperty]);
+  }, [allObjectPropertiesState, selectedProperty, open]);
 
   useEffect(() => {
     try {
@@ -160,7 +163,7 @@ export const LinkPropertyEditor = ({
     const mgr =
       typeof (mgrState as any).getRdfManager === 'function'
         ? (mgrState as any).getRdfManager()
-        : (mgrState as any).rdfManager;
+        : (mgrState as any).rdfmanager;
 
     const subjIri = (sourceNode && ((sourceNode as any).iri || (sourceNode as any).key)) || '';
     const objIri = (targetNode && ((targetNode as any).iri || (targetNode as any).key)) || '';
@@ -170,39 +173,57 @@ export const LinkPropertyEditor = ({
         const predFull =
           mgr && typeof mgr.expandPrefix === 'function' ? String(mgr.expandPrefix(uriToSave)) : String(uriToSave);
 
-        const subjEsc = `<${String(subjIri)}>`;
-        const predEsc = `<${String(predFull)}>`;
-        const objEsc = `<${String(objIri)}>`;
-        const ttl = `${subjEsc} ${predEsc} ${objEsc} .\n`;
-
         try {
-          if (typeof mgr.loadRDFIntoGraph === 'function') {
-            await mgr.loadRDFIntoGraph(ttl, 'urn:vg:data');
-          } else if (typeof mgr.loadRDF === 'function') {
-            // Best-effort fallback
-            await mgr.loadRDF(ttl);
-          } else {
-            // Direct store write as last resort (write-only)
-            const store = mgr.getStore && mgr.getStore();
-            if (store) {
-              const subjTerm = namedNode(String(subjIri));
-              const predTerm = namedNode(String(predFull));
-              const objTerm = namedNode(String(objIri));
-              const g = namedNode('urn:vg:data');
-              const exists = store.getQuads(subjTerm, predTerm, objTerm, g) || [];
-              if (!exists || exists.length === 0) {
-                try {
-                  store.addQuad(quad(subjTerm, predTerm, objTerm, g));
-                } catch (_) {
-                  /* ignore */
-                }
+          // Prefer primitive API calls exposed by rdfManager
+          if (typeof (mgr as any).addTriple === 'function') {
+            try {
+              (mgr as any).addTriple(String(subjIri), String(predFull), String(objIri), 'urn:vg:data');
+            } catch (err) {
+              try { console.error('[VG] LinkPropertyEditor.addTriple.failed', err); } catch (_) {}
+            }
+            // Ensure subscribers see a coherent change notification after the primitive writes
+            try {
+              if (typeof (mgr as any).notifyChange === 'function') {
+                try { (mgr as any).notifyChange(); } catch (_) {}
               }
+            } catch (_) { /* ignore notify errors */ }
+          } else {
+            // Fallback: create a small TTL fragment and ask manager to load it (legacy)
+            const subjEsc = `<${String(subjIri)}>`;
+            const predEsc = `<${String(predFull)}>`;
+            const objEsc = `<${String(objIri)}>`;
+            const ttl = `${subjEsc} ${predEsc} ${objEsc} .\n`;
+
+            try {
+              if (typeof mgr.loadRDFIntoGraph === 'function') {
+                await mgr.loadRDFIntoGraph(ttl, 'urn:vg:data');
+              } else if (typeof mgr.loadRDF === 'function') {
+                await mgr.loadRDF(ttl);
+              } else {
+                // Last-resort direct store write
+                const store = mgr.getStore && mgr.getStore();
+                if (store) {
+                  const subjTerm = namedNode(String(subjIri));
+                  const predTerm = namedNode(String(predFull));
+                  const objTerm = namedNode(String(objIri));
+                  const g = namedNode('urn:vg:data');
+                  const exists = store.getQuads(subjTerm, predTerm, objTerm, g) || [];
+                  if (!exists || exists.length === 0) {
+                    try { store.addQuad(quad(subjTerm, predTerm, objTerm, g)); } catch (_) {}
+                  }
+                }
+                try {
+                  if (typeof (mgr as any).notifyChange === 'function') {
+                    try { (mgr as any).notifyChange(); } catch (_) {}
+                  }
+                } catch (_) {}
+              }
+            } catch (err) {
+              try { console.error('[VG] LinkPropertyEditor.persistQuad.failed', err); } catch (_) {}
             }
           }
         } catch (err) {
-          try {
-            console.error('[VG] LinkPropertyEditor.persistQuad.failed', err);
-          } catch (_) { /* ignore */ }
+          try { console.error('[VG] LinkPropertyEditor.persist.failed', err); } catch (_) {}
         }
       }
     } catch (_) {
@@ -223,36 +244,49 @@ export const LinkPropertyEditor = ({
       const mgr =
         typeof (mgrState as any).getRdfManager === 'function'
           ? (mgrState as any).getRdfManager()
-          : (mgrState as any).rdfManager;
+          : (mgrState as any).rdfmanager;
       if (!mgr) throw new Error('RDF manager unavailable');
-
-      const store = mgr.getStore && mgr.getStore();
-      if (!store) throw new Error('RDF store unavailable');
 
       const subjIri = (sourceNode && ((sourceNode as any).iri || (sourceNode as any).key)) || '';
       const objIri = (targetNode && ((targetNode as any).iri || (targetNode as any).key)) || '';
       const predicateRaw = selectedProperty || displayValue;
       const predFull = mgr && typeof mgr.expandPrefix === 'function' ? String(mgr.expandPrefix(predicateRaw)) : String(predicateRaw);
 
-      // Remove matching quads from urn:vg:data (writes only)
       try {
-        const g = namedNode('urn:vg:data');
-        const subjTerm = namedNode(String(subjIri));
-        const predTerm = namedNode(String(predFull));
-        const objTerm = namedNode(String(objIri));
-        const quads = store.getQuads(subjTerm, predTerm, objTerm, g) || [];
-        for (const q of quads) {
-          try { store.removeQuad(q); } catch (_) { /* ignore per-quad */ }
+        // Prefer primitive API if available
+        if (typeof (mgr as any).removeTriple === 'function') {
+          try {
+            (mgr as any).removeTriple(String(subjIri), String(predFull), String(objIri), 'urn:vg:data');
+          } catch (err) {
+            try { console.error('[VG] LinkPropertyEditor.removeTriple.failed', err); } catch (_) {}
+            throw err;
+          }
+        } else {
+          // Fallback to store-based removal (best-effort)
+          const store = mgr.getStore && mgr.getStore();
+          if (store) {
+            const g = namedNode('urn:vg:data');
+            const subjTerm = namedNode(String(subjIri));
+            const predTerm = namedNode(String(predFull));
+            const objTerm = namedNode(String(objIri));
+            const quads = store.getQuads(subjTerm, predTerm, objTerm, g) || [];
+            for (const q of quads) {
+              try { store.removeQuad(q); } catch (_) { /* ignore per-quad */ }
+            }
+          }
         }
       } catch (_) {
-        // fallback: remove across graphs
+        // Fallback: attempt removal across graphs if above failed
         try {
-          const subjTerm = namedNode(String(subjIri));
-          const predTerm = namedNode(String(predFull));
-          const objTerm = namedNode(String(objIri));
-          const quads = store.getQuads(subjTerm, predTerm, objTerm, null) || [];
-          for (const q of quads) {
-            try { store.removeQuad(q); } catch (_) { /* ignore per-quad */ }
+          const store = mgr.getStore && mgr.getStore();
+          if (store) {
+            const subjTerm = namedNode(String(subjIri));
+            const predTerm = namedNode(String(predFull));
+            const objTerm = namedNode(String(objIri));
+            const quads = store.getQuads(subjTerm, predTerm, objTerm, null) || [];
+            for (const q of quads) {
+              try { store.removeQuad(q); } catch (_) { /* ignore per-quad */ }
+            }
           }
         } catch (_) { /* ignore */ }
       }
@@ -309,7 +343,7 @@ export const LinkPropertyEditor = ({
             <Label>Type</Label>
             <AutoComplete
               options={allObjectPropertiesState}
-              value={displayValue}
+              value={selectedProperty}
               onValueChange={setSelectedProperty}
               placeholder="Type to search for object properties..."
               emptyMessage="No object properties found. Load an ontology first."

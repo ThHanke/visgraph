@@ -20,7 +20,7 @@ import { buildEdgePayload, addEdgeToCurrentGraph, generateEdgeId } from "../comp
  * Map to track in-flight RDF loads so identical loads return the same Promise.
  * Keyed by the raw RDF content or source identifier.
  */
-const inFlightLoads = new Map<string, Promise<void>>();
+const inFlightLoads = new Map<string, Promise<any>>();
 
 /*
   Deferred namespace registration:
@@ -150,6 +150,29 @@ function getNodeData(node: ParsedNode | DiagramNode): any {
   return (node as any).data || node;
 }
 
+/**
+ * Compare two ontology URLs for equivalence for deduplication purposes.
+ * Comparison is scheme-agnostic (treats http/https as equivalent) but preserves
+ * the remainder of the IRI including trailing slashes, fragments and queries.
+ * This function is used only for duplicate-detection; it does NOT rewrite stored URLs.
+ */
+function urlsEquivalent(a: string | undefined | null, b: string | undefined | null): boolean {
+  try {
+    const sa = String(a || "").trim();
+    const sb = String(b || "").trim();
+    if (!sa || !sb) return sa === sb;
+    const ra = sa.replace(/^https?:\/\//i, "");
+    const rb = sb.replace(/^https?:\/\//i, "");
+    return ra === rb;
+  } catch (_) {
+    try {
+      return String(a) === String(b);
+    } catch {
+      return false;
+    }
+  }
+}
+
 interface OntologyClass {
   iri: string;
   label: string;
@@ -172,6 +195,7 @@ interface LoadedOntology {
   classes: OntologyClass[];
   properties: ObjectProperty[];
   namespaces: Record<string, string>;
+  aliases?: string[]; // optional list of alias URLs (scheme/variant) for the same ontology
   // Optional named graph where the ontology/data was stored (e.g. 'urn:vg:ontologies' or 'urn:vg:data')
   graphName?: string;
   // How the entry was introduced:
@@ -290,22 +314,8 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       if (wkEntry) {
         try {
           const { loadedOntologies: curLoaded, rdfManager: mgr } = get();
-          const alreadyPresent = (curLoaded || []).some(
-            (o: any) =>
-              (function (x: any) {
-                try {
-                  const s = String(x).trim();
-                  if (s.toLowerCase().startsWith("http://"))
-                    return s.replace(/^http:\/\//i, "https://");
-                  try {
-                    return new URL(s).toString();
-                  } catch {
-                    return s.replace(/\/+$/, "");
-                  }
-                } catch (_) {
-                  return String(x || "");
-                }
-              })(o.url) === normRequestedUrl,
+          const alreadyPresent = (curLoaded || []).some((o: any) =>
+            urlsEquivalent(o.url, normRequestedUrl),
           );
           if (!alreadyPresent) {
             try {
@@ -346,20 +356,69 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       // Centralized fetch & mime detection via RDFManager helper
       try {
         const { rdfManager } = get();
-        const { content } = await rdfManager.loadFromUrl(url, {
-          timeoutMs: 15000,
-          onProgress: (p: number, m: string) => {
-            /* no-op or forward */
-          },
-        });
-        // Persist the raw ontology RDF into the shared ontologies graph so its triples are clearly marked as ontology provenance.
-        try {
-          await rdfManager.loadRDFIntoGraph(content, "urn:vg:ontologies");
-        } catch (_) {
-          /* ignore persist failures - parsing will proceed regardless */
+
+        // Normalize a URL to create a stable key used for in-flight deduplication.
+        const normalizeForKey = (u: any) => {
+          try {
+            const s = String(u || "").trim();
+            if (!s) return "";
+            if (s.toLowerCase().startsWith("http://")) {
+              return s.replace(/^http:\/\//i, "https://").replace(/\/+$/, "");
+            }
+            try {
+              return new URL(s).toString().replace(/\/+$/, "");
+            } catch {
+              return s.replace(/\/+$/, "");
+            }
+          } catch {
+            return String(u || "");
+          }
+        };
+
+        const loadKey = normalizeForKey(url);
+
+        // Share identical concurrent loads via inFlightLoads so we don't fetch/parse the same ontology multiple times.
+        let parsed: any;
+        const existing = inFlightLoads.get(loadKey) as Promise<any> | undefined;
+        if (existing) {
+          try {
+            parsed = await existing;
+          } catch (e) {
+            // If the shared promise failed, remove it and continue to attempt a fresh load below.
+            inFlightLoads.delete(loadKey);
+            throw e;
+          }
+        } else {
+          const promise = (async () => {
+            try {
+              const { content } = await rdfManager.loadFromUrl(url, {
+                timeoutMs: 15000,
+                onProgress: (p: number, m: string) => {
+                  /* no-op or forward */
+                },
+              });
+              // Persist the raw ontology RDF into the shared ontologies graph so its triples are clearly marked as ontology provenance.
+              try {
+                await rdfManager.loadRDFIntoGraph(content, "urn:vg:ontologies");
+              } catch (_) {
+                /* ignore persist failures - parsing will proceed regardless */
+              }
+              const { computeParsedFromStore } = await import("../utils/parsedFromStore");
+              const parsedLocal = await computeParsedFromStore(rdfManager, "urn:vg:ontologies");
+              return parsedLocal;
+            } catch (e) {
+              throw e;
+            }
+          })();
+
+          inFlightLoads.set(loadKey, promise);
+          try {
+            parsed = await promise;
+          } finally {
+            // Ensure we remove the in-flight entry so future loads can retry if needed.
+            inFlightLoads.delete(loadKey);
+          }
         }
-        const { computeParsedFromStore } = await import("../utils/parsedFromStore");
-        const parsed = await computeParsedFromStore(rdfManager, "urn:vg:ontologies");
         // Filter out synthetic helper prefixes/entries (e.g. those created by ensureNamespacesPresent which
         // emit minimal dummy triples like PREFIX:__vg_dummy). These should not create standalone loadedOntology entries.
         const filteredNamespaces = parsed && parsed.namespaces
@@ -381,9 +440,20 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         // immediately so subsequent logic that uses computeTermDisplay or expandPrefix
         // sees the newly-registered prefixes. This is idempotent and safe to call.
         try {
-          if (filteredNamespaces && Object.keys(filteredNamespaces).length > 0) {
+            if (filteredNamespaces && Object.keys(filteredNamespaces).length > 0) {
             try {
-              rdfManager.applyParsedNamespaces(filteredNamespaces);
+              // filteredNamespaces may come from parsing and have unknown-value types;
+              // coerce to the expected Record<string,string> when calling the RDF manager.
+              try {
+                rdfManager.applyParsedNamespaces(filteredNamespaces as Record<string, string>);
+              } catch (_) {
+                // fallback: stringify values
+                const stringified: Record<string, string> = {};
+                Object.entries(filteredNamespaces || {}).forEach(([k, v]) => {
+                  try { stringified[k] = String(v); } catch (_) { /* ignore */ }
+                });
+                try { rdfManager.applyParsedNamespaces(stringified); } catch (_) { /* ignore */ }
+              }
             } catch (_) {
               /* ignore namespace application failures */
             }
@@ -469,27 +539,70 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           if (wkEntry) canonicalForThis = url;
 
           // Register a single loadedOntology entry (deduplicated) using canonicalForThis.
-          const already = (get().loadedOntologies || []).some(
-            (o: any) => String(o.url) === String(canonicalForThis),
-          );
-          if (!already) {
+          // Use scheme-agnostic comparison (urlsEquivalent) to detect existing variants
+          // and add textual variants as aliases instead of creating duplicate entries.
+          try {
+            const existingIndex = (get().loadedOntologies || []).findIndex((o: any) =>
+              urlsEquivalent(o.url, canonicalForThis),
+            );
+
+            if (existingIndex === -1) {
+              try {
+                const meta: LoadedOntology = {
+                  url: canonicalForThis,
+                  name:
+                    wkEntry && wkEntry.name
+                      ? wkEntry.name
+                      : deriveOntologyName(String(canonicalForThis)),
+                  classes: [],
+                  properties: [],
+                  namespaces:
+                    parsed.namespaces || (wkEntry && wkEntry.namespaces) || {},
+                };
+                set((state) => ({
+                  loadedOntologies: [...state.loadedOntologies, meta],
+                }));
+              } catch (_) {
+                /* ignore registration failure */
+              }
+            } else {
+              // Merge parsed namespaces into the existing entry and record this canonical URL as an alias
+              try {
+                set((state: any) => {
+                  const copy = (state.loadedOntologies || []).slice();
+                  const existing = { ...(copy[existingIndex] || {}) };
+                  existing.namespaces = {
+                    ...(existing.namespaces || {}),
+                    ...(parsed.namespaces || {}),
+                  };
+                  existing.classes = Array.from(
+                    new Set([...(existing.classes || []), ...ontologyClasses]),
+                  );
+                  existing.properties = Array.from(
+                    new Set([...(existing.properties || []), ...ontologyProperties]),
+                  );
+                  if (String(existing.url) !== String(canonicalForThis)) {
+                    existing.aliases = Array.isArray(existing.aliases) ? existing.aliases : [];
+                    if (!existing.aliases.includes(canonicalForThis)) {
+                      existing.aliases.push(canonicalForThis);
+                    }
+                  }
+                  copy[existingIndex] = existing;
+                  return { loadedOntologies: copy };
+                });
+              } catch (_) {
+                /* ignore merge failure */
+              }
+            }
+          } catch (e) {
             try {
-              const meta: LoadedOntology = {
-                url: canonicalForThis,
-                name:
-                  wkEntry && wkEntry.name
-                    ? wkEntry.name
-                    : deriveOntologyName(String(canonicalForThis)),
-                classes: [],
-                properties: [],
-                namespaces:
-                  parsed.namespaces || (wkEntry && wkEntry.namespaces) || {},
-              };
-              set((state) => ({
-                loadedOntologies: [...state.loadedOntologies, meta],
-              }));
+              fallback(
+                "wellknown.match.failed",
+                { error: String(e) },
+                { level: "warn" },
+              );
             } catch (_) {
-              /* ignore registration failure */
+              /* ignore */
             }
           }
         } catch (e) {
@@ -666,45 +779,80 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           graphName: "urn:vg:ontologies",
         };
 
-        // Merge into state with deduplication by canonical URL.
-        set((state) => {
-          const exists = (state.loadedOntologies || []).some(
-            (o: any) => String(o.url) === String(loadedOntology.url),
+        // Merge into state with deduplication by canonical URL (scheme-agnostic).
+        // Skip registering core RDF vocabularies as standalone ontologies when loading regular ontologies.
+        set((state: any) => {
+          const coreOntologies = new Set([
+            "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+            "http://www.w3.org/2000/01/rdf-schema#",
+            "http://www.w3.org/2002/07/owl#",
+            "http://www.w3.org/2001/XMLSchema#",
+          ]);
+
+          // If the loaded ontology is a core vocab, do not register it as a separate loadedOntology here.
+          if (coreOntologies.has(String(loadedOntology.url))) {
+            // still merge classes/properties into available lists below, but avoid showing as a loaded ontology
+            const mergedClasses = [...state.availableClasses, ...ontologyClasses];
+            const mergedProps = [...state.availableProperties, ...ontologyProperties];
+
+            const classMap: Record<string, any> = {};
+            mergedClasses.forEach((c: any) => {
+              try {
+                classMap[String(c.iri)] = c;
+              } catch (_) {}
+            });
+            const propMap: Record<string, any> = {};
+            mergedProps.forEach((p: any) => {
+              try {
+                propMap[String(p.iri)] = p;
+              } catch (_) {}
+            });
+
+            return {
+              availableClasses: Object.values(classMap),
+              availableProperties: Object.values(propMap),
+              ontologiesVersion: (state.ontologiesVersion || 0) + 1,
+            };
+          }
+
+          const existingIndex = (state.loadedOntologies || []).findIndex((o: any) =>
+            urlsEquivalent(o.url, loadedOntology.url),
           );
 
-          const newLoaded = exists
-            ? (state.loadedOntologies || []).map((o: any) =>
-                String(o.url) === String(loadedOntology.url)
-                  ? {
-                      // merge namespaces and metadata, prefer existing name if present
-                      ...o,
-                      name: o.name || loadedOntology.name,
-                      namespaces: {
-                        ...(o.namespaces || {}),
-                        ...(loadedOntology.namespaces || {}),
-                      },
-                      classes: Array.from(
-                        new Set([
-                          ...(o.classes || []),
-                          ...(loadedOntology.classes || []),
-                        ]),
-                      ),
-                      properties: Array.from(
-                        new Set([
-                          ...(o.properties || []),
-                          ...(loadedOntology.properties || []),
-                        ]),
-                      ),
-                    }
-                  : o,
-              )
-            : [...(state.loadedOntologies || []), loadedOntology];
+          let newLoaded = (state.loadedOntologies || []).slice();
+
+          if (existingIndex !== -1) {
+            try {
+              const existing = { ...(newLoaded[existingIndex] || {}) };
+              existing.name = existing.name || loadedOntology.name;
+              existing.namespaces = {
+                ...(existing.namespaces || {}),
+                ...(loadedOntology.namespaces || {}),
+              };
+              existing.classes = Array.from(
+                new Set([...(existing.classes || []), ...(loadedOntology.classes || [])]),
+              );
+              existing.properties = Array.from(
+                new Set([...(existing.properties || []), ...(loadedOntology.properties || [])]),
+              );
+              // record alias if textual URLs differ
+              try {
+                if (String(existing.url) !== String(loadedOntology.url)) {
+                  existing.aliases = Array.isArray(existing.aliases) ? existing.aliases : [];
+                  if (!existing.aliases.includes(loadedOntology.url)) existing.aliases.push(loadedOntology.url);
+                }
+              } catch (_) {}
+              newLoaded[existingIndex] = existing;
+            } catch (_) {
+              // fallback to append if merge fails
+              newLoaded = [...(state.loadedOntologies || []), loadedOntology];
+            }
+          } else {
+            newLoaded = [...(state.loadedOntologies || []), loadedOntology];
+          }
 
           const mergedClasses = [...state.availableClasses, ...ontologyClasses];
-          const mergedProps = [
-            ...state.availableProperties,
-            ...ontologyProperties,
-          ];
+          const mergedProps = [...state.availableProperties, ...ontologyProperties];
 
           // Deduplicate available lists by iri
           const classMap: Record<string, any> = {};
@@ -727,6 +875,21 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             ontologiesVersion: (state.ontologiesVersion || 0) + 1,
           };
         });
+
+        // Debug snapshot immediately after merging loadedOntologies into state.
+        try {
+          try {
+            const snapshot = (get().loadedOntologies || []).map((o: any) => ({
+              url: o.url,
+              name: o.name,
+            }));
+            console.debug("[VG_DEBUG] loadedOntologies.afterMerge:", snapshot);
+          } catch (_) {
+            /* ignore debug failures */
+          }
+        } catch (_) {
+          /* ignore outer debug failures */
+        }
 
         try {
           const appCfg = useAppConfigStore.getState();
@@ -1074,11 +1237,96 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                       return e;
                     }
                   });
-                  set({ currentGraph: { nodes: mergedNodes, edges: labeledEdges } });
+                  // Merge into existing currentGraph (preserve nodes/edges not present in this parsed batch)
+                  try {
+                    const existing = get().currentGraph || { nodes: [], edges: [] };
+                    const byId = new Map<string, any>();
+                    try {
+                      (existing.nodes || []).forEach((n: any) => {
+                        try { byId.set(String(n.id), n); } catch (_) { /* ignore */ }
+                      });
+                    } catch (_) { /* ignore */ }
+
+                    try {
+                      (mergedNodes || []).forEach((n: any) => {
+                        try {
+                          const id = String(n.id);
+                          const prev = byId.get(id);
+                          if (prev) {
+                            const mergedNode = { ...prev, ...n, position: prev.position || n.position || { x: 0, y: 0 } };
+                            if ((prev as any).__rf) (mergedNode as any).__rf = (prev as any).__rf;
+                            if ((prev as any).selected) (mergedNode as any).selected = true;
+                            byId.set(id, mergedNode);
+                          } else {
+                            const nodeToSet = (n && (n as any).position) ? n : { ...n, position: n.position || { x: 0, y: 0 } };
+                            byId.set(id, nodeToSet);
+                          }
+                        } catch (_) { /* ignore per-node */ }
+                      });
+                    } catch (_) { /* ignore per-mergedNodes */ }
+
+                    const finalNodes = Array.from(byId.values()).filter(Boolean);
+                    const labeledEdgesFinal = Array.isArray(labeledEdges) ? labeledEdges.slice() : (labeledEdges || []);
+                    set({ currentGraph: { nodes: finalNodes, edges: labeledEdgesFinal } });
+                  } catch (err) {
+                    // Fallback to original behaviour on any merge failure
+                    set({ currentGraph: { nodes: mergedNodes, edges: labeledEdges } });
+                  }
                   if (typeof window !== 'undefined') try { try { console.debug("[VG] ontologyStore: set __VG_REQUEST_LAYOUT_ON_NEXT_MAP (labeledEdges)"); } catch (_) {} (window as any).__VG_REQUEST_LAYOUT_ON_NEXT_MAP = true; (window as any).__VG_REQUEST_FIT_ON_NEXT_MAP = true; } catch (_) { /* ignore */ }
                 } catch (_) {
                   // fallback to original merged set if anything goes wrong
-                  set({ currentGraph: { nodes: mergedNodes, edges: mergedEdges } });
+                  // Merge into existing currentGraph rather than replacing it outright
+        try {
+          const existing = get().currentGraph || { nodes: [], edges: [] };
+          const nodeById = new Map<string, any>();
+          try {
+            (existing.nodes || []).forEach((n: any) => {
+              try { nodeById.set(String(n.id), n); } catch (_) { /* ignore */ }
+            });
+          } catch (_) { /* ignore */ }
+
+          try {
+            (mergedNodes || []).forEach((n: any) => {
+              try {
+                const id = String(n.id);
+                const prev = nodeById.get(id);
+                if (prev) {
+                  const mergedNode = { ...prev, ...n, position: prev.position || n.position || { x: 0, y: 0 } };
+                  if ((prev as any).__rf) (mergedNode as any).__rf = (prev as any).__rf;
+                  if ((prev as any).selected) (mergedNode as any).selected = true;
+                  nodeById.set(id, mergedNode);
+                } else {
+                  nodeById.set(id, (n && (n as any).position) ? n : { ...n, position: n.position || { x: 0, y: 0 } });
+                }
+              } catch (_) { /* ignore per-node */ }
+            });
+          } catch (_) { /* ignore mergedNodes processing */ }
+
+          const finalNodes = Array.from(nodeById.values()).filter(Boolean);
+
+          const edgeById = new Map<string, any>();
+          try {
+            (existing.edges || []).forEach((e: any) => {
+              try { edgeById.set(String(e.id), e); } catch (_) { /* ignore */ }
+            });
+          } catch (_) { /* ignore */ }
+
+          try {
+            (mergedEdges || []).forEach((e: any) => {
+              try {
+                const id = String(e.id);
+                edgeById.set(id, e);
+              } catch (_) { /* ignore per-edge */ }
+            });
+          } catch (_) { /* ignore mergedEdges processing */ }
+
+          const finalEdges = Array.from(edgeById.values()).filter(Boolean);
+
+          set({ currentGraph: { nodes: finalNodes, edges: finalEdges } });
+        } catch (err) {
+          // fallback to replace on error
+          set({ currentGraph: { nodes: mergedNodes, edges: mergedEdges } });
+        }
                 }
         } catch (mergeErr) {
           try {

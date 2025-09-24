@@ -256,6 +256,12 @@ export class RDFManager {
           } catch (_) {
             /* ignore */
           }
+          // Buffer the removed quad so subject-level subscribers receive this removal.
+          try {
+            (this as any).bufferSubjectFromQuad && (this as any).bufferSubjectFromQuad(q);
+          } catch (_) {
+            /* ignore buffering failures */
+          }
           return origRemove(q);
         }) as any;
       } catch (err) {
@@ -283,6 +289,48 @@ export class RDFManager {
       xsd: "http://www.w3.org/2001/XMLSchema#",
     };
 
+    // Developer note:
+    // Per investigation, rdfManager.updateNode and rdfManager.applyParsedNodes
+    // are being deprecated/disabled temporarily. Instead of modifying the large
+    // function implementations, we override the instance methods here in the
+    // constructor so the rest of the system can continue to load while we
+    // locate and migrate callers. These are strict no-ops and intentionally
+    // log a conspicuous warning to make any remaining callers visible in logs.
+    try {
+      (this as any).updateNode = function (
+        entityUri: string,
+        updates: any,
+        options?: any,
+      ) {
+        try {
+          console.warn(
+            "[VG] rdfManager.updateNode() is intentionally a no-op for investigation. Caller:",
+            { entityUri, updates, options },
+          );
+        } catch (_) {
+          /* ignore logging failures */
+        }
+        return;
+      };
+
+      (this as any).applyParsedNodes = function (
+        parsedNodes: any[] | undefined | null,
+        options?: any,
+      ) {
+        try {
+          console.warn(
+            "[VG] rdfManager.applyParsedNodes() is intentionally a no-op for investigation. Caller:",
+            { length: Array.isArray(parsedNodes) ? parsedNodes.length : 0, options },
+          );
+        } catch (_) {
+          /* ignore logging failures */
+        }
+        return;
+      };
+    } catch (_) {
+      /* best-effort override; do not block construction if it fails */
+    }
+
     // Enable tracing automatically in dev mode, or when the runtime flag is set.
     try {
       if (typeof window !== "undefined") {
@@ -307,15 +355,14 @@ export class RDFManager {
         }
         // Expose a runtime helper so you can enable tracing from the console:
         // window.__VG_ENABLE_RDF_WRITE_LOGGING && window.__VG_ENABLE_RDF_WRITE_LOGGING()
-        (window as any).__VG_ENABLE_RDF_WRITE_LOGGING = () => {
-          try {
-            (window as any).__VG_LOG_RDF_WRITES = true;
-            enableWriteTracing();
-            return true;
-          } catch (err) {
-            return false;
-          }
-        };
+        (window as any).__VG_ENABLE_RDF_ENABLE_RDF_WRITE_LOGGING = (function() {
+          // legacy compatibility alias (some dev envs may call the older name)
+          try { (window as any).__VG_ENABLE_RDF_WRITE_LOGGING = (window as any).__VG_ENABLE_RDF_WRITE_LOGGING || (() => { try { (window as any).__VG_LOG_RDF_WRITES = true; enableWriteTracing(); return true; } catch (err) { return false; } }); } catch (_) {}
+          return (window as any).__VG_ENABLE_RDF_WRITE_LOGGING;
+        })();
+        // Do not enable tracing proactively by default; keep it available via the console helper.
+        // Tracing can be enabled by running:
+        // window.__VG_ENABLE_RDF_WRITE_LOGGING && window.__VG_ENABLE_RDF_WRITE_LOGGING()
       }
     } catch (_) {
       try {
@@ -617,6 +664,53 @@ export class RDFManager {
 
     try {
       const lowerMime = (mimeType || "").toLowerCase();
+
+      // Handle JSON-LD input: many tests or remote endpoints may return JSON-LD strings.
+      // Detect JSON-LD by mimeType or by content starting with "{" and containing "@context".
+      // If detected, convert JSON-LD to N-Quads using the jsonld library so the N3 parser can consume it.
+      try {
+        const looksJsonLd =
+          (mimeType && mimeType.includes("json")) ||
+          (/^\s*\{/.test(rdfContent) && rdfContent.includes("@context"));
+        if (looksJsonLd) {
+          try {
+            const jsonld = await import("jsonld");
+            try {
+              // Attempt to parse as JSON first; if parsing fails, pass the original string to jsonld.
+              let parsed: any = rdfContent;
+              if (typeof rdfContent === "string") {
+                try {
+                  parsed = JSON.parse(rdfContent);
+                } catch (_) {
+                  // keep original string if not valid JSON (some fixtures may be already processed)
+                  parsed = rdfContent;
+                }
+              }
+              // Convert to N-Quads (text) which the N3 parser can consume.
+              // jsonld.toRDF may return a string when format is requested.
+              const nquads = await (jsonld as any).toRDF(parsed, {
+                format: "application/n-quads",
+              });
+              if (nquads && typeof nquads === "string" && nquads.trim()) {
+                rdfContent = nquads;
+                // treat converted content as n-quads going forward (parser will handle it)
+              }
+            } catch (convErr) {
+              try {
+                if (typeof fallback === "function") {
+                  fallback("rdf.jsonld.convert_failed", { error: String(convErr) });
+                }
+              } catch (_) { /* ignore */ }
+            }
+          } catch (impErr) {
+            try {
+              if (typeof fallback === "function") {
+                fallback("rdf.jsonld.import_failed", { error: String(impErr) });
+              }
+            } catch (_) { /* ignore */ }
+          }
+        }
+      } catch (_) { /* non-fatal detection errors should not prevent other parsers */ }
 
       if (lowerMime.includes("xml") || /^\s*<\?xml/i.test(rdfContent)) {
         try {
@@ -926,14 +1020,14 @@ export class RDFManager {
                   quadItem.predicate &&
                   quadItem.object
                 ) {
-                  console.debug(
-                    "[VG_RDF_ADD] parse.graph",
-                    (quadItem as any)?.subject?.value,
-                    (quadItem as any)?.predicate?.value,
-                    (quadItem as any)?.object?.value,
-                    "graph:",
-                    g.value,
-                  );
+                  // console.debug(
+                  //   "[VG_RDF_ADD] parse.graph",
+                  //   (quadItem as any)?.subject?.value,
+                  //   (quadItem as any)?.predicate?.value,
+                  //   (quadItem as any)?.object?.value,
+                  //   "graph:",
+                  //   g.value,
+                  // );
                   this.store.addQuad(
                     quad(
                       quadItem.subject,
@@ -1247,45 +1341,107 @@ export class RDFManager {
           }
         });
 
-        // If caller did not request preserving existing literals, remove any existing
-        // literal quads for this subject so updates behave in "replace" mode.
-        // This ensures predicates included in the update replace prior values and
-        // predicates not included are removed (matching previous expectations/tests).
+        // Debug: log the set of predicates we will treat as authoritative for this update
+        try {
+          console.debug(
+            "[VG_DEBUG] updateNode.updatedPredicates",
+            Array.from(updatedPredicates),
+            "entity:",
+            entityUri,
+          );
+        } catch (_) {
+          /* ignore debug failures */
+        }
+
+        // If caller did not request preserving existing literals, remove existing
+        // literal quads for this subject that are NOT present in the incoming update.
+        // Previously this block removed all literal quads unconditionally which could
+        // lead to unintended data loss when updates.annotationProperties was empty.
         const preserve = options?.preserveExistingLiterals === true;
         if (!preserve) {
           try {
-            const existingQuads =
-              this.store.getQuads(namedNode(entityUri), null, null, null) || [];
-            existingQuads.forEach((q: Quad) => {
-              try {
-                const obj = q.object as any;
-                const isLiteral =
-                  obj &&
-                  (obj.termType === "Literal" ||
-                    (typeof obj.value === "string" && !obj.id));
-                if (isLiteral) {
-                  try {
-                    // Validate quad before removal and log it for debugging.
+            // If the incoming update did not include any annotation predicates, do not
+            // perform a destructive removal — preserve existing literals instead.
+            if (!updatedPredicates || updatedPredicates.size === 0) {
+              // No predicates specified in the update -> skip destructive removal.
+            } else {
+              // Replacement semantics: remove only existing literal quads for the subject
+              // whose predicate is explicitly present in the incoming update. This ensures we
+              // only replace predicates the caller intends to update and preserve unrelated literals.
+              const existingQuads =
+                this.store.getQuads(namedNode(entityUri), null, null, null) || [];
 
-                    console.debug(
-                      "[VG_RDF_REMOVE] updateNode.removeLiteral",
-                      (q as any)?.subject?.value,
-                      (q as any)?.predicate?.value,
-                      (q as any)?.object?.value,
-                    );
-                    this.store.removeQuad(q);
-                  } catch (remErr) {
+              // Debug: list existing literal predicate IRIs before removal so we can trace mismatches
+              try {
+                const existingPreds = existingQuads
+                  .map((q: Quad) => {
                     try {
-                      /* ignore removal failures */
+                      const isLiteral =
+                        q &&
+                        q.object &&
+                        ((q.object as any).termType === "Literal" ||
+                          (typeof (q.object as any).value === "string" &&
+                            !(q.object as any).id));
+                      return isLiteral ? ((q.predicate && (q.predicate as any).value) || "") : null;
                     } catch (_) {
-                      /* ignore */
+                      return null;
+                    }
+                  })
+                  .filter(Boolean);
+                console.debug(
+                  "[VG_DEBUG] updateNode.existingLiteralPredicates",
+                  existingPreds,
+                  "entity:",
+                  entityUri,
+                  "updatedPredicates:",
+                  Array.from(updatedPredicates),
+                );
+              } catch (_) {
+                /* ignore debug failures */
+              }
+
+              let removedCount = 0;
+              existingQuads.forEach((q: Quad) => {
+                try {
+                  const obj = q.object as any;
+                  const isLiteral =
+                    obj &&
+                    (obj.termType === "Literal" ||
+                      (typeof obj.value === "string" && !obj.id));
+                  if (!isLiteral) return;
+                  const pred = (q.predicate && (q.predicate as any).value) || "";
+
+                  // Remove literals whose predicate IS present in the incoming update (replacement).
+                  // This preserves predicates not mentioned in the update.
+                  if (updatedPredicates.has(pred)) {
+                    try {
+                      console.debug(
+                        "[VG_RDF_REMOVE] updateNode.removeLiteral",
+                        (q as any)?.subject?.value,
+                        pred,
+                        (q as any)?.object?.value,
+                      );
+                      try { this.bufferSubjectFromQuad(q); } catch (_) { /* ignore */ }
+                      this.store.removeQuad(q);
+                      removedCount += 1;
+                    } catch (remErr) {
+                      /* ignore individual removal failures */
                     }
                   }
+                } catch (_) {
+                  /* ignore per-quad processing errors */
                 }
+              });
+
+              try {
+                console.debug(
+                  "[VG_DEBUG] updateNode.removalSummary",
+                  { entity: entityUri, removedCount, remainingPredicates: Array.from(updatedPredicates) },
+                );
               } catch (_) {
-                /* ignore individual quad processing errors */
+                /* ignore */
               }
-            });
+            }
           } catch (_) {
             /* ignore */
           }
@@ -1299,42 +1455,78 @@ export class RDFManager {
               ? literal(prop.value, namedNode(this.expandPrefix(prop.type)))
               : literal(prop.value);
 
-            // Only add if an identical triple does not already exist
-            const exists =
-              this.store.countQuads(
-                namedNode(entityUri),
-                namedNode(propertyFull),
-                literalValue,
-                null,
-              ) > 0;
-            if (!exists) {
+            // Replacement semantics: remove any existing literal quads for this
+            // subject/predicate before adding the new one. This ensures a single
+            // authoritative literal per predicate after an update.
+            try {
+              const s = namedNode(entityUri);
+              const p = namedNode(propertyFull);
               try {
-                const s = namedNode(entityUri);
-                const p = namedNode(propertyFull);
-                const o = literalValue;
+                const existingPredQuads =
+                  this.store.getQuads(s, p, null, null) || [];
+                existingPredQuads.forEach((q: Quad) => {
+                  try {
+                    // Buffer & remove existing literal quads for this predicate
+                    console.debug(
+                      "[VG_RDF_REMOVE] updateNode.removeLiteral",
+                      (q as any)?.subject?.value,
+                      (q as any)?.predicate?.value,
+                      (q as any)?.object?.value,
+                    );
+                    try { this.bufferSubjectFromQuad(q); } catch (_) { /* ignore */ }
+                    this.store.removeQuad(q);
+                  } catch (_) {
+                    /* ignore per-quad failures */
+                  }
+                });
+              } catch (_) {
+                /* ignore predicate-cleanup failures */
+              }
 
-                console.debug(
-                  "[VG_RDF_ADD] updateNode.annotation",
-                  s?.value,
-                  p?.value,
-                  (o as any)?.value,
-                );
-                this.store.addQuad(quad(s, p, o));
+              // Only add if an identical triple does not already exist
+              const exists =
+                this.store.countQuads(
+                  namedNode(entityUri),
+                  namedNode(propertyFull),
+                  literalValue,
+                  null,
+                ) > 0;
+              if (!exists) {
                 try {
-                  this.bufferSubjectFromQuad(quad(s, p, o));
-                } catch (_) {
-                  /* ignore */
-                }
-              } catch (e) {
-                try {
-                  fallback(
-                    "console.warn",
-                    { args: ["Failed to add annotation quad:", String(e)] },
-                    { level: "warn" },
+                  const o = literalValue;
+                  console.debug(
+                    "[VG_RDF_ADD] updateNode.annotation",
+                    s?.value,
+                    p?.value,
+                    (o as any)?.value,
                   );
-                } catch (_) {
-                  /* ignore */
+                  this.store.addQuad(quad(s, p, o));
+                  try {
+                    this.bufferSubjectFromQuad(quad(s, p, o));
+                  } catch (_) {
+                    /* ignore */
+                  }
+                } catch (e) {
+                  try {
+                    fallback(
+                      "console.warn",
+                      { args: ["Failed to add annotation quad:", String(e)] },
+                      { level: "warn" },
+                    );
+                  } catch (_) {
+                    /* ignore */
+                  }
                 }
+              }
+            } catch (e) {
+              try {
+                fallback(
+                  "console.warn",
+                  { args: ["Failed to apply annotation update:", String(e)] },
+                  { level: "warn" },
+                );
+              } catch (_) {
+                /* ignore */
               }
             }
           } catch (e) {
@@ -2101,6 +2293,8 @@ export class RDFManager {
       const quads = this.store.getQuads(null, null, null, g) || [];
       quads.forEach((q: Quad) => {
         try {
+          // Buffer removed quad so subject-level subscribers are notified.
+          try { this.bufferSubjectFromQuad(q); } catch (_) { /* ignore */ }
           this.store.removeQuad(q);
         } catch (_) {
           try {
@@ -2173,6 +2367,8 @@ export class RDFManager {
           );
           if (matches) {
             try {
+              // Buffer removed quad so subject-level subscribers are notified.
+              try { this.bufferSubjectFromQuad(q); } catch (_) { /* ignore */ }
               this.store.removeQuad(q);
             } catch (_) {
               /* ignore */
@@ -2273,6 +2469,149 @@ export class RDFManager {
    */
   getStore(): Store {
     return this.store;
+  }
+
+  /**
+   * Primitive API helpers (add/remove triple, apply a batch)
+   *
+   * These helpers provide a small, well-defined primitive surface so callers
+   * can perform idempotent add/remove operations and apply a batch of changes
+   * with a single notifyChange emission. This simplifies caller logic (dialogs
+   * can accumulate removes/adds and flush them atomically) and centralizes
+   * buffering/notification.
+   */
+
+  /**
+   * addTriple - idempotently add a triple to the specified graph
+   */
+  public addTriple(subject: string, predicate: string, object: string, graphName: string = "urn:vg:data"): void {
+    try {
+      const g = namedNode(String(graphName));
+      const s = namedNode(String(subject));
+      const p = namedNode(String(predicate));
+      const o = (object && /^_:/i.test(String(object))) ? blankNode(String(object).replace(/^_:/, "")) : (object && /^https?:\/\//i.test(String(object)) ? namedNode(String(object)) : literal(String(object)));
+      const exists = this.store.countQuads(s, p, o as any, g) > 0;
+      if (!exists) {
+        this.store.addQuad(quad(s as any, p as any, o as any, g));
+        try { this.bufferSubjectFromQuad(quad(s as any, p as any, o as any, g)); } catch (_) {}
+      }
+    } catch (e) {
+      try { fallback("rdf.addTriple.failed", { subject, predicate, object, error: String(e) }); } catch (_) {}
+    }
+  }
+
+  /**
+   * removeTriple - idempotently remove matching triple(s) from the specified graph
+   * Matches exact subject/predicate/object shapes (object must match value & literal form).
+   */
+  public removeTriple(subject: string, predicate: string, object: string, graphName: string = "urn:vg:data"): void {
+    try {
+      const g = namedNode(String(graphName));
+      const s = namedNode(String(subject));
+      const p = namedNode(String(predicate));
+      // match literal or named node based on object shape
+      const objs: any[] = [];
+      try {
+        if (object === null || typeof object === "undefined" || String(object) === "") {
+          // remove any object for the predicate
+          const found = this.store.getQuads(s, p, null, g) || [];
+          for (const q of found) {
+            try { this.bufferSubjectFromQuad(q); } catch (_) {}
+            this.store.removeQuad(q);
+          }
+          return;
+        }
+        if (/^_:/i.test(String(object))) {
+          objs.push(blankNode(String(object).replace(/^_:/, "")));
+        } else if (/^https?:\/\//i.test(String(object))) {
+          objs.push(namedNode(String(object)));
+        } else {
+          objs.push(literal(String(object)));
+        }
+      } catch (_) { objs.push(literal(String(object))); }
+
+      for (const o of objs) {
+        try {
+          const found = this.store.getQuads(s, p, o as any, g) || [];
+          for (const q of found) {
+            try { this.bufferSubjectFromQuad(q); } catch (_) {}
+            this.store.removeQuad(q);
+          }
+        } catch (_) { /* ignore per-object */ }
+      }
+    } catch (e) {
+      try { fallback("rdf.removeTriple.failed", { subject, predicate, object, error: String(e) }); } catch (_) {}
+    }
+  }
+
+  /**
+   * applyBatch - apply a batch of removes then adds atomically (single notify)
+   * changes: { removes: Array<{subject,predicate,object}>, adds: Array<{subject,predicate,object}> }
+   */
+  public async applyBatch(changes: { removes?: any[]; adds?: any[] }, graphName: string = "urn:vg:data"): Promise<void> {
+    try {
+      const removes = Array.isArray(changes && changes.removes) ? changes.removes.slice() : [];
+      const adds = Array.isArray(changes && changes.adds) ? changes.adds.slice() : [];
+      const g = namedNode(String(graphName));
+
+      // Perform removals first
+      for (const r of removes) {
+        try {
+          const subj = namedNode(String(r.subject));
+          const pred = namedNode(String(r.predicate));
+          let objs: any[] = [];
+          try {
+            if (r.object === null || typeof r.object === "undefined" || String(r.object) === "") {
+              const found = this.store.getQuads(subj, pred, null, g) || [];
+              for (const q of found) {
+                try { this.bufferSubjectFromQuad(q); } catch (_) {}
+                this.store.removeQuad(q);
+              }
+              continue;
+            }
+            if (/^_:/i.test(String(r.object))) objs = [blankNode(String(r.object).replace(/^_:/, ""))];
+            else if (/^https?:\/\//i.test(String(r.object))) objs = [namedNode(String(r.object))];
+            else objs = [literal(String(r.object))];
+          } catch (_) { objs = [literal(String(r.object))]; }
+
+          for (const o of objs) {
+            try {
+              const found = this.store.getQuads(subj, pred, o as any, g) || [];
+              for (const q of found) {
+                try { this.bufferSubjectFromQuad(q); } catch (_) {}
+                this.store.removeQuad(q);
+              }
+            } catch (_) { /* ignore per-object */ }
+          }
+        } catch (_) { /* ignore per-remove */ }
+      }
+
+      // Then perform adds (idempotent)
+      for (const a of adds) {
+        try {
+          const subj = namedNode(String(a.subject));
+          const pred = namedNode(String(a.predicate));
+          let obj: any;
+          try {
+            if (/^_:/i.test(String(a.object))) obj = blankNode(String(a.object).replace(/^_:/, ""));
+            else if (/^https?:\/\//i.test(String(a.object))) obj = namedNode(String(a.object));
+            else obj = literal(String(a.object));
+          } catch (_) { obj = literal(String(a.object)); }
+
+          const exists = this.store.countQuads(subj, pred, obj as any, g) > 0;
+          if (!exists) {
+            this.store.addQuad(quad(subj as any, pred as any, obj as any, g));
+            try { this.bufferSubjectFromQuad(quad(subj as any, pred as any, obj as any, g)); } catch (_) {}
+          }
+        } catch (_) { /* ignore per-add */ }
+      }
+
+      // Notify once after batch applied
+      try { this.notifyChange(); } catch (_) {}
+    } catch (e) {
+      try { fallback("rdf.applyBatch.failed", { error: String(e) }, { level: "warn" }); } catch (_) {}
+      try { this.notifyChange(); } catch (_) {}
+    }
   }
 
   /**

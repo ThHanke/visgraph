@@ -838,40 +838,76 @@ const KnowledgeCanvas: React.FC = () => {
       // (preserve existing nodes not mentioned in this incremental mapping).
       setNodes((prev) => {
         try {
+          // Primary map keyed by canonical id (node.id)
           const byId = new Map<string, RFNode<NodeData>>();
-          // seed with previous nodes so we preserve any nodes not present in this pass
+          // Helper to find an existing node using alternative identifiers (data.iri or data.key)
+          const findExisting = (candidateId: string, m?: RFNode<NodeData>) => {
+            try {
+              if (!candidateId) return undefined;
+              const direct = byId.get(candidateId);
+              if (direct) return direct;
+              // Fallback scan: compare against data.iri or data.key on existing nodes
+              for (const existing of byId.values()) {
+                try {
+                  const existingIri = existing && existing.data ? String((existing.data as any).iri || "") : "";
+                  const existingKey = existing && existing.data ? String((existing.data as any).key || "") : "";
+                  if (existingIri && existingIri === candidateId) return existing;
+                  if (existingKey && existingKey === candidateId) return existing;
+                  // Also consider incoming node's data.iri matching existing.id
+                  if (m && m.data) {
+                    const mIri = String((m.data as any).iri || "");
+                    if (mIri && String(existing.id) === mIri) return existing;
+                  }
+                } catch (_) { /* ignore per-entry */ }
+              }
+            } catch (_) { /* ignore */ }
+            return undefined;
+          };
+
+          // Seed map with previous nodes: index by id and also keep them accessible for scanner
           (prev || []).forEach((n) => {
-            try { byId.set(String(n.id), n); } catch (_) { /* ignore */ }
+            try {
+              const key = String(n.id);
+              if (key) byId.set(key, n);
+            } catch (_) { /* ignore per-node */ }
           });
 
           // Upsert enriched nodes: update existing entries or add new ones.
           for (const m of (enrichedNodes || [])) {
             try {
-              const id = String(m.id);
-              const existing = byId.get(id);
+              const incomingId = String((m && m.id) || "");
+              const incomingIri = m && m.data ? String((m.data as any).iri || "") : "";
+              // Try to find existing by id first, then by iri/key heuristics
+              let existing = incomingId ? findExisting(incomingId, m) : undefined;
+              if (!existing && incomingIri) existing = findExisting(incomingIri, m);
+
               if (existing) {
                 // preserve runtime flags & previous position if present
                 const mergedNode: RFNode<NodeData> = {
                   ...existing,
                   ...m,
-                  position: existing.position || m.position || { x: 0, y: 0 },
+                  position: (existing && existing.position) || m.position || { x: 0, y: 0 },
                 } as RFNode<NodeData>;
-                if ((existing as any).__rf) (mergedNode as any).__rf = (existing as any).__rf;
-                if ((existing as any).selected) (mergedNode as any).selected = true;
-                byId.set(id, mergedNode);
+                try { if ((existing as any).__rf) (mergedNode as any).__rf = (existing as any).__rf; } catch (_) {}
+                try { if ((existing as any).selected) (mergedNode as any).selected = true; } catch (_) {}
+                // Ensure canonical key in map is the primary id value
+                const canonicalKey = String(existing.id || incomingId || incomingIri || "");
+                if (canonicalKey) byId.set(canonicalKey, mergedNode);
               } else {
-                // Ensure newly-added nodes always have a position (React Flow requires it).
+                // Add new node, ensuring it has a position
                 const nodeToSet = (m && (m as any).position) ? m : { ...m, position: { x: 0, y: 0 } };
-                byId.set(id, nodeToSet as RFNode<NodeData>);
+                const canonicalKey = incomingId || incomingIri || String((m as any).key || "");
+                byId.set(canonicalKey || String(m.id || Math.random()), nodeToSet as RFNode<NodeData>);
               }
             } catch (_) {
-                try {
+              try {
                 const fallbackNode = (m && (m as any).position) ? m : { ...(m || {}), position: { x: 0, y: 0 } };
-                byId.set(String((m as any).id || ""), fallbackNode as RFNode<NodeData>);
+                byId.set(String((m as any).id || Math.random()), fallbackNode as RFNode<NodeData>);
               } catch (_) { /* ignore per-item */ }
             }
           }
 
+          // Return merged list preserving previous nodes that were not in the incoming enrichment
           return Array.from(byId.values()).filter(Boolean) as RFNode<NodeData>[];
         } catch (e) {
           try { console.warn("[VG] KnowledgeCanvas: upsert merge failed, falling back to previous nodes", e); } catch (_) {}
@@ -879,30 +915,38 @@ const KnowledgeCanvas: React.FC = () => {
         }
       });
 
-      // Replace/update edges: remove edges whose source is an updated node in this pass,
-      // then add the newly mapped edges. Dedupe by edge id to avoid duplicates.
+      // Replace/update edges: merge existing edges with newly mapped edges.
+      // We previously removed all edges whose source was among the updated nodes,
+      // but that could drop unrelated outgoing edges of those nodes. Instead, only
+      // allow enrichedEdges to replace existing edges when they share the same id.
+      // This preserves unrelated edges for updated nodes that the incoming mapping
+      // does not include.
       setEdges((prev) => {
         try {
           const mappedIds = new Set<string>((enrichedNodes || []).map((n) => String(n.id)));
-          // If there are no previous edges, just return enrichedEdges (no-op merge)
+          const enrichedEdgeIds = new Set<string>((enrichedEdges || []).map((e) => String(e.id)));
+
+          // If there are no previous edges, just return deduped enrichedEdges.
           if (!Array.isArray(prev) || prev.length === 0) {
-            // dedupe enrichedEdges by id before returning
-                const byId = new Map<string, RFEdge<LinkData>>();
-                for (const e of enrichedEdges || []) {
-                  try { byId.set(String(e.id), e as RFEdge<LinkData>); } catch (_) { /* ignore per-edge */ }
-                }
-                return Array.from(byId.values()) as RFEdge<LinkData>[];
+            const byId = new Map<string, RFEdge<LinkData>>();
+            for (const e of enrichedEdges || []) {
+              try { byId.set(String(e.id), e as RFEdge<LinkData>); } catch (_) { /* ignore per-edge */ }
+            }
+            return Array.from(byId.values()) as RFEdge<LinkData>[];
           }
 
-          // Keep edges whose source is NOT one of the updated nodes.
-          // This preserves incoming edges (where updated node is the target).
+          // Keep existing edges except those that are meant to be replaced by enrichedEdges.
+          // An existing edge should be removed only if an enriched edge with the same id exists;
+          // otherwise preserve it even if its source is among the mapped nodes.
           const kept: RFEdge<LinkData>[] = [];
           for (const e of prev || []) {
             try {
-              const s = String(e.source);
-              if (!mappedIds.has(s)) {
-                kept.push(e);
+              const id = String(e.id);
+              if (enrichedEdgeIds.has(id)) {
+                // This edge will be replaced by the incoming enriched edge (skip keeping)
+                continue;
               }
+              kept.push(e);
             } catch (_) { /* ignore per-edge */ }
           }
 
@@ -2057,6 +2101,7 @@ const KnowledgeCanvas: React.FC = () => {
       </div>
 
       {/* Render editors so dialogs can persist triples into urn:vg:data */}
+
       <NodePropertyEditor
         open={canvasState.showNodeEditor}
         onOpenChange={(open) => {

@@ -1,4 +1,4 @@
-import { NamedNode } from "n3";
+import { NamedNode, DataFactory } from "n3";
 import type { RDFManager } from "../utils/rdfManager";
 import { buildPaletteMap } from "../components/Canvas/core/namespacePalette";
 import { WELL_KNOWN } from "../utils/wellKnownOntologies";
@@ -78,19 +78,13 @@ export function findPrefixForUri(fullUri: string, rdfManager?: RDFManager | Reco
   const candidates: { prefix: string; uri: string }[] = [];
   for (const [prefix, uri] of Object.entries(nsMap)) {
     if (!uri) continue;
-    try {
-      if (fullUri.startsWith(uri)) candidates.push({ prefix, uri });
-    } catch (_) { /* ignore */ }
+    if (fullUri.startsWith(uri)) candidates.push({ prefix, uri });
   }
   if (candidates.length === 0) return undefined;
 
   // Sort by namespace URI length (longest first) so more specific namespaces win.
   candidates.sort((a, b) => {
-    try {
-      return (b.uri ? String(b.uri).length : 0) - (a.uri ? String(a.uri).length : 0);
-    } catch (_) {
-      return 0;
-    }
+    return (b.uri ? String(b.uri).length : 0) - (a.uri ? String(a.uri).length : 0);
   });
 
   // Prefer a non-empty named prefix among the sorted candidates.
@@ -110,7 +104,8 @@ export function toPrefixed(iri: string | NamedNode, rdfManager?: RDFManager | Re
   if (iriStr.startsWith("_:")) return iriStr; // blank node passthrough
 
   const prefix = findPrefixForUri(iriStr, rdfManager);
-  if (!prefix) {
+  // Allow empty-string (default) prefix: only throw when prefix is truly undefined.
+  if (typeof prefix === "undefined") {
     throw new Error(`No prefix known for IRI: ${iriStr}`);
   }
 
@@ -152,6 +147,8 @@ export function expandPrefixed(prefixedOrIri: string, rdfManager?: RDFManager | 
  * Compute a strict TermDisplayInfo for a given IRI or NamedNode.
  * - Requires rdfManager / namespace map for prefix resolution.
  * - Throws on missing prefixes unless the value is a blank node.
+ *
+ * Note: All try/catch blocks have been removed per request — errors will now bubble.
  */
 export function computeTermDisplay(
   iriOrTerm: string | NamedNode,
@@ -183,163 +180,134 @@ export function computeTermDisplay(
       // If caller didn't provide rdfManager we treat the input as-is and compute local forms
       targetIri = iri;
     } else {
-      try {
-        targetIri = expandPrefixed(targetIri, rdfManager);
-      } catch (_) {
-        // fallthrough; continue with original term
-        targetIri = iri;
-      }
+      targetIri = expandPrefixed(targetIri, rdfManager);
     }
   }
 
   // Determine a prefixed presentation for the targetIri.
-  let prefixed: string | undefined;
-  try {
-    prefixed = toPrefixed(targetIri, rdfManager);
-  } catch (_) {
-    // Fallbacks similar to previous implementation
-    try {
-      const target = String(targetIri);
-      // a) WELL_KNOWN canonical prefixes
-      try {
-        if (WELL_KNOWN && (WELL_KNOWN as any).prefixes) {
-          const wkPrefixes = (WELL_KNOWN as any).prefixes as Record<string, string>;
-              for (const [wkPrefix, wkUri] of Object.entries(wkPrefixes)) {
-                try {
-                  if (!wkUri) continue;
-                  // Normalize by trimming trailing separators without using regex literals
-                  // (avoids lint issues across different tooling). This is intentionally
-                  // implemented as a small loop to remove trailing '/' or '#' characters.
-                  const norm = (s: string) => {
-                    let st = String(s);
-                    while (st.endsWith('/') || st.endsWith('#')) {
-                      st = st.slice(0, -1);
-                    }
-                    return st;
-                  };
-                  if (norm(target).startsWith(norm(wkUri))) {
-                    prefixed = `${wkPrefix}:${shortLocalName(targetIri)}`;
-                    break;
-                  }
-                } catch (_) { /* ignore per-entry */ }
-              }
-        }
-      } catch (_) { /* ignore WELL_KNOWN failures */ }
+  let prefixed: string
 
-      // b) runtime namespaces
-      if (!prefixed && rdfManager) {
-        try {
-          const nsMap =
-            (rdfManager as any)?.getNamespaces && typeof (rdfManager as any).getNamespaces === "function"
-              ? (rdfManager as any).getNamespaces()
-              : (rdfManager && typeof rdfManager === "object" ? (rdfManager as unknown as Record<string,string>) : undefined);
+  // Compute namespace prefix and local name so the rest of the function can refer to them.
+  // Derive prefix via findPrefixForUri when an rdfManager / namespace map is available.
+  let prefix: string | undefined = rdfManager ? findPrefixForUri(targetIri, rdfManager) : undefined;
 
-          if (nsMap) {
-            let defaultPrefixed: string | undefined = undefined;
-              for (const [p, nsUri] of Object.entries(nsMap)) {
-                try {
-                  if (!nsUri) continue;
-                  const nsUriStr = String(nsUri);
-                  if (target.startsWith(nsUriStr)) {
-                    if (p && String(p).trim() !== "") {
-                      prefixed = `${p}:${shortLocalName(targetIri)}`;
-                      break;
-                    } else if (!defaultPrefixed) {
-                      defaultPrefixed = `:${shortLocalName(targetIri)}`;
-                    }
-                  }
-                } catch (_) { /* ignore per-entry */ }
-              }
-            if (!prefixed && defaultPrefixed) prefixed = defaultPrefixed;
-          }
-        } catch (_) { /* ignore */ }
-      }
-    } catch (_) { /* ignore fallback */ }
-    if (!prefixed) prefixed = shortLocalName(targetIri);
+  // Derive a local name: prefer extracting by removing the namespace URI when available,
+  // otherwise fall back to shortLocalName.
+  let local: string;
+  if (prefix && rdfManager) {
+    const ns = resolveNamespaces(rdfManager)[prefix];
+    if (ns && targetIri.startsWith(ns)) {
+      local = targetIri.substring(ns.length);
+    } else {
+      local = shortLocalName(targetIri);
+    }
+  } else {
+    local = shortLocalName(targetIri);
   }
 
-  // Derive prefix/local from prefixed form when possible
-  let prefix: string | undefined = undefined;
-  let local = String(prefixed || "");
-  const idx = local.indexOf(":");
-  if (idx > 0) {
-    prefix = local.substring(0, idx);
-    local = local.substring(idx + 1);
-  }
+  // Attempt to compute a strict prefixed form. Errors will bubble.
+  prefixed = toPrefixed(targetIri, rdfManager);
 
   // Determine authoritative color using provided palette first, otherwise derive from rdfManager
   let color: string | undefined = undefined;
-  try {
-    if (prefix) {
-      if (palette && typeof palette === "object") {
-        color = palette[prefix] || palette[prefix.toLowerCase()];
-      } else if (rdfManager) {
-        try {
-          const nsMap =
-            (rdfManager as any) && typeof (rdfManager as any).getNamespaces === "function"
-              ? (rdfManager as any).getNamespaces()
-              : {};
-          const prefixes = Object.keys(nsMap || {}).filter(Boolean).sort();
-          const textColors =
-            typeof window !== "undefined" && window.getComputedStyle
-              ? [
-                  String(getComputedStyle(document.documentElement).getPropertyValue("--node-foreground") || "#000000"),
-                  String(getComputedStyle(document.documentElement).getPropertyValue("--primary-foreground") || "#000000"),
-                ]
-              : ["#000000", "#000000"];
-          const derived = buildPaletteMap(prefixes, { avoidColors: textColors });
-          color = derived[prefix] || derived[prefix.toLowerCase()];
-        } catch (_) {
-          color = undefined;
-        }
-      }
+  if (prefix) {
+    if (palette && typeof palette === "object") {
+      color = palette[prefix] || palette[prefix.toLowerCase()];
+    } else if (rdfManager) {
+      const nsMap =
+        (rdfManager as any) && typeof (rdfManager as any).getNamespaces === "function"
+          ? (rdfManager as any).getNamespaces()
+          : {};
+      const prefixes = Object.keys(nsMap || {}).filter(Boolean).sort();
+      const textColors =
+        typeof window !== "undefined" && window.getComputedStyle
+          ? [
+              String(getComputedStyle(document.documentElement).getPropertyValue("--node-foreground") || "#000000"),
+              String(getComputedStyle(document.documentElement).getPropertyValue("--primary-foreground") || "#000000"),
+            ]
+          : ["#000000", "#000000"];
+      const derived = buildPaletteMap(prefixes, { avoidColors: textColors });
+      color = derived[prefix] || derived[prefix.toLowerCase()];
     }
-  } catch (_) {
-    color = undefined;
   }
 
   // Primary: fat-map lookup (availableProperties) — authoritative label & optional color hint
   let label: string | undefined;
   let labelSource: 'fatmap' | 'computed' | undefined;
 
-  try {
-    const props = opts && Array.isArray(opts.availableProperties) ? opts.availableProperties : undefined;
-    if (props && props.length > 0) {
-      // Build a quick lookup by IRI (prefer absolute IRIs in fat map)
-      const mapByIri = new Map<string, any>();
-      for (const p of props) {
-        try {
-          if (!p) continue;
-          const iriKey = String((p && p.iri) || '').trim();
-          if (!iriKey) continue;
-          if (!mapByIri.has(iriKey)) mapByIri.set(iriKey, p);
-        } catch (_) { /* ignore per-entry */ }
+  const props = opts && Array.isArray(opts.availableProperties) ? opts.availableProperties : undefined;
+  if (props && props.length > 0) {
+    // Build a quick lookup by IRI (prefer absolute IRIs in fat map)
+    const mapByIri = new Map<string, any>();
+    for (const p of props) {
+      if (!p) continue;
+      const iriKey = String((p && p.iri) || '').trim();
+      if (!iriKey) continue;
+      if (!mapByIri.has(iriKey)) mapByIri.set(iriKey, p);
+    }
+    // Direct match on targetIri
+    const direct = mapByIri.get(String(targetIri));
+    if (direct) {
+      if (direct.label) {
+        label = String(direct.label);
+        labelSource = 'fatmap';
       }
-      // Direct match on targetIri
-      const direct = mapByIri.get(String(targetIri));
-      if (direct) {
-        if (direct.label) {
-          label = String(direct.label);
-          labelSource = 'fatmap';
+      // fat-map hint color
+      if (!color && (direct.color || direct.style?.color)) {
+        color = String(direct.color || direct.style?.color);
+      }
+    } else {
+      // Also try match by prefixed form or short local name if entries might store prefixed keys
+      const byPref = mapByIri.get(String(prefixed || ''));
+      if (byPref && byPref.label) {
+        label = String(byPref.label);
+        labelSource = 'fatmap';
+        if (!color && (byPref.color || byPref.style?.color)) {
+          color = String(byPref.color || byPref.style?.color);
         }
-        // fat-map hint color
-        if (!color && (direct.color || direct.style?.color)) {
-          color = String(direct.color || direct.style?.color);
-        }
-      } else {
-        // Also try match by prefixed form or short local name if entries might store prefixed keys
-        const byPref = mapByIri.get(String(prefixed || ''));
-        if (byPref && byPref.label) {
-          label = String(byPref.label);
-          labelSource = 'fatmap';
-          if (!color && (byPref.color || byPref.style?.color)) {
-            color = String(byPref.color || byPref.style?.color);
+      }
+    }
+  }
+
+  // Read an rdfs:label from the RDF store when available (authoritative).
+  if (!label && rdfManager && (rdfManager as any).getStore && typeof (rdfManager as any).getStore === "function") {
+    const store = (rdfManager as any).getStore();
+
+    // Prefer direct subject+predicate lookup first (exact match).
+    const pred = DataFactory.namedNode("http://www.w3.org/2000/01/rdf-schema#label");
+    const subj = DataFactory.namedNode(String(targetIri));
+    const directMatches =
+      (store && typeof store.getQuads === "function")
+        ? store.getQuads(subj, pred, null, null) || []
+        : [];
+    if (directMatches && directMatches.length > 0) {
+      const obj = (directMatches[0] as any).object;
+      if (obj && typeof (obj as any).value === "string" && (obj as any).value.trim() !== "") {
+        label = String((obj as any).value);
+        labelSource = "computed";
+      }
+    }
+
+    // Fallback: scan all quads and match by subject string & predicate local-name 'label'.
+    if (!label) {
+      const allQuads = (store && typeof store.getQuads === "function")
+        ? store.getQuads(null, pred, null, null) || []
+        : [];
+      for (const q of allQuads) {
+        const sVal = (q && (q.subject as any) && (q.subject as any).value) || "";
+        const pVal = (q && (q.predicate as any) && (q.predicate as any).value) || "";
+        if (!sVal || !pVal) continue;
+        // Match subject and predicate that ends with 'label' (robust to different namespace forms)
+        if (String(sVal) === String(targetIri) && /(?:[#/])label$/.test(String(pVal))) {
+          const obj = (q as any).object;
+          if (obj && typeof (obj as any).value === "string" && (obj as any).value.trim() !== "") {
+            label = String((obj as any).value);
+            labelSource = "computed";
+            break;
           }
         }
       }
     }
-  } catch (_) {
-    /* ignore fat-map failures */
   }
 
   // Fallback: computed prefixed/short

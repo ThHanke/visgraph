@@ -7,6 +7,7 @@ import 'reactflow/dist/style.css';
 import { initTheme } from './utils/theme'
 import { rdfManager } from './utils/rdfManager';
 import { useAppConfigStore } from './stores/appConfigStore';
+// import { useOntologyStore } from './stores/ontologyStore';
 
 initTheme();
 

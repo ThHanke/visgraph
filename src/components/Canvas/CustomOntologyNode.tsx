@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { usePaletteFromRdfManager } from "./core/namespacePalette";
 import { getNamespaceColorFromPalette } from "./helpers/namespaceHelpers";
-import { shortLocalName, toPrefixed } from "../../utils/termUtils";
+import { shortLocalName, toPrefixed, computeTermDisplay } from "../../utils/termUtils";
 import { debug } from "../../utils/startupDebug";
 
 /**
@@ -60,13 +60,11 @@ function CustomOntologyNodeInner(props: NodeProps) {
   const individualNameInitial = String(
     nodeData.individualName ?? nodeData.iri ?? "",
   );
-
-  const [isEditing, setIsEditing] = useState(false);
   const [individualName, setIndividualName] = useState(individualNameInitial);
   const showHandles = !!((connection as any)?.inProgress || !selected);
 
   const rdfManager = useOntologyStore((s) => s.rdfManager);
-  const ontologiesVersion = useOntologyStore((s) => s.ontologiesVersion);
+  // const ontologiesVersion = useOntologyStore((s) => s.ontologiesVersion);
   const availableClasses = useOntologyStore((s) => s.availableClasses);
   const availableProperties = useOntologyStore((s) => s.availableProperties);
 
@@ -88,13 +86,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
         rdfTypes: nodeData.rdfTypes,
         displayType: nodeData.displayType,
       };
-      if (typeof window !== "undefined" && (window as any).__VG_DEBUG__) {
-        try {
-          debug("CustomOntologyNode.displayInfo", payload);
-        } catch (_) {
-          /* ignore */
-        }
-      }
+      
     } catch (_) {
       /* ignore */
     }
@@ -107,35 +99,81 @@ function CustomOntologyNodeInner(props: NodeProps) {
   ]);
 
   // Display helpers
-  const displayedTypeShort = String(
-    nodeData.label || shortLocalName(nodeData.iri || ""),
-  );
   // Acquire palette before computing display values so memoized computeTermDisplay calls can use it.
   const palette = usePaletteFromRdfManager();
-  const { badgeText, typesList } = useMemo(() => {
-    let _badgeText = displayedTypeShort;
+
+  // Compute display info for the node IRI and for the meaningful type (classType) if present.
+  const { badgeText, subtitleText, headerDisplay, typesList } = useMemo(() => {
     try {
-      const primary = nodeData.classType ? String(nodeData.classType) : undefined;
-      if (primary && rdfManager) {
+      const iri = String(nodeData.iri || "");
+      const typeIri = nodeData.classType ? String(nodeData.classType) : undefined;
+
+      const tdNode = rdfManager
+        ? computeTermDisplay(iri || "", rdfManager as any, palette, {
+            availableClasses,
+            availableProperties,
+          })
+        : { prefixed: shortLocalName(iri || ""), short: shortLocalName(iri || ""), label: shortLocalName(iri || ""), iri };
+
+      const tdType = typeIri && rdfManager
+        ? computeTermDisplay(typeIri, rdfManager as any, palette, {
+            availableClasses,
+            availableProperties,
+          })
+        : undefined;
+
+      // Title (visible): prefixed IRI of the node or short/local name or full IRI
+      const headerDisp = tdNode.prefixed || tdNode.short || String(nodeData.iri || "");
+
+      // Badge: prefixed IRI of meaningful type, or short/local name, or fallback to namespace/iri
+      let badge = "";
+      if (tdType) {
+        badge = tdType.prefixed || tdType.short || String(typeIri || "");
+      } else {
+        // fallback: try to use toPrefixed on raw classType if possible
         try {
-          const pref = toPrefixed(primary, rdfManager as any);
-          _badgeText = pref || displayedTypeShort;
+          if (nodeData.classType && rdfManager) {
+            badge = toPrefixed(String(nodeData.classType), rdfManager as any);
+          } else {
+            badge = String(nodeData.classType || nodeData.namespace || "");
+          }
         } catch (_) {
-          _badgeText = shortLocalName(primary) || displayedTypeShort;
+          badge = String(nodeData.classType || nodeData.namespace || "");
         }
       }
+
+      const subtitle = tdNode.label || tdNode.prefixed || tdNode.short || String(nodeData.iri || "");
+
+      // typesList (not used heavily) keep empty for now; could list rdfTypes expanded prefixed forms.
+      const tList: string[] = [];
+      if (Array.isArray(nodeData.rdfTypes)) {
+        try {
+          nodeData.rdfTypes.forEach((t) => {
+            try {
+              if (!t) return;
+              if (rdfManager) {
+                const td = computeTermDisplay(String(t), rdfManager as any, palette, {
+                  availableClasses,
+                  availableProperties,
+                });
+                tList.push(td.prefixed || td.short || td.iri);
+              } else {
+                tList.push(shortLocalName(String(t)));
+              }
+            } catch (_) {}
+          });
+        } catch (_) {}
+      }
+
+      return { badgeText: badge, subtitleText: subtitle, headerDisplay: headerDisp, typesList: tList };
     } catch (_) {
-      /* ignore overall failure */
+      return { badgeText: String(nodeData.classType || nodeData.namespace || ""), subtitleText: String(nodeData.label || shortLocalName(nodeData.iri || "")), headerDisplay: String(nodeData.label || shortLocalName(nodeData.iri || "")), typesList: [] as string[] };
     }
-    return { badgeText: _badgeText, typesList: [] as string[] };
   }, [
     nodeData.classType,
     nodeData.label,
     nodeData.iri,
-    rdfManager,
     palette,
-    availableClasses,
-    availableProperties,
   ]);
 
   // Color/palette resolution (strict: use central palette only)
@@ -186,67 +224,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
     resolvedPaletteColor = undefined;
   }
 
-  // 2) Fallback: if node namespace looks like a full namespace URI try to find a matching
-  // prefix from rdfManager.getNamespaces() and use that prefix in the palette.
-  if (
-    !resolvedPaletteColor &&
-    rdfManager &&
-    typeof (rdfManager as any).getNamespaces === "function"
-  ) {
-    try {
-      const nsMap = (rdfManager as any).getNamespaces() || {};
-      const nsVal = String(nodeData.namespace || "").trim();
-      if (
-        nsVal &&
-        (nsVal.toLowerCase().startsWith("http://") ||
-          nsVal.toLowerCase().startsWith("https://") ||
-          nsVal.endsWith("#") ||
-          nsVal.endsWith("/") ||
-          nsVal.includes("/"))
-      ) {
-        // reverse lookup: find prefix whose URI equals the namespace value (exact match)
-        const match = Object.entries(nsMap).find(
-          ([, uri]) => String(uri) === nsVal,
-        );
-        if (match && match[0]) {
-          const prefix = String(match[0]);
-          try {
-            resolvedPaletteColor =
-              palette[prefix] ||
-              palette[prefix.replace(/[:#].*$/, "")] ||
-              undefined;
-          } catch (_) {
-            resolvedPaletteColor = undefined;
-          }
-        } else {
-          // Try fuzzy match: namespace may be stored without trailing separators in some places.
-          const matchFuzzy = Object.entries(nsMap).find(([, uri]) => {
-            try {
-              return (
-                String(uri).replace(/\/+$/, "") === nsVal.replace(/\/+$/, "")
-              );
-            } catch {
-              return false;
-            }
-          });
-          if (matchFuzzy && matchFuzzy[0]) {
-            const prefix = String(matchFuzzy[0]);
-            try {
-              resolvedPaletteColor =
-                palette[prefix] ||
-                palette[prefix.replace(/[:#].*$/, "")] ||
-                undefined;
-            } catch (_) {
-              resolvedPaletteColor = undefined;
-            }
-          }
-        }
-      }
-    } catch (_) {
-      /* ignore reverse-lookup failures */
-    }
-  }
-
+  
   const DEFAULT_PALETTE_COLOR = "#e5e7eb";
   const badgeColor = resolvedPaletteColor || DEFAULT_PALETTE_COLOR;
   const leftColor = badgeColor;
@@ -384,14 +362,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
           : el.parentElement || null;
       if (!wrapper || !wrapper.style) return;
       const colorToApply = badgeColor || leftColor;
-      try {
-        if (
-          typeof console !== "undefined" &&
-          typeof console.debug === "function"
-        ) {}
-      } catch (_) {
-        /* ignore */
-      }
+      
       if (colorToApply) {
         try {
           wrapper.style.setProperty(
@@ -422,17 +393,6 @@ function CustomOntologyNodeInner(props: NodeProps) {
 
   const canonicalIri = String(nodeData.iri ?? "");
   const headerTitle = canonicalIri;
-  const headerDisplay = (() => {
-    const target = nodeData.classType ? String(nodeData.classType) : canonicalIri;
-    if (!target) return "";
-    if (target.startsWith("_:")) return target;
-    try {
-      const p = rdfManager ? toPrefixed(target, rdfManager as any) : undefined;
-      return (p || shortLocalName(target)).replace(/^(https?:\/\/)?(www\.)?/, "");
-    } catch {
-      return shortLocalName(target).replace(/^(https?:\/\/)?(www\.)?/, "");
-    }
-  })();
 
   // Use the node id (IRI) directly as the handle id per project convention.
   const handleId = String(id || "");
@@ -476,10 +436,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
             }}
           >
             <span className="truncate">
-              {badgeText ||
-                displayedTypeShort ||
-                nodeData.classType ||
-                (namespace ? namespace : "unknown")}
+              {badgeText || nodeData.classType || (namespace ? namespace : "unknown")}
             </span>
           </div>
 
@@ -510,11 +467,9 @@ function CustomOntologyNodeInner(props: NodeProps) {
         </div>
 
         <div className="text-sm text-muted-foreground mb-3">
-          {typesList && typesList.length > 0 && (
-            <div className="text-xs text-muted-foreground mt-1 truncate">
-              {typesList.join(", ")}
-            </div>
-          )}
+          <div className="text-xs text-muted-foreground mt-1 truncate">
+            {subtitleText}
+          </div>
         </div>
 
         <div className="pt-2 border-t border-gray-100">

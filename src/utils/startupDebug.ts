@@ -297,8 +297,10 @@ export function log(
   }
 
   // Console output only when debug flag set
+  // NOTE: when running in Node (tests) we don't want debug console output by default,
+  // so only enable console logging when window.__VG_DEBUG__ is explicitly true.
   const shouldConsole =
-    typeof window === "undefined" ? true : Boolean(window.__VG_DEBUG__);
+    typeof window === "undefined" ? false : Boolean(window.__VG_DEBUG__);
   if (shouldConsole) {
     safeConsole(
       level,
@@ -523,8 +525,9 @@ export function fallback(
     }
 
     // Console output only when debug flag set
+    // Do not emit fallback console logs when running in Node/tests unless explicitly enabled.
     const shouldConsole =
-      typeof window === "undefined" ? true : Boolean(window.__VG_DEBUG__);
+      typeof window === "undefined" ? false : Boolean(window.__VG_DEBUG__);
     if (shouldConsole) {
       safeConsole(
         entry.level === "error"
