@@ -235,6 +235,8 @@ async function run() {
   }
 
   // Ensure the requested layout is applied via UI interaction.
+  const startupHasRdfUrl = String(url || '').includes('rdfUrl=');
+  if (!startupHasRdfUrl) {
   // The user requested this must be applied (not a fallback) — so we always attempt the UI click sequence.
   try {
     // Wait for the initial canvas build to finish so we apply the requested layout afterwards.
@@ -432,6 +434,8 @@ async function run() {
   } catch (err) {
     noteEvent('console', { type: 'error', text: `ui.layout.apply.exception ${String(err && err.message ? err.message : err)}` });
   }
+
+  } // end if (!startupHasRdfUrl)
 
   const maxWaitMs = 120000;
   const deadline = Date.now() + maxWaitMs;

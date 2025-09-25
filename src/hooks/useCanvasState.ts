@@ -6,6 +6,7 @@
 
 import { useState, useCallback } from 'react';
 import { CanvasState, CanvasActions, NodeData, LinkData } from '../types/canvas';
+import { toast } from 'sonner';
 
 /**
  * Custom hook for managing canvas state and actions
@@ -72,8 +73,11 @@ export const useCanvasState = () => {
     node: NodeData | null, 
     openEditor = false
   ) => {
+    try { console.debug('[VG] useCanvasState.setSelectedNode called', { node: node && (node as any).iri ? (node as any).iri : node, openEditor }); } catch (_) {}
     setSelectedNode(node);
     if (openEditor && node) {
+      try { console.debug('[VG] useCanvasState: opening node editor'); } catch (_) {}
+      try { toast.info('Opening node editor'); } catch (_) {}
       setShowNodeEditor(true);
     }
   }, []);
@@ -88,6 +92,7 @@ export const useCanvasState = () => {
     link: LinkData | null,
     openEditor = false
   ) => {
+    try { console.debug('[VG] useCanvasState.setSelectedLink called', { link: link && ((link as any).id || (link as any).key) ? ((link as any).id || (link as any).key) : link, openEditor }); } catch (_) {}
     // Compare by stable identifier (id or key) rather than object identity to avoid
     // repeated updates when equivalent objects are recreated during mapping.
     const incomingId = link ? (String((link as any).id || (link as any).key || "")) : "";
@@ -96,6 +101,7 @@ export const useCanvasState = () => {
     // If identifiers match, avoid re-setting selectedLink to prevent update loops.
     if (incomingId && incomingId === currentId) {
       if (openEditor && link && !showLinkEditor) {
+        try { console.debug('[VG] useCanvasState: opening link editor (id match)'); } catch (_) {}
         setShowLinkEditor(true);
       }
       return;
@@ -104,6 +110,8 @@ export const useCanvasState = () => {
     setSelectedLink(link);
 
     if (openEditor && link) {
+      try { console.debug('[VG] useCanvasState: opening link editor'); } catch (_) {}
+      try { toast.info('Opening link editor'); } catch (_) {}
       if (!showLinkEditor) setShowLinkEditor(true);
     }
   }, [showLinkEditor, selectedLink]);
@@ -114,6 +122,7 @@ export const useCanvasState = () => {
    * @param show - Whether to show the editor
    */
   const toggleNodeEditor = useCallback((show: boolean) => {
+    try { console.debug('[VG] useCanvasState.toggleNodeEditor', { show }); } catch (_) {}
     setShowNodeEditor(show);
     // Clear selection when closing editor
     if (!show) {
@@ -127,6 +136,7 @@ export const useCanvasState = () => {
    * @param show - Whether to show the editor
    */
   const toggleLinkEditor = useCallback((show: boolean) => {
+    try { console.debug('[VG] useCanvasState.toggleLinkEditor', { show }); } catch (_) {}
     setShowLinkEditor(show);
     // Clear selection when closing editor
     if (!show) {

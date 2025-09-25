@@ -73,6 +73,26 @@ import { LayoutManager } from "./LayoutManager";
 
 const { namedNode } = DataFactory;
 
+// Provide a race-safe stub for external test runners that may call window.__VG_APPLY_LAYOUT
+// before the React component mounts. The stub queues requests and returns a Promise that
+// will be resolved once the component mounts and processes the queued requests.
+try {
+  (window as any).__VG_APPLY_LAYOUT = (layoutKey?: string) => {
+    try {
+      if (!((window as any).__VG_APPLY_LAYOUT_PENDING)) (window as any).__VG_APPLY_LAYOUT_PENDING = [];
+      return new Promise((resolve) => {
+        try {
+          (window as any).__VG_APPLY_LAYOUT_PENDING.push({ layoutKey, resolve });
+        } catch (e) {
+          try { resolve(false); } catch (_) { /* ignore */ }
+        }
+      });
+    } catch (e) {
+      return Promise.resolve(false);
+    }
+  };
+} catch (_) { /* ignore global attach failures */ }
+
 const KnowledgeCanvas: React.FC = () => {
   // Resolve NodePropertyEditor at runtime using require so test-level vi.mock
   // values that export either a named export or a default export are supported.
@@ -116,6 +136,9 @@ const KnowledgeCanvas: React.FC = () => {
 
   // Palette from RDF manager — used to compute colors without rebuilding palettes.
   const palette = usePaletteFromRdfManager();
+
+
+  // Debug local visibility changes so we can confirm whether local state flips when events fire.
 
   // Expose namedNode factory for synchronous store queries in the local classifier.
   // termForIri helper (handles blank nodes like "_:b0")
@@ -252,6 +275,8 @@ const KnowledgeCanvas: React.FC = () => {
   // When a programmatic "load" occurs we mark this ref so the next mapping pass can
   // perform a forced layout once the updated nodes/edges are available.
   const loadTriggerRef = useRef(false);
+  // When a programmatic load requests a fit-to-view after mapping/layout, this ref is set.
+  const loadFitRef = useRef(false);
 
   // Lightweight layout integration
   const diagramRef = useRef<any>({
@@ -594,6 +619,7 @@ const KnowledgeCanvas: React.FC = () => {
         try {
           // mark that a programmatic load started so the next mapping pass knows to force a layout
           try { loadTriggerRef.current = true; } catch (_) { /* ignore */ }
+          try { loadFitRef.current = true; } catch (_) { /* ignore */ }
         } catch (_) { /* ignore */ }
         await loadKnowledgeGraph(text, {
           onProgress: (progress: number, message: string) => {
@@ -689,7 +715,7 @@ const KnowledgeCanvas: React.FC = () => {
     let subjectsCallback: ((subs?: string[] | undefined, quads?: any[] | undefined) => void) | null = null;
 
     // Accumulator for incremental quad updates emitted by rdfManager.
-    let pendingQuads: any[] = [];
+    const pendingQuads: any[] = [];
 
       // Use the centralized pure mapper directly and consult the predicate classifier so
       // annotation properties (owl:AnnotationProperty) are preserved as node annotations.
@@ -931,16 +957,46 @@ const KnowledgeCanvas: React.FC = () => {
           const newStructFp = `N:${nodeIds}|E:${edgeIds}`;
 
           const forced = !!loadTriggerRef.current;
+          const requestedFit = !!loadFitRef.current;
+          // clear trigger if set
           if (forced) {
             try { loadTriggerRef.current = false; } catch (_) { /* ignore */ }
           }
 
-          // If structure changed OR this was a forced load, run layout. Otherwise skip.
-          if (forced || lastStructureFingerprintRef.current !== newStructFp) {
+          // Decide whether to run layout: structure changed, forced load, or explicit fit requested.
+          const shouldRunLayout = forced || lastStructureFingerprintRef.current !== newStructFp || requestedFit;
+          if (shouldRunLayout) {
             lastStructureFingerprintRef.current = newStructFp;
             try {
-              void doLayout(mappedNodes, mappedEdges, !!forced);
-            } catch (_) { /* ignore scheduled layout errors */ }
+              // If a fit was requested, force layout even if auto layout disabled,
+              // await layout completion and then call fitView.
+              if (requestedFit) {
+                try {
+                  await doLayout(mappedNodes, mappedEdges, true);
+                } catch (_) { /* ignore layout errors */ }
+                // Wait a small fixed delay to allow RF internal updates and animations to settle
+                try { await new Promise((r) => setTimeout(r, 200)); } catch (_) {}
+                try {
+                  if (reactFlowInstance.current && typeof reactFlowInstance.current.fitView === "function") {
+                    try {
+                      const _fitStart = Date.now();
+                      try { console.debug('[VG] performing fitView after layout', { ts: new Date(_fitStart).toISOString() }); } catch (_) {}
+                      reactFlowInstance.current.fitView({ padding: 0.12 });
+                      const _fitEnd = Date.now();
+                      try { console.debug('[VG] fitView called', { durationMs: (_fitEnd - _fitStart), ts: new Date(_fitEnd).toISOString() }); } catch (_) {}
+                      try { console.debug('[VG] canvas.layout.settled', { fitCompletedAt: new Date(_fitEnd).toISOString() }); } catch (_) {}
+                    } catch (err) {
+                      try { console.warn('[VG] fitView failed', err); } catch (_) {}
+                    }
+                  }
+                } catch (_) { /* ignore fit errors */ }
+                try { loadFitRef.current = false; } catch (_) { /* ignore */ }
+              } else {
+                try {
+                  void doLayout(mappedNodes, mappedEdges, !!forced);
+                } catch (_) { /* ignore scheduled layout errors */ }
+              }
+            } catch (_) { /* ignore overall scheduling errors */ }
           }
         } catch (_) {
           // fallback: best-effort direct layout if fingerprinting fails
@@ -948,6 +1004,7 @@ const KnowledgeCanvas: React.FC = () => {
           try { loadTriggerRef.current = false; } catch (_) { /* ignore */ }
         }
       } catch (_) { /* ignore */ }
+      try { console.debug('[VG] canvas.rebuild.end'); } catch (_) {}
     };
 
     // Initial run: do nothing (we rely on emitted quads only)
@@ -1134,12 +1191,60 @@ const KnowledgeCanvas: React.FC = () => {
     };
   }, [getRdfManager, setNodes, setEdges, availableProperties, availableClasses]);
 
-  // Expose a ready flag for integration tests / tooling
+  // Expose a ready flag for integration tests / tooling and install a mounted apply-layout hook.
+  // This will also drain any queued apply requests that arrived before mount.
   useEffect(() => {
     if (typeof window === "undefined") return;
     (window as any).__VG_KNOWLEDGE_CANVAS_READY = true;
+
+    try {
+      // Drain any pending queued requests that were added by the stub before mount.
+      try {
+        const pending = (window as any).__VG_APPLY_LAYOUT_PENDING;
+        if (Array.isArray(pending) && pending.length > 0) {
+          (async () => {
+            // Process queued requests sequentially
+            for (const req of pending.splice(0)) {
+              try {
+                const _layoutStart = Date.now();
+                try { console.debug('[VG] canvas.layout.apply.start', { layoutKey: req && req.layoutKey ? req.layoutKey : 'unknown', ts: new Date(_layoutStart).toISOString() }); } catch (_) {}
+                await doLayout(nodesRef.current, edgesRef.current, true);
+                // Wait a short period to allow RF internal state and any animations to settle
+                try { await new Promise((r) => setTimeout(r, 200)); } catch (_) {}
+                const _layoutEnd = Date.now();
+                try { console.debug('[VG] canvas.layout.apply.end', { layoutKey: req && req.layoutKey ? req.layoutKey : 'unknown', durationMs: (_layoutEnd - _layoutStart), ts: new Date(_layoutEnd).toISOString() }); } catch (_) {}
+                try { req.resolve(true); } catch (_) {}
+              } catch (err) {
+                try { console.warn('[VG] queued.__VG_APPLY_LAYOUT failed', err && (err.stack || err.message) ? (err.stack || err.message) : err); } catch (_) {}
+                try { req.resolve(false); } catch (_) {}
+              }
+            }
+          })();
+        }
+      } catch (_) { /* ignore drain errors */ }
+
+      // Replace stub with real implementation that triggers layout immediately.
+      (window as any).__VG_APPLY_LAYOUT = async (layoutKey?: string) => {
+        const _layoutStart = Date.now();
+        try {
+          try { console.debug('[VG] canvas.layout.apply.start', { layoutKey: layoutKey || 'unknown', ts: new Date(_layoutStart).toISOString() }); } catch (_) {}
+          await doLayout(nodesRef.current, edgesRef.current, true);
+          // Allow RF and animations to settle before reporting completion
+          try { await new Promise((r) => setTimeout(r, 200)); } catch (_) {}
+          const _layoutEnd = Date.now();
+          try { console.debug('[VG] canvas.layout.apply.end', { layoutKey: layoutKey || 'unknown', durationMs: (_layoutEnd - _layoutStart), ts: new Date(_layoutEnd).toISOString() }); } catch (_) {}
+          try { console.debug('[VG] canvas.layout.apply.completed', layoutKey || 'unknown'); } catch (_) {}
+          return true;
+        } catch (err) {
+          try { console.warn('[VG] __VG_APPLY_LAYOUT failed', err && (err.stack || err.message) ? (err.stack || err.message) : err); } catch (_) {}
+          return false;
+        }
+      };
+    } catch (_) { /* ignore expose failures */ }
+ 
     return () => {
       try { delete (window as any).__VG_KNOWLEDGE_CANVAS_READY; } catch (_) { void 0; }
+      try { delete (window as any).__VG_APPLY_LAYOUT; } catch (_) { void 0; }
     };
   }, []);
   
@@ -1206,6 +1311,7 @@ const KnowledgeCanvas: React.FC = () => {
             });
             try { toast.success("Startup knowledge graph loaded"); } catch (_) {}
             try { loadTriggerRef.current = true; } catch (_) {}
+            try { loadFitRef.current = true; } catch (_) {}
           } catch (e) {
             try { toast.error("Failed to load startup graph"); } catch (_) {}
             try { console.warn("[VG] loadKnowledgeGraph(startupUrl) failed", e); } catch (_) {}
@@ -1341,6 +1447,57 @@ const KnowledgeCanvas: React.FC = () => {
   // Interaction handlers
   // --------------------
 
+  // Reasoning trigger helper (manual trigger from UI).
+  // Mirrors ReactFlowCanvas behavior: build small payloads and call startReasoning(store)
+  // if available, then update hasReasoningError flags on nodes and edges.
+  const triggerReasoning = useCallback(
+    async (ns: RFNode<NodeData>[], es: RFEdge<LinkData>[], force = false) => {
+      try {
+        if (!startReasoning || (!settings?.autoReasoning && !force)) return;
+        try {
+          const nodesPayload = (ns || []).map((n) =>
+            n.data && n.data.iri ? { iri: n.data.iri, key: n.id } : { key: n.id },
+          );
+          const edgesPayload = (es || []).map((e) => ({ id: e.id, source: e.source, target: e.target }));
+          const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
+          const result = await startReasoning(nodesPayload as any, edgesPayload as any, mgr && mgr.getStore && mgr.getStore());
+          // Apply reasoning error flags
+          try {
+                  setNodes((nds) =>
+                    (nds || []).map((n) => {
+                      try {
+                        const hasNodeErr = !!(
+                          Array.isArray(result?.errors) &&
+                          result.errors.find((er: any) => er.nodeId === n.id)
+                        );
+                        return { ...(n as RFNode<NodeData>), data: { ...(n.data as NodeData), hasReasoningError: hasNodeErr } } as RFNode<NodeData>;
+                      } catch (_) {
+                        return n;
+                      }
+                    }),
+                  );
+            setEdges((eds) =>
+              (eds || []).map((e) => {
+                try {
+                  const hasEdgeErr = !!(
+                    Array.isArray(result?.errors) &&
+                    result.errors.find((er: any) => er.edgeId === e.id)
+                  );
+                  return { ...(e as RFEdge<LinkData>), data: { ...(e.data as LinkData), hasReasoningError: hasEdgeErr } } as RFEdge<LinkData>;
+                } catch (_) {
+                  return e;
+                }
+              }),
+            );
+          } catch (_) { /* ignore apply errors */ }
+        } catch (err) {
+          try { console.warn('[VG] triggerReasoning failed', err); } catch (_) {}
+        }
+      } catch (_) { /* ignore outer */ }
+    },
+    [setNodes, setEdges, startReasoning, settings],
+  );
+
   const onNodeDoubleClick = useCallback(
     (event: any, node: any) => {
       // Pass the full React Flow node object to the editor so it can use runtime fields
@@ -1424,7 +1581,11 @@ const KnowledgeCanvas: React.FC = () => {
           });
         } catch (_) { /* ignore */ }
 
-        canvasActions.setSelectedLink(edge as any, true);
+        try {
+          canvasActions.setSelectedLink(selectedLinkPayload as any, true);
+        } catch (_) {
+          canvasActions.setSelectedLink(edge as any, true);
+        }
       } catch (e) {
         try {
           canvasActions.setSelectedLink(edge.data || edge, true);
@@ -1953,24 +2114,60 @@ const KnowledgeCanvas: React.FC = () => {
       </div>
 
       {/* Render editors so dialogs can persist triples into urn:vg:data */}
+      {(() => {
+        try {
+          console.debug('[VG] Render editors', {
+            showNodeEditor: canvasState.showNodeEditor,
+            selectedNode: canvasState.selectedNode && ((canvasState.selectedNode as any).key || (canvasState.selectedNode as any).id) ? ((canvasState.selectedNode as any).key || (canvasState.selectedNode as any).id) : canvasState.selectedNode,
+            showLinkEditor: canvasState.showLinkEditor,
+            selectedLink: canvasState.selectedLink && ((canvasState.selectedLink as any).id || (canvasState.selectedLink as any).key) ? ((canvasState.selectedLink as any).id || (canvasState.selectedLink as any).key) : canvasState.selectedLink,
+          });
+        } catch (_) { /* ignore */ }
+        return null;
+      })()}
+
+      <ReasoningIndicator
+        onOpenReport={() => canvasActions.toggleReasoningReport(true)}
+        onRunReason={() => {
+          try {
+            console.debug('[VG] Manual reasoning requested (forced)');
+            void triggerReasoning(nodes, edges, true);
+          } catch (e) {
+            try { console.warn('manual reasoning trigger failed', e); } catch (_) { /* ignore */ }
+          }
+        }}
+      />
+
+      <ReasoningReportModal
+        open={canvasState.showReasoningReport}
+        onOpenChange={canvasActions.toggleReasoningReport}
+      />
 
       <NodePropertyEditor
         open={canvasState.showNodeEditor}
         onOpenChange={(open) => {
-          canvasActions.toggleNodeEditor(open);
+          try { canvasActions.toggleNodeEditor(Boolean(open)); } catch (_) {}
         }}
         nodeData={canvasState.selectedNode}
         availableEntities={allEntities}
-        onSave={handleSaveNodeProperties}
+        onSave={(props: any[]) => {
+          try { handleSaveNodeProperties(props); } catch (_) {}
+          try { canvasActions.toggleNodeEditor(false); } catch (_) {}
+        }}
       />
 
       <LinkPropertyEditor
         open={canvasState.showLinkEditor}
-        onOpenChange={canvasActions.toggleLinkEditor}
+        onOpenChange={(open) => {
+          try { canvasActions.toggleLinkEditor(Boolean(open)); } catch (_) {}
+        }}
         linkData={canvasState.selectedLink}
         sourceNode={linkSourceRef.current}
         targetNode={linkTargetRef.current}
-        onSave={handleSaveLinkProperty}
+        onSave={(propertyUri: string, label: string) => {
+          try { handleSaveLinkProperty(propertyUri, label); } catch (_) {}
+          try { canvasActions.toggleLinkEditor(false); } catch (_) {}
+        }}
       />
     </div>
   );
