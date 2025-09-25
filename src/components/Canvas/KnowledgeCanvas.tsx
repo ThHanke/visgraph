@@ -47,8 +47,7 @@ import { CustomOntologyNode as OntologyNode } from "./CustomOntologyNode";
 import FloatingEdge from "./FloatingEdge";
 import FloatingConnectionLine from "./FloatingConnectionLine";
 import { generateEdgeId } from "./core/edgeHelpers";
-import { computeTermDisplay, shortLocalName } from "../../utils/termUtils";
-import { usePaletteFromRdfManager, buildPaletteMap } from "./core/namespacePalette";
+import { usePaletteFromRdfManager } from "./core/namespacePalette";
 import { useCanvasState } from "../../hooks/useCanvasState";
 import { toast } from "sonner";
 import { fallback } from "../../utils/startupDebug";
@@ -922,200 +921,7 @@ const KnowledgeCanvas: React.FC = () => {
         }
       });
 
-      // Targeted re-enrichment: refresh displayPrefixed/label/paletteColor for visible nodes only.
-      // This updates node.data only and intentionally does NOT modify edges or structural state.
-      try {
-        try {
-          const mgrLocal = typeof getRdfManager === "function" ? getRdfManager() : undefined;
-          if (mgrLocal) {
-              try {
-              // Take a fresh snapshot of availableProperties/availableClasses from the store AFTER any reconcile
-              // so that computeTermDisplay sees post-reconcile data rather than stale closure-captured values.
-              let propsSnapshot: any[] = [];
-              let classesSnapshot: any[] = [];
-              try {
-                let osLatest: any;
-                try {
-                  if (useOntologyStore && typeof (useOntologyStore as any).getState === "function") {
-                    osLatest = (useOntologyStore as any).getState();
-                  } else if (typeof useOntologyStore === "function") {
-                    // Some test mocks export a hook function that returns the mocked store instance.
-                    try { osLatest = (useOntologyStore as any)(); } catch (_) { osLatest = undefined; }
-                  } else {
-                    osLatest = undefined;
-                  }
-                } catch (_) {
-                  osLatest = undefined;
-                }
-                if (osLatest && Array.isArray(osLatest.availableProperties)) {
-                  propsSnapshot = osLatest.availableProperties.slice();
-                } else if (Array.isArray(availableProperties)) {
-                  propsSnapshot = availableProperties.slice();
-                } else if (Array.isArray(availablePropertiesSnapshot)) {
-                  propsSnapshot = availablePropertiesSnapshot.slice();
-                } else {
-                  propsSnapshot = [];
-                }
-
-                if (osLatest && Array.isArray(osLatest.availableClasses)) {
-                  classesSnapshot = osLatest.availableClasses.slice();
-                } else if (Array.isArray(availableClasses)) {
-                  classesSnapshot = availableClasses.slice();
-                } else {
-                  classesSnapshot = [];
-                }
-              } catch (_) {
-                propsSnapshot = Array.isArray(availableProperties) ? availableProperties.slice() : (Array.isArray(availablePropertiesSnapshot) ? availablePropertiesSnapshot.slice() : []);
-                classesSnapshot = Array.isArray(availableClasses) ? availableClasses.slice() : [];
-              }
-
-              // Perform a single setNodes call to update display fields
-              setNodes((prev) => {
-                try {
-                  return (prev || []).map((n) => {
-                    try {
-                      // Only re-enrich visible nodes (skip hidden or minimal nodes)
-                      const isHidden = !!(n as any).hidden;
-                      if (isHidden) return n;
-
-                      const primary =
-                        Array.isArray(n.data?.rdfTypes) && n.data.rdfTypes.find((t: any) => t && !/NamedIndividual/i.test(String(t))) ||
-                        n.data?.classType ||
-                        n.data?.displayType ||
-                        undefined;
-                      let td: any = undefined;
-                      try {
-                        if (primary) {
-                          // Build a fresh palette snapshot from the RDF manager namespaces if available.
-                          let paletteSnapshotLocal: Record<string, string> | undefined = palette;
-                          try {
-                            const nsMap = mgrLocal && typeof (mgrLocal as any).getNamespaces === "function" ? (mgrLocal as any).getNamespaces() : {};
-                            const prefixes = Object.keys(nsMap || {}).filter(Boolean).sort();
-                            if (prefixes.length > 0) {
-                              try {
-                                paletteSnapshotLocal = buildPaletteMap(prefixes, { avoidColors: [
-                                  typeof window !== "undefined" && window.getComputedStyle ? getComputedStyle(document.documentElement).getPropertyValue("--node-foreground") || "#000000" : "#000000",
-                                  typeof window !== "undefined" && window.getComputedStyle ? getComputedStyle(document.documentElement).getPropertyValue("--primary-foreground") || "#000000" : "#000000",
-                                ]});
-                              } catch (_) {
-                                paletteSnapshotLocal = palette;
-                              }
-                            }
-                          } catch (_) {
-                            paletteSnapshotLocal = palette;
-                          }
-
-                          td = computeTermDisplay(String(primary), mgrLocal as any, paletteSnapshotLocal, { availableProperties: propsSnapshot, availableClasses: classesSnapshot });
-                        }
-                      } catch (err) {
-                        try { console.error("[VG] computeTermDisplay enrichment failed", { term: String(primary), error: err && err.message ? err.message : String(err) }); } catch (_) {}
-                        td = undefined;
-                      }
-
-                      const newColor = td?.color || (td && td.namespace && palette ? (palette as any)[td.namespace] : undefined);
-                      const newPref = td?.prefixed || n.data?.displayPrefixed || shortLocalName(String(n.data?.iri || n.id || ""));
-                      const newShort = td?.short || n.data?.displayShort || shortLocalName(String(n.data?.iri || n.id || ""));
-                      const newLabel = n.data?.label || td?.label || newPref;
-
-                      // If nothing changed, return original node object
-                      if (String(n.data?.paletteColor || "") === String(newColor || "") && String(n.data?.displayPrefixed || "") === String(newPref || "") && String(n.data?.label || "") === String(newLabel || "")) {
-                        return n;
-                      }
-
-                      const updatedData = {
-                        ...(n.data || {}),
-                        paletteColor: newColor,
-                        displayPrefixed: newPref,
-                        displayShort: newShort,
-                        label: newLabel,
-                        typeNamespace: td?.namespace || (n.data && (n.data as any).typeNamespace),
-                      } as NodeData;
-
-                      try { return { ...n, data: updatedData } as RFNode<NodeData>; } catch (_) { return n; }
-                    } catch (_) {
-                      return n;
-                    }
-                  });
-                } catch (_) {
-                  return prev || [];
-                }
-              });
-            } catch (_) { /* ignore enrichment failures */ }
-          }
-        } catch (_) { /* ignore */ }
-      } catch (_) { /* ignore */ }
-
-      // Diagnostics: sample nodes that still show full IRIs or missing prefixed labels.
-      // This runs shortly after re-enrichment so we can inspect computeTermDisplay outputs.
-      try {
-        setTimeout(() => {
-          try {
-            const mgrDiag = typeof getRdfManager === "function" ? getRdfManager() : undefined;
-            const problematic = (nodes || [])
-              .filter((n) => {
-                try {
-                  const dp = String(n.data?.displayPrefixed || "").trim();
-                  const iri = String(n.data?.iri || n.id || "");
-                  return !dp || /^https?:\/\//i.test(dp) || dp === iri;
-                } catch (_) {
-                  return false;
-                }
-              })
-              .slice(0, 10)
-              .map((n) => {
-                try {
-                  const primary =
-                    Array.isArray(n.data?.rdfTypes) && n.data.rdfTypes.length > 0
-                      ? n.data.rdfTypes[0]
-                      : n.data?.classType || n.data?.iri || n.id;
-                  let td = null;
-                  try {
-                    if (primary && mgrDiag) {
-                      // derive diagnostic palette snapshot from diag manager if possible
-                      let paletteDiag: Record<string,string> | undefined = palette;
-                      try {
-                        const nsMapDiag = mgrDiag && typeof (mgrDiag as any).getNamespaces === "function" ? (mgrDiag as any).getNamespaces() : {};
-                        const prefixesDiag = Object.keys(nsMapDiag || {}).filter(Boolean).sort();
-                        if (prefixesDiag.length > 0) {
-                          try {
-                            paletteDiag = buildPaletteMap(prefixesDiag, { avoidColors: [
-                              typeof window !== "undefined" && window.getComputedStyle ? getComputedStyle(document.documentElement).getPropertyValue("--node-foreground") || "#000000" : "#000000",
-                              typeof window !== "undefined" && window.getComputedStyle ? getComputedStyle(document.documentElement).getPropertyValue("--primary-foreground") || "#000000" : "#000000",
-                            ]});
-                          } catch (_) {
-                            paletteDiag = palette;
-                          }
-                        }
-                      } catch (_) {
-                        paletteDiag = palette;
-                      }
-                      td = computeTermDisplay(String(primary), mgrDiag as any, paletteDiag, { availableProperties: Array.isArray(availablePropertiesSnapshot) ? availablePropertiesSnapshot : [] });
-                    }
-                  } catch (err) {
-                    try {
-                      console.error("[VG] computeTermDisplay diagnostics error", { term: String(primary), error: err && err.message ? err.message : String(err) });
-                    } catch (_) {}
-                    td = null;
-                  }
-                  return {
-                    id: String(n.id),
-                    iri: String(n.data?.iri || ""),
-                    displayPrefixed: String(n.data?.displayPrefixed || ""),
-                    computedPrefixed: td ? td.prefixed : null,
-                    computedLabel: td ? td.label : null,
-                    computedColor: td ? td.color : null,
-                  };
-                } catch (_) {
-                  return { id: String(n.id) };
-                }
-              });
-            if (problematic.length > 0) {
-              try { console.debug("[VG] computeTermDisplay diagnostics problematic nodes", problematic); } catch (_) {}
-            }
-          } catch (_) {}
-        }, 50);
-      } catch (_) {}
-      
+      // Node/edge enrichment removed from KnowledgeCanvas — mappingHelpers and editors are authoritative.
       // Trigger layout (async) only when structure changed or when a programmatic load forced it.
       // Compute a structural fingerprint (node ids + edge ids) and compare with lastStructureFingerprintRef.
       try {
@@ -1216,7 +1022,7 @@ const KnowledgeCanvas: React.FC = () => {
                           undefined;
                         let td;
                         try {
-                          if (primary && mgr) td = computeTermDisplay(String(primary), mgr as any, palette);
+                          if (primary && mgr) td = undefined;
                         } catch (_) {
                           td = undefined;
                         }
@@ -1259,7 +1065,7 @@ const KnowledgeCanvas: React.FC = () => {
                                         n.data?.displayType ||
                                         undefined;
                                       let td;
-                                      try { if (primary && mgr) td = computeTermDisplay(String(primary), mgr as any, palette); } catch (_) { td = undefined; }
+                                      try { if (primary && mgr) td = undefined; } catch (_) { td = undefined; }
                                       const newColor = (td && td.color) || (td && td.namespace && palette ? (palette as any)[td.namespace] : undefined);
                                       if (String(n.data?.paletteColor || "") !== String(newColor || "")) {
                                         const updatedData = { ...(n.data as NodeData), paletteColor: newColor, displayPrefixed: td?.prefixed || n.data?.displayPrefixed, displayShort: td?.short || n.data?.displayShort } as NodeData;
@@ -1279,7 +1085,7 @@ const KnowledgeCanvas: React.FC = () => {
                                 return (prev || []).map((e) => {
                                   try {
                                     const pred = String((e && e.data && (e.data.propertyUri || e.data.propertyType)) || "");
-                                    const td = (mgr && pred) ? computeTermDisplay(pred, mgr as any, palette) : undefined;
+                                    const td = undefined;
                                     const labelFromProps = props.find((p: any) => String(p.iri) === pred)?.label;
                                     const newLabel = labelFromProps || (td ? (td.prefixed || td.short || String(pred)) : String(pred));
                                     const newColor = (td && td.color) || (td && td.namespace && palette ? (palette as any)[td.namespace] : undefined);
@@ -1421,11 +1227,7 @@ const KnowledgeCanvas: React.FC = () => {
                   let label = "";
                   if (mgrLocal && pred) {
                     try {
-                      const td = computeTermDisplay(
-                        String(pred),
-                        (useOntologyStore && typeof (useOntologyStore as any).getState === "function") ? (useOntologyStore as any).getState().namespaceRegistry : [],
-                        palette,
-                      );
+                      const td = undefined;
                       label = String(td.prefixed || td.short || "");
                     } catch (_) {
                       label = "";
@@ -1589,7 +1391,7 @@ const KnowledgeCanvas: React.FC = () => {
             const mgrLocal = getRdfManagerRef.current && getRdfManagerRef.current();
             if (mgrLocal && propUriFromEdge) {
               try {
-                const td = computeTermDisplay(String(propUriFromEdge), mgrLocal as any);
+                const td = undefined;
                 propLabelFromEdge = String(td.prefixed || td.short || "");
               } catch (_) {
                 propLabelFromEdge = "";
@@ -1697,7 +1499,7 @@ const KnowledgeCanvas: React.FC = () => {
       try {
         const mgrLocal = getRdfManagerRef.current && getRdfManagerRef.current();
         if (mgrLocal && predUriToUse) {
-          const td = computeTermDisplay(String(predUriToUse), mgrLocal as any);
+          const td = undefined;
           predLabel = String(td.prefixed || td.short || "");
         }
       } catch (_) {
