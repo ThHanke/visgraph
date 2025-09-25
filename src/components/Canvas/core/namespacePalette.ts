@@ -235,48 +235,25 @@ export function buildPaletteMap(prefixes: string[] = [], options?: { avoidColors
  * during render without triggering extra work.
  */
 export function usePaletteFromRdfManager() {
-  const rdfManager = useOntologyStore((s) => s.rdfManager);
-  const ontologiesVersion = useOntologyStore((s) => s.ontologiesVersion);
-
-  // Local tick increments when RDF manager signals changes (namespaces, clears, etc.)
-  const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    const mgr = rdfManager as any;
-    if (!mgr || typeof mgr.onChange !== 'function') return;
-    const cb = () => {
-      try {
-        setTick((t) => t + 1);
-      } catch (_) { /* ignore */ }
-    };
-    try {
-      mgr.onChange(cb);
-    } catch (_) { /* ignore subscribe errors */ }
-    return () => {
-      try {
-        mgr.offChange(cb);
-      } catch (_) { /* ignore unsubscribe errors */ }
-    };
-  }, [rdfManager]);
-
+  // NOTE: this hook used to derive palette from the RDF manager's namespaces.
+  // Per recent refactor, namespace colors are now persisted into the ontology
+  // store as `namespaceRegistry`. This hook now returns a stable prefix->color
+  // mapping derived from that registry, making it the single source of truth.
+  const registry = useOntologyStore((s) => (Array.isArray(s.namespaceRegistry) ? s.namespaceRegistry : []));
+  // Recompute palette when registry changes.
   return useMemo(() => {
     try {
-      const nsMap =
-        rdfManager && typeof (rdfManager as any).getNamespaces === "function"
-          ? (rdfManager as any).getNamespaces()
-          : {};
-      const prefixes = Object.keys(nsMap || {}).filter(Boolean).sort();
-      const textColors = [
-        typeof window !== "undefined" && window.getComputedStyle
-          ? getComputedStyle(document.documentElement).getPropertyValue("--node-foreground") || "#000000"
-          : "#000000",
-        typeof window !== "undefined" && window.getComputedStyle
-          ? getComputedStyle(document.documentElement).getPropertyValue("--primary-foreground") || "#000000"
-          : "#000000",
-      ];
-      return buildPaletteMap(prefixes, { avoidColors: textColors });
+      const map: Record<string,string> = {};
+      (registry || []).forEach((entry: any) => {
+        try {
+          const p = String(entry?.prefix || "");
+          const c = String(entry?.color || "");
+          if (p) map[p] = c || "";
+        } catch (_) {}
+      });
+      return map;
     } catch (_) {
       return {};
     }
-  }, [rdfManager, ontologiesVersion, tick]);
+  }, [registry]);
 }

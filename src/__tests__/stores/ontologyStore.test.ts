@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useOntologyStore } from "../../stores/ontologyStore";
+import validateGraph from "../../utils/graphValidation";
 
 describe("Ontology Store", () => {
   beforeEach(() => {
@@ -51,7 +52,7 @@ describe("Ontology Store", () => {
         { id: "node2", data: { classType: "InvalidClass", namespace: "foaf" } },
       ];
 
-      const errors = store.validateGraph(nodes, []);
+      const errors = validateGraph(nodes, [], { availableClasses: store.availableClasses, availableProperties: store.availableProperties });
 
       // With mock classes removed we expect the validation to report that invalid classes are not found.
       expect(errors.some((e) => e.nodeId === "node2")).toBe(true);
@@ -80,7 +81,7 @@ describe("Ontology Store", () => {
         },
       ];
 
-      const errors = store.validateGraph(nodes, edges);
+      const errors = validateGraph(nodes, edges, { availableClasses: store.availableClasses, availableProperties: store.availableProperties });
 
       // After removing mocked ontologies, validation may report missing classes; ensure the call completes and returns an array.
       expect(Array.isArray(errors)).toBe(true);

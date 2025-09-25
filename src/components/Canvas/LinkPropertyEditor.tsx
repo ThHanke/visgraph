@@ -13,6 +13,7 @@ import {
 } from '../ui/dialog';
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { shortLocalName } from '../../utils/termUtils';
+import { rdfManager as fallbackRdfManager } from '../../utils/rdfManager';
 
 interface LinkPropertyEditorProps {
   open: boolean;
@@ -160,10 +161,17 @@ export const LinkPropertyEditor = ({
 
     // Resolve manager + subject/object IRIs (endpoints must come from props)
     const mgrState = useOntologyStore.getState();
-    const mgr =
-      typeof (mgrState as any).getRdfManager === 'function'
-        ? (mgrState as any).getRdfManager()
-        : (mgrState as any).rdfmanager;
+    let mgr: any = undefined;
+    if (typeof (mgrState as any).getRdfManager === "function") {
+      try {
+        mgr = (mgrState as any).getRdfManager();
+      } catch (_) {
+        mgr = undefined;
+      }
+    }
+    if (!mgr) {
+      mgr = (mgrState as any).rdfManager || fallbackRdfManager;
+    }
 
     const subjIri = (sourceNode && ((sourceNode as any).iri || (sourceNode as any).key)) || '';
     const objIri = (targetNode && ((targetNode as any).iri || (targetNode as any).key)) || '';
@@ -241,11 +249,18 @@ export const LinkPropertyEditor = ({
 
     try {
       const mgrState = useOntologyStore.getState();
-      const mgr =
-        typeof (mgrState as any).getRdfManager === 'function'
-          ? (mgrState as any).getRdfManager()
-          : (mgrState as any).rdfmanager;
-      if (!mgr) throw new Error('RDF manager unavailable');
+      let mgr: any = undefined;
+      if (typeof (mgrState as any).getRdfManager === "function") {
+        try {
+          mgr = (mgrState as any).getRdfManager();
+        } catch (_) {
+          mgr = undefined;
+        }
+      }
+      if (!mgr) {
+        mgr = (mgrState as any).rdfManager || fallbackRdfManager;
+      }
+      if (!mgr) throw new Error("RDF manager unavailable");
 
       const subjIri = (sourceNode && ((sourceNode as any).iri || (sourceNode as any).key)) || '';
       const objIri = (targetNode && ((targetNode as any).iri || (targetNode as any).key)) || '';

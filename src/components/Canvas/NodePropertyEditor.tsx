@@ -217,7 +217,17 @@ export const NodePropertyEditor = ({
     // Persist minimal changed annotation quads to urn:vg:data using rdfManager primitives (addTriple/removeTriple).
     try {
       const mgrState = useOntologyStore.getState();
-      const mgr = typeof mgrState.getRdfManager === "function" ? mgrState.getRdfManager() : (mgrState as any).getRdfManager?.();
+      let mgr: any = undefined;
+      if (typeof (mgrState as any).getRdfManager === "function") {
+        try {
+          mgr = (mgrState as any).getRdfManager();
+        } catch (_) {
+          mgr = undefined;
+        }
+      }
+      if (!mgr) {
+        mgr = (mgrState as any).rdfManager || (await import("../../utils/rdfManager").then(m=>m.rdfManager).catch(()=>undefined));
+      }
       const before = initialPropertiesRef.current || [];
       const after = properties || [];
       const { toAdd, toRemove } = diffProperties(before, after);
@@ -323,13 +333,58 @@ export const NodePropertyEditor = ({
 
     try {
       const mgrState = useOntologyStore.getState();
-      const mgr = typeof mgrState.getRdfManager === "function" ? mgrState.getRdfManager() : (mgrState as any).getRdfManager?.();
-      if (mgr && typeof mgr.getStore === "function") {
+      let mgr: any = undefined;
+      if (typeof (mgrState as any).getRdfManager === "function") {
+        try {
+          mgr = (mgrState as any).getRdfManager();
+        } catch (_) {
+          mgr = undefined;
+        }
+      }
+      if (!mgr) {
+        mgr = (mgrState as any).rdfManager || (await import("../../utils/rdfManager").then(m => m.rdfManager).catch(() => undefined));
+      }
+
+      if (mgr && typeof mgr.getStore === "function" && typeof (mgr as any).removeTriple === "function") {
+        const store = mgr.getStore();
+        const g = namedNode("urn:vg:data");
+
+        // Remove quads where subject === nodeIri by enumerating and calling manager.removeTriple
+        try {
+          const subjTerm = namedNode(String(nodeIri));
+          const subjQuads = store.getQuads(subjTerm, null, null, g) || [];
+          for (const q of subjQuads) {
+            try {
+              const s = (q.subject && (q.subject as any).value) || String(nodeIri);
+              const p = (q.predicate && (q.predicate as any).value) || "";
+              const o = (q.object && (q.object as any).value) || "";
+              try { (mgr as any).removeTriple(String(s), String(p), String(o), "urn:vg:data"); } catch (_) { /* ignore per-quad */ }
+            } catch (_) { /* ignore per-quad */ }
+          }
+        } catch (_) { /* ignore */ }
+
+        // Remove quads where object === nodeIri
+        try {
+          const objTerm = namedNode(String(nodeIri));
+          const objQuads = store.getQuads(null, null, objTerm, g) || [];
+          for (const q of objQuads) {
+            try {
+              const s = (q.subject && (q.subject as any).value) || "";
+              const p = (q.predicate && (q.predicate as any).value) || "";
+              const o = (q.object && (q.object as any).value) || String(nodeIri);
+              try { (mgr as any).removeTriple(String(s), String(p), String(o), "urn:vg:data"); } catch (_) { /* ignore per-quad */ }
+            } catch (_) { /* ignore per-quad */ }
+          }
+        } catch (_) { /* ignore */ }
+
+        // Notify once after removals
+        try { if (typeof (mgr as any).notifyChange === "function") (mgr as any).notifyChange(); } catch (_) { /* ignore */ }
+      } else if (mgr && typeof mgr.getStore === "function") {
+        // Fallback to direct store removals (previous behavior)
         const store = mgr.getStore();
         const subjTerm = namedNode(String(nodeIri));
         const g = namedNode("urn:vg:data");
 
-        // Remove quads where subject === nodeIri
         try {
           const subjQuads = store.getQuads(subjTerm, null, null, g) || [];
           for (const q of subjQuads) {
@@ -337,13 +392,14 @@ export const NodePropertyEditor = ({
           }
         } catch (_) { /* ignore */ }
 
-        // Remove quads where object === nodeIri
         try {
           const objQuads = store.getQuads(null, null, subjTerm, g) || [];
           for (const q of objQuads) {
             try { store.removeQuad(q); } catch (_) { /* ignore per-quad */ }
           }
         } catch (_) { /* ignore */ }
+
+        try { if (typeof (mgr as any).notifyChange === "function") (mgr as any).notifyChange(); } catch (_) { /* ignore */ }
       }
     } catch (err) {
       try { console.warn("NodePropertyEditor.delete.storeWriteFailed", err); } catch (_) { /* ignore */ }
@@ -352,12 +408,14 @@ export const NodePropertyEditor = ({
     // Notify RDF manager subscribers (best-effort) so incremental mapping picks up the deletion.
     try {
       const mgrState = useOntologyStore.getState();
-      const mgr = typeof mgrState.getRdfManager === "function" ? mgrState.getRdfManager() : (mgrState as any).rdfManager;
+      let mgrNotify: any = undefined;
+      if (typeof (mgrState as any).getRdfManager === "function") {
+        try { mgrNotify = (mgrState as any).getRdfManager(); } catch (_) { mgrNotify = undefined; }
+      }
+      if (!mgrNotify) mgrNotify = (mgrState as any).rdfManager || undefined;
       try {
-        if ((mgr as any).notifyChange) {
-          try { (mgr as any).notifyChange(); } catch (_) { /* ignore */ }
-        } else if (typeof (mgr as any).notifyChange === "function") {
-          try { (mgr as any).notifyChange(); } catch (_) { /* ignore */ }
+        if (mgrNotify && typeof (mgrNotify as any).notifyChange === "function") {
+          try { (mgrNotify as any).notifyChange(); } catch (_) { /* ignore */ }
         }
       } catch (_) { /* ignore notify errors */ }
     } catch (_) { /* ignore */ }

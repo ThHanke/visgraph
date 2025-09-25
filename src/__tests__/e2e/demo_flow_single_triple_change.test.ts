@@ -31,7 +31,6 @@
  *     - Called from: ontologyStore (best-effort store population), tests
  *
  * - rdfManager.applyParsedNamespaces(namespaces)
- *   rdfManager.applyParsedNodes(parsedNodes, options)
  *     - src/utils/rdfManager.ts (centralized idempotent persistence)
  *     - Called from: ontologyStore after parseRDFFile
  *

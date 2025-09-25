@@ -359,16 +359,17 @@ export function mapQuadsToDiagram(
   // Build RF nodes — filter out pure TBox entities (classes / properties) so they do not appear as canvas nodes.
   const allNodeEntries = Array.from(nodeMap.entries()).map(([iri, info]) => {
     // Compute a lightweight classType/displayType from first rdf:type if available.
-    let classType: string | undefined = undefined;
+    // Preserve the full rdf:type IRI as the primary type.
+    let primaryTypeIri: string | undefined = undefined;
     if (Array.isArray(info.rdfTypes) && info.rdfTypes.length > 0) {
-      const primary = String(info.rdfTypes[0]);
-      try {
-        classType = shortLocalName(primary);
-      } catch (_) {
-        classType = shortLocalName(primary);
-      }
+      primaryTypeIri = String(info.rdfTypes[0]);
     }
-
+    // For backward compatibility compute a short classType display from primaryTypeIri.
+    let classType: string | undefined = undefined;
+    if (primaryTypeIri) {
+      classType = primaryTypeIri;
+    }
+    
     // Coarse namespace extraction from IRI (prefix before last / or #)
     let namespace = "";
     try {
@@ -382,10 +383,17 @@ export function mapQuadsToDiagram(
       /Class|ObjectProperty|AnnotationProperty|DatatypeProperty|owl:Class|owl:ObjectProperty/i.test(String(t || ""))
     );
 
-    const nodeData: NodeData = {
+      const nodeData: NodeData & any = {
       key: iri,
       iri,
+      // authoritative full IRI title (same as iri) available to renderers
+      titleIri: iri,
+      // primaryTypeIri preserves the full rdf:type IRI so renderers can shorten it later
+      primaryTypeIri,
       rdfTypes: Array.isArray(info.rdfTypes) ? info.rdfTypes.map(String) : [],
+      // humanLabel: rdfs:label if present, otherwise explicit empty string
+      humanLabel: info.label || "",
+      // keep label field for backward compatibility: prefer rdfs:label, otherwise short local name
       label: info.label || shortLocalName(iri),
       namespace,
       classType,
@@ -408,10 +416,9 @@ export function mapQuadsToDiagram(
     return { iri, isTBox, rfNode };
   });
 
-  // Keep only non-TBox nodes (ABox) for rendering.
-  const rfNodes: RFNode<NodeData>[] = allNodeEntries
-    .filter((e) => !e.isTBox)
-    .map((e) => e.rfNode);
+  // Include all nodes (ABox + TBox) in the mapper output. UI consumers should
+  // use the node.data.isTBox flag to hide/show TBox entries according to view mode.
+  const rfNodes: RFNode<NodeData>[] = allNodeEntries.map((e) => e.rfNode);
 
   // Build set of node IDs that will be rendered for edge filtering
   const renderedNodeIds = new Set<string>((rfNodes || []).map((n) => String(n.id)));

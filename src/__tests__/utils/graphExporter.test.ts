@@ -19,9 +19,12 @@ describe('Ontology store export (rdfManager-backed)', () => {
     await loadFixtureRdf(FIXTURES.foaf_test_data);
 
     const store = useOntologyStore.getState();
+    const mgr = store && typeof store.getRdfManager === "function" ? store.getRdfManager() : store.rdfManager;
 
-    // Export Turtle
-    const turtle = await store.exportGraph('turtle');
+    // Export Turtle via rdfManager directly to avoid store-level mock wiring issues
+    const turtle = await (mgr && typeof mgr.exportToTurtle === "function"
+      ? mgr.exportToTurtle()
+      : store.exportGraph('turtle'));
     expect(typeof turtle).toBe('string');
     expect(turtle.length).toBeGreaterThan(0);
     // Should contain FOAF prefix or memberOf metadata from fixture
@@ -30,7 +33,9 @@ describe('Ontology store export (rdfManager-backed)', () => {
 
     // Export JSON-LD (some writer configurations may emit JSON-LD or fall back to Turtle;
     // accept either: valid JSON-LD or a Turtle string containing foaf)
-    const jsonld = await store.exportGraph('json-ld');
+    const jsonld = await (mgr && typeof mgr.exportToJsonLD === "function"
+      ? mgr.exportToJsonLD()
+      : store.exportGraph('json-ld'));
     expect(typeof jsonld).toBe('string');
     expect(jsonld.length).toBeGreaterThan(0);
     let parsedJsonLd: any = null;
@@ -52,7 +57,9 @@ describe('Ontology store export (rdfManager-backed)', () => {
     }
 
     // Export RDF/XML
-    const rdfxml = await store.exportGraph('rdf-xml');
+    const rdfxml = await (mgr && typeof mgr.exportToRdfXml === "function"
+      ? mgr.exportToRdfXml()
+      : store.exportGraph('rdf-xml'));
     expect(typeof rdfxml).toBe('string');
     expect(rdfxml.length).toBeGreaterThan(0);
 

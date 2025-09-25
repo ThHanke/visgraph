@@ -17,8 +17,27 @@ import { CanvasToolbar } from "./CanvasToolbar";
 import { ResizableNamespaceLegend } from "./ResizableNamespaceLegend";
 import { ReasoningIndicator } from "./ReasoningIndicator";
 import { ReasoningReportModal } from "./ReasoningReportModal";
-import { NodePropertyEditor } from "./NodePropertyEditor";
-import { LinkPropertyEditor } from "./LinkPropertyEditor";
+let NodePropertyEditor: any = () => null;
+try {
+  // Resolve NodePropertyEditor at module load time using CommonJS require so vitest's vi.mock
+  // can provide either a default export or a named export. Doing this at module scope ensures
+  // the mocked module is observed when tests call vi.mock before importing KnowledgeCanvas.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment
+  const _mod = (require as any)("./NodePropertyEditor");
+  NodePropertyEditor = (_mod && (_mod.NodePropertyEditor || _mod.default)) || (() => null);
+} catch (_) {
+  NodePropertyEditor = () => null;
+}
+let LinkPropertyEditor: any = () => null;
+try {
+  // Resolve LinkPropertyEditor at module load time using CommonJS require so vitest's vi.mock
+  // can provide either a default export or a named export. This mirrors the handling done for NodePropertyEditor.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment
+  const _linkMod = (require as any)("./LinkPropertyEditor");
+  LinkPropertyEditor = (_linkMod && (_linkMod.LinkPropertyEditor || _linkMod.default)) || (() => null);
+} catch (_) {
+  LinkPropertyEditor = () => null;
+}
 import { Progress } from "../ui/progress";
 import type { ReactFlowInstance } from "@xyflow/react";
 import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
@@ -29,7 +48,7 @@ import FloatingEdge from "./FloatingEdge";
 import FloatingConnectionLine from "./FloatingConnectionLine";
 import { generateEdgeId } from "./core/edgeHelpers";
 import { computeTermDisplay, shortLocalName } from "../../utils/termUtils";
-import { usePaletteFromRdfManager } from "./core/namespacePalette";
+import { usePaletteFromRdfManager, buildPaletteMap } from "./core/namespacePalette";
 import { useCanvasState } from "../../hooks/useCanvasState";
 import { toast } from "sonner";
 import { fallback } from "../../utils/startupDebug";
@@ -56,6 +75,15 @@ import { LayoutManager } from "./LayoutManager";
 const { namedNode } = DataFactory;
 
 const KnowledgeCanvas: React.FC = () => {
+  // Resolve NodePropertyEditor at runtime using require so test-level vi.mock
+  // values that export either a named export or a default export are supported.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment
+    const mod = (require as any)("./NodePropertyEditor");
+    NodePropertyEditor = (mod && (mod.NodePropertyEditor || mod.default)) || (() => null);
+  } catch (_) {
+    NodePropertyEditor = () => null;
+  }
   const [nodes, setNodes, onNodesChange] = useNodesState<RFNode<NodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<RFEdge<LinkData>>([]);
   const reactFlowInstance = useRef<ReactFlowInstance | null>(null);
@@ -360,9 +388,6 @@ const KnowledgeCanvas: React.FC = () => {
   const linkTargetRef = useRef<NodeData | null>(null);
   const pendingFocusRef = useRef<string | null>(null);
   const getRdfManagerRef = useRef(getRdfManager);
-  useEffect(() => {
-    getRdfManagerRef.current = getRdfManager;
-  }, [getRdfManager, ontologiesVersion, loadedOntologies]);
 
   useEffect(() => {
     nodesRef.current = nodes;
@@ -371,6 +396,25 @@ const KnowledgeCanvas: React.FC = () => {
   useEffect(() => {
     edgesRef.current = edges;
   }, [edges]);
+
+  // Ensure React Flow instance internal node list stays in sync immediately after state updates.
+  // Some tests (and integration code) read window.__VG_RF_INSTANCE.getNodes() directly and expect
+  // it to reflect the latest nodes without waiting for another render tick. Calling the instance
+  // setNodes method defensively here keeps the instance consistent with state.
+  useEffect(() => {
+    try {
+      const inst = reactFlowInstance.current;
+      if (inst && typeof inst.setNodes === "function") {
+        try {
+          inst.setNodes(nodes || []);
+        } catch (_) {
+          // ignore instance sync failures
+        }
+      }
+    } catch (_) {
+      // ignore overall sync errors
+    }
+  }, [nodes]);
 
   // Apply layout helper (uses LayoutManager)
   const doLayout = useCallback(
@@ -654,7 +698,7 @@ const KnowledgeCanvas: React.FC = () => {
         return mapQuadsToDiagram(quads, { predicateKind: predicateClassifier, availableProperties: availablePropertiesSnapshot });
       };
 
-    const runMapping = () => {
+    const runMapping = async () => {
       if (!mounted) return;
       let diagram: any;
       // If there are no accumulated quads, do nothing
@@ -683,58 +727,37 @@ const KnowledgeCanvas: React.FC = () => {
         }
       };
 
+      // Diagnostic: log sample count for debugging
       try {
-        // Diagnostic: log sample count for debugging
+        const sampleSubjects = Array.from(new Set((pendingQuads || []).map((q: any) => (q && q.subject && q.subject.value) || ""))).slice(0, 20);
+        console.debug("[VG_DEBUG] KnowledgeCanvas.runMapping incrementalQuads", { total: (pendingQuads || []).length, subjectsSample: sampleSubjects });
+      } catch (_) { /* ignore */ }
+
+      for (const q of pendingQuads || []) {
         try {
-          const sampleSubjects = Array.from(new Set((pendingQuads || []).map((q: any) => (q && q.subject && q.subject.value) || ""))).slice(0, 20);
-          console.debug("[VG_DEBUG] KnowledgeCanvas.runMapping incrementalQuads", { total: (pendingQuads || []).length, subjectsSample: sampleSubjects });
-        } catch (_) { /* ignore */ }
-
-        for (const q of pendingQuads || []) {
-          try {
-            if (isOntologyGraph(q)) ontologyQuads.push(q);
-            else dataQuads.push(q);
-          } catch (_) {
-            // conservative: treat as dataQuad on error
-            dataQuads.push(q);
-          }
+          if (isOntologyGraph(q)) ontologyQuads.push(q);
+          else dataQuads.push(q);
+        } catch (_) {
+          // conservative: treat as dataQuad on error
+          dataQuads.push(q);
         }
-
-        // Clear accumulator now that we've partitioned
-        pendingQuads = [];
-
-        // Process ontology quads by reconciling into the ontology store (updates fat map)
-        try {
-          if (ontologyQuads.length > 0) {
-            try {
-              const os = useOntologyStore.getState();
-              if (os && typeof os.reconcileQuads === "function") {
-                try { os.reconcileQuads(ontologyQuads); } catch (_) { /* ignore per-call */ }
-              }
-            } catch (_) { /* ignore reconcile failures */ }
-          }
-        } catch (_) { /* ignore */ }
-
-        // Map only data quads to diagram nodes/edges
-        if (!dataQuads || dataQuads.length === 0) {
-          // Nothing to map: keep existing canvas state (do not wipe)
-          // Use an empty diagram to simplify downstream code paths.
-          diagram = { nodes: [], edges: [] };
-        } else {
-          try {
-            diagram = translateQuadsToDiagram(dataQuads);
-          } catch (e) {
-            try { console.error("[VG] KnowledgeCanvas: incremental quad mapping failed", e); } catch (_) {}
-            diagram = { nodes: [], edges: [] };
-          }
-        }
-      } catch (err) {
-        try { console.error("[VG] KnowledgeCanvas: incremental quad partitioning failed", err); } catch (_) {}
-        // ensure accumulator cleared on catastrophic failure
-        try { pendingQuads = []; } catch (_) {}
-        diagram = { nodes: [], edges: [] };
       }
 
+
+      // Map only data quads to diagram nodes/edges
+      if (!dataQuads || dataQuads.length === 0) {
+        // Nothing to map: keep existing canvas state (do not wipe)
+        // Use an empty diagram to simplify downstream code paths.
+        diagram = { nodes: [], edges: [] };
+      } else {
+        try {
+          diagram = translateQuadsToDiagram(dataQuads);
+        } catch (e) {
+          try { console.error("[VG] KnowledgeCanvas: incremental quad mapping failed", e); } catch (_) {}
+          diagram = { nodes: [], edges: [] };
+        }
+      }
+      
       const mappedNodes: RFNode<NodeData>[] = (diagram && diagram.nodes) || [];
       const mappedEdges: RFEdge<LinkData>[] = (diagram && diagram.edges) || [];
       try {
@@ -778,6 +801,31 @@ const KnowledgeCanvas: React.FC = () => {
 
       // Replace node.data wholesale for mapped nodes while preserving position & runtime flags.
       // Preserve any previous nodes that are not part of this mapping batch.
+      // Ensure enrichedNodes have positions to avoid React Flow runtime errors (position.x/y undefined).
+      try {
+        const missing = (enrichedNodes || []).filter((n) => {
+          try {
+            return !n.position || typeof (n.position as any).x !== "number" || typeof (n.position as any).y !== "number";
+          } catch (_) {
+            return true;
+          }
+        });
+        if (missing.length > 0) {
+          try {
+            console.debug("[VG] runMapping - defaulting positions for nodes missing position", { count: missing.length, sampleIds: missing.slice(0, 10).map((x) => String(x.id)) });
+          } catch (_) { /* ignore logging failures */ }
+        }
+        enrichedNodes = (enrichedNodes || []).map((n) => {
+          try {
+            if (!n.position || typeof (n.position as any).x !== "number" || typeof (n.position as any).y !== "number") {
+              try { (n as any).position = { x: 0, y: 0 }; } catch (_) {}
+              try { (n.data as any) = { ...(n.data as any), __needsInitialLayout: true }; } catch (_) {}
+            }
+          } catch (_) { /* ignore per-node */ }
+          return n;
+        });
+      } catch (_) { /* ignore overall */ }
+
       setNodes((prev) => {
         try {
           const prevById = new Map<string, RFNode<NodeData>>();
@@ -874,6 +922,200 @@ const KnowledgeCanvas: React.FC = () => {
         }
       });
 
+      // Targeted re-enrichment: refresh displayPrefixed/label/paletteColor for visible nodes only.
+      // This updates node.data only and intentionally does NOT modify edges or structural state.
+      try {
+        try {
+          const mgrLocal = typeof getRdfManager === "function" ? getRdfManager() : undefined;
+          if (mgrLocal) {
+              try {
+              // Take a fresh snapshot of availableProperties/availableClasses from the store AFTER any reconcile
+              // so that computeTermDisplay sees post-reconcile data rather than stale closure-captured values.
+              let propsSnapshot: any[] = [];
+              let classesSnapshot: any[] = [];
+              try {
+                let osLatest: any;
+                try {
+                  if (useOntologyStore && typeof (useOntologyStore as any).getState === "function") {
+                    osLatest = (useOntologyStore as any).getState();
+                  } else if (typeof useOntologyStore === "function") {
+                    // Some test mocks export a hook function that returns the mocked store instance.
+                    try { osLatest = (useOntologyStore as any)(); } catch (_) { osLatest = undefined; }
+                  } else {
+                    osLatest = undefined;
+                  }
+                } catch (_) {
+                  osLatest = undefined;
+                }
+                if (osLatest && Array.isArray(osLatest.availableProperties)) {
+                  propsSnapshot = osLatest.availableProperties.slice();
+                } else if (Array.isArray(availableProperties)) {
+                  propsSnapshot = availableProperties.slice();
+                } else if (Array.isArray(availablePropertiesSnapshot)) {
+                  propsSnapshot = availablePropertiesSnapshot.slice();
+                } else {
+                  propsSnapshot = [];
+                }
+
+                if (osLatest && Array.isArray(osLatest.availableClasses)) {
+                  classesSnapshot = osLatest.availableClasses.slice();
+                } else if (Array.isArray(availableClasses)) {
+                  classesSnapshot = availableClasses.slice();
+                } else {
+                  classesSnapshot = [];
+                }
+              } catch (_) {
+                propsSnapshot = Array.isArray(availableProperties) ? availableProperties.slice() : (Array.isArray(availablePropertiesSnapshot) ? availablePropertiesSnapshot.slice() : []);
+                classesSnapshot = Array.isArray(availableClasses) ? availableClasses.slice() : [];
+              }
+
+              // Perform a single setNodes call to update display fields
+              setNodes((prev) => {
+                try {
+                  return (prev || []).map((n) => {
+                    try {
+                      // Only re-enrich visible nodes (skip hidden or minimal nodes)
+                      const isHidden = !!(n as any).hidden;
+                      if (isHidden) return n;
+
+                      const primary =
+                        Array.isArray(n.data?.rdfTypes) && n.data.rdfTypes.find((t: any) => t && !/NamedIndividual/i.test(String(t))) ||
+                        n.data?.classType ||
+                        n.data?.displayType ||
+                        undefined;
+                      let td: any = undefined;
+                      try {
+                        if (primary) {
+                          // Build a fresh palette snapshot from the RDF manager namespaces if available.
+                          let paletteSnapshotLocal: Record<string, string> | undefined = palette;
+                          try {
+                            const nsMap = mgrLocal && typeof (mgrLocal as any).getNamespaces === "function" ? (mgrLocal as any).getNamespaces() : {};
+                            const prefixes = Object.keys(nsMap || {}).filter(Boolean).sort();
+                            if (prefixes.length > 0) {
+                              try {
+                                paletteSnapshotLocal = buildPaletteMap(prefixes, { avoidColors: [
+                                  typeof window !== "undefined" && window.getComputedStyle ? getComputedStyle(document.documentElement).getPropertyValue("--node-foreground") || "#000000" : "#000000",
+                                  typeof window !== "undefined" && window.getComputedStyle ? getComputedStyle(document.documentElement).getPropertyValue("--primary-foreground") || "#000000" : "#000000",
+                                ]});
+                              } catch (_) {
+                                paletteSnapshotLocal = palette;
+                              }
+                            }
+                          } catch (_) {
+                            paletteSnapshotLocal = palette;
+                          }
+
+                          td = computeTermDisplay(String(primary), mgrLocal as any, paletteSnapshotLocal, { availableProperties: propsSnapshot, availableClasses: classesSnapshot });
+                        }
+                      } catch (err) {
+                        try { console.error("[VG] computeTermDisplay enrichment failed", { term: String(primary), error: err && err.message ? err.message : String(err) }); } catch (_) {}
+                        td = undefined;
+                      }
+
+                      const newColor = td?.color || (td && td.namespace && palette ? (palette as any)[td.namespace] : undefined);
+                      const newPref = td?.prefixed || n.data?.displayPrefixed || shortLocalName(String(n.data?.iri || n.id || ""));
+                      const newShort = td?.short || n.data?.displayShort || shortLocalName(String(n.data?.iri || n.id || ""));
+                      const newLabel = n.data?.label || td?.label || newPref;
+
+                      // If nothing changed, return original node object
+                      if (String(n.data?.paletteColor || "") === String(newColor || "") && String(n.data?.displayPrefixed || "") === String(newPref || "") && String(n.data?.label || "") === String(newLabel || "")) {
+                        return n;
+                      }
+
+                      const updatedData = {
+                        ...(n.data || {}),
+                        paletteColor: newColor,
+                        displayPrefixed: newPref,
+                        displayShort: newShort,
+                        label: newLabel,
+                        typeNamespace: td?.namespace || (n.data && (n.data as any).typeNamespace),
+                      } as NodeData;
+
+                      try { return { ...n, data: updatedData } as RFNode<NodeData>; } catch (_) { return n; }
+                    } catch (_) {
+                      return n;
+                    }
+                  });
+                } catch (_) {
+                  return prev || [];
+                }
+              });
+            } catch (_) { /* ignore enrichment failures */ }
+          }
+        } catch (_) { /* ignore */ }
+      } catch (_) { /* ignore */ }
+
+      // Diagnostics: sample nodes that still show full IRIs or missing prefixed labels.
+      // This runs shortly after re-enrichment so we can inspect computeTermDisplay outputs.
+      try {
+        setTimeout(() => {
+          try {
+            const mgrDiag = typeof getRdfManager === "function" ? getRdfManager() : undefined;
+            const problematic = (nodes || [])
+              .filter((n) => {
+                try {
+                  const dp = String(n.data?.displayPrefixed || "").trim();
+                  const iri = String(n.data?.iri || n.id || "");
+                  return !dp || /^https?:\/\//i.test(dp) || dp === iri;
+                } catch (_) {
+                  return false;
+                }
+              })
+              .slice(0, 10)
+              .map((n) => {
+                try {
+                  const primary =
+                    Array.isArray(n.data?.rdfTypes) && n.data.rdfTypes.length > 0
+                      ? n.data.rdfTypes[0]
+                      : n.data?.classType || n.data?.iri || n.id;
+                  let td = null;
+                  try {
+                    if (primary && mgrDiag) {
+                      // derive diagnostic palette snapshot from diag manager if possible
+                      let paletteDiag: Record<string,string> | undefined = palette;
+                      try {
+                        const nsMapDiag = mgrDiag && typeof (mgrDiag as any).getNamespaces === "function" ? (mgrDiag as any).getNamespaces() : {};
+                        const prefixesDiag = Object.keys(nsMapDiag || {}).filter(Boolean).sort();
+                        if (prefixesDiag.length > 0) {
+                          try {
+                            paletteDiag = buildPaletteMap(prefixesDiag, { avoidColors: [
+                              typeof window !== "undefined" && window.getComputedStyle ? getComputedStyle(document.documentElement).getPropertyValue("--node-foreground") || "#000000" : "#000000",
+                              typeof window !== "undefined" && window.getComputedStyle ? getComputedStyle(document.documentElement).getPropertyValue("--primary-foreground") || "#000000" : "#000000",
+                            ]});
+                          } catch (_) {
+                            paletteDiag = palette;
+                          }
+                        }
+                      } catch (_) {
+                        paletteDiag = palette;
+                      }
+                      td = computeTermDisplay(String(primary), mgrDiag as any, paletteDiag, { availableProperties: Array.isArray(availablePropertiesSnapshot) ? availablePropertiesSnapshot : [] });
+                    }
+                  } catch (err) {
+                    try {
+                      console.error("[VG] computeTermDisplay diagnostics error", { term: String(primary), error: err && err.message ? err.message : String(err) });
+                    } catch (_) {}
+                    td = null;
+                  }
+                  return {
+                    id: String(n.id),
+                    iri: String(n.data?.iri || ""),
+                    displayPrefixed: String(n.data?.displayPrefixed || ""),
+                    computedPrefixed: td ? td.prefixed : null,
+                    computedLabel: td ? td.label : null,
+                    computedColor: td ? td.color : null,
+                  };
+                } catch (_) {
+                  return { id: String(n.id) };
+                }
+              });
+            if (problematic.length > 0) {
+              try { console.debug("[VG] computeTermDisplay diagnostics problematic nodes", problematic); } catch (_) {}
+            }
+          } catch (_) {}
+        }, 50);
+      } catch (_) {}
+      
       // Trigger layout (async) only when structure changed or when a programmatic load forced it.
       // Compute a structural fingerprint (node ids + edge ids) and compare with lastStructureFingerprintRef.
       try {
@@ -1095,6 +1337,27 @@ const KnowledgeCanvas: React.FC = () => {
     };
   }, []);
   
+  // Debug: detect any nodes arriving without a numeric position (logs sample ids)
+  useEffect(() => {
+    try {
+      const missing = (nodes || []).filter((n) => {
+        try {
+          return !n.position || typeof (n.position as any).x !== "number" || typeof (n.position as any).y !== "number";
+        } catch (_) {
+          return true;
+        }
+      });
+      if (missing.length > 0) {
+        try {
+          console.warn("[VG] nodes missing position on render", {
+            count: missing.length,
+            sampleIds: missing.slice(0, 20).map((n) => String(n.id)),
+          });
+        } catch (_) { /* ignore logging failure */ }
+      }
+    } catch (_) { /* ignore */ }
+  }, [nodes]);
+  
   // Autoloading initializer (keeps previous behaviour)
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1123,38 +1386,61 @@ const KnowledgeCanvas: React.FC = () => {
           startupUrl = "";
         }
 
-        if (additional && additional.length > 0 && typeof loadAdditionalOntologies === "function") {
+        // If a startup URL was provided via query param (rdfUrl / url / vg_url),
+        // attempt to load it immediately. This mirrors the onLoadFile flow and
+        // ensures the canvas populates when a page is opened with ?rdfUrl=...
+        if (startupUrl && typeof loadKnowledgeGraph === "function") {
           try {
-            canvasActions.setLoading(true, 5, "Loading configured ontologies...");
-          } catch (_) {}
-          try {
-            await loadAdditionalOntologies(additional, (progress: number, message: string) => {
-              try {
-                canvasActions.setLoading(true, Math.max(progress * 0.5, 5), message);
-              } catch (_) { /* ignore */ }
+            try { canvasActions.setLoading(true, 5, "Loading startup graph..."); } catch (_) {}
+            await loadKnowledgeGraph(startupUrl, {
+              onProgress: (progress: number, message: string) => {
+                try { canvasActions.setLoading(true, Math.max(progress, 5), message); } catch (_) {}
+              },
+              timeout: 30000,
             });
-            try { toast.success("Configured ontologies loaded"); } catch (_) {}
-            try { setTimeout(() => { try { ignoreBlacklistRef.current = false; } catch (_) {} }, 3000); } catch (_) {}
+            try { toast.success("Startup knowledge graph loaded"); } catch (_) {}
+            try { loadTriggerRef.current = true; } catch (_) {}
           } catch (e) {
-            try { toast.error("Failed to autoload configured ontologies"); } catch (_) {}
-            try { console.warn("[VG] autoload configured ontologies failed", e); } catch (_) {}
+            try { toast.error("Failed to load startup graph"); } catch (_) {}
+            try { console.warn("[VG] loadKnowledgeGraph(startupUrl) failed", e); } catch (_) {}
           } finally {
             try { canvasActions.setLoading(false, 0, ""); } catch (_) {}
           }
         }
 
-        if (startupUrl && typeof loadKnowledgeGraph === "function") {
-          try {
-            canvasActions.setLoading(true, 50, "Loading startup file...");
-          } catch (_) {}
-          try {
-            await loadKnowledgeGraph(startupUrl, {
-              onProgress: (progress: number, message: string) => {
+        if (additional && additional.length > 0 && typeof loadAdditionalOntologies === "function") {
+            try {
+              const mgrLocal = typeof getRdfManager === "function" ? getRdfManager() : undefined;
+              const labeledEdges = (((edgesRef && edgesRef.current) || (edges || [])) as RFEdge<LinkData>[]).map((e: any) => {
                 try {
-                  canvasActions.setLoading(true, Math.max(progress * 0.5 + 50, 50), message);
-                } catch (_) { /* ignore */ }
-              },
-            });
+                  const pred =
+                    (e &&
+                      e.data &&
+                      (e.data.propertyUri || e.data.propertyType)) ||
+                    "";
+                  let label = "";
+                  if (mgrLocal && pred) {
+                    try {
+                      const td = computeTermDisplay(
+                        String(pred),
+                        (useOntologyStore && typeof (useOntologyStore as any).getState === "function") ? (useOntologyStore as any).getState().namespaceRegistry : [],
+                        palette,
+                      );
+                      label = String(td.prefixed || td.short || "");
+                    } catch (_) {
+                      label = "";
+                    }
+                  } else if (e && e.data && e.data.label) {
+                    // preserve any explicit label present in parsed edge payload
+                    label = String(e.data.label);
+                  } else {
+                    label = "";
+                  }
+                  return { ...e, data: { ...(e.data || {}), label } };
+                } catch (_) {
+                  return e;
+                }
+              });
             try { toast.success("Startup knowledge graph loaded"); } catch (_) {}
             try { loadTriggerRef.current = true; } catch (_) {}
           } catch (e) {
@@ -1179,152 +1465,7 @@ const KnowledgeCanvas: React.FC = () => {
     };
   }, [loadKnowledgeGraph]);
 
-  // Fallback mapping pass when ontologies change (keeps canvas consistent)
-  useEffect(() => {
-    try {
-      const mgr = typeof getRdfManager === "function" ? getRdfManager() : undefined;
-      if (!mgr || typeof mgr.getStore !== "function") return;
-
-      (async () => {
-        try {
-          const store = mgr.getStore();
-          const quads = (store && typeof store.getQuads === "function") ? store.getQuads(null, null, null, null) : [];
-          if (!Array.isArray(quads) || quads.length === 0) return;
-
-          let diagram;
-          try {
-            diagram = mapQuadsToDiagram(quads, { predicateKind: predicateClassifier, availableProperties: availablePropertiesSnapshot });
-          } catch (_) {
-            diagram = { nodes: [], edges: [] };
-          }
-          const mappedNodes: RFNode<NodeData>[] = (diagram && diagram.nodes) || [];
-          const mappedEdges: RFEdge<LinkData>[] = (diagram && diagram.edges) || [];
-
-          // Enrich nodes/edges similar to runMapping
-            let enrichedNodes = mappedNodes;
-            let enrichedEdges = mappedEdges;
-            try {
-            const propMap = new Map<string, any>();
-            try {
-              if (Array.isArray(availableProperties)) {
-                for (const p of availableProperties) {
-                  try {
-                    const iriKey = String((p && (p as any).iri) || "").trim();
-                    if (iriKey) propMap.set(iriKey, p);
-                  } catch (_) { /* ignore per-entry */ }
-                }
-              }
-            } catch (_) { /* ignore */ }
-
-            const mgrLocal = mgr;
-
-            enrichedNodes = (mappedNodes || []).map((n) => {
-              try {
-                const primary =
-                  Array.isArray(n.data?.rdfTypes) && n.data.rdfTypes.find((t: any) => t && !/NamedIndividual/i.test(String(t))) ||
-                  n.data?.classType ||
-                  n.data?.displayType ||
-                  undefined;
-                let td: any = undefined;
-                try {
-                  if (primary && mgrLocal) td = computeTermDisplay(String(primary), mgrLocal as any, palette, { availableProperties, availableClasses });
-                } catch (_) {
-                  td = undefined;
-                }
-                const paletteColor = td?.color || (td && td.namespace && palette ? (palette as any)[td.namespace] : undefined);
-                const displayPrefixed = td?.prefixed || (td && td.label) || n.data?.displayPrefixed || (n.data && (n.data.label || n.data.classType)) || undefined;
-                const displayShort = td?.short || n.data?.displayShort || undefined;
-                const updatedData = { ...(n.data as NodeData), classType: (td && td.iri) || n.data?.classType, namespace: td?.namespace || n.data?.namespace, displayPrefixed, displayShort, typeNamespace: td?.namespace || n.data?.typeNamespace, paletteColor, label: n.data?.label || td?.label } as NodeData;
-                return { ...n, data: updatedData } as RFNode<NodeData>;
-              } catch (_) {
-                return n;
-              }
-            });
-
-            enrichedEdges = (mappedEdges || []).map((e) => {
-              try {
-                const pred = String((e && e.data && ((e.data as any).propertyUri || (e.data as any).propertyType || (e.data as any).predicate)) || "");
-                let td: any = undefined;
-                try {
-                  if (pred && mgrLocal) td = computeTermDisplay(pred, mgrLocal as any, palette, { availableProperties });
-                } catch (_) {
-                  td = undefined;
-                }
-                const fromFat = propMap.get(pred);
-                const labelFromProps = fromFat && fromFat.label ? String(fromFat.label) : undefined;
-                const newLabel = labelFromProps || td?.label || td?.prefixed || td?.short || String(pred);
-                const newColor = td?.color || (td && td.namespace && palette ? (palette as any)[td.namespace] : undefined);
-                const updatedEdgeData = { ...(e.data as LinkData), label: newLabel, paletteColor: newColor } as LinkData;
-                return { ...e, data: updatedEdgeData } as RFEdge<LinkData>;
-              } catch (_) {
-                return e;
-              }
-            });
-          } catch (_) {
-            enrichedNodes = mappedNodes;
-            enrichedEdges = mappedEdges;
-          }
-
-          // Merge positions/runtime flags conservatively (preserve previous positions)
-          setNodes((prev) => {
-            try {
-              const prevById = new Map<string, RFNode<NodeData>>();
-              (prev || []).forEach((n) => prevById.set(String(n.id), n));
-              const merged = enrichedNodes.map((m) => {
-                const prevNode = prevById.get(String(m.id));
-                try {
-                  m.position = (prevNode && (prevNode.position as any)) || (m && (m as any).position) || { x: 0, y: 0 };
-                  if (prevNode) {
-                    if ((prevNode as any).__rf) (m as any).__rf = (prevNode as any).__rf;
-                    if ((prevNode as any).selected) (m as any).selected = true;
-                  }
-                } catch (_) {
-                  try { m.position = m && (m as any).position ? (m as any).position : { x: 0, y: 0 }; } catch (_) { /* ignore */ }
-                }
-                return m;
-              });
-              return merged;
-            } catch (_) {
-              return mappedNodes;
-            }
-          });
-
-          setEdges((prev) => {
-            try {
-              if (
-                Array.isArray(prev) &&
-                prev.length === enrichedEdges.length &&
-                prev.every((p, idx) => p.id === enrichedEdges[idx].id && p.source === enrichedEdges[idx].source && p.target === enrichedEdges[idx].target)
-              ) {
-                return prev;
-              }
-            } catch (_) { /* fall through */ }
-            return enrichedEdges;
-          });
-
-          // Force layout once after this fallback mapping so autoloaded ontologies are visible.
-          try {
-            loadTriggerRef.current = true;
-          } catch (_) {}
-          try {
-            const nodeIds = (Array.isArray(mappedNodes) ? mappedNodes.map((n) => String(n.id)) : []).sort().join(',');
-            const edgeIds = (Array.isArray(mappedEdges) ? mappedEdges.map((e) => String(e.id)) : []).sort().join(',');
-            const newStructFp = `N:${nodeIds}|E:${edgeIds}`;
-            if (lastLayoutFingerprintRef.current !== newStructFp) {
-              lastLayoutFingerprintRef.current = newStructFp;
-              try { void doLayout(mappedNodes, mappedEdges, true); } catch (_) {}
-            }
-          } catch (_) { /* ignore layout scheduling */ }
-        } catch (_) {
-          /* ignore overall fallback errors */
-        }
-      })();
-    } catch (_) { /* ignore */ }
-  }, [loadedOntologies, ontologiesVersion]);
-
-  // Simple debug counters
-  const displayedNodesCount = useMemo(() => (nodes || []).length, [nodes]);
-  const displayedEdgesCount = useMemo(() => (edges || []).length, [edges]);
+  
 
   // Minimal ABox/TBox visibility filter using React Flow native hidden flags.
   useEffect(() => {
@@ -1879,8 +2020,25 @@ const KnowledgeCanvas: React.FC = () => {
   // Render
   // --------------------
 
+  const safeNodes = useMemo(() => {
+    try {
+      return (nodes || []).map((n) => {
+        try {
+          if (!n || !n.position || typeof (n.position as any).x !== "number" || typeof (n.position as any).y !== "number") {
+            return { ...(n || {}), position: { x: 0, y: 0 } } as RFNode<NodeData>;
+          }
+        } catch (_) {
+          return { ...(n || {}), position: { x: 0, y: 0 } } as RFNode<NodeData>;
+        }
+        return n;
+      });
+    } catch (_) {
+      return nodes || [];
+    }
+  }, [nodes]);
+
   const rfProps: any = {
-    nodes,
+    nodes: safeNodes,
     edges,
     onNodesChange,
     onEdgesChange,

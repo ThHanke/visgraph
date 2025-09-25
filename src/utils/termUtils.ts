@@ -1,18 +1,26 @@
 import { NamedNode, DataFactory } from "n3";
-import type { RDFManager } from "../utils/rdfManager";
-import { buildPaletteMap } from "../components/Canvas/core/namespacePalette";
-import { WELL_KNOWN } from "../utils/wellKnownOntologies";
+const { namedNode } = DataFactory;
 
 /**
- * Combined term & prefix utilities.
+ * termUtils - registry-only implementation
  *
- * This module centralizes:
- * - prefix/namespace helpers (expand/contract)
- * - local-name extraction
- * - computeTermDisplay (friendly label generation)
+ * This module now treats the ontology store's namespaceRegistry as the single
+ * authoritative source of prefix -> namespace -> color mappings. computeTermDisplay
+ * and the helper functions below will NOT consult any RDF manager or perform
+ * store-level queries. They rely only on:
+ *  - a provided namespaceRegistry (preferred),
+ *  - optionally on availableProperties / availableClasses passed in opts.
  *
- * Keep the API small and strict: callers must pass an RDFManager or a raw
- * namespace map when prefix resolution is required.
+ * Behavior:
+ * - If no matching registry entry (longest-match) exists for an IRI, functions
+ *   will throw. This makes missing registry entries explicit for debugging.
+ * - Color resolution comes only from registry entries.
+ * - Label resolution prefers the fat-map (opts.availableProperties / availableClasses).
+ *
+ * Notes:
+ * - To avoid circular imports, callers should pass registry into these helpers
+ *   when possible. For convenience many components use the ontology store directly
+ *   (useOntologyStore.getState().namespaceRegistry) before calling these helpers.
  */
 
 /* Public type returned by computeTermDisplay */
@@ -22,12 +30,9 @@ export interface TermDisplayInfo {
   short: string;
   namespace: string;
   tooltipLines: string[];
-  // Optional authoritative color resolved from the RDF manager's palette.
-  // When present, callers should use this color as the single source of truth.
   color?: string | undefined;
-  // Optional human-friendly label and its source (fatmap preferred).
   label?: string | undefined;
-  labelSource?: 'fatmap' | 'computed' | undefined;
+  labelSource?: "fatmap" | "computed" | undefined;
 }
 
 /**
@@ -47,119 +52,122 @@ export function shortLocalName(uriOrPrefixed?: string): string {
   return parts.length ? parts[parts.length - 1] : s;
 }
 
+type RegistryEntry = { prefix: string; namespace: string; color?: string };
+
 /**
- * Resolve namespace map from an RDFManager instance or a raw map.
- * Throws if the resolver is not provided.
+ * Normalize various registry inputs into a RegistryEntry[].
+ * Accepts:
+ *  - an array of RegistryEntry (returned as-is)
+ *  - an object map { prefix: namespace, ... } (converted)
+ *  - an RDFManager-like object exposing getNamespaces(): Record<string,string>
+ *
+ * Returns undefined when no usable registry can be derived.
  */
-function resolveNamespaces(mgr?: RDFManager | { getNamespaces?: () => Record<string,string> } | Record<string,string> | undefined): Record<string,string> {
-  if (!mgr) throw new Error("RDF namespaces are required for strict term utilities (pass rdfManager or a namespace map).");
-  // If an RDFManager-like object with getNamespaces, call it.
-  if ((mgr as any).getNamespaces && typeof (mgr as any).getNamespaces === "function") {
-    return (mgr as any).getNamespaces();
-  }
-  // If it's already a map
-  if (typeof mgr === "object") {
-    return mgr as Record<string,string>;
-  }
-  throw new Error("Invalid rdfManager / namespace map provided.");
+function normalizeRegistry(input?: RegistryEntry[] | Record<string, string> | any): RegistryEntry[] | undefined {
+  if (!input) return undefined;
+  try {
+    if (Array.isArray(input) && input.length > 0) return input as RegistryEntry[];
+    // If it's an object map (prefix -> namespace)
+    if (typeof input === "object" && !Array.isArray(input)) {
+      // If it looks like an RDFManager with getNamespaces()
+      if (typeof (input as any).getNamespaces === "function") {
+        try {
+          const map = (input as any).getNamespaces();
+          if (map && typeof map === "object") {
+            return Object.entries(map).map(([p, ns]) => ({ prefix: String(p), namespace: String(ns) }));
+          }
+        } catch (_) {
+          // fall through
+        }
+      }
+      // Otherwise treat input as a plain map of prefix->namespace
+      const entries = Object.entries(input as Record<string, string>).map(([p, ns]) => ({ prefix: String(p), namespace: String(ns) }));
+      if (entries.length > 0) return entries;
+    }
+  } catch (_) { /* ignore */ }
+  return undefined;
 }
 
 /**
- * Find prefix for a full IRI using provided rdfManager / namespace map.
- * Returns the prefix string (e.g. "iof") if found, otherwise undefined.
+ * Choose the best registry entry that matches a given IRI.
+ * Prefers the longest namespace match to handle nested namespaces.
+ * Returns the entry or undefined.
  */
-export function findPrefixForUri(fullUri: string, rdfManager?: RDFManager | Record<string,string>): string | undefined {
-  if (!fullUri) return undefined;
-  const nsMap = resolveNamespaces(rdfManager);
-
-  // Collect matching prefixes along with their namespace URIs so we can prefer the
-  // most specific (longest) namespace match. Some parsers register a default namespace
-  // under the empty string key; prefer explicit named prefixes when available.
-  const candidates: { prefix: string; uri: string }[] = [];
-  for (const [prefix, uri] of Object.entries(nsMap)) {
-    if (!uri) continue;
-    if (fullUri.startsWith(uri)) candidates.push({ prefix, uri });
+export function findRegistryEntryForIri(targetIri: string, registry?: RegistryEntry[] | Record<string,string> | any): RegistryEntry | undefined {
+  if (!targetIri) return undefined;
+  const reg = normalizeRegistry(registry as any);
+  if (!reg || reg.length === 0) return undefined;
+  let best: RegistryEntry | undefined = undefined;
+  for (const e of reg) {
+    try {
+      const uri = String(e && e.namespace || "");
+      const p = String(e && e.prefix || "");
+      if (uri === undefined || p === undefined) continue;
+      if (!uri || typeof uri !== "string") continue;
+      if (targetIri.startsWith(uri)) {
+        if (!best || uri.length > String(best.namespace || "").length) best = e;
+      }
+    } catch (_) {
+      // ignore per-entry
+    }
   }
-  if (candidates.length === 0) return undefined;
-
-  // Sort by namespace URI length (longest first) so more specific namespaces win.
-  candidates.sort((a, b) => {
-    return (b.uri ? String(b.uri).length : 0) - (a.uri ? String(a.uri).length : 0);
-  });
-
-  // Prefer a non-empty named prefix among the sorted candidates.
-  const named = candidates.find((c) => c.prefix && String(c.prefix).trim() !== "");
-  if (named) return named.prefix;
-
-  // Otherwise return the first candidate's prefix (may be the empty/default prefix).
-  return candidates[0].prefix;
+  return best;
 }
 
 /**
- * Convert a full IRI to a strict prefixed form.
+ * Convert a full IRI to a prefixed form using only the namespaceRegistry.
  * Throws if no matching prefix exists.
  */
-export function toPrefixed(iri: string | NamedNode, rdfManager?: RDFManager | Record<string,string>): string {
+export function toPrefixed(iri: string | NamedNode, registry?: RegistryEntry[]): string {
   const iriStr = typeof iri === "string" ? iri : (iri as NamedNode).value;
-  if (iriStr.startsWith("_:")) return iriStr; // blank node passthrough
+  if (!iriStr) throw new Error("Empty IRI passed to toPrefixed");
+  if (iriStr.startsWith("_:")) return iriStr;
 
-  const prefix = findPrefixForUri(iriStr, rdfManager);
-  // Allow empty-string (default) prefix: only throw when prefix is truly undefined.
-  if (typeof prefix === "undefined") {
-    throw new Error(`No prefix known for IRI: ${iriStr}`);
-  }
-
-  const nsMap = resolveNamespaces(rdfManager);
-  const nsUri = nsMap[prefix];
-  if (!nsUri) throw new Error(`Namespace URI not found for prefix '${prefix}'`);
-  const local = iriStr.substring(nsUri.length);
-  return `${prefix}:${local}`;
+  const entry = findRegistryEntryForIri(iriStr, registry);
+  if (!entry) throw new Error(`No namespace registry entry found for IRI: ${iriStr}`);
+  const ns = String(entry.namespace || "");
+  if (!ns) throw new Error(`Registry entry has empty namespace for prefix ${entry.prefix}`);
+  const local = iriStr.substring(ns.length);
+  return `${entry.prefix}:${local}`;
 }
 
 /**
- * Expand a prefixed name using rdfManager.expandPrefix if available, or using the namespace map.
- * Throws if expansion cannot be performed.
+ * Expand a prefixed name using only the namespaceRegistry.
+ * Throws if prefix is unknown.
  */
-export function expandPrefixed(prefixedOrIri: string, rdfManager?: RDFManager | Record<string,string>): string {
+export function expandPrefixed(prefixedOrIri: string, registry?: RegistryEntry[] | Record<string,string> | any): string {
   if (!prefixedOrIri) throw new Error("Empty value passed to expandPrefixed");
-  // If it already looks like a full IRI, return as-is.
   if (prefixedOrIri.includes("://")) return prefixedOrIri;
-  // Blank node passthrough
   if (prefixedOrIri.startsWith("_:")) return prefixedOrIri;
 
-  // If rdfManager has expandPrefix method, use it.
-  if (rdfManager && (rdfManager as any).expandPrefix && typeof (rdfManager as any).expandPrefix === "function") {
-    return (rdfManager as any).expandPrefix(prefixedOrIri);
-  }
+  const idx = prefixedOrIri.indexOf(":");
+  if (idx === -1) throw new Error(`Value '${prefixedOrIri}' is not a prefixed name`);
+  const prefix = prefixedOrIri.substring(0, idx);
+  const local = prefixedOrIri.substring(idx + 1);
 
-  // Otherwise, resolve using namespaces map.
-  const colonIndex = prefixedOrIri.indexOf(":");
-  if (colonIndex === -1) throw new Error(`Value '${prefixedOrIri}' is not a prefixed name`);
-  const prefix = prefixedOrIri.substring(0, colonIndex);
-  const local = prefixedOrIri.substring(colonIndex + 1);
-  const nsMap = resolveNamespaces(rdfManager);
-  const ns = nsMap[prefix];
-  if (!ns) throw new Error(`Unknown prefix '${prefix}' while expanding '${prefixedOrIri}'`);
+  const reg = normalizeRegistry(registry as any);
+  if (!reg || reg.length === 0) throw new Error(`Namespace registry is empty; cannot expand '${prefixedOrIri}'`);
+  const entry = reg.find((e) => String(e && e.prefix || "") === String(prefix));
+  if (!entry) throw new Error(`Unknown prefix '${prefix}' while expanding '${prefixedOrIri}'`);
+  const ns = String(entry.namespace || "");
+  if (!ns) throw new Error(`Registry entry for prefix '${prefix}' has empty namespace`);
   return `${ns}${local}`;
 }
 
 /**
- * Compute a strict TermDisplayInfo for a given IRI or NamedNode.
- * - Requires rdfManager / namespace map for prefix resolution.
- * - Throws on missing prefixes unless the value is a blank node.
- *
- * Note: All try/catch blocks have been removed per request — errors will now bubble.
+ * Compute a TermDisplayInfo using only namespaceRegistry and optional fat-map data (opts).
+ * Throws when registry lacks a matching prefix for the IRI.
  */
 export function computeTermDisplay(
   iriOrTerm: string | NamedNode,
-  rdfManager?: RDFManager | Record<string,string>,
-  palette?: Record<string,string> | undefined,
+  registry?: RegistryEntry[],
+  palette?: Record<string, string> | undefined, // optional; if not provided will be derived from registry
   opts?: { availableProperties?: any[]; availableClasses?: any[] },
 ): TermDisplayInfo {
   const iri = typeof iriOrTerm === "string" ? iriOrTerm : (iriOrTerm as NamedNode).value;
   if (!iri) throw new Error("Empty IRI passed to computeTermDisplay");
 
-  // Blank nodes are passed through
+  // Blank nodes handled transparently
   if (iri.startsWith("_:")) {
     return {
       iri,
@@ -169,156 +177,126 @@ export function computeTermDisplay(
       tooltipLines: [iri],
       color: undefined,
       label: iri,
-      labelSource: 'computed',
+      labelSource: "computed",
     };
   }
 
-  // Ensure we have a target IRI (expand prefixed names when needed)
+  // If input is prefixed, expand only via registry
   let targetIri = iri;
   if (!targetIri.includes("://")) {
-    if (!rdfManager) {
-      // If caller didn't provide rdfManager we treat the input as-is and compute local forms
-      targetIri = iri;
-    } else {
-      targetIri = expandPrefixed(targetIri, rdfManager);
-    }
+    // treat as prefixed; expand using registry
+    targetIri = expandPrefixed(targetIri, registry);
   }
 
-  // Determine a prefixed presentation for the targetIri.
-  let prefixed: string
+  // Determine registry entry.
+  const entry = findRegistryEntryForIri(targetIri, registry);
 
-  // Compute namespace prefix and local name so the rest of the function can refer to them.
-  // Derive prefix via findPrefixForUri when an rdfManager / namespace map is available.
-  const prefix: string | undefined = rdfManager ? findPrefixForUri(targetIri, rdfManager) : undefined;
-
-  // Derive a local name: prefer extracting by removing the namespace URI when available,
-  // otherwise fall back to shortLocalName.
-  let local: string;
-  if (prefix && rdfManager) {
-    const ns = resolveNamespaces(rdfManager)[prefix];
-    if (ns && targetIri.startsWith(ns)) {
-      local = targetIri.substring(ns.length);
-    } else {
-      local = shortLocalName(targetIri);
-    }
-  } else {
-    local = shortLocalName(targetIri);
+  // If a registry was explicitly provided (array/object), require a matching entry.
+  // This enforces the registry-only policy for callers that pass an explicit registry.
+  if (typeof registry !== "undefined" && registry !== null && !entry) {
+    throw new Error(`No registry prefix found for IRI: ${targetIri}`);
   }
 
-  // Attempt to compute a strict prefixed form. Errors will bubble.
-  prefixed = toPrefixed(targetIri, rdfManager);
+  // Normalize prefix handling: treat default prefix (':') specially so callers see namespace = ""
+  let rawPrefix = "";
+  let nsUri = "";
+  let local = shortLocalName(targetIri);
+  let prefixed = local;
+  if (entry) {
+    rawPrefix = String(entry.prefix || "");
+    nsUri = String(entry.namespace || "");
+    local = targetIri.startsWith(nsUri) ? targetIri.substring(nsUri.length) : shortLocalName(targetIri);
+    // For display purposes, if the registry stores the default prefix as ":" or the empty prefix ''
+    // we keep the prefixed form ":local" so UI/tests can render the default prefix explicitly.
+    prefixed = rawPrefix === "" ? `:${local}` : (rawPrefix ? `${rawPrefix}:${local}` : local);
+  }
+  // Expose a consumer-friendly namespace field: empty string when default prefix used (':' or empty string)
+  const prefix = rawPrefix === ":" || rawPrefix === "" ? "" : rawPrefix;
+  // If no entry exists (and no registry provided), we still keep prefixed=local and prefix=""
 
-  // Determine authoritative color using provided palette first, otherwise derive from rdfManager
+  // palette derivation: prefer explicit palette param, otherwise derive from registry entry color
   let color: string | undefined = undefined;
-  if (prefix) {
-    if (palette && typeof palette === "object") {
-      color = palette[prefix] || palette[prefix.toLowerCase()];
-    } else if (rdfManager) {
-      const nsMap =
-        (rdfManager as any) && typeof (rdfManager as any).getNamespaces === "function"
-          ? (rdfManager as any).getNamespaces()
-          : {};
-      const prefixes = Object.keys(nsMap || {}).filter(Boolean).sort();
-      const textColors =
-        typeof window !== "undefined" && window.getComputedStyle
-          ? [
-              String(getComputedStyle(document.documentElement).getPropertyValue("--node-foreground") || "#000000"),
-              String(getComputedStyle(document.documentElement).getPropertyValue("--primary-foreground") || "#000000"),
-            ]
-          : ["#000000", "#000000"];
-      const derived = buildPaletteMap(prefixes, { avoidColors: textColors });
-      color = derived[prefix] || derived[prefix.toLowerCase()];
-    }
+  if (prefix && palette && typeof palette === "object") {
+    color = palette[prefix] || palette[prefix.toLowerCase()];
   }
-
-  // Primary: fat-map lookup (available Properties) — authoritative label & optional color hint
-  let label: string | undefined;
-  let labelSource: 'fatmap' | 'computed' | undefined;
-
-  const props = opts && Array.isArray(opts.availableProperties) ? opts.availableProperties : undefined;
-  if (props && props.length > 0) {
-    // Build a quick lookup by IRI (prefer absolute IRIs in fat map)
-    const mapByIri = new Map<string, any>();
-    for (const p of props) {
-      if (!p) continue;
-      const iriKey = String((p && p.iri) || '').trim();
-      if (!iriKey) continue;
-      if (!mapByIri.has(iriKey)) mapByIri.set(iriKey, p);
-    }
-    // Direct match on targetIri
-    const direct = mapByIri.get(String(targetIri));
-    if (direct) {
-      if (direct.label) {
-        label = String(direct.label);
-        labelSource = 'fatmap';
-      }
-      // fat-map hint color
-      if (!color && (direct.color || direct.style?.color)) {
-        color = String(direct.color || direct.style?.color);
-      }
+  if (!color) {
+    // Only read entry.color when an entry was actually found to avoid runtime TypeErrors
+    if (entry) {
+      color = entry.color || undefined;
     } else {
-      // Also try match by prefixed form or short local name if entries might store prefixed keys
-      const byPref = mapByIri.get(String(prefixed || ''));
-      if (byPref && byPref.label) {
-        label = String(byPref.label);
-        labelSource = 'fatmap';
-        if (!color && (byPref.color || byPref.style?.color)) {
-          color = String(byPref.color || byPref.style?.color);
-        }
-      }
+      color = undefined;
     }
   }
 
-  // Read an rdfs:label from the RDF store when available (authoritative).
-  if (!label && rdfManager && (rdfManager as any).getStore && typeof (rdfManager as any).getStore === "function") {
-    const store = (rdfManager as any).getStore();
+  // Label resolution: prefer an explicit rdfs:label from the RDF manager when available,
+  // then fall back to fat-map entries (availableProperties / availableClasses) and finally
+  // the computed prefixed/local form.
+  let label: string | undefined = undefined;
+  let labelSource: "fatmap" | "computed" | undefined = undefined;
 
-    // Prefer direct subject+predicate lookup first (exact match).
-    const pred = DataFactory.namedNode("http://www.w3.org/2000/01/rdf-schema#label");
-    const subj = DataFactory.namedNode(String(targetIri));
-    const directMatches =
-      (store && typeof store.getQuads === "function")
-        ? store.getQuads(subj, pred, null, null) || []
-        : [];
-    if (directMatches && directMatches.length > 0) {
-      const obj = (directMatches[0] as any).object;
-      if (obj && typeof (obj as any).value === "string" && (obj as any).value.trim() !== "") {
-        label = String((obj as any).value);
-        labelSource = "computed";
-      }
-    }
-
-    // Fallback: scan all quads and match by subject string & predicate local-name 'label'.
-    if (!label) {
-      const allQuads = (store && typeof store.getQuads === "function")
-        ? store.getQuads(null, pred, null, null) || []
-        : [];
-      for (const q of allQuads) {
-        const sVal = (q && (q.subject as any) && (q.subject as any).value) || "";
-        const pVal = (q && (q.predicate as any) && (q.predicate as any).value) || "";
-        if (!sVal || !pVal) continue;
-        // Match subject and predicate that ends with 'label' (robust to different namespace forms)
-        if (String(sVal) === String(targetIri) && /(?:[#/])label$/.test(String(pVal))) {
-          const obj = (q as any).object;
-          if (obj && typeof (obj as any).value === "string" && (obj as any).value.trim() !== "") {
-            label = String((obj as any).value);
+  try {
+    // If the caller passed an RDFManager-like object as the registry parameter, try to read rdfs:label from its store.
+    if (registry && typeof (registry as any).getStore === "function") {
+      try {
+        const mgr = registry as any;
+        const store = mgr.getStore && mgr.getStore();
+        const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
+        if (store && typeof store.getQuads === "function") {
+          // Preferred: direct match on rdfs:label predicate across any graph
+          let lq = store.getQuads(namedNode(targetIri), namedNode(RDFS_LABEL), null, null) || [];
+          if (lq.length > 0 && lq[0].object && (lq[0].object as any).value) {
+            label = String((lq[0].object as any).value);
             labelSource = "computed";
-            break;
+          } else {
+            // Fallback: fetch all quads for the subject and heuristically find a label-like predicate
+            const all = store.getQuads(namedNode(targetIri), null, null, null) || [];
+            const found = (all || []).find((qq: any) => {
+              try {
+                const pv = (qq && qq.predicate && (qq.predicate as any).value) || "";
+                if (!pv) return false;
+                const pvl = String(pv).toLowerCase();
+                return pvl === RDFS_LABEL || pvl.endsWith("/rdfs#label") || pvl.endsWith("#label") || /rdfs[#\/]label$/.test(pv) || pvl.includes("rdfs:label");
+              } catch (_) {
+                return false;
+              }
+            });
+            if (found && found.object && (found.object as any).value) {
+              label = String((found.object as any).value);
+              labelSource = "computed";
+            }
           }
         }
+      } catch (_) {
+        /* ignore label read failures */
       }
+    }
+  } catch (_) { /* ignore outer */ }
+
+  const props = opts && Array.isArray(opts.availableProperties) ? opts.availableProperties : undefined;
+  if (!label && props && props.length > 0) {
+    const match = props.find((p) => String((p && (p.iri || p.key)) || "") === String(targetIri));
+    if (match && (match.label || match.name)) {
+      label = String(match.label || match.name);
+      labelSource = "fatmap";
+    }
+  }
+  const classes = opts && Array.isArray(opts.availableClasses) ? opts.availableClasses : undefined;
+  if (!label && classes && classes.length > 0) {
+    const match = classes.find((c) => String((c && c.iri) || "") === String(targetIri));
+    if (match && match.label) {
+      label = String(match.label);
+      labelSource = "fatmap";
     }
   }
 
-  // Fallback: computed prefixed/short
   if (!label) {
-    label = prefixed || local;
-    labelSource = 'computed';
+    label = prefixed;
+    labelSource = "computed";
   }
 
   return {
     iri: targetIri,
-    prefixed: prefixed || shortLocalName(targetIri),
+    prefixed,
     short: local,
     namespace: prefix || "",
     tooltipLines: [local],

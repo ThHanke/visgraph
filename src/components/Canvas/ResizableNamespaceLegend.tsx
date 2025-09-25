@@ -23,18 +23,43 @@ interface ResizableNamespaceLegendProps {
 export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNamespaceLegendProps) => {
   const rdfManager = useOntologyStore((s) => s.rdfManager);
   const ontologiesVersion = useOntologyStore((s) => s.ontologiesVersion);
-  const palette = usePaletteFromRdfManager();
+  // Persisted registry is the single source of truth for legend entries and colors.
+  const namespaceRegistry = useOntologyStore((s) => (Array.isArray(s.namespaceRegistry) ? s.namespaceRegistry : []));
+  // Build palette map directly from persisted registry (store-only).
+  const palette = (() => {
+    try {
+      const m: Record<string, string> = {};
+      (namespaceRegistry || []).forEach((entry: any) => {
+        try {
+          const p = String(entry?.prefix || "");
+          const c = String(entry?.color || "");
+          if (p) m[p] = c || "";
+        } catch (_) {}
+      });
+      return m;
+    } catch (_) {
+      return {};
+    }
+  })();
 
-  // Derive the map we display: prefer explicit prop, otherwise ask the rdfManager.
+  // Derive the map we display: prefer explicit prop, otherwise use persisted registry (store-only).
   const displayNamespaces = useMemo(() => {
     try {
       if (namespaces && Object.keys(namespaces).length > 0) return namespaces;
-      if (rdfManager && typeof rdfManager.getNamespaces === "function") return rdfManager.getNamespaces();
-      return {};
+      // Build a mapping from the persisted namespaceRegistry array.
+      const map: Record<string, string> = {};
+      (namespaceRegistry || []).forEach((e: any) => {
+        try {
+          const p = String(e?.prefix || "");
+          const u = String(e?.namespace || "");
+          if (p) map[p] = u;
+        } catch (_) { /* ignore per-entry */ }
+      });
+      return map;
     } catch (_) {
       return namespaces || {};
     }
-  }, [namespaces, rdfManager, ontologiesVersion, palette]);
+  }, [namespaces, namespaceRegistry, ontologiesVersion]);
 
   // Simple entries array reflecting the registered map exactly, sorted by prefix for stable order.
   const entries = useMemo(() => {

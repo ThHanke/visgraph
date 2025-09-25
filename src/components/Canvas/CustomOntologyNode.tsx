@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { usePaletteFromRdfManager } from "./core/namespacePalette";
 import { getNamespaceColorFromPalette } from "./helpers/namespaceHelpers";
-import { shortLocalName, toPrefixed, computeTermDisplay } from "../../utils/termUtils";
+import { shortLocalName, toPrefixed } from "../../utils/termUtils";
 import { debug } from "../../utils/startupDebug";
 
 /**
@@ -86,7 +86,11 @@ function CustomOntologyNodeInner(props: NodeProps) {
         rdfTypes: nodeData.rdfTypes,
         displayType: nodeData.displayType,
       };
-      
+      try {
+        if (typeof debug === "function") {
+          try { debug("node.fingerprint", payload); } catch (_) {}
+        }
+      } catch (_) {}
     } catch (_) {
       /* ignore */
     }
@@ -99,8 +103,48 @@ function CustomOntologyNodeInner(props: NodeProps) {
   ]);
 
   // Display helpers
-  // Acquire palette before computing display values so memoized computeTermDisplay calls can use it.
-  const palette = usePaletteFromRdfManager();
+  // Prefer the namespace registry (persisted after reconcile) as authoritative source for prefix->color mapping.
+  // Fall back to the RDF-manager-derived palette when registry is empty.
+  const namespaceRegistry = useOntologyStore((s) => (Array.isArray(s.namespaceRegistry) ? s.namespaceRegistry : []));
+  const paletteFromRegistry = useMemo(() => {
+    try {
+      const m: Record<string, string> = {};
+      (namespaceRegistry || []).forEach((entry: any) => {
+        try {
+          const p = String(entry?.prefix || "");
+          const c = String(entry?.color || "");
+          if (p) m[p] = c || "";
+        } catch (_) {}
+      });
+      return m;
+    } catch (_) {
+      return {};
+    }
+  }, [namespaceRegistry]);
+
+  const paletteFromMgr = usePaletteFromRdfManager();
+  const palette = Object.keys(paletteFromRegistry || {}).length > 0 ? paletteFromRegistry : paletteFromMgr;
+
+  // effectiveRegistry: prefer persisted namespaceRegistry; when empty, synthesize from rdfManager.getNamespaces()
+  const effectiveRegistry = useMemo(() => {
+    try {
+      if (Array.isArray(namespaceRegistry) && namespaceRegistry.length > 0) {
+        return namespaceRegistry.slice();
+      }
+      const nsMap = rdfManager && typeof (rdfManager as any).getNamespaces === "function" ? (rdfManager as any).getNamespaces() : {};
+      const prefixes = Object.keys(nsMap || {}).filter(Boolean).sort();
+      if (!prefixes || prefixes.length === 0) return [];
+      return prefixes.map((p) => {
+        try {
+          return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: String(((paletteFromMgr as any) && (paletteFromMgr as any)[p]) || "") };
+        } catch (_) {
+          return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: "" };
+        }
+      });
+    } catch (_) {
+      return Array.isArray(namespaceRegistry) ? namespaceRegistry.slice() : [];
+    }
+  }, [namespaceRegistry, rdfManager, paletteFromMgr]);
 
   // Compute display info for the node IRI and for the meaningful type (classType) if present.
   const { badgeText, subtitleText, headerDisplay, typesList } = useMemo(() => {
@@ -108,19 +152,39 @@ function CustomOntologyNodeInner(props: NodeProps) {
       const iri = String(nodeData.iri || "");
       const typeIri = nodeData.classType ? String(nodeData.classType) : undefined;
 
-      const tdNode = rdfManager
-        ? computeTermDisplay(iri || "", rdfManager as any, palette, {
-            availableClasses,
-            availableProperties,
-          })
-        : { prefixed: shortLocalName(iri || ""), short: shortLocalName(iri || ""), label: shortLocalName(iri || ""), iri };
+          const tdNode = (() => {
+        try {
+          // Prefer the mapper-provided humanLabel; when absent, try to produce a prefixed form using the effective registry.
+          const human = String(nodeData.humanLabel || "");
+          let pref = "";
+          try {
+            pref = toPrefixed(iri || "", effectiveRegistry);
+          } catch (_) {
+            pref = "";
+          }
+          return {
+            prefixed: pref || "",
+            short: "",
+            label: human || pref || String(nodeData.iri || ""),
+            iri,
+          };
+        } catch (_) {
+          return { prefixed: "", short: "", label: String(nodeData.humanLabel || nodeData.iri || ""), iri };
+        }
+      })();
 
-      const tdType = typeIri && rdfManager
-        ? computeTermDisplay(typeIri, rdfManager as any, palette, {
-            availableClasses,
-            availableProperties,
-          })
-        : undefined;
+      const tdType = (() => {
+        try {
+          if (!typeIri) return undefined;
+          try {
+            return { prefixed: toPrefixed(typeIri, effectiveRegistry), short: "", label: "", iri: typeIri };
+          } catch (_) {
+            return undefined;
+          }
+        } catch (_) {
+          return undefined;
+        }
+      })();
 
       // Title (visible): prefixed IRI of the node or short/local name or full IRI
       const headerDisp = tdNode.prefixed || tdNode.short || String(nodeData.iri || "");
@@ -131,9 +195,14 @@ function CustomOntologyNodeInner(props: NodeProps) {
         badge = tdType.prefixed || tdType.short || String(typeIri || "");
       } else {
         // fallback: try to use toPrefixed on raw classType if possible
-        try {
-          if (nodeData.classType && rdfManager) {
-            badge = toPrefixed(String(nodeData.classType), rdfManager as any);
+            try {
+          if (nodeData.classType) {
+            // Use the effectiveRegistry (synthesized from store or rdfManager) for prefixing.
+            try {
+              badge = toPrefixed(String(nodeData.classType), effectiveRegistry);
+            } catch (_) {
+              badge = String(nodeData.classType || nodeData.namespace || "");
+            }
           } else {
             badge = String(nodeData.classType || nodeData.namespace || "");
           }
@@ -142,7 +211,35 @@ function CustomOntologyNodeInner(props: NodeProps) {
         }
       }
 
-      const subtitle = tdNode.label || tdNode.prefixed || tdNode.short || String(nodeData.iri || "");
+      // Prefer an explicit rdfs:label provided in node.annotationProperties (if present),
+      // otherwise fall back to computed label/prefixed/short forms.
+      let subtitle = tdNode.label || tdNode.prefixed || tdNode.short || String(nodeData.iri || "");
+      try {
+        const ann = nodeData.annotationProperties;
+        if (Array.isArray(ann) && ann.length > 0) {
+          for (const ap of ann) {
+            try {
+              const prop = String((ap as any).propertyUri || (ap as any).property || "");
+              const val = (ap as any).value;
+              if (!prop || val === undefined || val === null) continue;
+              // match common rdfs:label forms or local-name 'label' (also accept rdf-schema URIs)
+              const propLc = String(prop || "").toLowerCase();
+              if (
+                String(prop).toLowerCase().endsWith("label") ||
+                propLc.includes("rdf-schema") ||
+                propLc.includes("rdfs")
+              ) {
+                subtitle = String(val);
+                break;
+              }
+            } catch (_) {
+              // ignore per-entry errors
+            }
+          }
+        }
+      } catch (_) {
+        // ignore annotation scanning failures
+      }
 
       // typesList (not used heavily) keep empty for now; could list rdfTypes expanded prefixed forms.
       const tList: string[] = [];
@@ -151,13 +248,15 @@ function CustomOntologyNodeInner(props: NodeProps) {
           nodeData.rdfTypes.forEach((t) => {
             try {
               if (!t) return;
-              if (rdfManager) {
-                const td = computeTermDisplay(String(t), rdfManager as any, palette, {
-                  availableClasses,
-                  availableProperties,
-                });
-                tList.push(td.prefixed || td.short || td.iri);
-              } else {
+              try {
+                const registry = namespaceRegistry;
+                const pal = palette;
+                try {
+                  tList.push(toPrefixed(String(t), effectiveRegistry));
+                } catch (_) {
+                  tList.push(String(t));
+                }
+              } catch (_) {
                 tList.push(shortLocalName(String(t)));
               }
             } catch (_) {}
@@ -261,7 +360,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
       const term = (() => {
         if (propertyIri.startsWith("_:")) return propertyIri;
         try {
-          return toPrefixed(propertyIri, rdfManager as any);
+          return toPrefixed(propertyIri, effectiveRegistry);
         } catch (_) {
           return shortLocalName(propertyIri);
         }
@@ -278,8 +377,8 @@ function CustomOntologyNodeInner(props: NodeProps) {
           const term = (() => {
           const keyStr = String(k);
           if (keyStr.startsWith("_:")) return keyStr;
-          try {
-            return toPrefixed(keyStr, rdfManager as any);
+            try {
+            return toPrefixed(keyStr, effectiveRegistry);
           } catch (_) {
             return shortLocalName(keyStr);
           }
