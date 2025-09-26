@@ -115,23 +115,6 @@ export function findRegistryEntryForIri(targetIri: string, registry?: RegistryEn
 }
 
 /**
- * Convert a full IRI to a prefixed form using only the namespaceRegistry.
- * Throws if no matching prefix exists.
- */
-export function toPrefixed(iri: string | NamedNode, registry?: RegistryEntry[]): string {
-  const iriStr = typeof iri === "string" ? iri : (iri as NamedNode).value;
-  if (!iriStr) throw new Error("Empty IRI passed to toPrefixed");
-  if (iriStr.startsWith("_:")) return iriStr;
-
-  const entry = findRegistryEntryForIri(iriStr, registry);
-  if (!entry) throw new Error(`No namespace registry entry found for IRI: ${iriStr}`);
-  const ns = String(entry.namespace || "");
-  if (!ns) throw new Error(`Registry entry has empty namespace for prefix ${entry.prefix}`);
-  const local = iriStr.substring(ns.length);
-  return `${entry.prefix}:${local}`;
-}
-
-/**
  * Expand a prefixed name using only the namespaceRegistry.
  * Throws if prefix is unknown.
  */
@@ -152,6 +135,100 @@ export function expandPrefixed(prefixedOrIri: string, registry?: RegistryEntry[]
   const ns = String(entry.namespace || "");
   if (!ns) throw new Error(`Registry entry for prefix '${prefix}' has empty namespace`);
   return `${ns}${local}`;
+}
+
+/**
+ * Convert a full IRI into a prefixed form using the fat-map and/or registry.
+ *
+ * Behavior:
+ * - If availableProperties / availableClasses contains an entry whose iri matches the given IRI,
+ *   prefer using the registry entry that matches that iri's namespace when available.
+ * - Otherwise, use the registry to find the longest matching namespace and return prefix:local.
+ * - If no registry entry is found, fall back to returning the short local name.
+ *
+ * Signature:
+ *   toPrefixed(iri, availableProperties?, availableClasses?, registry?)
+ *
+ * Returns a prefixed string such as "ex:LocalName" or the shortLocalName if no registry match.
+ */
+export function toPrefixed(
+  iri: string,
+  availableProperties?: any[],
+  availableClasses?: any[],
+  registry?: RegistryEntry[] | Record<string,string> | any,
+): string {
+  if (!iri) return "";
+
+  try {
+    // Normalize fat-map inputs
+    const props = Array.isArray(availableProperties) ? availableProperties : [];
+    const classes = Array.isArray(availableClasses) ? availableClasses : [];
+
+    // Prefer an exact fat-map match (property first, then class)
+    const fatMatch =
+      props.find((p: any) => String((p && (p.iri || p.key)) || "") === String(iri)) ||
+      classes.find((c: any) => String((c && c.iri) || "") === String(iri));
+
+    // If we have a fat-match, try to find a registry entry that matches the fatMatch's iri (or the provided iri)
+    if (fatMatch) {
+      const candidateIri = String(fatMatch.iri || fatMatch.key || iri);
+      const entryForFat = findRegistryEntryForIri(candidateIri, registry);
+      if (entryForFat && entryForFat.namespace) {
+        const local = candidateIri.startsWith(entryForFat.namespace) ? candidateIri.substring(entryForFat.namespace.length) : shortLocalName(candidateIri);
+        return `${entryForFat.prefix}:${local}`;
+      }
+    }
+
+    // No fat-match or no registry entry for it: fall back to longest-match from registry using the full iri
+    const entry = findRegistryEntryForIri(String(iri), registry);
+    if (entry && entry.namespace) {
+      const local = String(iri).startsWith(entry.namespace) ? String(iri).substring(entry.namespace.length) : shortLocalName(iri);
+      return `${entry.prefix}:${local}`;
+    }
+
+    // Final fallback: return full IRI
+    return iri;
+  } catch (_) {
+    return iri;
+  }
+}
+
+/**
+ * Return a palette color for a given IRI using the registry and optional palette override.
+ * - If a registry entry matching the IRI exists and has a color, return that color.
+ * - Otherwise, if a palette map is provided, try to find a color by prefix (case-insensitive).
+ * - Returns undefined when no color can be determined.
+ */
+export function getNodeColor(
+  targetIri: string,
+  registry?: RegistryEntry[] | Record<string,string> | any,
+  palette?: Record<string, string> | undefined,
+): string | undefined {
+  try {
+    if (!targetIri) return undefined;
+    const entry = findRegistryEntryForIri(String(targetIri), registry);
+    if (entry && entry.color) {
+      const c = String(entry.color || "").trim();
+      if (c) return c;
+    }
+    // If palette provided, try to resolve by prefix found in registry (longest-match)
+    const reg = normalizeRegistry(registry as any);
+    let prefix: string | undefined = undefined;
+    if (reg && reg.length > 0) {
+      const e = findRegistryEntryForIri(String(targetIri), reg);
+      if (e) prefix = String(e.prefix || "");
+    }
+    if (!prefix && Array.isArray(reg) && reg.length > 0) {
+      // fallback: try entries by namespace matching (already covered by findRegistryEntryForIri)
+      prefix = undefined;
+    }
+    if (prefix && palette && typeof palette === "object") {
+      return palette[prefix] || palette[prefix.toLowerCase()] || undefined;
+    }
+    return undefined;
+  } catch (_) {
+    return undefined;
+  }
 }
 
 /**
@@ -243,7 +320,7 @@ export function computeTermDisplay(
         const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
         if (store && typeof store.getQuads === "function") {
           // Preferred: direct match on rdfs:label predicate across any graph
-          let lq = store.getQuads(namedNode(targetIri), namedNode(RDFS_LABEL), null, null) || [];
+          const lq = store.getQuads(namedNode(targetIri), namedNode(RDFS_LABEL), null, null) || [];
           if (lq.length > 0 && lq[0].object && (lq[0].object as any).value) {
             label = String((lq[0].object as any).value);
             labelSource = "computed";
@@ -255,7 +332,7 @@ export function computeTermDisplay(
                 const pv = (qq && qq.predicate && (qq.predicate as any).value) || "";
                 if (!pv) return false;
                 const pvl = String(pv).toLowerCase();
-                return pvl === RDFS_LABEL || pvl.endsWith("/rdfs#label") || pvl.endsWith("#label") || /rdfs[#\/]label$/.test(pv) || pvl.includes("rdfs:label");
+                return pvl === RDFS_LABEL || pvl.endsWith("/rdfs#label") || pvl.endsWith("#label") || /rdfs[#/]label$/.test(pv) || pvl.includes("rdfs:label");
               } catch (_) {
                 return false;
               }

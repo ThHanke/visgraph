@@ -356,7 +356,8 @@ const KnowledgeCanvas: React.FC = () => {
                         };
                     if (prevNode) {
                       if ((prevNode as any).__rf) (mergedNode as any).__rf = (prevNode as any).__rf;
-                      if ((prevNode as any).selected) (mergedNode as any).selected = true;
+                      // Do NOT preserve selection when applying new positions via layout.
+                      try { try { delete (mergedNode as any).selected; } catch (_) { /* ignore */ } } catch (_) {}
                     }
                     return mergedNode;
                   })
@@ -556,10 +557,60 @@ const KnowledgeCanvas: React.FC = () => {
 
   const handleViewModeChange = useCallback(
     (mode: "abox" | "tbox") => {
-      setViewMode(mode);
-      setPersistedViewMode(mode);
+      try {
+        // update local UI state and persist the choice
+        setViewMode(mode);
+        setPersistedViewMode(mode);
+        // Clear any selected node/link and close editors when switching view modes.
+        // This prevents stale selection from blocking edge creation or leaving editors open
+        // for nodes that are no longer visible in the chosen view.
+        try {
+          if (canvasActions && typeof canvasActions.setSelectedNode === "function") {
+            canvasActions.setSelectedNode(null as any, false);
+          }
+        } catch (_) { /* ignore */ }
+        try {
+          if (canvasActions && typeof canvasActions.setSelectedLink === "function") {
+            canvasActions.setSelectedLink(null as any, false);
+          }
+        } catch (_) { /* ignore */ }
+        try { if (canvasActions && typeof canvasActions.toggleNodeEditor === "function") canvasActions.toggleNodeEditor(false); } catch (_) {}
+        try { if (canvasActions && typeof canvasActions.toggleLinkEditor === "function") canvasActions.toggleLinkEditor(false); } catch (_) {}
+
+        // Also clear any per-node / per-edge `selected` flags immediately to ensure
+        // no node or edge remains selected after a view-mode switch.
+        try {
+          setNodes((prev) =>
+            (prev || []).map((n) => {
+              try {
+                const copy = { ...(n as RFNode<NodeData>) } as RFNode<NodeData>;
+                try { delete (copy as any).selected; } catch (_) { /* ignore */ }
+                return copy;
+              } catch (_) {
+                return n;
+              }
+            }),
+          );
+        } catch (_) { /* ignore node-clear errors */ }
+
+        try {
+          setEdges((prev) =>
+            (prev || []).map((e) => {
+              try {
+                const copy = { ...(e as RFEdge<LinkData>) } as RFEdge<LinkData>;
+                try { delete (copy as any).selected; } catch (_) { /* ignore */ }
+                return copy;
+              } catch (_) {
+                return e;
+              }
+            }),
+          );
+        } catch (_) { /* ignore edge-clear errors */ }
+      } catch (_) {
+        /* ignore view-mode change side-effects */
+      }
     },
-    [setPersistedViewMode, canvasActions],
+    [setPersistedViewMode, canvasActions, setNodes, setEdges],
   );
 
   // Export handler (reuses existing exportGraph)
@@ -719,8 +770,17 @@ const KnowledgeCanvas: React.FC = () => {
 
       // Use the centralized pure mapper directly and consult the predicate classifier so
       // annotation properties (owl:AnnotationProperty) are preserved as node annotations.
+      // Provide optional registry & palette when available so the mapper can compute prefixed
+      // display forms and palette colors deterministically.
       const translateQuadsToDiagram = (quads: any[]) => {
-        return mapQuadsToDiagram(quads, { predicateKind: predicateClassifier, availableProperties: availablePropertiesSnapshot });
+        const registry = getRdfManagerRef.current && getRdfManagerRef.current();
+        // Cast options to any to allow passing optional registry/palette without tightening mapper
+        return mapQuadsToDiagram(quads, ({
+          predicateKind: predicateClassifier,
+          availableProperties: availablePropertiesSnapshot,
+          registry,
+          palette: palette as any,
+        } as any));
       };
 
     const runMapping = async () => {
@@ -871,14 +931,15 @@ const KnowledgeCanvas: React.FC = () => {
                 // Replace data completely, but keep position & runtime flags.
                 const replaced: RFNode<NodeData> = {
                   ...existing,
-                  // keep existing top-level fields (position, selected, hidden, __rf)
-                  position: existing.position,
-                  id: existing.id,
-                  type: m.type || existing.type || "ontology",
-                  data: (m && m.data) ? (m.data as NodeData) : (existing.data as NodeData),
-                } as RFNode<NodeData>;
+                // keep existing top-level fields (position, hidden, __rf)
+                position: existing.position,
+                id: existing.id,
+                type: m.type || existing.type || "ontology",
+                data: (m && m.data) ? (m.data as NodeData) : (existing.data as NodeData),
+              } as RFNode<NodeData>;
                 try { if ((existing as any).__rf) (replaced as any).__rf = (existing as any).__rf; } catch (_) {}
-                try { if ((existing as any).selected) (replaced as any).selected = true; } catch (_) {}
+                // Do NOT preserve selection when replacing node data; clear any selected flag so incoming data never keeps UI selection.
+                try { try { delete (replaced as any).selected; } catch (_) { /* ignore */ } } catch (_) {}
                 try { if ((existing as any).hidden) (replaced as any).hidden = (existing as any).hidden; } catch (_) {}
                 resultById.set(id, replaced);
               } else {
@@ -1005,6 +1066,46 @@ const KnowledgeCanvas: React.FC = () => {
         }
       } catch (_) { /* ignore */ }
       try { console.debug('[VG] canvas.rebuild.end'); } catch (_) {}
+      // Clear any UI selection after a mapping pass so incoming data never preserves selection.
+      try {
+        if (canvasActions && typeof canvasActions.setSelectedNode === "function") {
+          try { canvasActions.setSelectedNode(null as any, false); } catch (_) { /* ignore */ }
+        }
+        if (canvasActions && typeof canvasActions.toggleNodeEditor === "function") {
+          try { canvasActions.toggleNodeEditor(false); } catch (_) { /* ignore */ }
+        }
+
+        // Also ensure any per-node / per-edge `selected` flags in React Flow state are cleared.
+        // This guarantees switching view modes (ABox <-> TBox) or mapping passes will not leave
+        // residual selection on nodes/edges that remain in state.
+        try {
+          setNodes((prev) =>
+            (prev || []).map((n) => {
+              try {
+                const copy = { ...(n as RFNode<NodeData>) } as RFNode<NodeData>;
+                try { delete (copy as any).selected; } catch (_) { /* ignore */ }
+                return copy;
+              } catch (_) {
+                return n;
+              }
+            }),
+          );
+        } catch (_) { /* ignore node-clear errors */ }
+
+        try {
+          setEdges((prev) =>
+            (prev || []).map((e) => {
+              try {
+                const copy = { ...(e as RFEdge<LinkData>) } as RFEdge<LinkData>;
+                try { delete (copy as any).selected; } catch (_) { /* ignore */ }
+                return copy;
+              } catch (_) {
+                return e;
+              }
+            }),
+          );
+        } catch (_) { /* ignore edge-clear errors */ }
+      } catch (_) { /* ignore */ }
     };
 
     // Initial run: do nothing (we rely on emitted quads only)

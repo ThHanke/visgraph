@@ -12,7 +12,7 @@
 import { buildPaletteMap } from "../components/Canvas/core/namespacePalette";
 import { useOntologyStore } from "../stores/ontologyStore";
 
-export type RegistryEntry = { prefix: string; namespace: string; color?: string };
+export type RegistryEntry = { prefix: string; namespace: string; shortiri: string, color?: string };
 
 /**
  * Build a palette (prefix -> color) using the project's palette builder.
@@ -27,6 +27,13 @@ export function defaultPaletteBuilder(prefixes: string[]) {
     // best-effort fallback: empty mapping
     return {};
   }
+}
+
+function getShortIri(fullIri: string, namespace: string): string {
+  if (fullIri.startsWith(namespace)) {
+      return fullIri.substring(namespace.length);
+  }
+  return fullIri; // Return original if namespace not found
 }
 
 /**

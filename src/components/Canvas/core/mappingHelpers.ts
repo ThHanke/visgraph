@@ -1,6 +1,6 @@
 import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
 import { generateEdgeId } from "./edgeHelpers";
-import { shortLocalName } from "../../../utils/termUtils";
+import { shortLocalName, toPrefixed, getNodeColor } from "../../../utils/termUtils";
 import type { NodeData, LinkData } from "../../../types/canvas";
 
 /**
@@ -44,7 +44,14 @@ type PredicateKind = "annotation" | "object" | "datatype" | "unknown";
  */
 export function mapQuadsToDiagram(
   quads: QuadLike[] = [],
-  options?: { predicateKind?: (predIri: string) => PredicateKind; availableProperties?: any[] }
+  options?: {
+    predicateKind?: (predIri: string) => PredicateKind;
+    availableProperties?: any[];
+    availableClasses?: any[];
+    registry?: any;
+    getRdfManager?: () => any;
+    palette?: Record<string,string> | undefined;
+  }
 ) {
   // Small helpers to detect term kinds robustly across N3 and POJO shapes.
   const isNamedOrBlank = (obj: any) => {
@@ -101,6 +108,7 @@ export function mapQuadsToDiagram(
   const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
   const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
   const XSD_STRING = "http://www.w3.org/2001/XMLSchema#string";
+  const OWL_NAMED_INDIVIDUAL = "http://www.w3.org/2002/07/owl#NamedIndividual";
 
   // small local cache for classifier results to avoid repeated work per-predicate
   const predicateKindCache = new Map<string, PredicateKind>();
@@ -136,32 +144,6 @@ export function mapQuadsToDiagram(
       if (!s) return false;
       // URN-based ontology graphs
       if (s.includes("urn:vg:ontologies")) return true;
-      // common ontology hosts / domains
-      const hostHints = ["w3.org", "xmlns.com", "purl.org", "spec.industrialontologies.org"];
-      try {
-        const u = new URL(s);
-        const host = (u.hostname || "").toLowerCase();
-        for (const h of hostHints) {
-          if (host.includes(h)) return true;
-        }
-      } catch (_) {
-        // not a full URL - continue with substring checks
-      }
-      // namespace / path heuristics
-      const lower = s.toLowerCase();
-      if (lower.includes("/ontology/")) return true;
-      if (s.endsWith("#")) return true;
-      // blacklist common RDF/OWL namespaces
-      const blackUris = [
-        "http://www.w3.org/2002/07/owl",
-        "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
-        "http://www.w3.org/2000/01/rdf-schema#",
-        "http://www.w3.org/XML/1998/namespace",
-        "http://www.w3.org/2001/XMLSchema#"
-      ];
-      for (const b of blackUris) {
-        if (s.startsWith(b)) return true;
-      }
       return false;
     } catch (_) {
       return false;
@@ -365,9 +347,26 @@ export function mapQuadsToDiagram(
       primaryTypeIri = String(info.rdfTypes[0]);
     }
     // For backward compatibility compute a short classType display from primaryTypeIri.
+    // Special-case: when a node is an ABox instance (has owl:NamedIndividual among rdfTypes),
+    // prefer the next non-NamedIndividual rdf:type as the classType so UI shows the entity's
+    // effective class rather than the generic NamedIndividual marker.
     let classType: string | undefined = undefined;
-    if (primaryTypeIri) {
-      classType = primaryTypeIri;
+    const typesArr = Array.isArray(info.rdfTypes) ? info.rdfTypes.map(String) : [];
+    if (typesArr.length > 0) {
+      // primaryTypeIri already computed above as the first type (if present)
+      try {
+        if (typesArr.includes(OWL_NAMED_INDIVIDUAL)) {
+          // find the first type that is not the NamedIndividual marker
+          const other = typesArr.find((t: string) => String(t) !== OWL_NAMED_INDIVIDUAL);
+          classType = other || primaryTypeIri;
+        } else {
+          classType = primaryTypeIri;
+        }
+      } catch (_) {
+        classType = primaryTypeIri;
+      }
+    } else {
+      classType = undefined;
     }
     
     // Coarse namespace extraction from IRI (prefix before last / or #)
@@ -379,9 +378,32 @@ export function mapQuadsToDiagram(
       namespace = "";
     }
 
-    const isTBox = Array.isArray(info.rdfTypes) && info.rdfTypes.some((t: any) =>
-      /Class|ObjectProperty|AnnotationProperty|DatatypeProperty|owl:Class|owl:ObjectProperty/i.test(String(t || ""))
-    );
+    // Determine TBox/ABox:
+    // - If rdfTypes exist and include owl:NamedIndividual -> ABox (isTBox = false)
+    // - If rdfTypes exist and do NOT include owl:NamedIndividual -> TBox (isTBox = true)
+    // - If no rdfTypes -> ABox (isTBox = false)
+    let isTBox = false;
+    if (Array.isArray(info.rdfTypes) && info.rdfTypes.length > 0) {
+      try {
+        const types = info.rdfTypes.map((t: any) => String(t || ""));
+        if (types.includes(OWL_NAMED_INDIVIDUAL)) {
+          isTBox = false;
+        } else {
+          isTBox = true;
+        }
+      } catch (_) {
+        isTBox = false;
+      }
+    } else {
+      isTBox = false;
+    }
+
+      // compute node color using classType (preferred) or the node iri as fallback
+      const nodeColor = getNodeColor(
+        (classType || iri) as string,
+        (options as any).registry,
+        (options as any).palette
+      );
 
       const nodeData: NodeData & any = {
       key: iri,
@@ -391,12 +413,54 @@ export function mapQuadsToDiagram(
       // primaryTypeIri preserves the full rdf:type IRI so renderers can shorten it later
       primaryTypeIri,
       rdfTypes: Array.isArray(info.rdfTypes) ? info.rdfTypes.map(String) : [],
-      // humanLabel: rdfs:label if present, otherwise explicit empty string
-      humanLabel: info.label || "",
       // keep label field for backward compatibility: prefer rdfs:label, otherwise short local name
       label: info.label || shortLocalName(iri),
+      // Presentation hints (compute prefixed form / palette color when a registry/palette is provided in options)
+      displayPrefixed: toPrefixed(
+        iri,
+        options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+        options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+        (options as any).registry
+      ),
+      // displayShort: short/local name (always available)
+      displayShort: shortLocalName(iri),
+      // displayClassType: prefixed form for the classType (computed here so UI can use it directly)
+      displayClassType: (classType
+        ? (() => {
+            try {
+              // Prefer an explicit registry passed via options.
+              let reg = (options as any)?.registry;
+              // If no registry supplied, try to derive one from a provided RDF manager accessor.
+              if (!reg && typeof (options as any)?.getRdfManager === "function") {
+                try {
+                  const mgr = (options as any).getRdfManager();
+                  if (mgr && typeof mgr.getNamespaces === "function") {
+                    reg = mgr.getNamespaces();
+                  }
+                } catch (_) {
+                  reg = undefined;
+                }
+              }
+              // Compute prefixed form using the best registry we have (may be undefined).
+              const pref = toPrefixed(
+                String(classType),
+                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                reg
+              );
+              // If the result is still a full IRI (no registry found), fall back to the short local name.
+              if (typeof pref === "string" && pref.includes("://")) return shortLocalName(String(classType));
+              return pref;
+            } catch (_) {
+              return shortLocalName(String(classType));
+            }
+          })()
+        : undefined),
+      // paletteColor: computed when registry/palette provided; otherwise undefined (consumer should fallback)
       namespace,
       classType,
+      paletteColor: nodeColor || undefined,
+      color: nodeColor || undefined,
       literalProperties: info.literalProperties || [],
       annotationProperties: info.annotationProperties || [],
       visible: true,
@@ -548,5 +612,6 @@ export function mapDiagramToQuads(
 
   return quads;
 }
+
 
 export default mapQuadsToDiagram;

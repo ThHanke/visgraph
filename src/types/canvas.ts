@@ -14,38 +14,67 @@ import { LiteralProperty, AnnotationPropertyValue, EntityType, RDFType } from '.
  */
 export interface NodeData {
   [key: string]: any;
-  /** Unique identifier for the node */
+
+  // Identity
+  /** Unique identifier for the node (UI key) — typically the same as iri */
   key: string;
-  /** IRI of the entity this node represents (preferred identifier) */
+  /** Full IRI of the entity represented by this node (or blank-node id like "_:b0") */
   iri: string;
-  /** All RDF types for this entity (must be present) */
+
+  // RDF metadata (authoritative)
+  /** All rdf:type IRIs for this entity (authoritative; may be empty) */
   rdfTypes: string[];
-  /** Optional display label computed from rdfTypes (may be present for convenience) */
+  /** Primary / canonical rdf:type IRI (first / most-relevant), optional */
+  primaryTypeIri?: string | null;
+
+  // Display / presentation (computed by mapper where available)
+  /** Human-friendly label (preferred rdfs:label or fat-map label) */
   label?: string;
-  /** Deprecated: Namespace prefix (kept for compatibility only) */
+  /** Prefixed display form (e.g. ex:Person) computed from namespace registry when available */
+  displayPrefixed?: string;
+  /** Short/local name (short local part of the IRI) */
+  displayShort?: string;
+
+  // Fallback fields (kept for compatibility, but not authoritative)
+  /** Coarse namespace string (substring before last / or #) */
   namespace?: string;
-  /** Deprecated: Class local name (kept for compatibility only) */
   classType?: string;
-  /** Entity type (class, individual, etc.) */
-  entityType?: EntityType;
+  displayclassType?: string;
+
+  // Properties
   /** Literal properties (data properties) */
   literalProperties?: LiteralProperty[];
-  /** Annotation properties */
-  annotationProperties?: AnnotationPropertyValue[];
-  /** Whether the node is visible */
+  /** Annotation properties (array of { property, value }) */
+  annotationProperties?: AnnotationPropertyValue[] | Array<{ property: string; value: any }>;
+
+  // Presentation metadata
+  /** Palette color derived from namespace/type (hex) when available */
+  paletteColor?: string | null;
+  /** Whether paletteColor resolution failed / missing */
+  paletteMissing?: boolean;
+
+  // UI/runtime flags (transient; not persisted into RDF)
+  /** Whether the node should be visible according to viewMode / explicit flags */
   visible?: boolean;
-  /** Node color */
-  color?: string;
-  /** Background color */
-  backgroundColor?: string;
-  /** Primary color for the header */
-  primaryColor?: string;
-  /** Whether the node has reasoning errors */
+  /** Whether this node is considered a TBox entity (class/property) */
+  isTBox?: boolean;
+  /** Whether the node currently has reasoning errors (computed by reasoning store) */
   hasReasoningError?: boolean;
-  /** Reasoning error messages */
+
+  // Misc
+  /** Reasoning error messages (if any) */
   reasoningErrors?: string[];
-  /** Custom node size */
+  /** Custom node size used by layout / measurement */
   size?: { width: number; height: number };
+
+  /** Internal meta bag for transient runtime-only fields (measurements, flags) */
+  __meta?: {
+    needsInitialLayout?: boolean;
+    measured?: { width?: number; height?: number };
+    [k: string]: any;
+  };
+
+  // Keep this catch-all for backwards-compatibility where callers expect arbitrary props.
 }
 
 /**

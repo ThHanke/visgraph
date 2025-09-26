@@ -1,3 +1,4 @@
+/* eslint-disable no-empty */
 import React, { memo, useEffect, useRef, useState, useMemo } from "react";
 import {
   Handle,
@@ -25,10 +26,11 @@ interface CustomOntologyNodeData {
   namespace?: string;
   displayType?: string;
   rdfTypes?: string[] | null;
-  properties?: Record<string, unknown>;
-  annotationProperties?: Array<{ property?: string; value?: unknown }>;
+  // Use `any` for properties/annotation values to avoid overly strict unknown -> string conversions
+  properties?: Record<string, any>;
+  annotationProperties?: Array<{ property?: string; value?: any }>;
   errors?: string[];
-  [key: string]: unknown;
+  [key: string]: any;
 }
 
 const _loggedFingerprints = new Set<string>();
@@ -150,182 +152,55 @@ function CustomOntologyNodeInner(props: NodeProps) {
   const { badgeText, subtitleText, headerDisplay, typesList } = useMemo(() => {
     try {
       const iri = String(nodeData.iri || "");
-      const typeIri = nodeData.classType ? String(nodeData.classType) : undefined;
+      // Prefer canonical primaryTypeIri when available; fall back to classType for compatibility.
+      const typeIri = String(nodeData.primaryTypeIri || nodeData.classType || "") || undefined;
 
-          const tdNode = (() => {
-        try {
-          // Prefer the mapper-provided humanLabel; when absent, try to produce a prefixed form using the effective registry.
-          const human = String(nodeData.humanLabel || "");
-          let pref = "";
-          try {
-            pref = toPrefixed(iri || "", effectiveRegistry);
-          } catch (_) {
-            pref = "";
-          }
-          return {
-            prefixed: pref || "",
-            short: "",
-            label: human || pref || String(nodeData.iri || ""),
-            iri,
-          };
-        } catch (_) {
-          return { prefixed: "", short: "", label: String(nodeData.humanLabel || nodeData.iri || ""), iri };
-        }
-      })();
+      // Header/title: prefer explicit mapped displayPrefixed -> label -> displayShort -> short local name.
+      const headerDisp =
+        (nodeData.displayPrefixed as string);
 
-      const tdType = (() => {
-        try {
-          if (!typeIri) return undefined;
-          try {
-            return { prefixed: toPrefixed(typeIri, effectiveRegistry), short: "", label: "", iri: typeIri };
-          } catch (_) {
-            return undefined;
-          }
-        } catch (_) {
-          return undefined;
-        }
-      })();
-
-      // Title (visible): prefixed IRI of the node or short/local name or full IRI
-      const headerDisp = tdNode.prefixed || tdNode.short || String(nodeData.iri || "");
-
-      // Badge: prefixed IRI of meaningful type, or short/local name, or fallback to namespace/iri
+      // Badge: prefer the mapped/class display for the classType (if present).
+      // Compute a prefixed form for the classType using the effectiveRegistry. Avoid runtime
+      // exceptions by falling back to raw values.
+      
       let badge = "";
-      if (tdType) {
-        badge = tdType.prefixed || tdType.short || String(typeIri || "");
-      } else {
-        // fallback: try to use toPrefixed on raw classType if possible
-            try {
-          if (nodeData.classType) {
-            // Use the effectiveRegistry (synthesized from store or rdfManager) for prefixing.
-            try {
-              badge = toPrefixed(String(nodeData.classType), effectiveRegistry);
-            } catch (_) {
-              badge = String(nodeData.classType || nodeData.namespace || "");
-            }
-          } else {
-            badge = String(nodeData.classType || nodeData.namespace || "");
-          }
-        } catch (_) {
-          badge = String(nodeData.classType || nodeData.namespace || "");
-        }
-      }
+      // Prefer: mapper-provided displayClassType, then computed prefixed classDisplayPrefixed,
+      // then node-level displayPrefixed, then raw classType, then short local name.
+      badge =  (nodeData.displayPrefixed as string);
 
-      // Prefer an explicit rdfs:label provided in node.annotationProperties (if present),
-      // otherwise fall back to computed label/prefixed/short forms.
-      let subtitle = tdNode.label || tdNode.prefixed || tdNode.short || String(nodeData.iri || "");
-      try {
-        const ann = nodeData.annotationProperties;
-        if (Array.isArray(ann) && ann.length > 0) {
-          for (const ap of ann) {
-            try {
-              const prop = String((ap as any).propertyUri || (ap as any).property || "");
-              const val = (ap as any).value;
-              if (!prop || val === undefined || val === null) continue;
-              // match common rdfs:label forms or local-name 'label' (also accept rdf-schema URIs)
-              const propLc = String(prop || "").toLowerCase();
-              if (
-                String(prop).toLowerCase().endsWith("label") ||
-                propLc.includes("rdf-schema") ||
-                propLc.includes("rdfs")
-              ) {
-                subtitle = String(val);
-                break;
-              }
-            } catch (_) {
-              // ignore per-entry errors
-            }
-          }
-        }
-      } catch (_) {
-        // ignore annotation scanning failures
-      }
+      // Subtitle: prefer humanLabel, then label, then displayPrefixed/displayShort, then short local name.
+      const subtitle =
+        (nodeData.label as string) ||
+        (nodeData.displayPrefixed as string);
 
-      // typesList (not used heavily) keep empty for now; could list rdfTypes expanded prefixed forms.
-      const tList: string[] = [];
-      if (Array.isArray(nodeData.rdfTypes)) {
-        try {
-          nodeData.rdfTypes.forEach((t) => {
+      // typesList: keep it simple and deterministic using shortLocalName for each rdf:type.
+      const tList: string[] = Array.isArray(nodeData.rdfTypes)
+        ? nodeData.rdfTypes.map((t) => {
             try {
-              if (!t) return;
-              try {
-                const registry = namespaceRegistry;
-                const pal = palette;
-                try {
-                  tList.push(toPrefixed(String(t), effectiveRegistry));
-                } catch (_) {
-                  tList.push(String(t));
-                }
-              } catch (_) {
-                tList.push(shortLocalName(String(t)));
-              }
-            } catch (_) {}
-          });
-        } catch (_) {}
-      }
+              if (!t) return String(t);
+              return shortLocalName(String(t));
+            } catch (_) {
+              return String(t);
+            }
+          })
+        : [];
 
       return { badgeText: badge, subtitleText: subtitle, headerDisplay: headerDisp, typesList: tList };
     } catch (_) {
-      return { badgeText: String(nodeData.classType || nodeData.namespace || ""), subtitleText: String(nodeData.label || shortLocalName(nodeData.iri || "")), headerDisplay: String(nodeData.label || shortLocalName(nodeData.iri || "")), typesList: [] as string[] };
     }
   }, [
     nodeData.classType,
     nodeData.label,
     nodeData.iri,
-    palette,
+    nodeData.displayPrefixed,
+    nodeData.displayShort,
+    nodeData.primaryTypeIri,
+    nodeData.rdfTypes,
   ]);
-
-  // Color/palette resolution (strict: use central palette only)
-  const namespace = String(nodeData.namespace ?? "");
-
-  // Prefer an explicit paletteColor set on the node data (set by KnowledgeCanvas enrichment).
-  // Then prefer a color derived from the node's classType namespace (most authoritative after mapping).
-  // Finally fall back to namespace-based lookup or reverse-lookup against rdfManager namespaces.
-  let resolvedPaletteColor: string | undefined = undefined;
-  try {
-    // 0) If the canvas enrichment already provided an authoritative paletteColor, prefer it.
-    if (nodeData && (nodeData as any).paletteColor) {
-      resolvedPaletteColor =
-        String((nodeData as any).paletteColor || undefined) || undefined;
-    }
-
-    // 1) If we have a canonical classType (absolute IRI), prefer its palette mapping.
-    //    This ensures the color follows the meaningful type, not the node IRI or namespace field.
-    if (!resolvedPaletteColor && nodeData && nodeData.classType && rdfManager) {
-      try {
-        try {
-          const pref = toPrefixed(String(nodeData.classType), rdfManager as any);
-          const prefix = pref && pref.includes(":") ? pref.split(":")[0] : "";
-          if (prefix) {
-            resolvedPaletteColor = getNamespaceColorFromPalette(palette, prefix) || undefined;
-          }
-        } catch (_) {
-          /* ignore prefixed resolution failures */
-        }
-      } catch (_) {
-        /* ignore */
-      }
-    }
-
-    // 2) Direct palette lookup using the node's namespace (may be a prefix or a short key)
-    if (!resolvedPaletteColor) {
-      try {
-        resolvedPaletteColor =
-          getNamespaceColorFromPalette(
-            palette,
-            String(nodeData.namespace ?? ""),
-          ) || undefined;
-      } catch (_) {
-        resolvedPaletteColor = undefined;
-      }
-    }
-  } catch (_) {
-    resolvedPaletteColor = undefined;
-  }
 
   
   const DEFAULT_PALETTE_COLOR = "#e5e7eb";
-  const badgeColor = resolvedPaletteColor || DEFAULT_PALETTE_COLOR;
+  const badgeColor = nodeData.color || DEFAULT_PALETTE_COLOR;
   const leftColor = badgeColor;
 
   const themeBg =
@@ -357,14 +232,14 @@ function CustomOntologyNodeInner(props: NodeProps) {
       if (rawValue === undefined || rawValue === null) return;
       const valueStr = String(rawValue);
       if (valueStr.trim() === "") return;
-      const term = (() => {
-        if (propertyIri.startsWith("_:")) return propertyIri;
-        try {
-          return toPrefixed(propertyIri, effectiveRegistry);
-        } catch (_) {
-          return shortLocalName(propertyIri);
-        }
-      })();
+            const term = (() => {
+              if (propertyIri.startsWith("_:")) return propertyIri;
+              try {
+                return toPrefixed(propertyIri, undefined, undefined, effectiveRegistry as any);
+              } catch (_) {
+                return shortLocalName(propertyIri);
+              }
+            })();
       annotations.push({ term, value: valueStr });
     });
   } else if (nodeData.properties && typeof nodeData.properties === "object") {
@@ -375,14 +250,14 @@ function CustomOntologyNodeInner(props: NodeProps) {
         const valueStr = String(v);
         if (valueStr.trim() === "") return;
           const term = (() => {
-          const keyStr = String(k);
-          if (keyStr.startsWith("_:")) return keyStr;
+            const keyStr = String(k);
+            if (keyStr.startsWith("_:")) return keyStr;
             try {
-            return toPrefixed(keyStr, effectiveRegistry);
-          } catch (_) {
-            return shortLocalName(keyStr);
-          }
-        })();
+              return toPrefixed(keyStr, undefined, undefined, effectiveRegistry as any);
+            } catch (_) {
+              return shortLocalName(keyStr);
+            }
+          })();
         annotations.push({ term, value: valueStr });
       });
   }
@@ -535,7 +410,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
             }}
           >
             <span className="truncate">
-              {badgeText || nodeData.classType || (namespace ? namespace : "unknown")}
+              {badgeText || nodeData.classType}
             </span>
           </div>
 
