@@ -584,6 +584,40 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             : "urn:vg:data",
       );
 
+      // Persist a namespace registry snapshot immediately after parsing so UI components
+      // (e.g., the Namespace Legend) that read the persisted registry can display entries
+      // right after a startup URL load. This mirrors the registry construction used in
+      // incrementalReconcileFromQuads but keeps the startup/load path synchronous.
+      try {
+        const nsMap =
+          parsed && parsed.namespaces
+            ? parsed.namespaces
+            : rdfManager && typeof (rdfManager as any).getNamespaces === "function"
+              ? (rdfManager as any).getNamespaces()
+              : {};
+        const prefixes = Object.keys(nsMap || {}).filter(Boolean).sort();
+        const paletteMap = buildPaletteMap(prefixes || []);
+        const registry = (prefixes || []).map((p) => {
+          try {
+            return {
+              prefix: String(p),
+              namespace: String((nsMap as any)[p] || ""),
+              color: String((paletteMap as any)[p] || ""),
+            };
+          } catch (_) {
+            return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: "" };
+          }
+        });
+        try {
+          // Best-effort: persist into the ontology store so consumers relying on namespaceRegistry see entries.
+          useOntologyStore.setState((s: any) => ({ namespaceRegistry: registry }));
+        } catch (_) {
+          /* ignore persistence failures */
+        }
+      } catch (_) {
+        /* ignore registry snapshot failures */
+      }
+
     } catch (error: any) {
       ((...__vg_args) => {
         try {

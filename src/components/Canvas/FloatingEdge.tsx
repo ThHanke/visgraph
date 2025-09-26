@@ -8,9 +8,6 @@ import {
 } from "@xyflow/react";
 import { Badge } from "../ui/badge";
 import { getEdgeParams } from "./EdgeParams";
-import { useOntologyStore } from "../../stores/ontologyStore";
-import { computeTermDisplay } from "../../utils/termUtils";
-import { usePaletteFromRdfManager } from "./core/namespacePalette";
 
 /**
  * FloatingEdge
@@ -26,8 +23,6 @@ import { usePaletteFromRdfManager } from "./core/namespacePalette";
 const FloatingEdge = memo((props: EdgeProps) => {
   const { id, source, target, markerEnd, style, data } = props;
 
-  // Pre-call hook at top-level for palette (must be a hook call and run on every render)
-  const palette = usePaletteFromRdfManager();
 
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
@@ -63,35 +58,6 @@ const FloatingEdge = memo((props: EdgeProps) => {
 
   // 1) explicit label from props/data
   badgeText = String((props as any)?.label || (data as any)?.label || "").trim();
-
-  
-
-  // 2) if no explicit label, compute strict display via computeTermDisplay using RDF manager.
-  //    Strict policy: if no rdf manager is available or computeTermDisplay fails, leave label empty.
-  if (!badgeText) {
-    try {
-      const rawPred = (data as any)?.propertyUri || (data as any)?.propertyType || "";
-      const ms = (useOntologyStore as any).getState ? (useOntologyStore as any).getState() : undefined;
-      const rdfMgr =
-        ms && typeof (ms as any).getRdfManager === "function"
-          ? (ms as any).getRdfManager()
-          : (ms && (ms as any).rdfManager)
-          ? (ms as any).rdfManager
-          : undefined;
-      try {
-        if (rdfMgr && rawPred) {
-          const td = computeTermDisplay(String(rawPred), rdfMgr as any, palette);
-          badgeText = String(td.prefixed || td.short || "");
-        } else {
-          badgeText = "";
-        }
-      } catch (_) {
-        badgeText = "";
-      }
-    } catch (_) {
-      badgeText = "";
-    }
-  }
 
   return (
     <>

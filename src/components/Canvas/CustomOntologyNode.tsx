@@ -1,5 +1,5 @@
 /* eslint-disable no-empty */
-import React, { memo, useEffect, useRef, useState, useMemo } from "react";
+import React, { memo, useEffect, useRef, useMemo } from "react";
 import {
   Handle,
   Position,
@@ -12,7 +12,6 @@ import { Edit3, AlertTriangle, Info } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { usePaletteFromRdfManager } from "./core/namespacePalette";
-import { getNamespaceColorFromPalette } from "./helpers/namespaceHelpers";
 import { shortLocalName, toPrefixed } from "../../utils/termUtils";
 import { debug } from "../../utils/startupDebug";
 
@@ -59,10 +58,6 @@ function CustomOntologyNodeInner(props: NodeProps) {
     String((connection as any).fromNode.id) !== String(id)
   );
   const nodeData = (data ?? {}) as CustomOntologyNodeData;
-  const individualNameInitial = String(
-    nodeData.individualName ?? nodeData.iri ?? "",
-  );
-  const [individualName, setIndividualName] = useState(individualNameInitial);
   const showHandles = !!((connection as any)?.inProgress || !selected);
 
   const rdfManager = useOntologyStore((s) => s.rdfManager);
@@ -166,7 +161,21 @@ function CustomOntologyNodeInner(props: NodeProps) {
       let badge = "";
       // Prefer: mapper-provided displayClassType, then computed prefixed classDisplayPrefixed,
       // then node-level displayPrefixed, then raw classType, then short local name.
-      badge =  (nodeData.displayPrefixed as string);
+      try {
+        if (nodeData.displayClassType && String(nodeData.displayClassType).trim()) {
+          badge = String(nodeData.displayClassType);
+        } else if (nodeData.classType) {
+          try {
+            badge = toPrefixed(String(nodeData.classType), undefined, undefined, effectiveRegistry as any);
+          } catch (_) {
+            badge = shortLocalName(String(nodeData.classType));
+          }
+        } else {
+          badge = String(nodeData.displayPrefixed || "");
+        }
+      } catch (_) {
+        badge = String(nodeData.displayPrefixed || "");
+      }
 
       // Subtitle: prefer humanLabel, then label, then displayPrefixed/displayShort, then short local name.
       const subtitle =
@@ -269,101 +278,14 @@ function CustomOntologyNodeInner(props: NodeProps) {
       (t) => Boolean(t) && !/NamedIndividual/i.test(String(t)),
     );
 
-  useEffect(() => {
-    setIndividualName(individualNameInitial);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodeData.iri, nodeData.individualName]);
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const lastMeasuredRef = useRef<{ w: number; h: number } | null>(null);
 
-  useEffect(() => {
-    const el = rootRef.current;
-    if (!el) return;
-    const report = (w: number, h: number) => {
-      try {
-        const cb = (data as any)?.onSizeMeasured;
-        const last = lastMeasuredRef.current;
-        if (last && Math.abs(last.w - w) < 2 && Math.abs(last.h - h) < 2) {
-          return;
-        }
-        lastMeasuredRef.current = { w, h };
-        if (typeof cb === "function") {
-          try {
-            cb(Math.round(w), Math.round(h));
-          } catch (_) {
-            /* ignore callback errors */
-          }
-        }
-      } catch (_) {
-        /* ignore */
-      }
-    };
-    report(el.offsetWidth, el.offsetHeight);
-    let ro: ResizeObserver | null = null;
-    try {
-      ro = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          const cr = entry.contentRect;
-          report(cr.width, cr.height);
-        }
-      });
-      ro.observe(el);
-    } catch (_) {
-      const onWin = () => report(el.offsetWidth, el.offsetHeight);
-      window.addEventListener("resize", onWin);
-      return () => {
-        window.removeEventListener("resize", onWin);
-      };
-    }
-    return () => {
-      try {
-        if (ro) ro.disconnect();
-      } catch (_) {
-        /* ignore */
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rootRef]);
+  // Size reporting removed — component is now pure/read-only and does not observe element size.
+  // Any measurement responsibilities belong to parent/layout code if needed.
 
-  useEffect(() => {
-    try {
-      const el = rootRef.current;
-      if (!el) return;
-      const wrapper: HTMLElement | null =
-        typeof el.closest === "function"
-          ? (el as any).closest(".react-flow__node")
-          : el.parentElement || null;
-      if (!wrapper || !wrapper.style) return;
-      const colorToApply = badgeColor || leftColor;
-      
-      if (colorToApply) {
-        try {
-          wrapper.style.setProperty(
-            "--node-leftbar-color",
-            String(colorToApply),
-          );
-        } catch (_) {
-          try {
-            wrapper.style.setProperty(
-              "--node-leftbar-color",
-              String(colorToApply),
-            );
-          } catch (_) {
-            /* ignore */
-          }
-        }
-      } else {
-        try {
-          wrapper.style.removeProperty("--node-leftbar-color");
-        } catch (_) {
-          /* ignore */
-        }
-      }
-    } catch (_) {
-      /* ignore */
-    }
-  }, [badgeColor, leftColor]);
+  // Removed direct DOM mutation. Visual color is applied inline in render to keep component pure/read-only.
 
   const canonicalIri = String(nodeData.iri ?? "");
   const headerTitle = canonicalIri;
@@ -401,12 +323,8 @@ function CustomOntologyNodeInner(props: NodeProps) {
           <div
             className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold text-black flex items-center gap-1"
             style={{
-              background: badgeColor
-                ? `var(--node-leftbar-color, ${badgeColor})`
-                : undefined,
-              border: badgeColor
-                ? `1px solid ${darken(badgeColor, 0.12)}`
-                : undefined,
+              background: badgeColor || undefined,
+              border: badgeColor ? `1px solid ${darken(badgeColor, 0.12)}` : undefined,
             }}
           >
             <span className="truncate">
