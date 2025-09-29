@@ -37,6 +37,20 @@ import { EntityAutocomplete } from "../ui/EntityAutocomplete";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { X, Plus, Info } from "lucide-react";
+// React Flow selection hook — allow editor to derive node when no explicit prop provided
+import { useOnSelectionChange } from "@xyflow/react";
+
+// Simple termForIri helper used for constructing N3 terms (handles blank nodes like "_:b0")
+const termForIri = (iri: string) => {
+  try {
+    if (typeof iri === "string" && iri.startsWith("_:")) {
+      return DataFactory.blankNode(iri.slice(2));
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  return namedNode(String(iri));
+};
 
 /**
  * Represents a literal property with value and type
@@ -118,10 +132,23 @@ export const NodePropertyEditor = ({
     return Array.from(merged.values());
   }, [availableProperties]);
 
+  // Selection is driven by the parent KnowledgeCanvas which passes `nodeData` prop.
+  // Keep a local state slot for future use but do not subscribe to React Flow here to
+  // avoid requiring a ReactFlowProvider in tests.
+  const [selectedFromRF, setSelectedFromRF] = useState<any | null>(null);
+
   // Initialize local form state from the passed nodeData when dialog opens.
   useEffect(() => {
     if (!open) return;
-    if (!nodeData) {
+
+    // Prefer explicit prop nodeData, otherwise use selection-derived node
+    const sourceNode = nodeData && (nodeData.data || nodeData)
+      ? (nodeData.data || nodeData)
+      : selectedFromRF && (selectedFromRF.data || selectedFromRF)
+        ? (selectedFromRF.data || selectedFromRF)
+        : selectedFromRF;
+
+    if (!sourceNode) {
       setNodeIri("");
       setNodeType("");
       setProperties([]);
@@ -131,7 +158,7 @@ export const NodePropertyEditor = ({
     }
 
     // node could be React Flow node object or a plain node data object — handle both.
-    const d = nodeData && (nodeData.data || nodeData) ? (nodeData.data || nodeData) : nodeData;
+    const d = sourceNode;
 
     // IRI
     const iri = (d && (d.iri || d.id || d.key)) ? String(d.iri || d.id || d.key) : "";
@@ -165,7 +192,7 @@ export const NodePropertyEditor = ({
 
     setProperties(existingProps);
     initialPropertiesRef.current = existingProps.map(p => ({ ...p }));
-  }, [open, nodeData]);
+  }, [open, nodeData, selectedFromRF]);
 
   // Handlers for properties
   const handleAddProperty = (e?: React.MouseEvent) => {
@@ -194,19 +221,17 @@ export const NodePropertyEditor = ({
     return { toAdd, toRemove };
   };
 
-  // Save: compute minimal changes and persist quads into urn:vg:data (writes only),
-  // then call onSave(updatedNodeData) and close dialog.
+  // Save: persist annotation properties (writes only) and rdf:type when applicable,
+  // then close the dialog. Errors are allowed to surface (no silent fallbacks).
   const handleSave = async (e?: React.MouseEvent) => {
-    e?.preventDefault();
-    e?.stopPropagation();
+    if (e) { e.preventDefault(); e.stopPropagation(); }
 
     // Validate properties: no empty keys
     if (properties.some(p => !p.key || !p.key.trim())) {
-      alert("Please provide property names for all annotation properties (no empty keys).");
-      return;
+      throw new Error("Please provide property names for all annotation properties (no empty keys).");
     }
 
-    // Compose updated node payload (canonical annotationProperties shape)
+    // Compose canonical annotation properties
     const annotationProperties = properties.map((p) => ({
       propertyUri: p.key,
       key: p.key,
@@ -214,113 +239,74 @@ export const NodePropertyEditor = ({
       type: p.type || "xsd:string",
     }));
 
-    // Persist minimal changed annotation quads to urn:vg:data using rdfManager primitives (addTriple/removeTriple).
-    try {
-      const mgrState = useOntologyStore.getState();
-      let mgr: any = undefined;
-      if (typeof (mgrState as any).getRdfManager === "function") {
-        try {
-          mgr = (mgrState as any).getRdfManager();
-        } catch (_) {
-          mgr = undefined;
-        }
-      }
-      if (!mgr) {
-        mgr = (mgrState as any).rdfManager || (await import("../../utils/rdfManager").then(m=>m.rdfManager).catch(()=>undefined));
-      }
-      const before = initialPropertiesRef.current || [];
-      const after = properties || [];
-      const { toAdd, toRemove } = diffProperties(before, after);
+    // Acquire RDF manager (must exist in this strict mode)
+    const mgrState = useOntologyStore.getState();
+    const mgr = typeof (mgrState as any).getRdfManager === "function"
+      ? (mgrState as any).getRdfManager()
+      : (mgrState as any).rdfManager;
 
-      if (mgr && typeof (mgr as any).addTriple === "function" && typeof (mgr as any).removeTriple === "function") {
-        try {
-          // Apply removals first (exact matches)
-          for (const rem of toRemove) {
-            try {
-              const predRaw = rem.key;
-              const predFull = typeof mgr.expandPrefix === "function" ? String(mgr.expandPrefix(predRaw)) : String(predRaw);
-              try { (mgr as any).removeTriple(String(nodeIri), predFull, String(rem.value), "urn:vg:data"); } catch (_) { /* ignore per-remove */ }
-            } catch (_) { /* ignore per-remove build */ }
-          }
-
-          // Then apply adds idempotently
-          for (const add of toAdd) {
-            try {
-              const predRaw = add.key;
-              const predFull = typeof mgr.expandPrefix === "function" ? String(mgr.expandPrefix(predRaw)) : String(predRaw);
-              try { (mgr as any).addTriple(String(nodeIri), predFull, String(add.value), "urn:vg:data"); } catch (_) { /* ignore per-add */ }
-            } catch (_) { /* ignore per-add build */ }
-          }
-
-          // Single notify after batch of primitives
-          try { if (typeof (mgr as any).notifyChange === "function") (mgr as any).notifyChange(); } catch (_) { /* ignore */ }
-        } catch (e) {
-          try { console.warn("NodePropertyEditor.save.primitivesFailed", e); } catch (_) {}
-        }
-      } else if (mgr && typeof mgr.applyBatch === "function") {
-        // Fallback: build arrays and use applyBatch
-        const removes: Array<{ subject: string; predicate: string; object: string }> = [];
-        const adds: Array<{ subject: string; predicate: string; object: string }> = [];
-
-        for (const rem of toRemove) {
-          try {
-            const predRaw = rem.key;
-            const predFull = typeof mgr.expandPrefix === "function" ? String(mgr.expandPrefix(predRaw)) : String(predRaw);
-            removes.push({ subject: String(nodeIri), predicate: predFull, object: String(rem.value) });
-          } catch (_) { /* ignore */ }
-        }
-
-        for (const add of toAdd) {
-          try {
-            const predRaw = add.key;
-            const predFull = typeof mgr.expandPrefix === "function" ? String(mgr.expandPrefix(predRaw)) : String(predRaw);
-            adds.push({ subject: String(nodeIri), predicate: predFull, object: String(add.value) });
-          } catch (_) { /* ignore */ }
-        }
-
-        try {
-          await mgr.applyBatch({ removes, adds }, "urn:vg:data");
-        } catch (batchErr) {
-          try { console.warn("NodePropertyEditor.save.applyBatchFailed", batchErr); } catch (_) {}
-        }
-      } else if (mgr && typeof mgr.getStore === "function") {
-        // Last-resort fallback: direct store writes (preserve previous behavior)
-        const store = mgr.getStore();
-        const g = namedNode("urn:vg:data");
-        const subjTerm = namedNode(String(nodeIri));
-
-        for (const rem of toRemove) {
-          try {
-            const predRaw = rem.key;
-            const predFull = typeof mgr.expandPrefix === "function" ? (mgr.expandPrefix(predRaw) as string) : predRaw;
-            const predTerm = namedNode(predFull);
-            const objTerm = DataFactory.literal(String(rem.value));
-            const found = store.getQuads(subjTerm, predTerm, objTerm, g) || [];
-            for (const q of found) {
-              try { store.removeQuad(q); } catch (_) { /* ignore per-quad */ }
-            }
-          } catch (_) { /* ignore per-property */ }
-        }
-
-        for (const add of toAdd) {
-          try {
-            const predRaw = add.key;
-            const predFull = typeof mgr.expandPrefix === "function" ? (mgr.expandPrefix(predRaw) as string) : predRaw;
-            const predTerm = namedNode(predFull);
-            const objTerm = DataFactory.literal(String(add.value));
-            const exists = store.getQuads(subjTerm, predTerm, objTerm, g) || [];
-            if (!exists || exists.length === 0) {
-              try { store.addQuad(DataFactory.quad(subjTerm, predTerm, objTerm, g)); } catch (_) { /* ignore add */ }
-            }
-          } catch (_) { /* ignore per-property */ }
-        }
-        // Notify after direct store writes
-        try { if (typeof (mgr as any).notifyChange === "function") (mgr as any).notifyChange(); } catch (_) { /* ignore */ }
-      }
-    } catch (err) {
-      try { console.warn("NodePropertyEditor.save.storeWriteFailed", err); } catch (_) { /* ignore */ }
+    if (!mgr) {
+      throw new Error("RDF manager unavailable; cannot persist node properties.");
     }
 
+    // Subject IRI
+    const subjIri = String(nodeIri);
+    if (!subjIri) throw new Error("Node IRI missing; cannot persist node properties.");
+
+    // If nodeType provided (creation flow), persist rdf:type triple
+    if (nodeType && String(nodeType).trim()) {
+      const typeCandidate = String(nodeType).trim();
+      // Resolve to full IRI via manager if possible
+      const typeFull = typeof mgr.expandPrefix === "function" ? String(mgr.expandPrefix(typeCandidate)) : typeCandidate;
+      // Use primitive API if available
+      if (typeof (mgr as any).addTriple === "function") {
+        (mgr as any).addTriple(subjIri, typeof mgr.expandPrefix === "function" ? String(mgr.expandPrefix("rdf:type")) : "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", typeFull, "urn:vg:data");
+      } else if (mgr.getStore && typeof mgr.getStore === "function") {
+        const store = mgr.getStore();
+        const s = termForIri(subjIri);
+        const p = namedNode(typeof mgr.expandPrefix === "function" ? String(mgr.expandPrefix("rdf:type")) : "http://www.w3.org/1999/02/22-rdf-syntax-ns#type");
+        const o = namedNode(typeFull);
+        const g = namedNode("urn:vg:data");
+        const exists = store.getQuads(s, p, o, g) || [];
+        if (!exists || exists.length === 0) {
+          store.addQuad(DataFactory.quad(s, p, o, g));
+        }
+      } else {
+        throw new Error("Unable to persist rdf:type: unsupported rdfManager API.");
+      }
+    }
+
+    // Persist annotation properties as literal triples with xsd types
+    for (const ap of annotationProperties) {
+      const predRaw = String(ap.propertyUri || ap.key || "");
+      if (!predRaw) continue;
+      const predFull = typeof mgr.expandPrefix === "function" ? String(mgr.expandPrefix(predRaw)) : predRaw;
+      const datatype = ap.type || "xsd:string";
+      const datatypeFull = typeof mgr.expandPrefix === "function" ? String(mgr.expandPrefix(datatype)) : datatype;
+      const obj = DataFactory.literal(String(ap.value), namedNode(datatypeFull));
+
+      if (typeof (mgr as any).addTriple === "function") {
+        (mgr as any).addTriple(subjIri, predFull, String(ap.value), "urn:vg:data");
+      } else if (mgr.getStore && typeof mgr.getStore === "function") {
+        const store = mgr.getStore();
+        const s = termForIri(subjIri);
+        const p = namedNode(predFull);
+        const g = namedNode("urn:vg:data");
+        const exists = store.getQuads(s, p, obj, g) || [];
+        if (!exists || exists.length === 0) {
+          store.addQuad(DataFactory.quad(s, p, obj, g));
+        }
+      } else {
+        throw new Error("Unable to persist annotation property: unsupported rdfManager API.");
+      }
+    }
+
+    // Notify manager subscribers so incremental mapping picks up the changes
+    if (typeof (mgr as any).notifyChange === "function") {
+      (mgr as any).notifyChange();
+    }
+
+    // Close dialog after successful persistence
     onOpenChange(false);
   };
 
@@ -415,7 +401,7 @@ export const NodePropertyEditor = ({
       if (!mgrNotify) mgrNotify = (mgrState as any).rdfManager || undefined;
       try {
         if (mgrNotify && typeof (mgrNotify as any).notifyChange === "function") {
-          try { (mgrNotify as any).notifyChange(); } catch (_) { /* ignore */ }
+          try { (mgrNotify as any).notifyChange(); } catch (_) { /* ignore notify errors */ }
         }
       } catch (_) { /* ignore notify errors */ }
     } catch (_) { /* ignore */ }

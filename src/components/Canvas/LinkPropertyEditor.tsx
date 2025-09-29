@@ -14,6 +14,8 @@ import {
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { shortLocalName } from '../../utils/termUtils';
 import { rdfManager as fallbackRdfManager } from '../../utils/rdfManager';
+// React Flow selection hook - allows editor to fallback to RF selection when no props provided
+import { useOnSelectionChange } from '@xyflow/react';
 
 interface LinkPropertyEditorProps {
   open: boolean;
@@ -95,13 +97,41 @@ export const LinkPropertyEditor = ({
     }
   }, [computedAllObjectProperties]);
 
+  // Subscribe to React Flow selection when caller did not provide explicit linkData.
+  const [selectedEdgeFromRF, setSelectedEdgeFromRF] = useState<any | null>(null);
+  try {
+    // useOnSelectionChange expects an options object; provide an onChange callback.
+    useOnSelectionChange({
+      onChange: (selection: any) => {
+        try {
+          const selEdges = Array.isArray(selection?.edges) ? selection.edges : [];
+          const edge = selEdges.length === 1 ? selEdges[0] : null;
+
+          // Avoid redundant state updates: only update if the selected edge identity changed.
+          const prevId = selectedEdgeFromRF && (selectedEdgeFromRF.id || selectedEdgeFromRF.key) ? (selectedEdgeFromRF.id || selectedEdgeFromRF.key) : null;
+          const edgeId = edge && (edge.id || edge.key) ? (edge.id || edge.key) : null;
+          if (edgeId !== prevId) {
+            setSelectedEdgeFromRF(edge);
+          }
+
+          // Mirror RF selection into dialog open state only when it would change the open prop.
+          const shouldOpen = Boolean(edge);
+          if (!linkData && typeof onOpenChange === 'function' && shouldOpen !== open) {
+            try { onOpenChange(shouldOpen); } catch (_) {}
+          }
+        } catch (_) { /* ignore per-callback */ }
+      },
+    });
+  } catch (_) { /* ignore hook failures outside provider */ }
+
   useEffect(() => {
+    const candidate = linkData || selectedEdgeFromRF || {};
     const resolved =
-      (linkData &&
-        (linkData.data?.propertyUri ||
-          linkData.data?.propertyType ||
-          linkData.propertyUri ||
-          linkData.propertyType)) ||
+      (candidate &&
+        (candidate.data?.propertyUri ||
+          candidate.data?.propertyType ||
+          candidate.propertyUri ||
+          candidate.propertyType)) ||
       '';
     const resolvedStr = String(resolved || '');
     // Only update local state if the resolved value actually differs to avoid redundant setState loops.
@@ -109,9 +139,7 @@ export const LinkPropertyEditor = ({
       setSelectedProperty(resolvedStr);
     }
   }, [
-    // Re-run when the dialog is opened or when linkData identity/fields change.
-    // Avoid including `selectedProperty` here because setSelectedProperty updates would
-    // re-trigger this effect and can contribute to an update loop.
+    // Re-run when the dialog is opened or when linkData identity/fields change or RF selection changes.
     open,
     linkData?.id,
     linkData?.key,
@@ -119,6 +147,7 @@ export const LinkPropertyEditor = ({
     linkData?.propertyType,
     linkData?.data?.propertyUri,
     linkData?.data?.propertyType,
+    selectedEdgeFromRF,
   ]);
 
   // If the editor opens and there is no selectedProperty yet, but available properties exist,

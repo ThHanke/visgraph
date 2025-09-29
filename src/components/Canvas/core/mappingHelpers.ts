@@ -464,24 +464,12 @@ export function mapQuadsToDiagram(
       // keep label field for backward compatibility: prefer rdfs:label, otherwise short local name
       label: info.label || shortLocalName(iri),
       // Presentation hints (compute prefixed form / palette color when a registry/palette is provided in options)
-      displayPrefixed: (() => {
-        try {
-          const pref = toPrefixed(
+      displayPrefixed: toPrefixed(
             iri,
             options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
             options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
             (options as any).registry
-          );
-          try {
-            const reg = (options && (options as any).registry) || undefined;
-            const regCount = Array.isArray(reg) ? reg.length : reg && typeof reg === "object" ? Object.keys(reg).length : 0;
-            console.debug("[VG_DEBUG] mapQuadsToDiagram.displayPrefixed", { iri, pref, regCount });
-          } catch (_) { /* ignore */ void 0; }
-          return pref;
-        } catch (_) {
-          return iri;
-        }
-      })(),
+          ),
       // displayShort: short/local name (always available)
       displayShort: shortLocalName(iri),
       // displayClassType: prefixed form for the classType (computed here so UI can use it directly)
