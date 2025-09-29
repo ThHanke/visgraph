@@ -773,11 +773,56 @@ const KnowledgeCanvas: React.FC = () => {
       // Provide optional registry & palette when available so the mapper can compute prefixed
       // display forms and palette colors deterministically.
       const translateQuadsToDiagram = (quads: any[]) => {
-        const registry = getRdfManagerRef.current && getRdfManagerRef.current();
+        // Prefer using the persisted namespace registry from the ontology store when available.
+        // This provides the mapper with the authoritative prefixes/colors used by the rest of the app.
+        let registry: any = undefined;
+        try {
+          if (typeof useOntologyStore === "function" && typeof (useOntologyStore as any).getState === "function") {
+            try {
+              registry = (useOntologyStore as any).getState().namespaceRegistry;
+            } catch (_) {
+              registry = undefined;
+            }
+          }
+        } catch (_) {
+          registry = undefined;
+        }
+
+        // If no persisted registry is available yet, attempt to derive one from the RDF manager.
+        // This avoids a race where the mapper runs before namespaceRegistry is persisted into the store.
+        try {
+          if ((!registry || (Array.isArray(registry) && registry.length === 0)) && typeof getRdfManager === "function") {
+            try {
+              const mgrLocal = getRdfManager && typeof getRdfManager === "function" ? getRdfManager() : undefined;
+              if (mgrLocal && typeof (mgrLocal as any).getNamespaces === "function") {
+                try {
+                  // Lazy import of buildRegistryFromManager to avoid circular dependency issues in some test setups.
+                  // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment
+                  const { buildRegistryFromManager } = require("../../utils/namespaceRegistry");
+                  const derived = buildRegistryFromManager(mgrLocal);
+                  if (Array.isArray(derived) && derived.length > 0) registry = derived;
+                } catch (_) {
+                  // fall back to undefined
+                }
+              }
+            } catch (_) { /* ignore derive failures */ }
+          }
+        } catch (_) { /* ignore overall */ }
+
+        try {
+          // Instrumentation: log registry snapshot and fat-map sizes so we can trace missing prefixes.
+          try {
+            const regCount = Array.isArray(registry) ? registry.length : registry && typeof registry === "object" ? Object.keys(registry).length : 0;
+            const sample = Array.isArray(registry) ? (registry as any[]).slice(0,6) : registry && typeof registry === "object" ? Object.entries(registry).slice(0,6) : registry;
+            console.debug("[VG_DEBUG] translateQuadsToDiagram registry snapshot", { regCount, sample, availablePropertiesCount: Array.isArray(availablePropertiesSnapshot) ? availablePropertiesSnapshot.length : 0, availableClassesCount: Array.isArray(availableClasses) ? availableClasses.length : 0 });
+          } catch (_) {}
+        } catch (_) {}
+
         // Cast options to any to allow passing optional registry/palette without tightening mapper
         return mapQuadsToDiagram(quads, ({
           predicateKind: predicateClassifier,
           availableProperties: availablePropertiesSnapshot,
+          availableClasses: availableClasses,
           registry,
           palette: palette as any,
         } as any));
@@ -834,14 +879,26 @@ const KnowledgeCanvas: React.FC = () => {
         // Nothing to map: keep existing canvas state (do not wipe)
         // Use an empty diagram to simplify downstream code paths.
         diagram = { nodes: [], edges: [] };
-      } else {
-        try {
-          diagram = translateQuadsToDiagram(dataQuads);
-        } catch (e) {
-          try { console.error("[VG] KnowledgeCanvas: incremental quad mapping failed", e); } catch (_) {}
-          diagram = { nodes: [], edges: [] };
+        } else {
+          try {
+            diagram = translateQuadsToDiagram(dataQuads);
+            // Diagnostic: snapshot mapper output (sample)
+            try {
+              const sample = (diagram && Array.isArray(diagram.nodes) ? (diagram.nodes as any[]).slice(0,10) : []).map((n: any) => ({
+                id: n && n.id,
+                displayPrefixed: n && n.data ? n.data.displayPrefixed : undefined,
+                displayclassType: n && n.data ? n.data.displayclassType : undefined,
+                rdfTypes: n && n.data ? n.data.rdfTypes : undefined,
+                isTBox: n && n.data ? n.data.isTBox : undefined,
+              }));
+              console.debug("[VG_DEBUG] KnowledgeCanvas.mapperOutput.sample", sample);
+              // Also log any specific failing candidates if present in this batch (example keys)
+            } catch (_) { /* ignore debug failures */ }
+          } catch (e) {
+            try { console.error("[VG] KnowledgeCanvas: incremental quad mapping failed", e); } catch (_) {}
+            diagram = { nodes: [], edges: [] };
+          }
         }
-      }
       
       const mappedNodes: RFNode<NodeData>[] = (diagram && diagram.nodes) || [];
       const mappedEdges: RFEdge<LinkData>[] = (diagram && diagram.edges) || [];
@@ -854,6 +911,17 @@ const KnowledgeCanvas: React.FC = () => {
 
       // Apply blacklist filtering so reserved/core RDF terms are not rendered as nodes.
       try {
+        // Diagnostic: which nodes would be considered for blacklist filtering (sample)
+        try {
+          const candidates = (enrichedNodes || []).slice(0, 20).map((n: any) => {
+            try {
+              const iri = (n && n.data && (n.data.iri || n.id)) ? String((n.data && (n.data.iri || n.id))) : "";
+              return { id: n && n.id, iri, blacklisted: isBlacklistedIri(iri) };
+            } catch (_) { return null; }
+          }).filter(Boolean);
+          console.debug("[VG_DEBUG] KnowledgeCanvas.blacklist.candidates", { count: (enrichedNodes || []).length, sample: candidates });
+        } catch (_) { /* ignore */ }
+
         if (!ignoreBlacklistRef.current) {
           enrichedNodes = (enrichedNodes || []).filter((n) => {
             try {
@@ -941,6 +1009,13 @@ const KnowledgeCanvas: React.FC = () => {
                 // Do NOT preserve selection when replacing node data; clear any selected flag so incoming data never keeps UI selection.
                 try { try { delete (replaced as any).selected; } catch (_) { /* ignore */ } } catch (_) {}
                 try { if ((existing as any).hidden) (replaced as any).hidden = (existing as any).hidden; } catch (_) {}
+                // Diagnostic: log before/after for a small sample to detect data loss
+                try {
+                  const sampleId = id;
+                  const before = { id: existing.id, data: existing.data && ((existing.data as any).displayPrefixed || (existing.data as any).displayclassType || (existing.data as any).rdfTypes) };
+                  const after = { id: replaced.id, data: (replaced.data as any) && { displayPrefixed: (replaced.data as any).displayPrefixed, displayclassType: (replaced.data as any).displayclassType, rdfTypes: (replaced.data as any).rdfTypes, isTBox: (replaced.data as any).isTBox } };
+                  console.debug("[VG_DEBUG] KnowledgeCanvas.replaceNode.beforeAfter", { sampleId, before, after });
+                } catch (_) { /* ignore debug failures */ }
                 resultById.set(id, replaced);
               } else {
                 // New node: add as-is but do not assign or modify position (leave m.position if present).
@@ -948,6 +1023,10 @@ const KnowledgeCanvas: React.FC = () => {
                 // Ensure id and type are present
                 newNode.id = id;
                 newNode.type = newNode.type || "ontology";
+                try {
+                  // Diagnostic: log newly created node data sample
+                  console.debug("[VG_DEBUG] KnowledgeCanvas.newNode", { id, data: (newNode.data as any) && { displayPrefixed: (newNode.data as any).displayPrefixed, displayclassType: (newNode.data as any).displayclassType, rdfTypes: (newNode.data as any).rdfTypes, isTBox: (newNode.data as any).isTBox } });
+                } catch (_) {}
                 resultById.set(id, newNode as RFNode<NodeData>);
               }
             } catch (_) {
