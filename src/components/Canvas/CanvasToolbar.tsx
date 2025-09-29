@@ -69,6 +69,8 @@ interface CanvasToolbarProps {
   layoutEnabled?: boolean;
   // callback when the layoutEnabled toggle changes
   onToggleLayoutEnabled?: (enabled: boolean) => void;
+  onOpenNodeEditor?: (id?: string | null) => void;
+  onOpenLinkEditor?: (id?: string | null) => void;
   // New: allow CanvasToolbar to display programmatic layout application (control removed)
   availableEntities: Array<{
    iri: string;

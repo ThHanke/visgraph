@@ -4,6 +4,7 @@
  */
 
 import { LiteralProperty, AnnotationPropertyValue, EntityType, RDFType } from './ontology';
+import type { Node as RFNodeType, Edge as RFEdgeType } from '@xyflow/react';
 
 /**
  * Represents a node in the diagram payload used across the app.
@@ -198,14 +199,6 @@ export interface CanvasState {
   loadingProgress: number;
   /** Loading message */
   loadingMessage: string;
-  /** Selected node data */
-  selectedNode: NodeData | null;
-  /** Selected link data */
-  selectedLink: LinkData | null;
-  /** Whether node editor is open */
-  showNodeEditor: boolean;
-  /** Whether link editor is open */
-  showLinkEditor: boolean;
   /** Whether reasoning report is open */
   showReasoningReport: boolean;
 }
@@ -220,17 +213,17 @@ export interface CanvasActions {
   toggleLegend: () => void;
   /** Set loading state */
   setLoading: (loading: boolean, progress?: number, message?: string) => void;
-  /** Set selected node (optionally open editor) — accepts any to accommodate partial node payloads */
-  setSelectedNode: (node: any, openEditor?: boolean) => void;
-  /** Set selected link (optionally open editor) — accepts any to accommodate partial link payloads */
-  setSelectedLink: (link: any, openEditor?: boolean) => void;
-  /** Toggle node editor */
-  toggleNodeEditor: (show: boolean) => void;
-  /** Toggle link editor */
-  toggleLinkEditor: (show: boolean) => void;
   /** Toggle reasoning report */
   toggleReasoningReport: (show: boolean) => void;
 }
+
+/**
+ * React Flow derived node/edge aliases carrying our domain payloads.
+ * Use AppNode/AppEdge across the codebase to ensure the runtime shape matches
+ * React Flow's Node/Edge types while preserving our NodeData/LinkData payloads.
+ */
+export type AppNode = RFNodeType<NodeData>;
+export type AppEdge = RFEdgeType<LinkData>;
 
 /**
  * Diagram configuration options

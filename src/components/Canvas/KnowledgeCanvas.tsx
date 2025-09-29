@@ -137,6 +137,12 @@ const KnowledgeCanvas: React.FC = () => {
   // Palette from RDF manager — used to compute colors without rebuilding palettes.
   const palette = usePaletteFromRdfManager();
 
+  // Local editor state driven by React Flow events (node/edge payloads come from RF state).
+  const [nodeEditorOpen, setNodeEditorOpen] = useState<boolean>(false);
+  const [linkEditorOpen, setLinkEditorOpen] = useState<boolean>(false);
+  const [selectedNodePayload, setSelectedNodePayload] = useState<any | null>(null);
+  const [selectedLinkPayload, setSelectedLinkPayload] = useState<any | null>(null);
+
 
   // Debug local visibility changes so we can confirm whether local state flips when events fire.
 
@@ -564,48 +570,34 @@ const KnowledgeCanvas: React.FC = () => {
         // Clear any selected node/link and close editors when switching view modes.
         // This prevents stale selection from blocking edge creation or leaving editors open
         // for nodes that are no longer visible in the chosen view.
-        try {
-          if (canvasActions && typeof canvasActions.setSelectedNode === "function") {
-            canvasActions.setSelectedNode(null as any, false);
-          }
-        } catch (_) { /* ignore */ }
-        try {
-          if (canvasActions && typeof canvasActions.setSelectedLink === "function") {
-            canvasActions.setSelectedLink(null as any, false);
-          }
-        } catch (_) { /* ignore */ }
-        try { if (canvasActions && typeof canvasActions.toggleNodeEditor === "function") canvasActions.toggleNodeEditor(false); } catch (_) {}
-        try { if (canvasActions && typeof canvasActions.toggleLinkEditor === "function") canvasActions.toggleLinkEditor(false); } catch (_) {}
+        
 
         // Also clear any per-node / per-edge `selected` flags immediately to ensure
         // no node or edge remains selected after a view-mode switch.
-        try {
-          setNodes((prev) =>
-            (prev || []).map((n) => {
-              try {
-                const copy = { ...(n as RFNode<NodeData>) } as RFNode<NodeData>;
-                try { delete (copy as any).selected; } catch (_) { /* ignore */ }
-                return copy;
-              } catch (_) {
-                return n;
-              }
-            }),
-          );
-        } catch (_) { /* ignore node-clear errors */ }
-
-        try {
-          setEdges((prev) =>
-            (prev || []).map((e) => {
-              try {
-                const copy = { ...(e as RFEdge<LinkData>) } as RFEdge<LinkData>;
-                try { delete (copy as any).selected; } catch (_) { /* ignore */ }
-                return copy;
-              } catch (_) {
-                return e;
-              }
-            }),
-          );
-        } catch (_) { /* ignore edge-clear errors */ }
+        setNodes((prev) =>
+          (prev || []).map((n) => {
+            try {
+              const copy = { ...(n as RFNode<NodeData>) } as RFNode<NodeData>;
+              try { delete (copy as any).selected; } catch (_) { /* ignore */ }
+              return copy;
+            } catch (_) {
+              return n;
+            }
+          }),
+        );
+        
+        setEdges((prev) =>
+          (prev || []).map((e) => {
+            try {
+              const copy = { ...(e as RFEdge<LinkData>) } as RFEdge<LinkData>;
+              try { delete (copy as any).selected; } catch (_) { /* ignore */ }
+              return copy;
+            } catch (_) {
+              return e;
+            }
+          }),
+        );
+      
       } catch (_) {
         /* ignore view-mode change side-effects */
       }
@@ -860,16 +852,12 @@ const KnowledgeCanvas: React.FC = () => {
       
       const mappedNodes: RFNode<NodeData>[] = (diagram && diagram.nodes) || [];
       const mappedEdges: RFEdge<LinkData>[] = (diagram && diagram.edges) || [];
-      
 
-      let enrichedNodes = mappedNodes;
-      const enrichedEdges = mappedEdges;
-
-
-      // Apply blacklist filtering so reserved/core RDF terms are not rendered as nodes.
+      // Apply blacklist filtering first (keep mapper authoritative)
+      let filteredNodes = mappedNodes;
       try {
         if (!ignoreBlacklistRef.current) {
-          enrichedNodes = (enrichedNodes || []).filter((n) => {
+          filteredNodes = (mappedNodes || []).filter((n) => {
             try {
               const iri = (n && n.data && (n.data.iri || n.id)) ? String((n.data && (n.data.iri || n.id))) : "";
               return !isBlacklistedIri(iri);
@@ -878,110 +866,86 @@ const KnowledgeCanvas: React.FC = () => {
             }
           });
         } else {
-          // Dev mode: blacklist is temporarily disabled — keep all nodes.
           try { console.debug("[VG] Ignoring blacklist for this autoload/mapping pass"); } catch (_) {}
         }
       } catch (_) {
-        // ignore blacklist filter failures
+        /* ignore blacklist failures */
       }
 
-      // If this is the first meaningful mapping after mount / autoload (previous node count was 0)
-      // and we have nodes now, attempt a forced layout so autoloads reposition nodes automatically.
+      // Normalized nodes array used throughout mapping + layout decisions
+      const normalizedNodes = filteredNodes || mappedNodes || [];
+
+      // Apply mapper output directly — simple and authoritative approach
+      try {
+        // Defensive normalization: ensure every node has a numeric position before calling setNodes.
+        // This avoids runtime exceptions in React Flow internals which expect position.x/y to be numbers.
+        const normalizedNodes = filteredNodes || mappedNodes || [];
+        const safeNodes = (normalizedNodes || []).map((n: any) => {
+          try {
+            const copy: any = { ...(n || {}) };
+            if (!copy.position || typeof (copy.position as any).x !== "number" || typeof (copy.position as any).y !== "number") {
+              copy.position = { x: 0, y: 0 };
+            }
+            // Ensure id exists
+            if (!copy.id) {
+              copy.id = String((copy.data && (copy.data.key || copy.data.iri)) || Math.random().toString(36).slice(2));
+            }
+            return copy as RFNode<NodeData>;
+          } catch (_) {
+            return { ...(n || {}), position: { x: 0, y: 0 } } as RFNode<NodeData>;
+          }
+        });
+        setNodes(safeNodes);
+      } catch (_) { /* ignore setNodes failure */ }
+      try { setEdges((mappedEdges || []) as RFEdge<LinkData>[]); } catch (_) { /* ignore setEdges failure */ }
+
+      // Compute whether this autoload should force layout (first meaningful mapping)
       let forceLayoutDueToAutoload = false;
       try {
         const prevCount = typeof prevNodeCountRef !== "undefined" ? prevNodeCountRef.current : 0;
         const hasNewNodes = Array.isArray(mappedNodes) && mappedNodes.length > 0;
         if (!loadTriggerRef.current && prevCount === 0 && hasNewNodes) {
           forceLayoutDueToAutoload = true;
-          // mark loadTrigger so repeated mapping passes don't repeatedly force layout
-          try { loadTriggerRef.current = true; } catch (_) { /* ignore */ }
+          try { loadTriggerRef.current = true; } catch (_) {}
         }
       } catch (_) { /* ignore */ }
+      
+      // Build structural fingerprint for layout decisions using normalizedNodes/mappedEdges
+      try {
+        const nodeIds = (Array.isArray(normalizedNodes) ? normalizedNodes.map((n) => String(n.id)) : []).sort().join(',');
+        const edgeIds = (Array.isArray(mappedEdges) ? mappedEdges.map((e) => String(e.id)) : []).sort().join(',');
+        const newStructFp = `N:${nodeIds}|E:${edgeIds}`;
 
-      
-      
-      // Ensure every mapped node has a position and compute visibility strictly from isTBox & viewMode.
-      setNodes((prev) => {
-        try {
-          const prevById = new Map<string, RFNode<NodeData>>();
-          try { (prev || []).forEach((n: any) => prevById.set(String(n.id), n)); } catch (_) { /* ignore */ }
-          // Default missing positions and preserve runtime flags where present.
-          const resultNodes: RFNode<NodeData>[] = (enrichedNodes || []).map((m: any) => {
-            try {
-              const id = String((m && m.id) || "");
-              const prevNode = prevById.get(id);
-              const nodeCopy: RFNode<NodeData> = { ...(m as RFNode<NodeData>) };
-              // preserve previous position if available
-              try {
-                if (prevNode && prevNode.position) nodeCopy.position = prevNode.position;
-                if (!nodeCopy.position || typeof (nodeCopy.position as any).x !== "number" || typeof (nodeCopy.position as any).y !== "number") {
-                  nodeCopy.position = { x: 0, y: 0 };
-                }
-              } catch (_) { nodeCopy.position = { x: 0, y: 0 }; }
-              // preserve runtime __rf bag if present
-              try { if (prevNode && (prevNode as any).__rf) (nodeCopy as any).__rf = (prevNode as any).__rf; } catch (_) {}
-              // Clear selection flag
-              try { delete (nodeCopy as any).selected; } catch (_) {}
-              // Compute hidden strictly from isTBox and viewMode
-              try {
-                const isT = !!(nodeCopy.data && (nodeCopy.data as any).isTBox);
-                const visibleFlag = nodeCopy.data && typeof (nodeCopy.data as any).visible === "boolean" ? (nodeCopy.data as any).visible : true;
-                const shouldBeVisible = visibleFlag && (viewMode === "tbox" ? isT : !isT);
-                nodeCopy.hidden = !shouldBeVisible;
-              } catch (_) { /* ignore */ }
-              return nodeCopy;
-            } catch (_) { return null as any; }
-          }).filter(Boolean) as RFNode<NodeData>[];
-          return resultNodes;
-        } catch (e) {
-          try { console.warn("[VG] KnowledgeCanvas: replace-node-data failed, falling back to previous nodes", e); } catch (_) {}
-          return prev || [];
+        const forced = !!loadTriggerRef.current;
+        const requestedFit = !!loadFitRef.current;
+        if (forced) {
+          try { loadTriggerRef.current = false; } catch (_) {}
         }
-      });
 
-      // Replace edges state but keep all mapper-produced edges; set visibility based on visible node set and propertyPrefixed blacklist.
-      setEdges(() => {
-        try {
-          // Build visible node id set from enrichedNodes (nodes that passed blacklist and isTBox/viewMode)
-          const visibleNodeIds = new Set<string>();
+        const shouldRunLayout = forced || lastStructureFingerprintRef.current !== newStructFp || requestedFit;
+        if (shouldRunLayout) {
+          lastStructureFingerprintRef.current = newStructFp;
           try {
-            for (const n of (enrichedNodes || [])) {
+            if (requestedFit) {
               try {
-                const id = String(n && n.id ? n.id : "");
-                if (!id) continue;
-                const isT = !!(n.data && (n.data as any).isTBox);
-                const visibleFlag = n.data && typeof (n.data as any).visible === "boolean" ? (n.data as any).visible : true;
-                const shouldBeVisible = visibleFlag && (viewMode === "tbox" ? isT : !isT);
-                if (shouldBeVisible) visibleNodeIds.add(id);
-              } catch (_) { /* ignore per-node */ }
-            }
-          } catch (_) { /* ignore */ }
-
-          const result: RFEdge<LinkData>[] = (enrichedEdges || []).map((e: any) => {
-            try {
-              const src = String(e.source || e.data && (e.data.from || e.data.source) || "");
-              const tgt = String(e.target || e.data && (e.data.to || e.data.target) || "");
-              let hidden = false;
-              // hide if either endpoint is not in the visible node set
-              if (!visibleNodeIds.has(src) || !visibleNodeIds.has(tgt)) hidden = true;
-              // hide if predicate prefix is blacklisted
+                await doLayout(normalizedNodes, mappedEdges, true);
+              } catch (_) { /* ignore layout errors */ }
+              try { await new Promise((r) => setTimeout(r, 200)); } catch (_) {}
               try {
-                const pref = e && e.data && (e.data.propertyPrefixed || "");
-                if (pref && typeof pref === "string" && pref.includes(':')) {
-                  const prefix = String(pref).split(':',1)[0];
-                  if (_blacklistedPrefixes.has(prefix)) hidden = true;
+                if (reactFlowInstance.current && typeof reactFlowInstance.current.fitView === "function") {
+                  try { reactFlowInstance.current.fitView({ padding: 0.12 }); } catch (_) {}
                 }
-              } catch (_) { /* ignore predicate check */ }
-              return hidden === !!(e && (e.hidden)) ? e : { ...e, hidden };
-            } catch (_) { return e; }
-          });
-
-          return result;
-        } catch (e) {
-          try { console.warn('[VG] KnowledgeCanvas: replace-edges failed, falling back to enrichedEdges', e); } catch (_) {}
-          return enrichedEdges || [];
+              } catch (_) {}
+              try { loadFitRef.current = false; } catch (_) {}
+            } else {
+              try { void doLayout(normalizedNodes, mappedEdges, !!forced); } catch (_) {}
+            }
+          } catch (_) { /* ignore scheduling errors */ }
         }
-      });
+      } catch (_) {
+        try { void doLayout(normalizedNodes, mappedEdges, !!loadTriggerRef.current); } catch (_) {}
+        try { loadTriggerRef.current = false; } catch (_) {}
+      }
 
       // Node/edge enrichment removed from KnowledgeCanvas — mappingHelpers and editors are authoritative.
       // Trigger layout (async) only when structure changed or when a programmatic load forced it.
@@ -1043,16 +1007,15 @@ const KnowledgeCanvas: React.FC = () => {
       try { console.debug('[VG] canvas.rebuild.end'); } catch (_) {}
       // Clear any UI selection after a mapping pass so incoming data never preserves selection.
       try {
-        if (canvasActions && typeof canvasActions.setSelectedNode === "function") {
-          try { canvasActions.setSelectedNode(null as any, false); } catch (_) { /* ignore */ }
-        }
-        if (canvasActions && typeof canvasActions.toggleNodeEditor === "function") {
-          try { canvasActions.toggleNodeEditor(false); } catch (_) { /* ignore */ }
-        }
+        try {
+          // Clear local editor state instead of using store-based editors
+          try { setSelectedNodePayload(null); } catch (_) {}
+          try { setNodeEditorOpen(false); } catch (_) {}
+          try { setSelectedLinkPayload(null); } catch (_) {}
+          try { setLinkEditorOpen(false); } catch (_) {}
+        } catch (_) { /* ignore */ }
 
         // Also ensure any per-node / per-edge `selected` flags in React Flow state are cleared.
-        // This guarantees switching view modes (ABox <-> TBox) or mapping passes will not leave
-        // residual selection on nodes/edges that remain in state.
         try {
           setNodes((prev) =>
             (prev || []).map((n) => {
@@ -1457,11 +1420,13 @@ const KnowledgeCanvas: React.FC = () => {
 
   const onNodeDoubleClick = useCallback(
     (event: any, node: any) => {
-      // Pass the full React Flow node object to the editor so it can use runtime fields
-      // and the canonical node.data without doing any store lookups here.
-      canvasActions.setSelectedNode(node as any, true);
+      try {
+        // Open node editor with the full RF node payload
+        setSelectedNodePayload(node || null);
+        setNodeEditorOpen(true);
+      } catch (_) { /* ignore */ }
     },
-    [canvasActions],
+    [],
   );
 
   const onEdgeDoubleClick = useCallback(
@@ -1539,13 +1504,18 @@ const KnowledgeCanvas: React.FC = () => {
         } catch (_) { /* ignore */ }
 
         try {
-          canvasActions.setSelectedLink(selectedLinkPayload as any, true);
+          // Open link editor with the composed payload (create/edit)
+          setSelectedLinkPayload(selectedLinkPayload || edge || null);
+          setLinkEditorOpen(true);
         } catch (_) {
-          canvasActions.setSelectedLink(edge as any, true);
+          setSelectedLinkPayload(edge || null);
+          setLinkEditorOpen(true);
         }
       } catch (e) {
         try {
-          canvasActions.setSelectedLink(edge.data || edge, true);
+          // Fallback: open link editor with the edge payload instead of using removed canvasActions API
+          try { setSelectedLinkPayload(edge && edge.data ? edge.data : edge); } catch (_) {}
+          try { setLinkEditorOpen(true); } catch (_) {}
         } catch (_) { /* ignore */ }
       }
     },
@@ -1647,7 +1617,7 @@ const KnowledgeCanvas: React.FC = () => {
         },
       };
 
-      canvasActions.setSelectedLink(selectedEdgeForEditor as any, true);
+      try { setSelectedLinkPayload(selectedEdgeForEditor as any); setLinkEditorOpen(true); } catch (_) {}
     },
     [nodes, canvasActions, availableProperties, loadedOntologies],
   );
@@ -1772,11 +1742,10 @@ const KnowledgeCanvas: React.FC = () => {
   // Save handlers used by the editors — persist to urn:vg:data
   const handleSaveNodeProperties = useCallback(
     async (properties: any[]) => {
-      if (!canvasState.selectedNode) return;
-      const entityUri =
-        (canvasState.selectedNode as any)?.iri ||
-        (canvasState.selectedNode as any)?.iri ||
-        (canvasState.selectedNode as any)?.key;
+    if (!selectedNodePayload) return;
+    const entityUri =
+        (selectedNodePayload as any)?.iri ||
+        (selectedNodePayload as any)?.key;
       if (!entityUri) return;
       const annotationProperties = (properties || []).map((p: any) => ({
         property: p.key || p.property,
@@ -1788,7 +1757,7 @@ const KnowledgeCanvas: React.FC = () => {
         // Update node locally
         setNodes((nds) =>
           nds.map((n) => {
-            if (n.id === (canvasState.selectedNode as any)?.key) {
+            if (n.id === (selectedNodePayload as any)?.key) {
               return {
                 ...n,
                 data: {
@@ -1831,12 +1800,12 @@ const KnowledgeCanvas: React.FC = () => {
         } catch (_) { /* ignore */ }
       }
     },
-    [canvasState.selectedNode, updateNode, setNodes],
+    [selectedNodePayload, updateNode, setNodes],
   );
 
   const handleSaveLinkProperty = useCallback(
     (propertyUri: string, label: string) => {
-      const selected = canvasState.selectedLink;
+      const selected = selectedLinkPayload;
       if (!selected) return;
 
       // Update edge UI state: set both propertyUri and propertyType (legacy) and label
@@ -1933,7 +1902,7 @@ const KnowledgeCanvas: React.FC = () => {
         /* ignore persistence errors */
       }
     },
-    [canvasState.selectedLink, setEdges],
+    [selectedLinkPayload, setEdges],
   );
 
   // --------------------
@@ -2074,10 +2043,10 @@ const KnowledgeCanvas: React.FC = () => {
       {(() => {
         try {
           console.debug('[VG] Render editors', {
-            showNodeEditor: canvasState.showNodeEditor,
-            selectedNode: canvasState.selectedNode && ((canvasState.selectedNode as any).key || (canvasState.selectedNode as any).id) ? ((canvasState.selectedNode as any).key || (canvasState.selectedNode as any).id) : canvasState.selectedNode,
-            showLinkEditor: canvasState.showLinkEditor,
-            selectedLink: canvasState.selectedLink && ((canvasState.selectedLink as any).id || (canvasState.selectedLink as any).key) ? ((canvasState.selectedLink as any).id || (canvasState.selectedLink as any).key) : canvasState.selectedLink,
+            showNodeEditor: nodeEditorOpen,
+            selectedNode: selectedNodePayload && ((selectedNodePayload as any).key || (selectedNodePayload as any).id) ? ((selectedNodePayload as any).key || (selectedNodePayload as any).id) : selectedNodePayload,
+            showLinkEditor: linkEditorOpen,
+            selectedLink: selectedLinkPayload && ((selectedLinkPayload as any).id || (selectedLinkPayload as any).key) ? ((selectedLinkPayload as any).id || (selectedLinkPayload as any).key) : selectedLinkPayload,
           });
         } catch (_) { /* ignore */ }
         return null;
@@ -2101,29 +2070,29 @@ const KnowledgeCanvas: React.FC = () => {
       />
 
       <NodePropertyEditor
-        open={canvasState.showNodeEditor}
+        open={nodeEditorOpen}
         onOpenChange={(open) => {
-          try { canvasActions.toggleNodeEditor(Boolean(open)); } catch (_) {}
+          try { setNodeEditorOpen(Boolean(open)); } catch (_) {}
         }}
-        nodeData={canvasState.selectedNode}
+        nodeData={selectedNodePayload}
         availableEntities={allEntities}
         onSave={(props: any[]) => {
           try { handleSaveNodeProperties(props); } catch (_) {}
-          try { canvasActions.toggleNodeEditor(false); } catch (_) {}
+          try { setNodeEditorOpen(false); } catch (_) {}
         }}
       />
 
       <LinkPropertyEditor
-        open={canvasState.showLinkEditor}
+        open={linkEditorOpen}
         onOpenChange={(open) => {
-          try { canvasActions.toggleLinkEditor(Boolean(open)); } catch (_) {}
+          try { setLinkEditorOpen(Boolean(open)); } catch (_) {}
         }}
-        linkData={canvasState.selectedLink}
+        linkData={selectedLinkPayload}
         sourceNode={linkSourceRef.current}
         targetNode={linkTargetRef.current}
         onSave={(propertyUri: string, label: string) => {
           try { handleSaveLinkProperty(propertyUri, label); } catch (_) {}
-          try { canvasActions.toggleLinkEditor(false); } catch (_) {}
+          try { setLinkEditorOpen(false); } catch (_) {}
         }}
       />
     </div>

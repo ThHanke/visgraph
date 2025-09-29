@@ -8,6 +8,7 @@ import {
 } from "@xyflow/react";
 import { Badge } from "../ui/badge";
 import { getEdgeParams } from "./EdgeParams";
+import type { LinkData } from "../../types/canvas";
 
 /**
  * FloatingEdge
@@ -22,6 +23,7 @@ import { getEdgeParams } from "./EdgeParams";
  */
 const FloatingEdge = memo((props: EdgeProps) => {
   const { id, source, target, markerEnd, style, data } = props;
+  const dataTyped = data as LinkData;
 
 
   const sourceNode = useInternalNode(source);
@@ -58,7 +60,7 @@ const FloatingEdge = memo((props: EdgeProps) => {
   let badgeText = "";
 
   // 1) prefixed property from mapper -> props/data.propertyPrefixed
-  badgeText = String((data as any)?.propertyPrefixed || (props as any)?.label || (data as any)?.label || "").trim();
+  badgeText = String((dataTyped as any)?.propertyPrefixed || (props as any)?.label || (dataTyped as any)?.label || "").trim();
 
   return (
     <>

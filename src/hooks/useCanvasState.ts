@@ -32,11 +32,10 @@ export const useCanvasState = () => {
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState('');
   
-  // Editor states
-  const [selectedNode, setSelectedNode] = useState<NodeData | null>(null);
-  const [selectedLink, setSelectedLink] = useState<LinkData | null>(null);
-  const [showNodeEditor, setShowNodeEditor] = useState(false);
-  const [showLinkEditor, setShowLinkEditor] = useState(false);
+  // Editor / modal states (only store UI flags that are global to the app)
+  // NOTE: selected node/link objects are intentionally NOT stored here. React Flow
+  // is the source of truth for node/edge data; editors will receive node/edge
+  // objects directly from the canvas component.
   const [showReasoningReport, setShowReasoningReport] = useState(false);
 
   /**
@@ -63,86 +62,8 @@ export const useCanvasState = () => {
     setLoadingMessage(message);
   }, []);
 
-  /**
-   * Set the selected node and optionally open the editor
-   * 
-   * @param node - Node data to select (null to deselect)
-   * @param openEditor - Whether to open the node editor
-   */
-  const handleSetSelectedNode = useCallback((
-    node: NodeData | null, 
-    openEditor = false
-  ) => {
-    try { console.debug('[VG] useCanvasState.setSelectedNode called', { node: node && (node as any).iri ? (node as any).iri : node, openEditor }); } catch (_) {}
-    setSelectedNode(node);
-    if (openEditor && node) {
-      try { console.debug('[VG] useCanvasState: opening node editor'); } catch (_) {}
-      try { toast.info('Opening node editor'); } catch (_) {}
-      setShowNodeEditor(true);
-    }
-  }, []);
 
-  /**
-   * Set the selected link and optionally open the editor
-   * 
-   * @param link - Link data to select (null to deselect)
-   * @param openEditor - Whether to open the link editor
-   */
-  const handleSetSelectedLink = useCallback((
-    link: LinkData | null,
-    openEditor = false
-  ) => {
-    try { console.debug('[VG] useCanvasState.setSelectedLink called', { link: link && ((link as any).id || (link as any).key) ? ((link as any).id || (link as any).key) : link, openEditor }); } catch (_) {}
-    // Compare by stable identifier (id or key) rather than object identity to avoid
-    // repeated updates when equivalent objects are recreated during mapping.
-    const incomingId = link ? (String((link as any).id || (link as any).key || "")) : "";
-    const currentId = selectedLink ? (String(((selectedLink as any).id || (selectedLink as any).key || ""))) : "";
 
-    // If identifiers match, avoid re-setting selectedLink to prevent update loops.
-    if (incomingId && incomingId === currentId) {
-      if (openEditor && link && !showLinkEditor) {
-        try { console.debug('[VG] useCanvasState: opening link editor (id match)'); } catch (_) {}
-        setShowLinkEditor(true);
-      }
-      return;
-    }
-
-    setSelectedLink(link);
-
-    if (openEditor && link) {
-      try { console.debug('[VG] useCanvasState: opening link editor'); } catch (_) {}
-      try { toast.info('Opening link editor'); } catch (_) {}
-      if (!showLinkEditor) setShowLinkEditor(true);
-    }
-  }, [showLinkEditor, selectedLink]);
-
-  /**
-   * Toggle node editor visibility
-   * 
-   * @param show - Whether to show the editor
-   */
-  const toggleNodeEditor = useCallback((show: boolean) => {
-    try { console.debug('[VG] useCanvasState.toggleNodeEditor', { show }); } catch (_) {}
-    setShowNodeEditor(show);
-    // Clear selection when closing editor
-    if (!show) {
-      setSelectedNode(null);
-    }
-  }, []);
-
-  /**
-   * Toggle link editor visibility
-   * 
-   * @param show - Whether to show the editor
-   */
-  const toggleLinkEditor = useCallback((show: boolean) => {
-    try { console.debug('[VG] useCanvasState.toggleLinkEditor', { show }); } catch (_) {}
-    setShowLinkEditor(show);
-    // Clear selection when closing editor
-    if (!show) {
-      setSelectedLink(null);
-    }
-  }, []);
 
   /**
    * Toggle reasoning report visibility
@@ -170,10 +91,9 @@ export const useCanvasState = () => {
     isLoading,
     loadingProgress,
     loadingMessage,
-    selectedNode,
-    selectedLink,
-    showNodeEditor,
-    showLinkEditor,
+    // Note: selected node / selected link and editor-open flags are intentionally
+    // excluded from the centralized canvas state. React Flow holds node/edge objects,
+    // and KnowledgeCanvas manages editor visibility locally.
     showReasoningReport,
   };
 
@@ -182,10 +102,8 @@ export const useCanvasState = () => {
     setViewMode,
     toggleLegend,
     setLoading: handleSetLoading,
-    setSelectedNode: handleSetSelectedNode,
-    setSelectedLink: handleSetSelectedLink,
-    toggleNodeEditor,
-    toggleLinkEditor,
+    // Removed setSelectedNode / setSelectedLink / toggleNodeEditor / toggleLinkEditor
+    // to keep node/edge payloads exclusively in React Flow state.
     toggleReasoningReport,
   };
 
