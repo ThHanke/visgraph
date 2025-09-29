@@ -30,6 +30,7 @@ import {
   fallback,
   incr,
 } from "../utils/startupDebug";
+import { buildRegistryFromManager, persistRegistryToStore } from "../utils/namespaceRegistry";
 
 /**
  * Manages RDF data with proper store operations
@@ -635,7 +636,37 @@ export class RDFManager {
     const finalize = (prefixes?: Record<string, string>) => {
       if (prefixes) {
         this.namespaces = { ...this.namespaces, ...prefixes };
+        // Emit an immediate, developer-friendly log whenever parsed prefixes are merged.
+        // Use both console.debug (always visible in devtools) and the existing debug helpers
+        // so logs show up in whatever structured debug sink the app uses.
+          try {
+          console.info("[VG_NAMESPACES_MERGED] mergedPrefixes:", prefixes, "namespaces:", this.namespaces);
+        } catch (_) { /* ignore console failures */ }
+        try {
+          debug("rdf.namespaces.updated", { namespaces: { ...(this.namespaces || {}) } });
+        } catch (_) { /* ignore debug helper failures */ }
+        try {
+          debugLog("rdf.namespaces.merged", { mergedPrefixes: prefixes, namespaces: { ...(this.namespaces || {}) } });
+        } catch (_) { /* ignore structured log failures */ }
+        // expose to window for quick inspection in dev tooling
+        try {
+          if (typeof window !== "undefined") {
+            (window as any).__VG_NAMESPACES = { ...(window as any).__VG_NAMESPACES || {}, ...(this.namespaces || {}) };
+          }
+        } catch (_) { /* ignore */ }
+        // Persist a canonical registry into the ontology store so UI components (legend, prefixed display)
+        // receive the updated namespace registry immediately after RDF loads.
+        try {
+          persistRegistryToStore(buildRegistryFromManager(this));
+        } catch (_) { /* ignore persist failures */ }
       }
+      // Always emit a visible, developer-friendly snapshot and persist the canonical registry even when no prefixes were parsed.
+      try {
+        console.info("[VG_NAMESPACES_UPDATED]", { namespaces: { ...(this.namespaces || {}) } });
+      } catch (_) { /* ignore */ }
+      try { debug("rdf.namespaces.updated", { namespaces: { ...(this.namespaces || {}) } }); } catch (_) {}
+      try { debugLog("rdf.namespaces.merged", { mergedPrefixes: prefixes || {}, namespaces: { ...(this.namespaces || {}) } }); } catch (_) {}
+      try { persistRegistryToStore(buildRegistryFromManager(this)); } catch (_) {}
 
       const newCount = this.store.getQuads(null, null, null, null).length;
       const added = Math.max(0, newCount - initialCount);
@@ -1723,6 +1754,27 @@ export class RDFManager {
 
       // Always set/overwrite the mapping so callers can update URIs for a prefix.
       this.namespaces[prefix] = uri;
+
+      // Developer-facing logs: always emit a console.debug so developers see namespace
+      // activity when loading RDF (including autoload via URL param at startup).
+      try {
+        console.info("[VG_NAMESPACE_ADDED]", { prefix, uri, namespaces: { ...(this.namespaces || {}) } });
+      } catch (_) { /* ignore console failures */ }
+
+      // Attempt to send structured debug events through existing helpers where available.
+      try { debug("rdf.namespaces.updated", { prefix, uri, namespaces: { ...(this.namespaces || {}) } }); } catch (_) {}
+      try { debugLog("rdf.namespaces.updated", { prefix, uri, namespaces: { ...(this.namespaces || {}) } }); } catch (_) {}
+
+      // Also expose to window for quick inspection in dev tooling
+      try {
+        if (typeof window !== "undefined") {
+          (window as any).__VG_NAMESPACES = { ...(window as any).__VG_NAMESPACES || {}, ...(this.namespaces || {}) };
+        }
+      } catch (_) { /* ignore */ }
+      // Persist registry so consumers relying on the ontology store receive updates immediately.
+      try {
+        persistRegistryToStore(buildRegistryFromManager(this));
+      } catch (_) { /* ignore persist failures */ }
 
       if (changed) {
         // Dynamic import so we don't create a hard runtime dependency on the UI layer.

@@ -14,23 +14,7 @@ import { useOntologyStore } from "../../stores/ontologyStore";
 import { usePaletteFromRdfManager } from "./core/namespacePalette";
 import { shortLocalName, toPrefixed } from "../../utils/termUtils";
 import { debug } from "../../utils/startupDebug";
-
-/**
- * A tighter-typed node data payload that mirrors the shapes used across the canvas.
- */
-interface CustomOntologyNodeData {
-  iri?: string;
-  classType?: string;
-  individualName?: string;
-  namespace?: string;
-  displayType?: string;
-  rdfTypes?: string[] | null;
-  // Use `any` for properties/annotation values to avoid overly strict unknown -> string conversions
-  properties?: Record<string, any>;
-  annotationProperties?: Array<{ property?: string; value?: any }>;
-  errors?: string[];
-  [key: string]: any;
-}
+import { NodeData } from "../../types/canvas";
 
 const _loggedFingerprints = new Set<string>();
 
@@ -57,13 +41,13 @@ function CustomOntologyNodeInner(props: NodeProps) {
     (connection as any).fromNode &&
     String((connection as any).fromNode.id) !== String(id)
   );
-  const nodeData = (data ?? {}) as CustomOntologyNodeData;
+  const nodeData = (data ?? {}) as NodeData;
   const showHandles = !!((connection as any)?.inProgress || !selected);
 
-  const rdfManager = useOntologyStore((s) => s.rdfManager);
-  // const ontologiesVersion = useOntologyStore((s) => s.ontologiesVersion);
-  const availableClasses = useOntologyStore((s) => s.availableClasses);
-  const availableProperties = useOntologyStore((s) => s.availableProperties);
+  // const rdfManager = useOntologyStore((s) => s.rdfManager);
+  // // const ontologiesVersion = useOntologyStore((s) => s.ontologiesVersion);
+  // const availableClasses = useOntologyStore((s) => s.availableClasses);
+  // const availableProperties = useOntologyStore((s) => s.availableProperties);
 
   const lastFp = useRef<string | null>(null);
   const rdfTypesKey = Array.isArray(nodeData.rdfTypes)
@@ -72,16 +56,13 @@ function CustomOntologyNodeInner(props: NodeProps) {
   useEffect(() => {
     try {
       const uri = String(nodeData.iri || "");
-      const fp = `${uri}|${String(nodeData.classType ?? "")}|${rdfTypesKey}|${String(nodeData.displayType ?? "")}`;
+      const fp = `${uri}`;
       if (lastFp.current === fp) return;
       lastFp.current = fp;
       if (_loggedFingerprints.has(fp)) return;
       _loggedFingerprints.add(fp);
       const payload = {
         uri,
-        classType: nodeData.classType,
-        rdfTypes: nodeData.rdfTypes,
-        displayType: nodeData.displayType,
       };
       try {
         if (typeof debug === "function") {
@@ -93,110 +74,28 @@ function CustomOntologyNodeInner(props: NodeProps) {
     }
   }, [
     nodeData.iri,
-    nodeData.classType,
-    rdfTypesKey,
-    nodeData.displayType,
-    nodeData.rdfTypes,
   ]);
-
-  // Display helpers
-  // Prefer the namespace registry (persisted after reconcile) as authoritative source for prefix->color mapping.
-  // Fall back to the RDF-manager-derived palette when registry is empty.
-  const namespaceRegistry = useOntologyStore((s) => (Array.isArray(s.namespaceRegistry) ? s.namespaceRegistry : []));
-  const paletteFromRegistry = useMemo(() => {
-    try {
-      const m: Record<string, string> = {};
-      (namespaceRegistry || []).forEach((entry: any) => {
-        try {
-          const p = String(entry?.prefix || "");
-          const c = String(entry?.color || "");
-          if (p) m[p] = c || "";
-        } catch (_) {}
-      });
-      return m;
-    } catch (_) {
-      return {};
-    }
-  }, [namespaceRegistry]);
-
-  const paletteFromMgr = usePaletteFromRdfManager();
-  const palette = Object.keys(paletteFromRegistry || {}).length > 0 ? paletteFromRegistry : paletteFromMgr;
-
-  // effectiveRegistry: prefer persisted namespaceRegistry; when empty, synthesize from rdfManager.getNamespaces()
-  const effectiveRegistry = useMemo(() => {
-    try {
-      if (Array.isArray(namespaceRegistry) && namespaceRegistry.length > 0) {
-        return namespaceRegistry.slice();
-      }
-      const nsMap = rdfManager && typeof (rdfManager as any).getNamespaces === "function" ? (rdfManager as any).getNamespaces() : {};
-      const prefixes = Object.keys(nsMap || {}).filter(Boolean).sort();
-      if (!prefixes || prefixes.length === 0) return [];
-      return prefixes.map((p) => {
-        try {
-          return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: String(((paletteFromMgr as any) && (paletteFromMgr as any)[p]) || "") };
-        } catch (_) {
-          return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: "" };
-        }
-      });
-    } catch (_) {
-      return Array.isArray(namespaceRegistry) ? namespaceRegistry.slice() : [];
-    }
-  }, [namespaceRegistry, rdfManager, paletteFromMgr]);
 
   // Compute display info for the node IRI and for the meaningful type (classType) if present.
   const { badgeText, subtitleText, headerDisplay, typesList } = useMemo(() => {
-    try {
-      const iri = String(nodeData.iri || "");
-      // Prefer canonical primaryTypeIri when available; fall back to classType for compatibility.
-      const typeIri = String(nodeData.primaryTypeIri || nodeData.classType || "") || undefined;
+  // Header/title: prefer explicit mapped displayPrefixed -> label -> displayShort -> short local name.
+  const headerDisp =
+    (nodeData.displayPrefixed as string);
 
-      // Header/title: prefer explicit mapped displayPrefixed -> label -> displayShort -> short local name.
-      const headerDisp =
-        (nodeData.displayPrefixed as string);
+  // Badge: prefer the mapped/class display for the classType (if present).
+  // Compute a prefixed form for the classType using the effectiveRegistry. Avoid runtime
+  // exceptions by falling back to raw values.
+  
+  let badge = "";
+  // Prefer: mapper-provided displayClassType, then computed prefixed classDisplayPrefixed,
+  // then node-level displayPrefixed, then raw classType, then short local name.
+  badge = String(nodeData.displayclassType || "");
 
-      // Badge: prefer the mapped/class display for the classType (if present).
-      // Compute a prefixed form for the classType using the effectiveRegistry. Avoid runtime
-      // exceptions by falling back to raw values.
-      
-      let badge = "";
-      // Prefer: mapper-provided displayClassType, then computed prefixed classDisplayPrefixed,
-      // then node-level displayPrefixed, then raw classType, then short local name.
-      try {
-        if (nodeData.displayClassType && String(nodeData.displayClassType).trim()) {
-          badge = String(nodeData.displayClassType);
-        } else if (nodeData.classType) {
-          try {
-            badge = toPrefixed(String(nodeData.classType), undefined, undefined, effectiveRegistry as any);
-          } catch (_) {
-            badge = shortLocalName(String(nodeData.classType));
-          }
-        } else {
-          badge = String(nodeData.displayPrefixed || "");
-        }
-      } catch (_) {
-        badge = String(nodeData.displayPrefixed || "");
-      }
-
-      // Subtitle: prefer humanLabel, then label, then displayPrefixed/displayShort, then short local name.
-      const subtitle =
-        (nodeData.label as string) ||
-        (nodeData.displayPrefixed as string);
-
-      // typesList: keep it simple and deterministic using shortLocalName for each rdf:type.
-      const tList: string[] = Array.isArray(nodeData.rdfTypes)
-        ? nodeData.rdfTypes.map((t) => {
-            try {
-              if (!t) return String(t);
-              return shortLocalName(String(t));
-            } catch (_) {
-              return String(t);
-            }
-          })
-        : [];
-
-      return { badgeText: badge, subtitleText: subtitle, headerDisplay: headerDisp, typesList: tList };
-    } catch (_) {
-    }
+  // Subtitle: prefer humanLabel, then label, then displayPrefixed/displayShort, then short local name.
+  const subtitle =
+    (nodeData.label as string) ||
+    (nodeData.displayPrefixed as string);
+  return { badgeText: badge, subtitleText: subtitle, headerDisplay: headerDisp, typesList: nodeData.rdfTypes};
   }, [
     nodeData.classType,
     nodeData.label,
@@ -209,8 +108,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
 
   
   const DEFAULT_PALETTE_COLOR = "#e5e7eb";
-  const badgeColor = nodeData.color || DEFAULT_PALETTE_COLOR;
-  const leftColor = badgeColor;
+  const nodeColor = nodeData.color || DEFAULT_PALETTE_COLOR;
 
   const themeBg =
     typeof document !== "undefined"
@@ -224,51 +122,28 @@ function CustomOntologyNodeInner(props: NodeProps) {
     Array.isArray(nodeData.errors) && nodeData.errors.length > 0;
 
   const annotations: Array<{ term: string; value: string }> = [];
-  if (
-    Array.isArray(nodeData.annotationProperties) &&
-    nodeData.annotationProperties.length > 0
-  ) {
-    nodeData.annotationProperties.forEach((ap) => {
-      const propertyIri = String(
-        (ap && (ap as any).propertyUri) ||
-          (ap && (ap as any).property) ||
-          (ap && (ap as any).term) ||
-          (ap && (ap as any).key) ||
-          "",
-      );
-      const rawValue = ap && (ap as any).value;
-      if (!propertyIri) return;
-      if (rawValue === undefined || rawValue === null) return;
-      const valueStr = String(rawValue);
-      if (valueStr.trim() === "") return;
-            const term = (() => {
-              if (propertyIri.startsWith("_:")) return propertyIri;
-              try {
-                return toPrefixed(propertyIri, undefined, undefined, effectiveRegistry as any);
-              } catch (_) {
-                return shortLocalName(propertyIri);
-              }
-            })();
-      annotations.push({ term, value: valueStr });
-    });
-  } else if (nodeData.properties && typeof nodeData.properties === "object") {
-    Object.entries(nodeData.properties)
-      .slice(0, 6)
-      .forEach(([k, v]) => {
-        if (v === undefined || v === null) return;
-        const valueStr = String(v);
+  if (Array.isArray(nodeData.properties) && nodeData.properties.length > 0) {
+    (nodeData.properties as Array<{ property: string; value: any }>).slice(0, 6).forEach((ap) => {
+      try {
+        const propertyIri = String((ap && ap.property) || "");
+        const rawValue = ap && ap.value;
+        if (!propertyIri) return;
+        if (rawValue === undefined || rawValue === null) return;
+        const valueStr = String(rawValue);
         if (valueStr.trim() === "") return;
-          const term = (() => {
-            const keyStr = String(k);
-            if (keyStr.startsWith("_:")) return keyStr;
+        const term = (() => {
+          if (propertyIri.startsWith("_:")) return propertyIri;
             try {
-              return toPrefixed(keyStr, undefined, undefined, effectiveRegistry as any);
+              return toPrefixed(propertyIri);
             } catch (_) {
-              return shortLocalName(keyStr);
+              return shortLocalName(propertyIri);
             }
-          })();
+        })();
         annotations.push({ term, value: valueStr });
-      });
+      } catch (_) {
+        /* ignore per-entry */
+      }
+    });
   }
 
   const typePresentButNotLoaded =
@@ -287,8 +162,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
 
   // Removed direct DOM mutation. Visual color is applied inline in render to keep component pure/read-only.
 
-  const canonicalIri = String(nodeData.iri ?? "");
-  const headerTitle = canonicalIri;
+  const headerTitle = nodeData.displayPrefixed;
 
   // Use the node id (IRI) directly as the handle id per project convention.
   const handleId = String(id || "");
@@ -323,8 +197,8 @@ function CustomOntologyNodeInner(props: NodeProps) {
           <div
             className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold text-black flex items-center gap-1"
             style={{
-              background: badgeColor || undefined,
-              border: badgeColor ? `1px solid ${darken(badgeColor, 0.12)}` : undefined,
+              background: nodeColor,
+              border: nodeColor ? `1px solid ${darken(nodeColor, 0.12)}` : undefined,
             }}
           >
             <span className="truncate">

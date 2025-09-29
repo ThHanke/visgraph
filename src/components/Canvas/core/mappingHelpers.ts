@@ -338,7 +338,6 @@ export function mapQuadsToDiagram(
     }
   }
 
-  // Build RF nodes — filter out pure TBox entities (classes / properties) so they do not appear as canvas nodes.
   const allNodeEntries = Array.from(nodeMap.entries()).map(([iri, info]) => {
     // Compute a lightweight classType/displayType from first rdf:type if available.
     // Preserve the full rdf:type IRI as the primary type.
@@ -368,16 +367,15 @@ export function mapQuadsToDiagram(
     } else {
       classType = undefined;
     }
+        // Coarse namespace extraction from IRI (prefix before last / or #)
+        let namespace = "";
+        try {
+          const m = String(iri || "").match(/^(.*[/#])/);
+          namespace = m && m[1] ? String(m[1]) : "";
+        } catch (_) {
+          namespace = "";
+        }
     
-    // Coarse namespace extraction from IRI (prefix before last / or #)
-    let namespace = "";
-    try {
-      const m = String(iri || "").match(/^(.*[/#])/);
-      namespace = m && m[1] ? String(m[1]) : "";
-    } catch (_) {
-      namespace = "";
-    }
-
     // Determine TBox/ABox:
     // - If rdfTypes exist and include owl:NamedIndividual -> ABox (isTBox = false)
     // - If rdfTypes exist and do NOT include owl:NamedIndividual -> TBox (isTBox = true)
@@ -399,11 +397,7 @@ export function mapQuadsToDiagram(
     }
 
       // compute node color using classType (preferred) or the node iri as fallback
-      const nodeColor = getNodeColor(
-        (classType || iri) as string,
-        (options as any).registry,
-        (options as any).palette
-      );
+      const nodeColor = getNodeColor(classType);
 
       const nodeData: NodeData & any = {
       key: iri,
@@ -425,42 +419,35 @@ export function mapQuadsToDiagram(
       // displayShort: short/local name (always available)
       displayShort: shortLocalName(iri),
       // displayClassType: prefixed form for the classType (computed here so UI can use it directly)
-      displayClassType: (classType
-        ? (() => {
-            try {
-              // Prefer an explicit registry passed via options.
-              let reg = (options as any)?.registry;
-              // If no registry supplied, try to derive one from a provided RDF manager accessor.
-              if (!reg && typeof (options as any)?.getRdfManager === "function") {
-                try {
-                  const mgr = (options as any).getRdfManager();
-                  if (mgr && typeof mgr.getNamespaces === "function") {
-                    reg = mgr.getNamespaces();
-                  }
-                } catch (_) {
-                  reg = undefined;
-                }
-              }
-              // Compute prefixed form using the best registry we have (may be undefined).
-              const pref = toPrefixed(
-                String(classType),
-                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-                reg
-              );
-              // If the result is still a full IRI (no registry found), fall back to the short local name.
-              if (typeof pref === "string" && pref.includes("://")) return shortLocalName(String(classType));
-              return pref;
-            } catch (_) {
-              return shortLocalName(String(classType));
-            }
-          })()
-        : undefined),
-      // paletteColor: computed when registry/palette provided; otherwise undefined (consumer should fallback)
+      displayclassType: toPrefixed(
+        classType,
+        options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+        options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+        (options as any).registry
+      ),
       namespace,
       classType,
-      paletteColor: nodeColor || undefined,
       color: nodeColor || undefined,
+      properties: [
+        ...(Array.isArray(info.literalProperties)
+          ? info.literalProperties.map((lp: any) => {
+              try {
+                return { property: String(lp.key || lp.property || lp.propertyUri || ""), value: lp.value };
+              } catch (_) {
+                return { property: String((lp && (lp.key || lp.property || lp.propertyUri)) || ""), value: String((lp && lp.value) || "") };
+              }
+            })
+          : []),
+        ...(Array.isArray(info.annotationProperties)
+          ? (info.annotationProperties as any[]).map((ap) => {
+              try {
+                return { property: String((ap && (ap.property || ap.propertyUri)) || ""), value: (ap && ap.value) };
+              } catch (_) {
+                return { property: String((ap && (ap.property || ap.propertyUri)) || ""), value: String((ap && ap.value) || "") };
+              }
+            })
+          : []),
+      ],
       literalProperties: info.literalProperties || [],
       annotationProperties: info.annotationProperties || [],
       visible: true,

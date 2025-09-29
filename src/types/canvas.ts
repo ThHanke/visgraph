@@ -42,15 +42,17 @@ export interface NodeData {
   displayclassType?: string;
 
   // Properties
+  /** Merged properties: union of literalProperties and annotationProperties as { property, value } entries */
+  properties?: Array<{ property: string; value: any }>;
   /** Literal properties (data properties) */
   literalProperties?: LiteralProperty[];
   /** Annotation properties (array of { property, value }) */
   annotationProperties?: AnnotationPropertyValue[] | Array<{ property: string; value: any }>;
 
   // Presentation metadata
-  /** Palette color derived from namespace/type (hex) when available */
-  paletteColor?: string | null;
-  /** Whether paletteColor resolution failed / missing */
+  /** Single color (hex) derived from namespace/type when available */
+  color?: string | null;
+  /** Whether color resolution failed / missing */
   paletteMissing?: boolean;
 
   // UI/runtime flags (transient; not persisted into RDF)
@@ -62,6 +64,8 @@ export interface NodeData {
   hasReasoningError?: boolean;
 
   // Misc
+  /** UI/validation error messages (if any) */
+  errors?: string[];
   /** Reasoning error messages (if any) */
   reasoningErrors?: string[];
   /** Custom node size used by layout / measurement */
