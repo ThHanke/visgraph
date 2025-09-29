@@ -619,6 +619,16 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         /* ignore registry snapshot failures */
       }
 
+      // After parsing and registering namespaces, trigger a full reconcile so the
+      // fat-map (availableClasses / availableProperties) is populated from the RDF store.
+      // This ensures UI components (like the Add Node class selector) see entries immediately
+      // after an RDF ontology is loaded via loadOntologyFromRDF.
+      try {
+        await Promise.resolve(incrementalReconcileFromQuads(undefined, rdfManager));
+      } catch (_) {
+        /* ignore reconcile failures */
+      }
+
     } catch (error: any) {
       ((...__vg_args) => {
         try {

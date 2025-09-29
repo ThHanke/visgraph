@@ -839,112 +839,35 @@ const KnowledgeCanvas: React.FC = () => {
       // Partition incoming quads into data quads (eligible for canvas mapping)
       // and ontology quads (persisted into ontology graphs, which we should not
       // translate into canvas nodes). Ontology quads will update the fat map.
-      const dataQuads: any[] = [];
-      const ontologyQuads: any[] = [];
+      const dataQuads: any[] = (pendingQuads || []).slice();
 
-      const isOntologyGraph = (q: any) => {
-        try {
-          if (!q) return false;
-          const g = q.graph;
-          const graphVal = g ? (g.value || g.id || (typeof g === "string" ? g : undefined)) : undefined;
-          if (typeof graphVal === "undefined") return false;
-          const gstr = String(graphVal || "");
-          if (!gstr) return false;
-          if (gstr.includes("urn:vg:ontologies")) return true;
-          return false;
-        } catch (_) {
-          return false;
-        }
-      };
+      // Graph partitioning removed: mapper is authoritative (KnowledgeCanvas consumes all incoming quads).
+      // The mapper (mapQuadsToDiagram) is expected to decide which quads should become nodes/edges.
 
-      // Diagnostic: log sample count for debugging
+      // Diagnostic: log sample count for debugging and a short sample of pending quads
       try {
         const sampleSubjects = Array.from(new Set((pendingQuads || []).map((q: any) => (q && q.subject && q.subject.value) || ""))).slice(0, 20);
         console.debug("[VG_DEBUG] KnowledgeCanvas.runMapping incrementalQuads", { total: (pendingQuads || []).length, subjectsSample: sampleSubjects });
       } catch (_) { /* ignore */ }
 
-      for (const q of pendingQuads || []) {
-        try {
-          if (isOntologyGraph(q)) ontologyQuads.push(q);
-          else dataQuads.push(q);
-        } catch (_) {
-          // conservative: treat as dataQuad on error
-          dataQuads.push(q);
-        }
-      }
-
-      // Diagnostic trace for this mapping pass: counts and small samples to help identify
-      // whether the loaded RDF landed in the ontology graph vs data graph.
+      // Map quads to diagram nodes/edges (mapper is authoritative)
       try {
-        try {
-          const sampleOnt = (ontologyQuads || []).slice(0, 5).map((qq: any) => ({
-            subject: qq && qq.subject && (qq.subject as any).value ? String((qq.subject as any).value) : "",
-            predicate: qq && qq.predicate && (qq.predicate as any).value ? String((qq.predicate as any).value) : "",
-            graph: qq && qq.graph && ((qq.graph as any).value || (qq.graph as any).id) ? String(((qq.graph as any).value || (qq.graph as any).id)) : "",
-          }));
-          const sampleData = (dataQuads || []).slice(0, 5).map((qq: any) => ({
-            subject: qq && qq.subject && (qq.subject as any).value ? String((qq.subject as any).value) : "",
-            predicate: qq && qq.predicate && (qq.predicate as any).value ? String((qq.predicate as any).value) : "",
-            graph: qq && qq.graph && ((qq.graph as any).value || (qq.graph as any).id) ? String(((qq.graph as any).value || (qq.graph as any).id)) : "",
-          }));
-          console.debug("[VG_TRACE] mapping.partition", {
-            dataQuads: Array.isArray(dataQuads) ? dataQuads.length : 0,
-            ontologyQuads: Array.isArray(ontologyQuads) ? ontologyQuads.length : 0,
-            sampleOntologyQuads: sampleOnt,
-            sampleDataQuads: sampleData,
-          });
-        } catch (_) { /* ignore sample build failures */ }
-      } catch (_) { /* ignore tracing failures */ }
-
-
-      // Map only data quads to diagram nodes/edges
-      if (!dataQuads || dataQuads.length === 0) {
-        // Nothing to map: keep existing canvas state (do not wipe)
-        // Use an empty diagram to simplify downstream code paths.
+        diagram = translateQuadsToDiagram(dataQuads);
+      } catch (e) {
+        try { console.error("[VG] KnowledgeCanvas: incremental quad mapping failed", e); } catch (_) {}
         diagram = { nodes: [], edges: [] };
-        } else {
-          try {
-            diagram = translateQuadsToDiagram(dataQuads);
-            // Diagnostic: snapshot mapper output (sample)
-            try {
-              const sample = (diagram && Array.isArray(diagram.nodes) ? (diagram.nodes as any[]).slice(0,10) : []).map((n: any) => ({
-                id: n && n.id,
-                displayPrefixed: n && n.data ? n.data.displayPrefixed : undefined,
-                displayclassType: n && n.data ? n.data.displayclassType : undefined,
-                rdfTypes: n && n.data ? n.data.rdfTypes : undefined,
-                isTBox: n && n.data ? n.data.isTBox : undefined,
-              }));
-              console.debug("[VG_DEBUG] KnowledgeCanvas.mapperOutput.sample", sample);
-              // Also log any specific failing candidates if present in this batch (example keys)
-            } catch (_) { /* ignore debug failures */ }
-          } catch (e) {
-            try { console.error("[VG] KnowledgeCanvas: incremental quad mapping failed", e); } catch (_) {}
-            diagram = { nodes: [], edges: [] };
-          }
-        }
+      }
       
       const mappedNodes: RFNode<NodeData>[] = (diagram && diagram.nodes) || [];
       const mappedEdges: RFEdge<LinkData>[] = (diagram && diagram.edges) || [];
-      try {
-        console.debug('[VG] runMapping produced', { mappedNodeCount: Array.isArray(mappedNodes) ? mappedNodes.length : 0, mappedEdgeCount: Array.isArray(mappedEdges) ? mappedEdges.length : 0 });
-      } catch (_) { /* ignore debug */ }
+      
 
       let enrichedNodes = mappedNodes;
       const enrichedEdges = mappedEdges;
 
+
       // Apply blacklist filtering so reserved/core RDF terms are not rendered as nodes.
       try {
-        // Diagnostic: which nodes would be considered for blacklist filtering (sample)
-        try {
-          const candidates = (enrichedNodes || []).slice(0, 20).map((n: any) => {
-            try {
-              const iri = (n && n.data && (n.data.iri || n.id)) ? String((n.data && (n.data.iri || n.id))) : "";
-              return { id: n && n.id, iri, blacklisted: isBlacklistedIri(iri) };
-            } catch (_) { return null; }
-          }).filter(Boolean);
-          console.debug("[VG_DEBUG] KnowledgeCanvas.blacklist.candidates", { count: (enrichedNodes || []).length, sample: candidates });
-        } catch (_) { /* ignore */ }
-
         if (!ignoreBlacklistRef.current) {
           enrichedNodes = (enrichedNodes || []).filter((n) => {
             try {
@@ -975,139 +898,88 @@ const KnowledgeCanvas: React.FC = () => {
         }
       } catch (_) { /* ignore */ }
 
-      // Replace node.data wholesale for mapped nodes while preserving position & runtime flags.
-      // Preserve any previous nodes that are not part of this mapping batch.
-      // Ensure enrichedNodes have positions to avoid React Flow runtime errors (position.x/y undefined).
-      try {
-        const missing = (enrichedNodes || []).filter((n) => {
-          try {
-            return !n.position || typeof (n.position as any).x !== "number" || typeof (n.position as any).y !== "number";
-          } catch (_) {
-            return true;
-          }
-        });
-        if (missing.length > 0) {
-          try {
-            console.debug("[VG] runMapping - defaulting positions for nodes missing position", { count: missing.length, sampleIds: missing.slice(0, 10).map((x) => String(x.id)) });
-          } catch (_) { /* ignore logging failures */ }
-        }
-        enrichedNodes = (enrichedNodes || []).map((n) => {
-          try {
-            if (!n.position || typeof (n.position as any).x !== "number" || typeof (n.position as any).y !== "number") {
-              try { (n as any).position = { x: 0, y: 0 }; } catch (_) {}
-              try { (n.data as any) = { ...(n.data as any), __needsInitialLayout: true }; } catch (_) {}
-            }
-          } catch (_) { /* ignore per-node */ }
-          return n;
-        });
-      } catch (_) { /* ignore overall */ }
-
+      
+      
+      // Ensure every mapped node has a position and compute visibility strictly from isTBox & viewMode.
       setNodes((prev) => {
         try {
           const prevById = new Map<string, RFNode<NodeData>>();
-          (prev || []).forEach((n) => {
-            try { prevById.set(String(n.id), n); } catch (_) {}
-          });
-
-          // Build result map only from the newly mapped/enriched nodes.
-          // Preserve positional/runtime flags for nodes that already existed (by id),
-          // but do NOT preserve arbitrary previous nodes that are not present in this mapping pass.
-          const resultById = new Map<string, RFNode<NodeData>>();
-
-          for (const m of (enrichedNodes || [])) {
+          try { (prev || []).forEach((n: any) => prevById.set(String(n.id), n)); } catch (_) { /* ignore */ }
+          // Default missing positions and preserve runtime flags where present.
+          const resultNodes: RFNode<NodeData>[] = (enrichedNodes || []).map((m: any) => {
             try {
               const id = String((m && m.id) || "");
-              if (!id) continue;
-              const existing = prevById.get(id);
-              if (existing) {
-                // Merge incoming mapper data with existing node.data to avoid losing
-                // annotation/literal properties or other runtime metadata when the mapper
-                // emitted a TBox-only minimal payload. Preserve existing position/runtime flags.
-                const incomingData = (m && m.data) ? (m.data as NodeData) : undefined;
-                const existingData = (existing && (existing.data as NodeData)) ? (existing.data as NodeData) : ({} as NodeData);
-
-                const mergedData: NodeData = incomingData
-                  ? { ...incomingData }
-                  : { ...(existingData as NodeData) };
-
-                try {
-                  // Preserve annotation and literal properties if incoming omitted them.
-                  if ((!mergedData.annotationProperties || (Array.isArray(mergedData.annotationProperties) && mergedData.annotationProperties.length === 0)) && Array.isArray(existingData.annotationProperties) && existingData.annotationProperties.length > 0) {
-                    mergedData.annotationProperties = (existingData.annotationProperties as any[]).slice();
-                  }
-                } catch (_) { /* ignore */ }
-
-                try {
-                  if ((!mergedData.literalProperties || (Array.isArray(mergedData.literalProperties) && mergedData.literalProperties.length === 0)) && Array.isArray(existingData.literalProperties) && existingData.literalProperties.length > 0) {
-                    mergedData.literalProperties = (existingData.literalProperties as any[]).slice();
-                  }
-                } catch (_) { /* ignore */ }
-
-                try {
-                  // Preserve human-friendly label/display values when mapper didn't provide them.
-                  if ((!mergedData.label || String(mergedData.label).trim() === "") && existingData && existingData.label) {
-                    mergedData.label = existingData.label as any;
-                  }
-                } catch (_) { /* ignore */ }
-
-                try {
-                  if ((!mergedData.displayPrefixed || String(mergedData.displayPrefixed).trim() === "") && existingData && (existingData as any).displayPrefixed) {
-                    (mergedData as any).displayPrefixed = (existingData as any).displayPrefixed;
-                  }
-                } catch (_) { /* ignore */ }
-
-                try {
-                  if ((!mergedData.namespace || String(mergedData.namespace).trim() === "") && existingData && (existingData as any).namespace) {
-                    mergedData.namespace = (existingData as any).namespace as any;
-                  }
-                } catch (_) { /* ignore */ }
-
-                const replaced: RFNode<NodeData> = {
-                  ...(m as RFNode<NodeData>),
-                  position: existing.position,
-                  id: existing.id,
-                  type: (m as any).type || existing.type || "ontology",
-                  data: mergedData as NodeData,
-                } as RFNode<NodeData>;
-                try { if ((existing as any).__rf) (replaced as any).__rf = (existing as any).__rf; } catch (_) {}
-                try { try { delete (replaced as any).selected; } catch (_) { /* ignore */ } } catch (_) {}
-                try { if ((existing as any).hidden) (replaced as any).hidden = (existing as any).hidden; } catch (_) {}
-                resultById.set(id, replaced);
-              } else {
-                const newNode = { ...(m as RFNode<NodeData>) };
-                newNode.id = id;
-                newNode.type = newNode.type || "ontology";
-                resultById.set(id, newNode as RFNode<NodeData>);
-              }
-            } catch (_) {
-              // ignore per-item failures
-            }
-          }
-
-          return Array.from(resultById.values()).filter(Boolean) as RFNode<NodeData>[];
+              const prevNode = prevById.get(id);
+              const nodeCopy: RFNode<NodeData> = { ...(m as RFNode<NodeData>) };
+              // preserve previous position if available
+              try {
+                if (prevNode && prevNode.position) nodeCopy.position = prevNode.position;
+                if (!nodeCopy.position || typeof (nodeCopy.position as any).x !== "number" || typeof (nodeCopy.position as any).y !== "number") {
+                  nodeCopy.position = { x: 0, y: 0 };
+                }
+              } catch (_) { nodeCopy.position = { x: 0, y: 0 }; }
+              // preserve runtime __rf bag if present
+              try { if (prevNode && (prevNode as any).__rf) (nodeCopy as any).__rf = (prevNode as any).__rf; } catch (_) {}
+              // Clear selection flag
+              try { delete (nodeCopy as any).selected; } catch (_) {}
+              // Compute hidden strictly from isTBox and viewMode
+              try {
+                const isT = !!(nodeCopy.data && (nodeCopy.data as any).isTBox);
+                const visibleFlag = nodeCopy.data && typeof (nodeCopy.data as any).visible === "boolean" ? (nodeCopy.data as any).visible : true;
+                const shouldBeVisible = visibleFlag && (viewMode === "tbox" ? isT : !isT);
+                nodeCopy.hidden = !shouldBeVisible;
+              } catch (_) { /* ignore */ }
+              return nodeCopy;
+            } catch (_) { return null as any; }
+          }).filter(Boolean) as RFNode<NodeData>[];
+          return resultNodes;
         } catch (e) {
           try { console.warn("[VG] KnowledgeCanvas: replace-node-data failed, falling back to previous nodes", e); } catch (_) {}
           return prev || [];
         }
       });
 
-      // Replace outgoing edges for subjects that emitted in this mapping pass.
-      // Only use edges produced by the mapper for the current data batch so edges
-      // referencing removed/old nodes are not preserved.
+      // Replace edges state but keep all mapper-produced edges; set visibility based on visible node set and propertyPrefixed blacklist.
       setEdges(() => {
         try {
-          const byId = new Map<string, RFEdge<LinkData>>();
-          for (const e of enrichedEdges || []) {
-            try { byId.set(String(e.id), e); } catch (_) {}
-          }
-          return Array.from(byId.values());
+          // Build visible node id set from enrichedNodes (nodes that passed blacklist and isTBox/viewMode)
+          const visibleNodeIds = new Set<string>();
+          try {
+            for (const n of (enrichedNodes || [])) {
+              try {
+                const id = String(n && n.id ? n.id : "");
+                if (!id) continue;
+                const isT = !!(n.data && (n.data as any).isTBox);
+                const visibleFlag = n.data && typeof (n.data as any).visible === "boolean" ? (n.data as any).visible : true;
+                const shouldBeVisible = visibleFlag && (viewMode === "tbox" ? isT : !isT);
+                if (shouldBeVisible) visibleNodeIds.add(id);
+              } catch (_) { /* ignore per-node */ }
+            }
+          } catch (_) { /* ignore */ }
+
+          const result: RFEdge<LinkData>[] = (enrichedEdges || []).map((e: any) => {
+            try {
+              const src = String(e.source || e.data && (e.data.from || e.data.source) || "");
+              const tgt = String(e.target || e.data && (e.data.to || e.data.target) || "");
+              let hidden = false;
+              // hide if either endpoint is not in the visible node set
+              if (!visibleNodeIds.has(src) || !visibleNodeIds.has(tgt)) hidden = true;
+              // hide if predicate prefix is blacklisted
+              try {
+                const pref = e && e.data && (e.data.propertyPrefixed || "");
+                if (pref && typeof pref === "string" && pref.includes(':')) {
+                  const prefix = String(pref).split(':',1)[0];
+                  if (_blacklistedPrefixes.has(prefix)) hidden = true;
+                }
+              } catch (_) { /* ignore predicate check */ }
+              return hidden === !!(e && (e.hidden)) ? e : { ...e, hidden };
+            } catch (_) { return e; }
+          });
+
+          return result;
         } catch (e) {
           try { console.warn('[VG] KnowledgeCanvas: replace-edges failed, falling back to enrichedEdges', e); } catch (_) {}
-          const byId = new Map<string, RFEdge<LinkData>>();
-          for (const e of enrichedEdges || []) {
-            try { byId.set(String(e.id), e); } catch (_) {}
-          }
-          return Array.from(byId.values());
+          return enrichedEdges || [];
         }
       });
 

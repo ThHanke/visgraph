@@ -94,6 +94,8 @@ export interface LinkData {
   to: string;
   /** Property URI this link represents */
   propertyUri: string;
+  /** Prefixed property form (e.g. "rdfs:label" or "iof:hasQuality") produced by the mapper */
+  propertyPrefixed?: string;
   /** Property type */
   propertyType: string;
   /** Display label for the link */

@@ -54,10 +54,11 @@ const FloatingEdge = memo((props: EdgeProps) => {
   });
 
   // Resolve badge text using centralized helper so new and persisted edges share formatting.
+  // Prefer mapper-provided prefixed property when available (propertyPrefixed), then fall back to label fields.
   let badgeText = "";
 
-  // 1) explicit label from props/data
-  badgeText = String((props as any)?.label || (data as any)?.label || "").trim();
+  // 1) prefixed property from mapper -> props/data.propertyPrefixed
+  badgeText = String((data as any)?.propertyPrefixed || (props as any)?.label || (data as any)?.label || "").trim();
 
   return (
     <>

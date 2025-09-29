@@ -284,22 +284,28 @@ export function mapQuadsToDiagram(
               target: bn,
               type: "floating",
               markerEnd: { type: "arrow" as any },
-              data: {
-                key: edgeId,
-                from: subjectIri,
-                to: bn,
-                propertyUri: predIri,
-                propertyType: "",
-                label: toPrefixed(
-                  predIri,
-                  options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                  options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-                  (options as any).registry
-                ),
-                namespace: "",
-                rdfType: "",
-              } as LinkData,
-            });
+            data: {
+              key: edgeId,
+              from: subjectIri,
+              to: bn,
+              propertyUri: predIri,
+              propertyPrefixed: toPrefixed(
+                predIri,
+                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                (options as any).registry
+              ),
+              propertyType: "",
+              label: toPrefixed(
+                predIri,
+                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                (options as any).registry
+              ),
+              namespace: "",
+              rdfType: "",
+            } as LinkData,
+          });
           } else {
             // Treat unreferenced blank nodes as annotation metadata
             try {
@@ -338,6 +344,12 @@ export function mapQuadsToDiagram(
               from: subjectIri,
               to: objectIri,
               propertyUri: predIri,
+              propertyPrefixed: toPrefixed(
+                predIri,
+                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                (options as any).registry
+              ),
               propertyType: "",
               label: toPrefixed(
                 predIri,
@@ -464,7 +476,7 @@ export function mapQuadsToDiagram(
             const reg = (options && (options as any).registry) || undefined;
             const regCount = Array.isArray(reg) ? reg.length : reg && typeof reg === "object" ? Object.keys(reg).length : 0;
             console.debug("[VG_DEBUG] mapQuadsToDiagram.displayPrefixed", { iri, pref, regCount });
-          } catch (_) {}
+          } catch (_) { /* ignore */ void 0; }
           return pref;
         } catch (_) {
           return iri;
@@ -485,7 +497,7 @@ export function mapQuadsToDiagram(
             const reg = (options && (options as any).registry) || undefined;
             const regCount = Array.isArray(reg) ? reg.length : reg && typeof reg === "object" ? Object.keys(reg).length : 0;
             console.debug("[VG_DEBUG] mapQuadsToDiagram.displayclassType", { classType, pref, regCount });
-          } catch (_) {}
+          } catch (_) { /* ignore */ void 0; }
           return pref;
         } catch (_) {
           return String(classType || "");
@@ -540,14 +552,9 @@ export function mapQuadsToDiagram(
   // Build set of node IDs that will be rendered for edge filtering
   const renderedNodeIds = new Set<string>((rfNodes || []).map((n) => String(n.id)));
 
-  // Filter edges to only include those whose source is rendered (allow edges to external/non-rendered objects).
-  // Policy: we create edges for object properties even when we do not create an object node; keep those edges visible.
-  const rfEdgesFiltered = (rfEdges || []).filter((edge) => {
-    try {
-      const s = String(edge.source);
-      return renderedNodeIds.has(s);
-    } catch (_) { return false; }
-  });
+  // Keep edges as emitted by the mapper. Visibility decisions (hidden/visible) are handled by the canvas.
+  // Policy: do not drop edges here; KnowledgeCanvas will decide hiding based on node visibility and propertyPrefixed.
+  const rfEdgesFiltered = rfEdges || [];
 
   return { nodes: rfNodes, edges: rfEdgesFiltered };
 }

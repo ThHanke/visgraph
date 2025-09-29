@@ -48,22 +48,53 @@ export const AutoComplete = ({
     }
   }, [autoOpen]);
 
+  // Determine the selected option from the provided options first.
   const selectedOption = options.find(option => option.value === value);
 
+  // Derive the final options array: prefer the caller-supplied `options` prop.
+  // If empty, fall back to the ontology store (fat-map) to provide sensible defaults
+  // for node/link editors that rely on store-driven suggestions.
+  const finalOptions = (Array.isArray(options) && options.length > 0) ? options : (() => {
+    try {
+      const st = useOntologyStore.getState();
+      // Prefer entityIndex.suggestions when available (stable suggestions produced by mapping).
+      const entityIndex = (st as any).entityIndex;
+      if (entityIndex && Array.isArray(entityIndex.suggestions) && entityIndex.suggestions.length > 0) {
+        return entityIndex.suggestions.map((s: any) => ({
+          value: String(s.iri || s.id || s.key || ""),
+          label: String(s.label || s.display || shortLocalName(String(s.iri || s.id || s.key || ""))),
+          description: s.display || undefined,
+        }));
+      }
+      // Fallback to availableProperties from the fat-map
+      const av = Array.isArray((st as any).availableProperties) ? (st as any).availableProperties : [];
+      if (av && av.length > 0) {
+        return av.map((p: any) => ({
+          value: String(p.iri || p.key || p),
+          label: String(p.label || p.name || p.iri || p),
+          description: p.namespace ? `From ${p.namespace}` : undefined,
+        }));
+      }
+    } catch (_) {
+      /* best-effort only */
+    }
+    return options;
+  })();
+
   // Ranking: prefer matches by rdfs:label first, then by IRI substring, then description.
-  // If no input (empty), return full options list.
+  // If no input (empty), return the full finalOptions list.
   const filteredOptions = (() => {
     const q = String(inputValue || "").trim().toLowerCase();
-    if (!q) return options;
-    const labelMatches = options.filter((option) =>
+    if (!q) return finalOptions;
+    const labelMatches = (finalOptions || []).filter((option) =>
       String(option.label || "").toLowerCase().includes(q),
     );
-    const valueMatches = options.filter(
+    const valueMatches = (finalOptions || []).filter(
       (option) =>
         String(option.value || "").toLowerCase().includes(q) &&
         !labelMatches.some((m) => m.value === option.value),
     );
-    const descMatches = options.filter(
+    const descMatches = (finalOptions || []).filter(
       (option) =>
         !labelMatches.some((m) => m.value === option.value) &&
         !valueMatches.some((m) => m.value === option.value) &&
@@ -102,7 +133,7 @@ export const AutoComplete = ({
                   try {
                     const nsMap = rdfMgr && typeof (rdfMgr as any).getNamespaces === 'function'
                       ? (rdfMgr as any).getNamespaces()
-                      : (rdfMgr && typeof rdfMgr === 'object' ? rdfMgr as Record<string,string> : undefined);
+                      : (rdfMgr && typeof rdfMgr === 'object' ? (rdfMgr as unknown as Record<string,string>) : undefined);
                     if (nsMap && nsMap[''] && s.startsWith(String(nsMap['']))) {
                       return `:${shortLocalName(s)}`.replace(/^(https?:\/\/)?(www\.)?/, '');
                     }
@@ -154,10 +185,10 @@ export const AutoComplete = ({
                       try {
                         const nsMap = rdfMgr && typeof (rdfMgr as any).getNamespaces === 'function'
                           ? (rdfMgr as any).getNamespaces()
-                          : (rdfMgr && typeof rdfMgr === 'object' ? rdfMgr as Record<string,string> : undefined);
-                        if (nsMap && nsMap[''] && String(option.value).startsWith(String(nsMap['']))) {
-                          return `:${shortLocalName(String(option.value))}`.replace(/^(https?:\/\/)?(www\.)?/, '');
-                        }
+                          : (rdfMgr && typeof rdfMgr === 'object' ? (rdfMgr as unknown as Record<string,string>) : undefined);
+                      if (nsMap && nsMap[''] && String(option.value).startsWith(String(nsMap['']))) {
+                        return `:${shortLocalName(String(option.value))}`.replace(/^(https?:\/\/)?(www\.)?/, '');
+                      }
                       } catch (_) { /* ignore */ }
                       return shortLocalName(String(option.value)).replace(/^(https?:\/\/)?(www\.)?/, '');
                     })()}</span>
