@@ -26,6 +26,12 @@ vi.mock("../../stores/ontologyStore", () => {
         ontologiesVersion: 1,
         availableClasses: [],
         availableProperties: [],
+        namespaceRegistry: [
+          { prefix: "ex", namespace: "http://example.com/", color: "" },
+          { prefix: "dcterms", namespace: "http://purl.org/dc/terms/", color: "" },
+          { prefix: "owl", namespace: "http://www.w3.org/2002/07/owl#", color: "" },
+          { prefix: "rdfs", namespace: "http://www.w3.org/2000/01/rdf-schema#", color: "" },
+        ],
       };
       // When a selector function is passed, call it with the store object (Zustand-like)
       if (typeof selector === "function") return selector(store);
@@ -61,33 +67,53 @@ describe("CustomOntologyNode (owl:Ontology) display", () => {
     vi.clearAllMocks();
   });
 
-  it("renders title, badge and subtitle from computeTermDisplay and annotationProperties", () => {
-    const nodeData = {
-      iri: "http://example.com/ontology1",
-      classType: "http://www.w3.org/2002/07/owl#Ontology",
-      rdfTypes: ["http://www.w3.org/2002/07/owl#Ontology"],
-      annotationProperties: [
-        {
-          propertyUri: "http://www.w3.org/2000/01/rdf-schema#label",
-          value: "My Ontology",
-        },
-        {
-          propertyUri: "http://purl.org/dc/terms/license",
-          value: "CC-BY",
-        },
-        {
-          propertyUri: "http://purl.org/dc/terms/creator",
-          value: "Alice",
-        },
-      ],
-    };
+  it("renders title, badge and subtitle from computeTermDisplay and annotationProperties", async () => {
+    // Build quads that represent the node and its annotations (data graph)
+    const quads = [
+      {
+        subject: { value: "http://example.com/ontology1" },
+        predicate: { value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" },
+        object: { value: "http://www.w3.org/2002/07/owl#Ontology", termType: "NamedNode" },
+        graph: { value: "urn:vg:data" },
+      },
+      {
+        subject: { value: "http://example.com/ontology1" },
+        predicate: { value: "http://www.w3.org/2000/01/rdf-schema#label" },
+        object: { value: "My Ontology", termType: "Literal", datatype: { value: "http://www.w3.org/2001/XMLSchema#string" } },
+        graph: { value: "urn:vg:data" },
+      },
+      {
+        subject: { value: "http://example.com/ontology1" },
+        predicate: { value: "http://purl.org/dc/terms/license" },
+        object: { value: "CC-BY", termType: "Literal", datatype: { value: "http://www.w3.org/2001/XMLSchema#string" } },
+        graph: { value: "urn:vg:data" },
+      },
+      {
+        subject: { value: "http://example.com/ontology1" },
+        predicate: { value: "http://purl.org/dc/terms/creator" },
+        object: { value: "Alice", termType: "Literal", datatype: { value: "http://www.w3.org/2001/XMLSchema#string" } },
+        graph: { value: "urn:vg:data" },
+      },
+    ];
+
+    const registry = [
+      { prefix: "ex", namespace: "http://example.com/", color: "#7DD3FC" },
+      { prefix: "dcterms", namespace: "http://purl.org/dc/terms/", color: "#A7F3D0" },
+      { prefix: "owl", namespace: "http://www.w3.org/2002/07/owl#", color: "" },
+      { prefix: "rdfs", namespace: "http://www.w3.org/2000/01/rdf-schema#", color: "" },
+    ];
+
+    const { default: mapQuadsToDiagram } = await import("../../components/Canvas/core/mappingHelpers");
+    const diagram = mapQuadsToDiagram(quads, { registry, availableProperties: [], availableClasses: [] });
+    const mappedNode = (diagram.nodes || []).find((n: any) => String(n.id) === "http://example.com/ontology1");
+    expect(mappedNode).toBeTruthy();
 
     // Wrap in ReactFlow provider so hooks like useConnection work in tests.
     render(
       React.createElement(
         ReactFlowProvider,
         null,
-        React.createElement(CustomOntologyNode as any, { id: "node-1", data: nodeData, selected: false })
+        React.createElement(CustomOntologyNode as any, { id: "node-1", data: mappedNode!.data, selected: false })
       )
     );
 

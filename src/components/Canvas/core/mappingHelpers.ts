@@ -236,7 +236,15 @@ export function mapQuadsToDiagram(
       if (predicateKindLocal === "annotation") {
         try {
           const val = obj && obj.value ? String(obj.value) : "";
-          entry.annotationProperties.push({ property: predIri, value: val });
+          entry.annotationProperties.push({
+            property: toPrefixed(
+              predIri,
+              options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+              options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+              (options as any).registry
+            ),
+            value: val,
+          });
         } catch (_) {
           // ignore per-annotation failures
         }
@@ -249,7 +257,15 @@ export function mapQuadsToDiagram(
       if (isLiteral(obj)) {
         try {
           const litVal = obj && obj.value ? String(obj.value) : "";
-          entry.annotationProperties.push({ property: predIri, value: litVal });
+          entry.annotationProperties.push({
+            property: toPrefixed(
+              predIri,
+              options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+              options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+              (options as any).registry
+            ),
+            value: litVal,
+          });
         } catch (_) {
           /* ignore per-literal failures */
         }
@@ -259,34 +275,47 @@ export function mapQuadsToDiagram(
       // Handle blank nodes: create node/edge only when blank node is referenced as a subject elsewhere in this batch.
       if (obj && (obj.termType === "BlankNode" || (obj.value && String(obj.value).startsWith("_:")))) {
         const bn = obj.value ? String(obj.value) : "";
-        if (isBlankNodeReferenced(bn)) {
-          ensureNode(bn);
-          const edgeId = String(generateEdgeId(subjectIri, bn, predIri || ""));
-          rfEdges.push({
-            id: edgeId,
-            source: subjectIri,
-            target: bn,
-            type: "floating",
-            markerEnd: { type: "arrow" as any },
-            data: {
-              key: edgeId,
-              from: subjectIri,
-              to: bn,
-              propertyUri: predIri,
-              propertyType: "",
-              label: toPrefixed(predIri),
-              namespace: "",
-              rdfType: "",
-            } as LinkData,
-          });
-        } else {
-          // Treat unreferenced blank nodes as annotation metadata
-          try {
-            entry.annotationProperties.push({ property: predIri, value: bn });
-          } catch (_) { /* ignore */ }
+          if (isBlankNodeReferenced(bn)) {
+            ensureNode(bn);
+            const edgeId = String(generateEdgeId(subjectIri, bn, predIri || ""));
+            rfEdges.push({
+              id: edgeId,
+              source: subjectIri,
+              target: bn,
+              type: "floating",
+              markerEnd: { type: "arrow" as any },
+              data: {
+                key: edgeId,
+                from: subjectIri,
+                to: bn,
+                propertyUri: predIri,
+                propertyType: "",
+                label: toPrefixed(
+                  predIri,
+                  options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                  options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                  (options as any).registry
+                ),
+                namespace: "",
+                rdfType: "",
+              } as LinkData,
+            });
+          } else {
+            // Treat unreferenced blank nodes as annotation metadata
+            try {
+              entry.annotationProperties.push({
+                property: toPrefixed(
+                  predIri,
+                  options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                  options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                  (options as any).registry
+                ),
+                value: bn,
+              });
+            } catch (_) { /* ignore */ }
+          }
+          continue;
         }
-        continue;
-      }
 
       // object is NamedNode (IRI)
       if (obj && (obj.termType === "NamedNode" || (obj.value && /^https?:\/\//i.test(String(obj.value))))) {
@@ -310,7 +339,12 @@ export function mapQuadsToDiagram(
               to: objectIri,
               propertyUri: predIri,
               propertyType: "",
-              label: toPrefixed(predIri),
+              label: toPrefixed(
+                predIri,
+                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                (options as any).registry
+              ),
               namespace: "",
               rdfType: "",
             } as LinkData,
@@ -318,7 +352,15 @@ export function mapQuadsToDiagram(
         } else {
           // Fold non-object predicates (even with IRI objects) into the subject as annotation metadata.
           try {
-            entry.annotationProperties.push({ property: predIri, value: objectIri });
+            entry.annotationProperties.push({
+              property: toPrefixed(
+                predIri,
+                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                (options as any).registry
+              ),
+              value: objectIri,
+            });
           } catch (_) { /* ignore */ }
         }
         continue;
@@ -410,21 +452,45 @@ export function mapQuadsToDiagram(
       // keep label field for backward compatibility: prefer rdfs:label, otherwise short local name
       label: info.label || shortLocalName(iri),
       // Presentation hints (compute prefixed form / palette color when a registry/palette is provided in options)
-      displayPrefixed: toPrefixed(
-        iri,
-        options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-        options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-        (options as any).registry
-      ),
+      displayPrefixed: (() => {
+        try {
+          const pref = toPrefixed(
+            iri,
+            options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+            options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+            (options as any).registry
+          );
+          try {
+            const reg = (options && (options as any).registry) || undefined;
+            const regCount = Array.isArray(reg) ? reg.length : reg && typeof reg === "object" ? Object.keys(reg).length : 0;
+            console.debug("[VG_DEBUG] mapQuadsToDiagram.displayPrefixed", { iri, pref, regCount });
+          } catch (_) {}
+          return pref;
+        } catch (_) {
+          return iri;
+        }
+      })(),
       // displayShort: short/local name (always available)
       displayShort: shortLocalName(iri),
       // displayClassType: prefixed form for the classType (computed here so UI can use it directly)
-      displayclassType: toPrefixed(
-        classType,
-        options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-        options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-        (options as any).registry
-      ),
+      displayclassType: (() => {
+        try {
+          const pref = toPrefixed(
+            classType,
+            options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+            options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+            (options as any).registry
+          );
+          try {
+            const reg = (options && (options as any).registry) || undefined;
+            const regCount = Array.isArray(reg) ? reg.length : reg && typeof reg === "object" ? Object.keys(reg).length : 0;
+            console.debug("[VG_DEBUG] mapQuadsToDiagram.displayclassType", { classType, pref, regCount });
+          } catch (_) {}
+          return pref;
+        } catch (_) {
+          return String(classType || "");
+        }
+      })(),
       namespace,
       classType,
       color: nodeColor || undefined,

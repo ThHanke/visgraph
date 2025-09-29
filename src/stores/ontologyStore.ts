@@ -589,13 +589,14 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       // right after a startup URL load. This mirrors the registry construction used in
       // incrementalReconcileFromQuads but keeps the startup/load path synchronous.
       try {
+
         const nsMap =
           parsed && parsed.namespaces
             ? parsed.namespaces
             : rdfManager && typeof (rdfManager as any).getNamespaces === "function"
               ? (rdfManager as any).getNamespaces()
               : {};
-        const prefixes = Object.keys(nsMap || {}).filter(Boolean).sort();
+        const prefixes = Object.keys(nsMap || []).sort();
         const paletteMap = buildPaletteMap(prefixes || []);
         const registry = (prefixes || []).map((p) => {
           try {
@@ -1246,7 +1247,7 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
         // enrichment logic share a single source of truth. This is a best-effort operation.
         try {
           const nsMap = mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
-          const prefixes = Object.keys(nsMap || {}).filter(Boolean).sort();
+          const prefixes = Object.keys(nsMap || []).sort();
           const paletteMap = buildPaletteMap(prefixes || []);
           const registry = (prefixes || []).map((p) => {
             try {
@@ -1368,7 +1369,7 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
       // derived from the RDF manager so consumers (legend/enrichment) can use it.
       try {
         const nsMap = mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
-        const prefixes = Object.keys(nsMap || {}).filter(Boolean).sort();
+        const prefixes = Object.keys(nsMap || []).sort();
         const paletteMap = buildPaletteMap(prefixes || []);
         const registry = (prefixes || []).map((p) => {
           try {

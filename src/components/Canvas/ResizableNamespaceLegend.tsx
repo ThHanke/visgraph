@@ -31,9 +31,10 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
       const m: Record<string, string> = {};
       (namespaceRegistry || []).forEach((entry: any) => {
         try {
-          const p = String(entry?.prefix || "");
+          // Preserve empty-string prefixes ("") as valid keys instead of filtering them out.
+          const p = entry && (entry.prefix !== undefined && entry.prefix !== null) ? String(entry.prefix) : "";
           const c = String(entry?.color || "");
-          if (p) m[p] = c || "";
+          m[p] = c || "";
         } catch (_) {}
       });
       return m;
@@ -50,9 +51,10 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
       const map: Record<string, string> = {};
       (namespaceRegistry || []).forEach((e: any) => {
         try {
-          const p = String(e?.prefix || "");
-          const u = String(e?.namespace || "");
-          if (p) map[p] = u;
+          // Preserve empty-string prefixes ("") as valid entries.
+          const p = e && (e.prefix !== undefined && e.prefix !== null) ? String(e.prefix) : "";
+          const u = e && (e.namespace !== undefined && e.namespace !== null) ? String(e.namespace) : "";
+          map[p] = u;
         } catch (_) { /* ignore per-entry */ }
       });
       return map;

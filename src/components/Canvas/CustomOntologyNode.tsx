@@ -10,8 +10,6 @@ import {
 import { cn } from "../../lib/utils";
 import { Edit3, AlertTriangle, Info } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import { useOntologyStore } from "../../stores/ontologyStore";
-import { usePaletteFromRdfManager } from "./core/namespacePalette";
 import { shortLocalName, toPrefixed } from "../../utils/termUtils";
 import { debug } from "../../utils/startupDebug";
 import { NodeData } from "../../types/canvas";
@@ -107,8 +105,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
   ]);
 
   
-  const DEFAULT_PALETTE_COLOR = "#e5e7eb";
-  const nodeColor = nodeData.color || DEFAULT_PALETTE_COLOR;
+  const nodeColor = nodeData.color;
 
   const themeBg =
     typeof document !== "undefined"
@@ -133,11 +130,11 @@ function CustomOntologyNodeInner(props: NodeProps) {
         if (valueStr.trim() === "") return;
         const term = (() => {
           if (propertyIri.startsWith("_:")) return propertyIri;
-            try {
-              return toPrefixed(propertyIri);
-            } catch (_) {
-              return shortLocalName(propertyIri);
-            }
+          try {
+            return toPrefixed(propertyIri);
+          } catch (_) {
+            return shortLocalName(propertyIri);
+          }
         })();
         annotations.push({ term, value: valueStr });
       } catch (_) {
@@ -157,13 +154,32 @@ function CustomOntologyNodeInner(props: NodeProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const lastMeasuredRef = useRef<{ w: number; h: number } | null>(null);
 
+  // Apply the colored left border to the parent element of this node container.
+  // Some renderers wrap the node element, so the visual left stripe must be applied
+  // one level higher than the node's root div. We update the parent element's
+  // inline style here and clean up on unmount/change.
+  useEffect(() => {
+    try {
+      const el = rootRef.current;
+      const parent = el && (el.parentElement as HTMLElement | null);
+      if (parent) {
+        if (nodeColor) parent.style.borderLeft = `4px solid ${nodeColor}`;
+        else parent.style.borderLeft = "";
+      }
+      return () => {
+        try {
+          if (parent) parent.style.borderLeft = "";
+        } catch (_) {
+          /* ignore cleanup errors */
+        }
+      };
+    } catch (_) {
+      /* ignore runtime errors */
+    }
+  }, [nodeColor]);
+
   // Size reporting removed — component is now pure/read-only and does not observe element size.
   // Any measurement responsibilities belong to parent/layout code if needed.
-
-  // Removed direct DOM mutation. Visual color is applied inline in render to keep component pure/read-only.
-
-  const headerTitle = nodeData.displayPrefixed;
-
   // Use the node id (IRI) directly as the handle id per project convention.
   const handleId = String(id || "");
 
@@ -189,7 +205,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
         <div className="flex items-center gap-3 mb-2">
           <div
             className="text-sm font-bold text-foreground truncate"
-            title={headerTitle}
+            title={headerDisplay}
           >
             {headerDisplay}
           </div>

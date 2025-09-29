@@ -101,11 +101,102 @@ export const FIXTURES: Record<string, string> = {
 
   "https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl": `
     @prefix : <https://github.com/Mat-O-Lab/IOFMaterialsTutorial/> .
+    @prefix dcterms: <http://purl.org/dc/terms/> .
+    @prefix iof: <https://spec.industrialontologies.org/ontology/core/Core/> .
+    @prefix iof-mat: <https://spec.industrialontologies.org/ontology/materials/Materials/> .
     @prefix iof-qual: <https://spec.industrialontologies.org/ontology/qualities/> .
+    @prefix mod: <https://w3id.org/mod#> .
+    @prefix mutil: <https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/> .
+    @prefix owl: <http://www.w3.org/2002/07/owl#> .
     @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
-    :SpecimenLength a iof-qual:Length ;
-        rdfs:label "Specimen Length" .
+    dcterms:abstract a owl:AnnotationProperty .
+
+    dcterms:creator a owl:AnnotationProperty .
+
+    dcterms:license a owl:AnnotationProperty .
+
+    rdfs:label a owl:AnnotationProperty .
+
+    owl:versionInfo a owl:AnnotationProperty .
+
+    : a owl:Ontology ;
+        rdfs:label "The Title Of Your Graph"@en ;
+        dcterms:abstract "A short abstract of the contents"@en ;
+        dcterms:creator "Your Name" ;
+        dcterms:license <https://creativecommons.org/licenses/by/4.0/> ;
+        owl:imports <https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl>,
+            <https://raw.githubusercontent.com/iofoundry/ontology/materials/materials/Materials.rdf> ;
+        owl:versionInfo "0.0.1" ;
+        mod:createdWith <https://chowlk.linkeddata.es/> .
+
+    :Specimen a owl:NamedIndividual,
+            iof-mat:Specimen ;
+        iof:hasQuality :SpecimenLength ;
+        iof:isInputOf :LengthMeasurementProcess .
+
+    mutil:has_participant_at_some_time a owl:ObjectProperty ;
+        rdfs:label "has_participant_at_some_time" .
+
+    iof:hasCapability a owl:ObjectProperty ;
+        rdfs:label "has capability" .
+
+    iof:hasOutput a owl:ObjectProperty ;
+        rdfs:label "has output" .
+
+    iof:hasQuality a owl:ObjectProperty ;
+        rdfs:label "has quality" .
+
+    iof:isAbout a owl:ObjectProperty ;
+        rdfs:label "is about" .
+
+    iof:isInputOf a owl:ObjectProperty ;
+        rdfs:label "is input of" .
+
+    iof:masuredByAtSomeTime a owl:ObjectProperty ;
+        rdfs:label "masured by at some time" .
+
+    iof:realizes a owl:ObjectProperty ;
+        rdfs:label "realizes" .
+
+    :LengthData a owl:NamedIndividual,
+            iof:MeasurementInformationContentEntity ;
+        iof:isAbout :SpecimenLength .
+
+    :LengthMeasurementProcess a owl:NamedIndividual,
+            iof:MeasurementProcess ;
+        mutil:has_participant_at_some_time :Caliper ;
+        iof:hasOutput :LengthData ;
+        iof:realizes :LengthMeasureCapability .
+
+    iof:MeasurementInformationContentEntity a owl:Class ;
+        rdfs:label "Measurement Information Content Entity" .
+
+    iof:MeasurementProcess a owl:Class ;
+        rdfs:label "Measurement Process" .
+
+    iof-mat:DistanceMeasurementCapability a owl:Class ;
+        rdfs:label "Distance Measurement Capability" .
+
+    iof-mat:MeasurementDevice a owl:Class ;
+        rdfs:label "Measurement Device" .
+
+    iof-mat:Specimen a owl:Class ;
+        rdfs:label "Specimen" .
+
+    iof-qual:Length a owl:Class ;
+        rdfs:label "Length" .
+
+    :Caliper a owl:NamedIndividual,
+            iof-mat:MeasurementDevice ;
+        iof:hasCapability :LengthMeasureCapability .
+
+    :LengthMeasureCapability a owl:NamedIndividual,
+            iof-mat:DistanceMeasurementCapability .
+
+    :SpecimenLength a owl:NamedIndividual,
+            iof-qual:Length ;
+        iof:masuredByAtSomeTime :Caliper .
   `,
 
   // Local/example fixtures used by many tests

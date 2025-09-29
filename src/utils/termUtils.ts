@@ -1,5 +1,6 @@
 import { NamedNode, DataFactory } from "n3";
 const { namedNode } = DataFactory;
+import { useOntologyStore } from "../stores/ontologyStore";
 
 /**
  * termUtils - registry-only implementation
@@ -186,8 +187,8 @@ export function toPrefixed(
       return `${entry.prefix}:${local}`;
     }
 
-    // Final fallback: return full IRI
-    return iri;
+   // Final fallback: return full IRI
+   return iri;
   } catch (_) {
     return iri;
   }
@@ -206,25 +207,54 @@ export function getNodeColor(
 ): string | undefined {
   try {
     if (!targetIri) return undefined;
-    const entry = findRegistryEntryForIri(String(targetIri), registry);
+
+    // Try to normalize any registry passed in
+    let reg = normalizeRegistry(registry as any);
+
+    // If no registry provided or it's empty, attempt to read the persisted namespaceRegistry
+    // from the ontology store (synchronously). This is the canonical persisted snapshot
+    // that rdfManager / ontologyStore persist after RDF loads.
+    if ((!reg || reg.length === 0) && typeof useOntologyStore !== "undefined") {
+      try {
+        const st =
+          (useOntologyStore && typeof (useOntologyStore as any).getState === "function")
+            ? (useOntologyStore as any).getState()
+            : undefined;
+        const persisted = st && Array.isArray((st as any).namespaceRegistry) ? (st as any).namespaceRegistry : undefined;
+        if (persisted && Array.isArray(persisted) && persisted.length > 0) {
+          // persisted entries are expected to have { prefix, namespace, color }
+          reg = normalizeRegistry(persisted as any) || reg;
+        }
+      } catch (_) {
+        // ignore store read failures and continue with existing reg (may be undefined)
+      }
+    }
+
+    // First try registry entry color (when reg present)
+    const entry = reg ? findRegistryEntryForIri(String(targetIri), reg) : findRegistryEntryForIri(String(targetIri), registry);
     if (entry && entry.color) {
       const c = String(entry.color || "").trim();
       if (c) return c;
     }
+
     // If palette provided, try to resolve by prefix found in registry (longest-match)
-    const reg = normalizeRegistry(registry as any);
     let prefix: string | undefined = undefined;
     if (reg && reg.length > 0) {
       const e = findRegistryEntryForIri(String(targetIri), reg);
       if (e) prefix = String(e.prefix || "");
+    } else {
+      // As a last resort, try to derive a prefix via the original registry parameter
+      const alt = normalizeRegistry(registry as any);
+      if (alt && alt.length > 0) {
+        const e = findRegistryEntryForIri(String(targetIri), alt);
+        if (e) prefix = String(e.prefix || "");
+      }
     }
-    if (!prefix && Array.isArray(reg) && reg.length > 0) {
-      // fallback: try entries by namespace matching (already covered by findRegistryEntryForIri)
-      prefix = undefined;
-    }
+
     if (prefix && palette && typeof palette === "object") {
       return palette[prefix] || palette[prefix.toLowerCase()] || undefined;
     }
+
     return undefined;
   } catch (_) {
     return undefined;
@@ -279,14 +309,15 @@ export function computeTermDisplay(
   let nsUri = "";
   let local = shortLocalName(targetIri);
   let prefixed = local;
-  if (entry) {
-    rawPrefix = String(entry.prefix || "");
-    nsUri = String(entry.namespace || "");
-    local = targetIri.startsWith(nsUri) ? targetIri.substring(nsUri.length) : shortLocalName(targetIri);
-    // For display purposes, if the registry stores the default prefix as ":" or the empty prefix ''
-    // we keep the prefixed form ":local" so UI/tests can render the default prefix explicitly.
-    prefixed = rawPrefix === "" ? `:${local}` : (rawPrefix ? `${rawPrefix}:${local}` : local);
-  }
+    if (entry) {
+      rawPrefix = String(entry.prefix || "");
+      nsUri = String(entry.namespace || "");
+      local = targetIri.startsWith(nsUri) ? targetIri.substring(nsUri.length) : shortLocalName(targetIri);
+      // For display purposes, if the registry stores the default prefix as ":" or the empty prefix ''
+      // we keep the prefixed form ":local" so UI/tests can render the default prefix explicitly.
+      // Accept both ":" and "" as the default prefix marker; avoid producing "::local" when prefix === ":".
+      prefixed = rawPrefix === ":" || rawPrefix === "" ? `:${local}` : (rawPrefix ? `${rawPrefix}:${local}` : local);
+    }
   // Expose a consumer-friendly namespace field: empty string when default prefix used (':' or empty string)
   const prefix = rawPrefix === ":" || rawPrefix === "" ? "" : rawPrefix;
   // If no entry exists (and no registry provided), we still keep prefixed=local and prefix=""

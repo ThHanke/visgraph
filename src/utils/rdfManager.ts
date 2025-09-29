@@ -11,7 +11,7 @@
  * Internally notifyChange() is invoked whenever quads are added/removed/graphs modified.
  */
 
-/* eslint-disable no-empty */
+/* eslint-disable no-empty, no-unused-expressions */
 
 import {
   Store,
@@ -107,6 +107,9 @@ export class RDFManager {
   private subjectChangeSubscribers = new Set<(subjects: string[]) => void>();
   private subjectChangeBuffer: Set<string> = new Set();
   private subjectFlushTimer: number | null = null;
+  // Track whether a parsing/load operation is in progress so we can defer emitting
+  // subject-level notifications until namespaces/fat-map have been persisted.
+  private parsingInProgress: boolean = false;
   // Buffer quads per subject to allow emitting the actual triples involved in a subject-level change.
   private subjectQuadBuffer: Map<string, Quad[]> = new Map();
 
@@ -479,6 +482,12 @@ export class RDFManager {
   }
 
   private scheduleSubjectFlush(delay = 50) {
+    // If a parsing/load is still in progress, delay emitting subject-level notifications
+    // until after namespaces/fat-map have been persisted. Parsing sets parsingInProgress = true
+    // and finalize() will clear it and trigger an immediate flush.
+    if (this.parsingInProgress) {
+      return;
+    }
     try {
       if (this.subjectFlushTimer) {
         window.clearTimeout(this.subjectFlushTimer);
@@ -632,6 +641,8 @@ export class RDFManager {
     });
 
     this._inFlightLoads.set(key, promise);
+    // Mark that parsing is in progress so subject-level notification flushes are deferred
+    try { this.parsingInProgress = true; } catch (_) {}
 
     const finalize = (prefixes?: Record<string, string>) => {
       if (prefixes) {
@@ -659,6 +670,11 @@ export class RDFManager {
         try {
           persistRegistryToStore(buildRegistryFromManager(this));
         } catch (_) { /* ignore persist failures */ }
+        try {
+          // End of parsing: allow subject-level flush now that namespaces have been persisted.
+          (this as any).parsingInProgress = false;
+          try { (this as any).scheduleSubjectFlush(0); } catch (_) {}
+        } catch (_) {}
       }
       // Always emit a visible, developer-friendly snapshot and persist the canonical registry even when no prefixes were parsed.
       try {
