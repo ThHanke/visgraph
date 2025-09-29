@@ -12,7 +12,7 @@
 import { buildPaletteMap } from "../components/Canvas/core/namespacePalette";
 import { useOntologyStore } from "../stores/ontologyStore";
 
-export type RegistryEntry = { prefix: string; namespace: string; shortiri: string, color?: string };
+export type RegistryEntry = { prefix: string; namespace: string; shortiri?: string, color?: string };
 
 /**
  * Build a palette (prefix -> color) using the project's palette builder.
@@ -49,15 +49,15 @@ export function buildRegistryFromManager(mgr?: any, paletteBuilder: PaletteBuild
     const nsMap: Record<string, string> = (mgr as any).getNamespaces() || {};
     if (!nsMap || typeof nsMap !== "object") return [];
 
-    const prefixes = Object.keys(nsMap || {}).filter(Boolean).sort();
+    const prefixes = Object.keys(nsMap || {}).sort();
     const palette = paletteBuilder(prefixes || []);
     const registry: RegistryEntry[] = (prefixes || []).map((p) => {
       try {
         const ns = String((nsMap as any)[p] || "");
         const color = palette && typeof palette === "object" ? (palette[p] || palette[p.toLowerCase()] || "") : "";
-        return { prefix: String(p), namespace: String(ns), color: String(color || "") };
+        return { prefix: String(p), namespace: String(ns), shortiri: String(ns || ""), color: String(color || "") };
       } catch (_) {
-        return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: "" };
+        return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), shortiri: String((nsMap as any)[p] || ""), color: "" };
       }
     });
     return registry;
