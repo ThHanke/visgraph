@@ -873,6 +873,29 @@ const KnowledgeCanvas: React.FC = () => {
         }
       }
 
+      // Diagnostic trace for this mapping pass: counts and small samples to help identify
+      // whether the loaded RDF landed in the ontology graph vs data graph.
+      try {
+        try {
+          const sampleOnt = (ontologyQuads || []).slice(0, 5).map((qq: any) => ({
+            subject: qq && qq.subject && (qq.subject as any).value ? String((qq.subject as any).value) : "",
+            predicate: qq && qq.predicate && (qq.predicate as any).value ? String((qq.predicate as any).value) : "",
+            graph: qq && qq.graph && ((qq.graph as any).value || (qq.graph as any).id) ? String(((qq.graph as any).value || (qq.graph as any).id)) : "",
+          }));
+          const sampleData = (dataQuads || []).slice(0, 5).map((qq: any) => ({
+            subject: qq && qq.subject && (qq.subject as any).value ? String((qq.subject as any).value) : "",
+            predicate: qq && qq.predicate && (qq.predicate as any).value ? String((qq.predicate as any).value) : "",
+            graph: qq && qq.graph && ((qq.graph as any).value || (qq.graph as any).id) ? String(((qq.graph as any).value || (qq.graph as any).id)) : "",
+          }));
+          console.debug("[VG_TRACE] mapping.partition", {
+            dataQuads: Array.isArray(dataQuads) ? dataQuads.length : 0,
+            ontologyQuads: Array.isArray(ontologyQuads) ? ontologyQuads.length : 0,
+            sampleOntologyQuads: sampleOnt,
+            sampleDataQuads: sampleData,
+          });
+        } catch (_) { /* ignore sample build failures */ }
+      } catch (_) { /* ignore tracing failures */ }
+
 
       // Map only data quads to diagram nodes/edges
       if (!dataQuads || dataQuads.length === 0) {
@@ -986,47 +1009,74 @@ const KnowledgeCanvas: React.FC = () => {
             try { prevById.set(String(n.id), n); } catch (_) {}
           });
 
-          // Start result map with all previous nodes preserved.
-          const resultById = new Map<string, RFNode<NodeData>>(prevById);
+          // Build result map only from the newly mapped/enriched nodes.
+          // Preserve positional/runtime flags for nodes that already existed (by id),
+          // but do NOT preserve arbitrary previous nodes that are not present in this mapping pass.
+          const resultById = new Map<string, RFNode<NodeData>>();
 
-          // For each mapped/enriched node, replace node.data while preserving position and runtime flags.
           for (const m of (enrichedNodes || [])) {
             try {
               const id = String((m && m.id) || "");
               if (!id) continue;
               const existing = prevById.get(id);
               if (existing) {
-                // Replace data completely, but keep position & runtime flags.
+                // Merge incoming mapper data with existing node.data to avoid losing
+                // annotation/literal properties or other runtime metadata when the mapper
+                // emitted a TBox-only minimal payload. Preserve existing position/runtime flags.
+                const incomingData = (m && m.data) ? (m.data as NodeData) : undefined;
+                const existingData = (existing && (existing.data as NodeData)) ? (existing.data as NodeData) : ({} as NodeData);
+
+                const mergedData: NodeData = incomingData
+                  ? { ...incomingData }
+                  : { ...(existingData as NodeData) };
+
+                try {
+                  // Preserve annotation and literal properties if incoming omitted them.
+                  if ((!mergedData.annotationProperties || (Array.isArray(mergedData.annotationProperties) && mergedData.annotationProperties.length === 0)) && Array.isArray(existingData.annotationProperties) && existingData.annotationProperties.length > 0) {
+                    mergedData.annotationProperties = (existingData.annotationProperties as any[]).slice();
+                  }
+                } catch (_) { /* ignore */ }
+
+                try {
+                  if ((!mergedData.literalProperties || (Array.isArray(mergedData.literalProperties) && mergedData.literalProperties.length === 0)) && Array.isArray(existingData.literalProperties) && existingData.literalProperties.length > 0) {
+                    mergedData.literalProperties = (existingData.literalProperties as any[]).slice();
+                  }
+                } catch (_) { /* ignore */ }
+
+                try {
+                  // Preserve human-friendly label/display values when mapper didn't provide them.
+                  if ((!mergedData.label || String(mergedData.label).trim() === "") && existingData && existingData.label) {
+                    mergedData.label = existingData.label as any;
+                  }
+                } catch (_) { /* ignore */ }
+
+                try {
+                  if ((!mergedData.displayPrefixed || String(mergedData.displayPrefixed).trim() === "") && existingData && (existingData as any).displayPrefixed) {
+                    (mergedData as any).displayPrefixed = (existingData as any).displayPrefixed;
+                  }
+                } catch (_) { /* ignore */ }
+
+                try {
+                  if ((!mergedData.namespace || String(mergedData.namespace).trim() === "") && existingData && (existingData as any).namespace) {
+                    mergedData.namespace = (existingData as any).namespace as any;
+                  }
+                } catch (_) { /* ignore */ }
+
                 const replaced: RFNode<NodeData> = {
-                  ...existing,
-                // keep existing top-level fields (position, hidden, __rf)
-                position: existing.position,
-                id: existing.id,
-                type: m.type || existing.type || "ontology",
-                data: (m && m.data) ? (m.data as NodeData) : (existing.data as NodeData),
-              } as RFNode<NodeData>;
+                  ...(m as RFNode<NodeData>),
+                  position: existing.position,
+                  id: existing.id,
+                  type: (m as any).type || existing.type || "ontology",
+                  data: mergedData as NodeData,
+                } as RFNode<NodeData>;
                 try { if ((existing as any).__rf) (replaced as any).__rf = (existing as any).__rf; } catch (_) {}
-                // Do NOT preserve selection when replacing node data; clear any selected flag so incoming data never keeps UI selection.
                 try { try { delete (replaced as any).selected; } catch (_) { /* ignore */ } } catch (_) {}
                 try { if ((existing as any).hidden) (replaced as any).hidden = (existing as any).hidden; } catch (_) {}
-                // Diagnostic: log before/after for a small sample to detect data loss
-                try {
-                  const sampleId = id;
-                  const before = { id: existing.id, data: existing.data && ((existing.data as any).displayPrefixed || (existing.data as any).displayclassType || (existing.data as any).rdfTypes) };
-                  const after = { id: replaced.id, data: (replaced.data as any) && { displayPrefixed: (replaced.data as any).displayPrefixed, displayclassType: (replaced.data as any).displayclassType, rdfTypes: (replaced.data as any).rdfTypes, isTBox: (replaced.data as any).isTBox } };
-                  console.debug("[VG_DEBUG] KnowledgeCanvas.replaceNode.beforeAfter", { sampleId, before, after });
-                } catch (_) { /* ignore debug failures */ }
                 resultById.set(id, replaced);
               } else {
-                // New node: add as-is but do not assign or modify position (leave m.position if present).
                 const newNode = { ...(m as RFNode<NodeData>) };
-                // Ensure id and type are present
                 newNode.id = id;
                 newNode.type = newNode.type || "ontology";
-                try {
-                  // Diagnostic: log newly created node data sample
-                  console.debug("[VG_DEBUG] KnowledgeCanvas.newNode", { id, data: (newNode.data as any) && { displayPrefixed: (newNode.data as any).displayPrefixed, displayclassType: (newNode.data as any).displayclassType, rdfTypes: (newNode.data as any).rdfTypes, isTBox: (newNode.data as any).isTBox } });
-                } catch (_) {}
                 resultById.set(id, newNode as RFNode<NodeData>);
               }
             } catch (_) {
@@ -1042,43 +1092,17 @@ const KnowledgeCanvas: React.FC = () => {
       });
 
       // Replace outgoing edges for subjects that emitted in this mapping pass.
-      setEdges((prev) => {
+      // Only use edges produced by the mapper for the current data batch so edges
+      // referencing removed/old nodes are not preserved.
+      setEdges(() => {
         try {
-          const prevEdges = Array.isArray(prev) ? prev.slice() : [];
-          // Collect subjects present in this mapping batch (mapped/enriched nodes)
-          const subjects = new Set<string>((enrichedNodes || []).map((n) => String(n.id)).filter(Boolean));
-
-          // Filter out all previous edges whose source is one of the emitted subjects.
-          const kept = prevEdges.filter((e) => {
-            try {
-              const src = String(e.source || "");
-              return !subjects.has(src);
-            } catch (_) { return true; }
-          });
-
-          // Add all enrichedEdges (they include edges for the emitted subjects).
-          const merged = [...kept, ...(enrichedEdges || [])];
-
-          // Deduplicate by id preserving the last occurrence (enriched edges override)
           const byId = new Map<string, RFEdge<LinkData>>();
-          for (const e of merged) {
+          for (const e of enrichedEdges || []) {
             try { byId.set(String(e.id), e); } catch (_) {}
           }
-          const result = Array.from(byId.values());
-
-          // If structurally identical to prev, return prev to avoid updates
-          try {
-            if (
-              prevEdges.length === result.length &&
-              prevEdges.every((p, idx) => p.id === result[idx].id && p.source === result[idx].source && p.target === result[idx].target)
-            ) {
-              return prev;
-            }
-          } catch (_) { /* ignore compare errors */ }
-
-          return result;
-        } catch (_) {
-          // fallback: return enrichedEdges
+          return Array.from(byId.values());
+        } catch (e) {
+          try { console.warn('[VG] KnowledgeCanvas: replace-edges failed, falling back to enrichedEdges', e); } catch (_) {}
           const byId = new Map<string, RFEdge<LinkData>>();
           for (const e of enrichedEdges || []) {
             try { byId.set(String(e.id), e); } catch (_) {}
