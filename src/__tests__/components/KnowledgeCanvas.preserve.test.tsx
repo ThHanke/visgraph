@@ -1,6 +1,6 @@
 import React from "react";
-import { describe, test, expect, beforeEach } from "vitest";
-import { render, waitFor } from "@testing-library/react";
+import { describe, test, expect, beforeEach, vi } from "vitest";
+import { render, waitFor, act } from "@testing-library/react";
 import KnowledgeCanvas from "../../../src/components/Canvas/KnowledgeCanvas";
 import { rdfManager } from "../../../src/utils/rdfManager";
 import { FIXTURES } from "../fixtures/rdfFixtures";
@@ -35,7 +35,7 @@ describe("KnowledgeCanvas incremental mapping preserves data (reworked)", () => 
 
   test("load data then ontology — RDF store keeps data and ontology adds namespaces", async () => {
     // Render the canvas to let initialization run (ready flag available on window)
-    render(<KnowledgeCanvas />);
+    const { unmount } = render(<KnowledgeCanvas />);
 
     // Wait for the canvas to mark itself ready (same signal the UI uses)
     await waitFor(() => {
@@ -75,5 +75,16 @@ describe("KnowledgeCanvas incremental mapping preserves data (reworked)", () => 
     // Also verify rdfManager.getNamespaces includes foaf
     const namespaces = rdfManager.getNamespaces();
     expect(Object.keys(namespaces).some((p) => p === "foaf")).toBeTruthy();
+
+    // Allow any pending timers/mapping runs to complete and then unmount the component
+    await act(async () => {
+      try {
+        // advance timers to flush any debounced mapping work or queued setTimeouts
+        vi.advanceTimersByTime(500);
+      } catch (_) {}
+    });
+
+    try { unmount(); } catch (_) {}
+
   }, 30000);
 });

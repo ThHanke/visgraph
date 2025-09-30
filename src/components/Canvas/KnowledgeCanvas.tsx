@@ -34,10 +34,16 @@ import { toast } from "sonner";
 import { LayoutManager } from "./LayoutManager";
 import { NodePropertyEditor } from "./NodePropertyEditor";
 import * as LinkPropertyEditorModule from "./LinkPropertyEditor";
-const LinkPropertyEditor: any =
-  (LinkPropertyEditorModule && (LinkPropertyEditorModule as any).LinkPropertyEditor) ||
-  (LinkPropertyEditorModule && (LinkPropertyEditorModule as any).default) ||
-  (() => null);
+const LinkPropertyEditor: any = (() => {
+  try {
+    const mod = LinkPropertyEditorModule as any;
+    if (mod && typeof mod === "object") {
+      if ((mod as any).LinkPropertyEditor) return (mod as any).LinkPropertyEditor;
+      if ((mod as any).default) return (mod as any).default;
+    }
+  } catch (_) { /* swallow mock inspection errors */ }
+  return () => null;
+})();
 /**
  * KnowledgeCanvas (pure quad integration)
  *
@@ -235,6 +241,8 @@ const KnowledgeCanvas: React.FC = () => {
   const mappingInProgressRef = useRef<boolean>(false);
   const applyRequestedRef = useRef<boolean>(false);
   const originalAutoLayoutRef = useRef<boolean | null>(null);
+  // One-shot flag to force layout after the next successful mapping run (used by loaders)
+  const forceLayoutNextMappingRef = useRef<boolean>(false);
 
   // Keep refs in sync with state so other callbacks can read the latest snapshot synchronously.
 
@@ -417,6 +425,8 @@ const KnowledgeCanvas: React.FC = () => {
         loadTriggerRef.current = true;
         loadFitRef.current = true;
 
+        // Ensure the next mapping run performs layout for this user-initiated load
+        try { forceLayoutNextMappingRef.current = true; } catch (_) {}
         await loadKnowledgeGraph(text, {
           onProgress: (progress: number, message: string) => {
             canvasActions.setLoading(true, Math.max(progress, 30), message);
@@ -560,11 +570,59 @@ const KnowledgeCanvas: React.FC = () => {
       const nodeChanges = (mappedNodes || []).map((n: any) => ({ id: String(n.id), type: "reset", item: n }));
       const edgeChanges = (mappedEdges || []).map((e: any) => ({ id: String(e.id), type: "reset", item: e }));
 
+      // mark mapping active
+      try { mappingInProgressRef.current = true; } catch (_) {}
+
       setNodes((prev) => applyNodeChanges(nodeChanges as any, prev));
       setEdges((prev) => applyEdgeChanges(edgeChanges as any, prev));
 
       // Signal mapping completion for tests
       try { if (typeof window !== "undefined") (window as any).__VG_LAST_MAPPING_RUN = Date.now(); } catch (_) {}
+
+      // Schedule layout and queued-apply processing on next tick (ensures state flushed)
+      try {
+        setTimeout(async () => {
+          try {
+            mappingInProgressRef.current = false;
+
+            const mergedNodes = Array.isArray(mappedNodes) ? mappedNodes : (nodes || []);
+            const mergedEdges = Array.isArray(mappedEdges) ? mappedEdges : (edges || []);
+
+            // If loader requested a forced layout for the next mapping, honor it first.
+            if (forceLayoutNextMappingRef.current) {
+              forceLayoutNextMappingRef.current = false;
+              try {
+                await doLayout(mergedNodes, mergedEdges, true);
+                // Give React Flow a moment to apply node changes, then fit the view so the user sees the graph.
+                try { await new Promise((r) => setTimeout(r, 50)); } catch (_) {}
+                try {
+                  const inst = reactFlowInstance && reactFlowInstance.current;
+                  if (inst && typeof (inst as any).fitView === "function") {
+                    try { (inst as any).fitView({ padding: 0.1 }); } catch (_) {}
+                  }
+                } catch (_) {}
+              } catch (_) {}
+            } else {
+              // Otherwise run layout if autoApplyLayout is enabled
+              try {
+                const autoLayoutEnabled = !!(config && (config as any).autoApplyLayout);
+                if (autoLayoutEnabled) {
+                  await doLayout(mergedNodes, mergedEdges, true);
+                }
+              } catch (_) { /* ignore layout errors */ }
+            }
+
+            // Honor any manual Apply that was queued while mapping was in progress
+            if (applyRequestedRef.current) {
+              applyRequestedRef.current = false;
+              try { await doLayout(mergedNodes, mergedEdges, true); } catch (_) {}
+            }
+          } catch (_) {
+            /* swallow scheduling failures */
+          }
+        }, 0);
+      } catch (_) {}
+
     };
 
     if (!initialMapRef.current) {
@@ -738,6 +796,40 @@ const KnowledgeCanvas: React.FC = () => {
           // Signal mapping completion for tests
           try { if (typeof window !== "undefined") (window as any).__VG_LAST_MAPPING_RUN = Date.now(); } catch (_) {}
 
+          // Schedule layout against the merged mapper output (next tick so state flushes).
+          try {
+            setTimeout(async () => {
+              try {
+                const mergedNodes = Array.isArray(mappedNodes) ? mappedNodes : (nodes || []);
+                const mergedEdges = Array.isArray(mappedEdges) ? mappedEdges : (edges || []);
+
+                if (forceLayoutNextMappingRef.current) {
+                  forceLayoutNextMappingRef.current = false;
+                  try {
+                    await doLayout(mergedNodes, mergedEdges, true);
+                    try { await new Promise((r) => setTimeout(r, 50)); } catch (_) {}
+                    try {
+                      const inst = reactFlowInstance && reactFlowInstance.current;
+                      if (inst && typeof (inst as any).fitView === "function") {
+                        try { (inst as any).fitView({ padding: 0.1 }); } catch (_) {}
+                      }
+                    } catch (_) {}
+                  } catch (_) {}
+                } else {
+                  const autoLayoutEnabled = !!(config && (config as any).autoApplyLayout);
+                  if (autoLayoutEnabled) {
+                    try { await doLayout(mergedNodes, mergedEdges, true); } catch (_) {}
+                  }
+                }
+
+                if (applyRequestedRef.current) {
+                  applyRequestedRef.current = false;
+                  try { await doLayout(mergedNodes, mergedEdges, true); } catch (_) {}
+                }
+              } catch (_) { /* ignore */ }
+            }, 0);
+          } catch (_) {}
+
           return;
         } catch (err) {
           try { console.debug("[VG_DEBUG] subjectsCallback.directMappingFailed", { err }); } catch (_) {}
@@ -820,6 +912,12 @@ const KnowledgeCanvas: React.FC = () => {
   useEffect(() => {
     if (typeof window === "undefined") return;
     (window as any).__VG_KNOWLEDGE_CANVAS_READY = true;
+    // Expose a helper so other UI components can request that the next mapping run triggers layout.
+    try {
+      (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING = () => {
+        try { forceLayoutNextMappingRef.current = true; } catch (_) {}
+      };
+    } catch (_) {}
 
     const pending = (window as any).__VG_APPLY_LAYOUT_PENDING;
       if (Array.isArray(pending) && pending.length > 0) {
@@ -897,6 +995,8 @@ const KnowledgeCanvas: React.FC = () => {
         if (startupUrl && typeof loadKnowledgeGraph === "function") {
           try {
             canvasActions.setLoading(true, 5, "Loading startup graph...");
+            // Mark that the next mapping should trigger a layout since this is a user-requested startup load
+            try { forceLayoutNextMappingRef.current = true; } catch (_) {}
             await loadKnowledgeGraph(startupUrl, {
               onProgress: (progress: number, message: string) => {
                 canvasActions.setLoading(true, Math.max(progress, 5), message);

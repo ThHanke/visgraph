@@ -783,27 +783,29 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                   value={fileSource}
                   onChange={(e) => setFileSource(e.target.value)}
                 />
-                <Button 
-                  onClick={async () => {
-                    if (fileSource.trim() && onLoadFile) {
-                      try {
-                        const mockFile = { 
-                          url: fileSource.trim(),
-                          type: 'url'
-                        };
-                        await onLoadFile(mockFile as any);
-                        setFileSource('');
-                        setIsLoadFileOpen(false);
-                      } catch (error) {
-                        ((...__vg_args)=>{try{fallback('console.error',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'error', captureStack:true})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.error(...__vg_args);})('Failed to load file:', error);
+                  <Button 
+                    onClick={async () => {
+                      if (fileSource.trim() && onLoadFile) {
+                        try {
+                          // Request a one-shot forced layout after the load mapping completes
+                          try { (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING && (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING(); } catch (_) {}
+                          const mockFile = { 
+                            url: fileSource.trim(),
+                            type: 'url'
+                          };
+                          await onLoadFile(mockFile as any);
+                          setFileSource('');
+                          setIsLoadFileOpen(false);
+                        } catch (error) {
+                          ((...__vg_args)=>{try{fallback('console.error',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'error', captureStack:true})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.error(...__vg_args);})('Failed to load file:', error);
+                        }
                       }
-                    }
-                  }}
-                  disabled={!fileSource.trim()}
-                  variant="outline"
-                >
-                  Load
-                </Button>
+                    }}
+                    disabled={!fileSource.trim()}
+                    variant="outline"
+                  >
+                    Load
+                  </Button>
               </div>
             </div>
             
@@ -825,6 +827,8 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                 const file = e.target.files?.[0];
                 if (file && onLoadFile) {
                   try {
+                    // Request a one-shot forced layout after the load mapping completes
+                    try { (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING && (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING(); } catch (_) {}
                     await onLoadFile(file);
                     setIsLoadFileOpen(false);
                   } catch (error) {

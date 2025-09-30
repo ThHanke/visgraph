@@ -76,7 +76,7 @@ vi.mock("../../components/Canvas/core/mappingHelpers", () => {
         {
           id: "http://example.com/node1",
           type: "ontology",
-          position: undefined,
+          position: { x: 0, y: 0 },
           data: {
             key: "http://example.com/node1",
             iri: "http://example.com/node1",
