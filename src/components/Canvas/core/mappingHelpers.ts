@@ -481,11 +481,6 @@ export function mapQuadsToDiagram(
             options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
             (options as any).registry
           );
-          try {
-            const reg = (options && (options as any).registry) || undefined;
-            const regCount = Array.isArray(reg) ? reg.length : reg && typeof reg === "object" ? Object.keys(reg).length : 0;
-            console.debug("[VG_DEBUG] mapQuadsToDiagram.displayclassType", { classType, pref, regCount });
-          } catch (_) { /* ignore */ void 0; }
           return pref;
         } catch (_) {
           return String(classType || "");
@@ -524,6 +519,7 @@ export function mapQuadsToDiagram(
     const rfNode: RFNode<NodeData> = {
       id: iri,
       type: "ontology",
+      position: { x: 0, y: 0 },
       data: {
         ...nodeData,
         onSizeMeasured: (_w: number, _h: number) => { /* no-op */ },
@@ -543,7 +539,7 @@ export function mapQuadsToDiagram(
   // Keep edges as emitted by the mapper. Visibility decisions (hidden/visible) are handled by the canvas.
   // Policy: do not drop edges here; KnowledgeCanvas will decide hiding based on node visibility and propertyPrefixed.
   const rfEdgesFiltered = rfEdges || [];
-
+  console.debug("[VG_DEBUG] mapQuadsToDiagram.return", { rfNodes, rfEdgesFiltered });
   return { nodes: rfNodes, edges: rfEdgesFiltered };
 }
 

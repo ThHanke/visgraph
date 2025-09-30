@@ -62,11 +62,6 @@ function CustomOntologyNodeInner(props: NodeProps) {
       const payload = {
         uri,
       };
-      try {
-        if (typeof debug === "function") {
-          try { debug("node.fingerprint", payload); } catch (_) {}
-        }
-      } catch (_) {}
     } catch (_) {
       /* ignore */
     }

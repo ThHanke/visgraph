@@ -102,96 +102,85 @@ export class LayoutManager {
 
   // Import dagre-based helper lazily to avoid introducing a hard runtime dependency
   // when this module is used in non-ReactFlow contexts.
-  async applyLayout(layoutType: LayoutType, options: LayoutOptions = {}): Promise<void> {
+  //
+  // Full-integration change:
+  // - applyLayout now accepts an optional context parameter containing { nodes, edges }
+  //   and returns an array of node change objects that callers should apply via
+  //   React Flow's applyNodeChanges. This avoids mutating external diagram objects
+  //   and makes layout results explicit and race-free.
+  async applyLayout(
+    layoutType: LayoutType,
+    options: LayoutOptions = {},
+    context?: { nodes?: any[]; edges?: any[] },
+  ): Promise<Array<any>> {
     try {
-      // Capture current positions if available
-      if (this.diagram) {
-        try {
-          if (typeof this.diagram.getNodePositions === 'function') {
-            const current = this.diagram.getNodePositions();
-            this.lastPositions.push(current || {});
-          } else if (Array.isArray(this.diagram.nodes)) {
-            const snapshot: Record<string, { x: number; y: number }> = {};
-            for (const n of this.diagram.nodes) {
-              const pos = (n && n.position) || { x: NaN, y: NaN };
-              snapshot[n.id] = { x: (pos.x as number) || 0, y: (pos.y as number) || 0 };
-            }
-            this.lastPositions.push(snapshot);
-          }
-        } catch {
-          // ignore snapshot failures
+      // Prefer context-provided nodes/edges, fall back to internal diagram when present.
+      const diagramNodes = (context && Array.isArray(context.nodes) ? context.nodes : (this.diagram && Array.isArray(this.diagram.nodes) ? this.diagram.nodes : [])) || [];
+      const diagramEdges = (context && Array.isArray(context.edges) ? context.edges : (this.diagram && Array.isArray(this.diagram.edges) ? this.diagram.edges : [])) || [];
+
+      // Capture current positions (for undo/restore) using either context or diagram snapshot.
+      try {
+        const sourceNodes = diagramNodes;
+        const snapshot: Record<string, { x: number; y: number }> = {};
+        for (const n of sourceNodes) {
+          const pos = (n && n.position) || { x: NaN, y: NaN };
+          snapshot[n.id] = { x: (pos.x as number) || 0, y: (pos.y as number) || 0 };
         }
+        this.lastPositions.push(snapshot);
+      } catch {
+        // ignore snapshot failures
       }
 
-      // If the diagram exposes a layout API, try to delegate to it.
-      if (this.diagram) {
-        if (typeof this.diagram.applyLayout === 'function') {
-          await Promise.resolve(this.diagram.applyLayout(layoutType, options));
-          return;
-        }
+      // If the diagram exposes a layout API and no context was provided, prefer delegation.
+      if (!context && this.diagram && typeof this.diagram.applyLayout === 'function') {
+        await Promise.resolve(this.diagram.applyLayout(layoutType, options));
+        // Attempt to read resulting positions into change objects
+        const resulting = (this.diagram && Array.isArray(this.diagram.nodes)) ? this.diagram.nodes : [];
+        return (resulting || []).map((n: any) => ({ id: String(n.id), type: "position", position: n.position }));
+      }
 
-        // Handle dagre-driven layouts: horizontal / vertical
-        if (Array.isArray(this.diagram.nodes) && (layoutType === 'horizontal' || layoutType === 'vertical')) {
-          try {
-            // Import the dagre helper relative to this module.
-            // Use dynamic import to keep the module lightweight unless needed.
-             
-            const { applyDagreLayout } = await import('./layout/dagreLayout');
+      // Handle dagre-driven layouts when nodes array available
+      if (Array.isArray(diagramNodes) && (layoutType === 'horizontal' || layoutType === 'vertical')) {
+        try {
+          const { applyDagreLayout } = await import('./layout/dagreLayout');
+          const direction = layoutType === 'horizontal' ? 'LR' : 'TB';
+          const nodeSep = options.nodeSpacing ?? (options.layoutSpecific && options.layoutSpecific.nodeSep) ?? 60;
+          const rankSep = (options.layoutSpecific && options.layoutSpecific.rankSep) ?? 60;
 
-            const direction = layoutType === 'horizontal' ? 'LR' : 'TB';
-            const nodeSep = options.nodeSpacing ?? (options.layoutSpecific && options.layoutSpecific.nodeSep) ?? 60;
-            const rankSep = (options.layoutSpecific && options.layoutSpecific.rankSep) ?? 60;
-
-            const positioned = applyDagreLayout(this.diagram.nodes, this.diagram.edges || [], {
-              direction: direction as any,
-              nodeSep,
-              rankSep,
-            });
-
-            // Attempt to hand updated positions back to the diagram
-            if (typeof this.diagram.setNodePositions === 'function') {
-              await Promise.resolve(this.diagram.setNodePositions(positioned));
-              return;
-            }
-            // Generic fallback: replace nodes array with positioned nodes
-            this.diagram.nodes = positioned;
-            return;
-          } catch (err) {
-            // swallow dagre/layout failures — this manager is intentionally lightweight
-          }
-        }
-
-        // Generic fallback: place nodes on a regular grid using provided spacing.
-        if (Array.isArray(this.diagram.nodes)) {
-          const total = this.diagram.nodes.length;
-          const cols = Math.ceil(Math.sqrt(Math.max(1, total)));
-          const spacingX = options.nodeSpacing ?? 160;
-          const spacingY = (options.layoutSpecific && options.layoutSpecific.rankSep) ?? (options.nodeSpacing ?? 120);
-
-          const updated = this.diagram.nodes.map((node: any, i: number) => {
-            const x = (i % cols) * spacingX;
-            const y = Math.floor(i / cols) * spacingY;
-            return { ...node, position: { x, y } };
+          const positioned = applyDagreLayout(diagramNodes, diagramEdges || [], {
+            direction: direction as any,
+            nodeSep,
+            rankSep,
           });
 
-          try {
-            if (typeof this.diagram.setNodePositions === 'function') {
-              await Promise.resolve(this.diagram.setNodePositions(updated));
-              return;
-            }
-            this.diagram.nodes = updated;
-            return;
-          } catch {
-            // ignore
-          }
+          // Return position change objects (caller will apply them via applyNodeChanges)
+          return (positioned || []).map((n: any) => ({ id: String(n.id), type: "position", position: n.position }));
+        } catch (err) {
+          // swallow dagre/layout failures and continue to fallback grid layout
         }
       }
 
-      // No diagram to modify — act as a no-op but resolve so callers don't hang.
-      return;
+      // Generic grid layout fallback
+      if (Array.isArray(diagramNodes)) {
+        const total = diagramNodes.length;
+        const cols = Math.ceil(Math.sqrt(Math.max(1, total)));
+        const spacingX = options.nodeSpacing ?? 160;
+        const spacingY = (options.layoutSpecific && options.layoutSpecific.rankSep) ?? (options.nodeSpacing ?? 120);
+
+        const positioned = (diagramNodes || []).map((node: any, i: number) => {
+          const x = (i % cols) * spacingX;
+          const y = Math.floor(i / cols) * spacingY;
+          return { ...node, position: { x, y } };
+        });
+
+        return (positioned || []).map((n: any) => ({ id: String(n.id), type: "position", position: n.position }));
+      }
+
+      // Nothing to layout -> return empty changes
+      return [];
     } catch {
-      // Ensure we always resolve
-      return;
+      // Ensure we always resolve with an array
+      return [];
     }
   }
 }
