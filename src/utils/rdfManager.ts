@@ -506,10 +506,16 @@ export class RDFManager {
           try {
             for (const s of subjects) {
               try {
-                const arr = this.subjectQuadBuffer.get(s) || [];
-                if (arr && arr.length > 0) quads.push(...arr);
-                // Clear the buffered quads for this subject
+                // Prefer authoritative per-subject snapshot from the store so subscribers
+                // receive the full set of triples for the subject (not just the incremental deltas).
+                const subjTerm = namedNode(String(s));
+                const subjectQuads = this.store.getQuads(subjTerm, null, null, null) || [];
+                if (Array.isArray(subjectQuads) && subjectQuads.length > 0) {
+                  quads.push(...subjectQuads);
+                }
+                // Clear any buffered deltas for this subject as we've emitted a full snapshot.
                 this.subjectQuadBuffer.delete(s);
+
               } catch (_) { /* ignore per-subject quad collection failures */ }
             }
           } catch (_) { /* ignore overall quad collection failures */ }
