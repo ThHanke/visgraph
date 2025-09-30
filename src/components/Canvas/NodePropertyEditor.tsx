@@ -76,6 +76,8 @@ interface NodePropertyEditorProps {
     rdfType: string;
     description?: string;
   }>;
+  // optional callback so parent can immediately remove the node from the canvas (deleteElements)
+  onDelete?: (iriOrId: string) => void;
 }
 
 /**
@@ -88,6 +90,7 @@ export const NodePropertyEditor = ({
   nodeData,
   onSave,
   availableEntities,
+  onDelete,
 }: NodePropertyEditorProps) => {
   // Local form state
   const [nodeIri, setNodeIri] = useState<string>("");
@@ -97,6 +100,7 @@ export const NodePropertyEditor = ({
 
   // Keep a ref of the initial properties so we can compute diffs on save
   const initialPropertiesRef = useRef<LiteralProperty[]>([]);
+  const initialRdfTypesRef = useRef<string[]>([]);
 
   // Fat-map sources from ontology store (used only for autocomplete)
   const availableClasses = useOntologyStore((s) => s.availableClasses || []);
@@ -231,83 +235,90 @@ export const NodePropertyEditor = ({
       throw new Error("Please provide property names for all annotation properties (no empty keys).");
     }
 
-    // Compose canonical annotation properties
+    // Subject IRI
+    const subjIri = String(nodeIri);
+    if (!subjIri) throw new Error("Node IRI missing; cannot persist node properties.");
+
+    // Acquire RDF manager (must exist)
+    const mgrState = useOntologyStore.getState();
+    const mgr = typeof (mgrState as any).getRdfManager === "function"
+      ? (mgrState as any).getRdfManager()
+      : (mgrState as any).rdfManager;
+
+    if (!mgr || typeof (mgr as any).applyBatch !== "function") {
+      throw new Error("RDF manager unavailable or does not support applyBatch; cannot persist node properties.");
+    }
+
+    // Compute annotation property diffs from initial snapshot (no RDF lookups)
+    const { toAdd: propsToAdd, toRemove: propsToRemove } = diffProperties(initialPropertiesRef.current || [], properties || []);
+
+    // Compute rdf:type diffs (use rdfTypesState if present, otherwise use nodeType)
+    const currentTypes = (Array.isArray(rdfTypesState) && rdfTypesState.length > 0) ? rdfTypesState.slice() : (nodeType ? [String(nodeType)] : []);
+    const initialTypes = Array.isArray(initialRdfTypesRef.current) ? initialRdfTypesRef.current.slice() : [];
+    const typesToAdd = currentTypes.filter((t) => t && !initialTypes.includes(t));
+    const typesToRemove = initialTypes.filter((t) => t && !currentTypes.includes(t));
+
+    const removes: any[] = [];
+    const adds: any[] = [];
+
+    // Prepare rdf:type predicate full IRI
+    const rdfTypePred = typeof (mgr as any).expandPrefix === "function" ? String((mgr as any).expandPrefix("rdf:type")) : "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
+
+    // Build removes for annotation properties (remove specific literal values)
+    for (const p of propsToRemove || []) {
+      try {
+        const predFull = typeof (mgr as any).expandPrefix === "function" ? String((mgr as any).expandPrefix(p.key)) : String(p.key);
+        removes.push({ subject: subjIri, predicate: predFull, object: String(p.value || "") });
+      } catch (_) { /* ignore per-item */ }
+    }
+
+    // Build removes for rdf:type removals
+    for (const t of typesToRemove || []) {
+      try {
+        const typeFull = typeof (mgr as any).expandPrefix === "function" ? String((mgr as any).expandPrefix(String(t))) : String(t);
+        removes.push({ subject: subjIri, predicate: rdfTypePred, object: typeFull });
+      } catch (_) { /* ignore per-item */ }
+    }
+
+    // Build adds for annotation properties
+    for (const p of propsToAdd || []) {
+      try {
+        const predFull = typeof (mgr as any).expandPrefix === "function" ? String((mgr as any).expandPrefix(p.key)) : String(p.key);
+        adds.push({ subject: subjIri, predicate: predFull, object: String(p.value || "") });
+      } catch (_) { /* ignore per-item */ }
+    }
+
+    // Build adds for rdf:type additions
+    for (const t of typesToAdd || []) {
+      try {
+        const typeFull = typeof (mgr as any).expandPrefix === "function" ? String((mgr as any).expandPrefix(String(t))) : String(t);
+        adds.push({ subject: subjIri, predicate: rdfTypePred, object: typeFull });
+      } catch (_) { /* ignore per-item */ }
+    }
+
+    // Apply batch (manager will notify). Use empty arrays when nothing to do so applyBatch is deterministic.
+    try {
+      await (mgr as any).applyBatch({ removes: removes, adds: adds }, "urn:vg:data");
+    } catch (err) {
+      try { console.warn("NodePropertyEditor.applyBatch.failed", err); } catch (_) {}
+      throw err;
+    }
+
+    // Notify parent about saved properties (preserve previous contract: pass annotation properties array)
     const annotationProperties = properties.map((p) => ({
       propertyUri: p.key,
       key: p.key,
       value: p.value,
       type: p.type || "xsd:string",
     }));
+    try { if (typeof onSave === "function") onSave(annotationProperties); } catch (_) {}
 
-    // Acquire RDF manager (must exist in this strict mode)
-    const mgrState = useOntologyStore.getState();
-    const mgr = typeof (mgrState as any).getRdfManager === "function"
-      ? (mgrState as any).getRdfManager()
-      : (mgrState as any).rdfManager;
-
-    if (!mgr) {
-      throw new Error("RDF manager unavailable; cannot persist node properties.");
-    }
-
-    // Subject IRI
-    const subjIri = String(nodeIri);
-    if (!subjIri) throw new Error("Node IRI missing; cannot persist node properties.");
-
-    // If nodeType provided (creation flow), persist rdf:type triple
-    if (nodeType && String(nodeType).trim()) {
-      const typeCandidate = String(nodeType).trim();
-      // Resolve to full IRI via manager if possible
-      const typeFull = typeof mgr.expandPrefix === "function" ? String(mgr.expandPrefix(typeCandidate)) : typeCandidate;
-      // Use primitive API if available
-      if (typeof (mgr as any).addTriple === "function") {
-        (mgr as any).addTriple(subjIri, typeof mgr.expandPrefix === "function" ? String(mgr.expandPrefix("rdf:type")) : "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", typeFull, "urn:vg:data");
-      } else if (mgr.getStore && typeof mgr.getStore === "function") {
-        const store = mgr.getStore();
-        const s = termForIri(subjIri);
-        const p = namedNode(typeof mgr.expandPrefix === "function" ? String(mgr.expandPrefix("rdf:type")) : "http://www.w3.org/1999/02/22-rdf-syntax-ns#type");
-        const o = namedNode(typeFull);
-        const g = namedNode("urn:vg:data");
-        const exists = store.getQuads(s, p, o, g) || [];
-        if (!exists || exists.length === 0) {
-          store.addQuad(DataFactory.quad(s, p, o, g));
-        }
-      } else {
-        throw new Error("Unable to persist rdf:type: unsupported rdfManager API.");
-      }
-    }
-
-    // Persist annotation properties as literal triples with xsd types
-    for (const ap of annotationProperties) {
-      const predRaw = String(ap.propertyUri || ap.key || "");
-      if (!predRaw) continue;
-      const predFull = typeof mgr.expandPrefix === "function" ? String(mgr.expandPrefix(predRaw)) : predRaw;
-      const datatype = ap.type || "xsd:string";
-      const datatypeFull = typeof mgr.expandPrefix === "function" ? String(mgr.expandPrefix(datatype)) : datatype;
-      const obj = DataFactory.literal(String(ap.value), namedNode(datatypeFull));
-
-      if (typeof (mgr as any).addTriple === "function") {
-        (mgr as any).addTriple(subjIri, predFull, String(ap.value), "urn:vg:data");
-      } else if (mgr.getStore && typeof mgr.getStore === "function") {
-        const store = mgr.getStore();
-        const s = termForIri(subjIri);
-        const p = namedNode(predFull);
-        const g = namedNode("urn:vg:data");
-        const exists = store.getQuads(s, p, obj, g) || [];
-        if (!exists || exists.length === 0) {
-          store.addQuad(DataFactory.quad(s, p, obj, g));
-        }
-      } else {
-        throw new Error("Unable to persist annotation property: unsupported rdfManager API.");
-      }
-    }
-
-    // Notify manager subscribers so incremental mapping picks up the changes
-    if (typeof (mgr as any).notifyChange === "function") {
-      (mgr as any).notifyChange();
-    }
-
-    // Close dialog after successful persistence
+    // Close dialog (manager already emits change notifications)
     onOpenChange(false);
+
+    // Update initial snapshots so subsequent edits compute diffs relative to latest saved state
+    try { initialPropertiesRef.current = (properties || []).map(p => ({ ...p })); } catch (_) {}
+    try { initialRdfTypesRef.current = (currentTypes || []).slice(); } catch (_) {}
   };
 
   // Delete: remove triples with subject OR object equal to nodeIri from urn:vg:data (writes only).
@@ -331,82 +342,19 @@ export const NodePropertyEditor = ({
         mgr = (mgrState as any).rdfManager || (await import("../../utils/rdfManager").then(m => m.rdfManager).catch(() => undefined));
       }
 
-      if (mgr && typeof mgr.getStore === "function" && typeof (mgr as any).removeTriple === "function") {
-        const store = mgr.getStore();
-        const g = namedNode("urn:vg:data");
-
-        // Remove quads where subject === nodeIri by enumerating and calling manager.removeTriple
+      if (mgr && typeof (mgr as any).removeAllQuadsForIri === "function") {
         try {
-          const subjTerm = namedNode(String(nodeIri));
-          const subjQuads = store.getQuads(subjTerm, null, null, g) || [];
-          for (const q of subjQuads) {
-            try {
-              const s = (q.subject && (q.subject as any).value) || String(nodeIri);
-              const p = (q.predicate && (q.predicate as any).value) || "";
-              const o = (q.object && (q.object as any).value) || "";
-              try { (mgr as any).removeTriple(String(s), String(p), String(o), "urn:vg:data"); } catch (_) { /* ignore per-quad */ }
-            } catch (_) { /* ignore per-quad */ }
-          }
-        } catch (_) { /* ignore */ }
-
-        // Remove quads where object === nodeIri
-        try {
-          const objTerm = namedNode(String(nodeIri));
-          const objQuads = store.getQuads(null, null, objTerm, g) || [];
-          for (const q of objQuads) {
-            try {
-              const s = (q.subject && (q.subject as any).value) || "";
-              const p = (q.predicate && (q.predicate as any).value) || "";
-              const o = (q.object && (q.object as any).value) || String(nodeIri);
-              try { (mgr as any).removeTriple(String(s), String(p), String(o), "urn:vg:data"); } catch (_) { /* ignore per-quad */ }
-            } catch (_) { /* ignore per-quad */ }
-          }
-        } catch (_) { /* ignore */ }
-
-        // Notify once after removals
-        try { if (typeof (mgr as any).notifyChange === "function") (mgr as any).notifyChange(); } catch (_) { /* ignore */ }
-      } else if (mgr && typeof mgr.getStore === "function") {
-        // Fallback to direct store removals (previous behavior)
-        const store = mgr.getStore();
-        const subjTerm = namedNode(String(nodeIri));
-        const g = namedNode("urn:vg:data");
-
-        try {
-          const subjQuads = store.getQuads(subjTerm, null, null, g) || [];
-          for (const q of subjQuads) {
-            try { store.removeQuad(q); } catch (_) { /* ignore per-quad */ }
-          }
-        } catch (_) { /* ignore */ }
-
-        try {
-          const objQuads = store.getQuads(null, null, subjTerm, g) || [];
-          for (const q of objQuads) {
-            try { store.removeQuad(q); } catch (_) { /* ignore per-quad */ }
-          }
-        } catch (_) { /* ignore */ }
-
-        try { if (typeof (mgr as any).notifyChange === "function") (mgr as any).notifyChange(); } catch (_) { /* ignore */ }
+          await (mgr as any).removeAllQuadsForIri(String(nodeIri), "urn:vg:data");
+        } catch (_) {
+          /* ignore manager delete failures */
+        }
       }
     } catch (err) {
-      try { console.warn("NodePropertyEditor.delete.storeWriteFailed", err); } catch (_) { /* ignore */ }
+      try { console.warn("NodePropertyEditor.delete.failed", err); } catch (_) {}
     }
 
-    // Notify RDF manager subscribers (best-effort) so incremental mapping picks up the deletion.
-    try {
-      const mgrState = useOntologyStore.getState();
-      let mgrNotify: any = undefined;
-      if (typeof (mgrState as any).getRdfManager === "function") {
-        try { mgrNotify = (mgrState as any).getRdfManager(); } catch (_) { mgrNotify = undefined; }
-      }
-      if (!mgrNotify) mgrNotify = (mgrState as any).rdfManager || undefined;
-      try {
-        if (mgrNotify && typeof (mgrNotify as any).notifyChange === "function") {
-          try { (mgrNotify as any).notifyChange(); } catch (_) { /* ignore notify errors */ }
-        }
-      } catch (_) { /* ignore notify errors */ }
-    } catch (_) { /* ignore */ }
-
-    // Signal close; parent incremental mapping should remove the node from the canvas when the store notifies.
+    // Ask parent to remove the node visually and then close the dialog
+    try { if (typeof onDelete === "function") onDelete(String(nodeIri)); } catch (_) {}
     onOpenChange(false);
   };
 

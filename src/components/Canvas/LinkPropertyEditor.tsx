@@ -263,6 +263,9 @@ export const LinkPropertyEditor = ({
     } catch (_) {
       /* ignore delete failures to avoid bubbling into UI tests */
     }
+
+    // Close dialog after deletion so UI does not remain open
+    try { if (typeof onOpenChange === 'function') onOpenChange(false); } catch (_) {}
   };
 
   return (

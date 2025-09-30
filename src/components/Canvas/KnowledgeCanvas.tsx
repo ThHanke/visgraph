@@ -478,10 +478,8 @@ const KnowledgeCanvas: React.FC = () => {
 
      if (selNodes.length === 1) {
        setSelectedNodePayload(selNodes[0]);
-       setNodeEditorOpen(true);
      } else {
        setSelectedNodePayload(null);
-       setNodeEditorOpen(false);
      }
 
      if (selEdges.length === 1) {
@@ -497,10 +495,8 @@ const KnowledgeCanvas: React.FC = () => {
          operation: "edit",
        };
        setSelectedLinkPayload(payload);
-       setLinkEditorOpen(true);
      } else {
        setSelectedLinkPayload(null);
-       setLinkEditorOpen(false);
      }
    }, []);
 
@@ -671,28 +667,42 @@ const KnowledgeCanvas: React.FC = () => {
           const mappedById = new Map((mappedNodes || []).map((m: any) => [String(m.id), m]));
           const mappedEdgeById = new Map((mappedEdges || []).map((e: any) => [String(e.id), e]));
 
-          // Snapshot prev state for id checks (use current closure vars safely)
-          const prevNodeIds = new Set((nodes || []).map((n) => String(n.id)));
-          const prevEdgeIds = new Set((edges || []).map((e) => String(e.id)));
-
-          // Split mapped nodes into existing (update via applyNodeChanges) and new (append)
-          const existingMappedNodes = (mappedNodes || []).filter((m: any) => prevNodeIds.has(String(m.id)));
-          const newMappedNodes = (mappedNodes || []).filter((m: any) => !prevNodeIds.has(String(m.id)));
-
-          // 1) Update existing nodes (preserve RF runtime metadata) using applyNodeChanges
+          // Merge mapper output into the current nodes explicitly so mapper-provided
+          // data (e.g. rdfs:label) replaces existing node data fields reliably.
           try {
-            if ((existingMappedNodes || []).length > 0) {
-              const nodeChanges = (existingMappedNodes || []).map((n: any) => ({ id: String(n.id), type: "reset", item: n }));
-              setNodes((prev) => applyNodeChanges(nodeChanges as any, prev || []));
-            }
-          } catch (_) {
-            // fallback: if applyNodeChanges unexpectedly fails, replace whole nodes array
-            try { setNodes(mappedNodes); } catch (_) {}
-          }
+            setNodes((prev = []) => {
+              const prevArr = prev || [];
+              const prevById = new Map((prevArr || []).map((n: any) => [String(n.id), n]));
 
-          // 2) Remove edges that touch any of the incoming subjects (incomingSubjects comes from outer normalization)
-          // We remove edges where the subject is either the source or the target so that
-          // mapper output for the subject can replace all links touching it.
+              for (const m of mappedNodes || []) {
+                try {
+                  const id = String(m.id);
+                  const existing = prevById.get(id);
+                  if (existing) {
+                    // Preserve runtime metadata (position, selected, __rf, etc.) from existing,
+                    // but replace the node's data entirely with the mapper output so fields like label update.
+                    const merged = {
+                      ...existing,
+                      // keep existing position/runtime but allow mapper to override top-level fields if needed
+                      position: existing.position || m.position || { x: 0, y: 0 },
+                      type: m.type || existing.type,
+                      data: (m && m.data) ? { ...(m.data) } : { ...(existing.data || {}) },
+                    } as any;
+                    prevById.set(id, merged);
+                  } else {
+                    // New node from mapper — use it directly
+                    prevById.set(id, { ...(m as any) } as any);
+                  }
+                } catch (_) {
+                  // per-item ignore
+                }
+              }
+
+              return Array.from(prevById.values());
+            });
+          } catch (_) { /* ignore node update failures */ }
+
+          // Remove edges that touch any of the incoming subjects so mapper output can replace them.
           const subjectSet = new Set<string>((incomingSubjects || []).map((s: any) => String(s)));
           try {
             setEdges((prev = []) =>
@@ -708,7 +718,7 @@ const KnowledgeCanvas: React.FC = () => {
             );
           } catch (_) { /* ignore */ }
 
-          // 3) Merge/update existing edges and append new edges
+          // Merge/update existing edges and append new edges (functional update).
           try {
             setEdges((prev = []) => {
               const prevArr = prev || [];
@@ -732,17 +742,7 @@ const KnowledgeCanvas: React.FC = () => {
             try { setEdges(mappedEdges); } catch (_) {}
           }
 
-          // 4) Append new mapped nodes that weren't present (filter again against the current nodes)
-          try {
-            setNodes((prev = []) => {
-              const nowIds = new Set((prev || []).map((n) => String(n.id)));
-              const toAdd = (newMappedNodes || []).filter((m: any) => !nowIds.has(String(m.id)));
-              if (!toAdd || toAdd.length === 0) return prev || [];
-              return [...(prev || []), ...toAdd];
-            });
-          } catch (_) { /* ignore */ }
-
-          // 5) Ensure endpoints referenced by mappedEdges exist as nodes (append placeholders if needed)
+          // Ensure endpoints referenced by mappedEdges exist as nodes (append placeholders if needed).
           try {
             setNodes((prev = []) => {
               const current = prev || [];
@@ -866,33 +866,10 @@ const KnowledgeCanvas: React.FC = () => {
     // Also subscribe to the generic change counter as a robust fallback for
     // environments where subject-level notifications are not delivered.
     // The onChange handler will request a full store snapshot and schedule a mapping run.
-    let changeCallback: ((count?: number, meta?: any) => void) | null = null;
-    if (typeof mgr.onChange === "function") {
-      changeCallback = (_count?: number) => {
-        try {
-          // Replace any pending incremental queue with a snapshot of the full store
-          // so mapQuadsToDiagram runs with authoritative data.
-          try {
-            pendingQuads.length = 0;
-            const store = mgr.getStore && typeof mgr.getStore === "function" ? mgr.getStore() : null;
-            if (store && typeof store.getQuads === "function") {
-              const all = store.getQuads(null, null, null, null) || [];
-              for (const q of all) pendingQuads.push(q);
-            }
-          } catch (_) {
-            // ignore failures but continue to schedule mapping
-          }
-          scheduleRunMapping();
-        } catch (_) {
-          /* ignore onChange handler errors */
-        }
-      };
-      try {
-        mgr.onChange(changeCallback as any);
-      } catch (_) {
-        changeCallback = null;
-      }
-    }
+    // NOTE: removed full-store onChange fallback. Canvas now relies solely on
+    // subject-level incremental notifications (mgr.onSubjectsChange) and explicit
+    // initial snapshot seeding. The full-store fallback caused large mapping runs
+    // for localized edits and has been intentionally removed.
 
     return () => {
       mounted = false;
@@ -903,9 +880,7 @@ const KnowledgeCanvas: React.FC = () => {
       if (typeof mgr.offSubjectsChange === "function" && subjectsCallback) {
         mgr.offSubjectsChange(subjectsCallback as any);
       }
-      if (changeCallback && typeof mgr.offChange === "function") {
-        try { mgr.offChange(changeCallback as any); } catch (_) { /* ignore */ }
-      }
+      
     };
   }, [getRdfManager, setNodes, setEdges, availableProperties, availableClasses]);
 
@@ -1125,9 +1100,16 @@ const KnowledgeCanvas: React.FC = () => {
   const onNodeDoubleClickStrict = useCallback((event: any, node: any) => {
     try { event?.stopPropagation && event.stopPropagation(); } catch (_) {}
     try { suppressSelectionRef.current = true; setTimeout(() => { suppressSelectionRef.current = false; }, 0); } catch (_) {}
+    const wasSelected = !!(node && (node as any).selected);
     setSelectedNodePayload(node || null);
-    setNodeEditorOpen(true);
-  }, []);
+    if (wasSelected) {
+      setNodeEditorOpen(true);
+    } else {
+      try {
+        setNodes((prev = []) => (prev || []).map((n) => ({ ...n, selected: String(n.id) === String(node.id) })));
+      } catch (_) {}
+    }
+  }, [setNodes]);
 
   const onEdgeDoubleClickStrict = useCallback((event: any, edge: any) => {
     try { event?.stopPropagation && event.stopPropagation(); } catch (_) {}
@@ -1188,9 +1170,16 @@ const KnowledgeCanvas: React.FC = () => {
       },
     };
 
+    const wasSelected = !!(edge && (edge as any).selected);
     setSelectedLinkPayload(selectedLinkPayload || edge || null);
-    setLinkEditorOpen(true);
-  }, [nodes, availableProperties, loadedOntologies]);
+    if (wasSelected) {
+      setLinkEditorOpen(true);
+    } else {
+      try {
+        setEdges((prev = []) => (prev || []).map((e) => ({ ...e, selected: String(e.id) === String(edge.id) })));
+      } catch (_) {}
+    }
+  }, [nodes, availableProperties, loadedOntologies, setEdges]);
 
   const onConnectStrict = useCallback((params: any) => {
     if (!params || !params.source || !params.target) return;
@@ -1589,6 +1578,44 @@ const KnowledgeCanvas: React.FC = () => {
         onSave={(props: any[]) => {
           handleSaveNodeProperties(props);
           setNodeEditorOpen(false);
+        }}
+        onDelete={(iriOrId: string) => {
+          try {
+            const id = String(iriOrId);
+            // Remove node from RF state by id or by node.data.iri match
+            try {
+              setNodes((prev = []) =>
+                (prev || []).filter((n) => {
+                  try {
+                    const nid = String(n.id);
+                    const iri = n && (n as any).data && (n as any).data.iri ? String((n as any).data.iri) : "";
+                    return nid !== id && iri !== id;
+                  } catch {
+                    return true;
+                  }
+                }),
+              );
+            } catch (_) {}
+            // Remove edges touching the node
+            try {
+              setEdges((prev = []) =>
+                (prev || []).filter((e) => {
+                  try {
+                    return String(e.source) !== id && String(e.target) !== id;
+                  } catch {
+                    return true;
+                  }
+                }),
+              );
+            } catch (_) {}
+            // Best-effort: ask react-flow instance to delete elements if supported
+            try {
+              const inst = reactFlowInstance && reactFlowInstance.current;
+              if (inst && typeof (inst as any).deleteElements === "function") {
+                try { (inst as any).deleteElements([{ id }]); } catch (_) {}
+              }
+            } catch (_) {}
+          } catch (_) {}
         }}
       />
 

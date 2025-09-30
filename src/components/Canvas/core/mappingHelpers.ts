@@ -227,7 +227,35 @@ export function mapQuadsToDiagram(
 
       // rdfs:label as node label (literal preferred)
       if (predIri === RDFS_LABEL && isLiteral(obj)) {
-        entry.label = obj && obj.value ? String(obj.value) : entry.label;
+        const labelVal = obj && obj.value ? String(obj.value) : entry.label;
+        entry.label = labelVal;
+
+        // Also preserve the rdfs:label as an annotation property so editors see it
+        try {
+          const propPrefixed = toPrefixed(
+            predIri,
+            options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+            options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+            (options as any).registry
+          );
+
+          // Avoid duplicates: only add if no existing annotation property with same property+value exists
+          const exists = Array.isArray(entry.annotationProperties)
+            ? entry.annotationProperties.some((ap) => {
+                try { return String(ap.property) === String(propPrefixed) && String(ap.value) === String(labelVal); } catch { return false; }
+              })
+            : false;
+
+          if (!exists) {
+            entry.annotationProperties.push({
+              property: propPrefixed,
+              value: labelVal,
+            });
+          }
+        } catch (_) {
+          // ignore annotation push failures
+        }
+
         continue;
       }
 
@@ -462,7 +490,7 @@ export function mapQuadsToDiagram(
       primaryTypeIri,
       rdfTypes: Array.isArray(info.rdfTypes) ? info.rdfTypes.map(String) : [],
       // keep label field for backward compatibility: prefer rdfs:label, otherwise short local name
-      label: info.label || shortLocalName(iri),
+      label: iri,
       // Presentation hints (compute prefixed form / palette color when a registry/palette is provided in options)
       displayPrefixed: toPrefixed(
             iri,

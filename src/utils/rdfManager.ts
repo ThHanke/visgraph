@@ -2140,6 +2140,43 @@ export class RDFManager {
   }
 
   /**
+   * Remove all quads for a given IRI appearing either as subject or as a named-node object
+   * inside the specified named graph (defaults to urn:vg:data). This is idempotent and emits
+   * a single notifyChange() after the removals. Blank-node subjects (prefixed "_:b0") are supported.
+   */
+  public async removeAllQuadsForIri(iri: string, graphName: string = "urn:vg:data"): Promise<void> {
+    try {
+      if (!iri) return;
+      const g = namedNode(String(graphName));
+      // Subject term may be a blank node or named node
+      const subjTerm = /^_:/i.test(String(iri)) ? blankNode(String(iri).replace(/^_:/, "")) : namedNode(String(iri));
+      // Remove quads where subject === iri
+      try {
+        const subjQuads = this.store.getQuads(subjTerm, null, null, g) || [];
+        for (const q of subjQuads) {
+          try { this.bufferSubjectFromQuad(q); } catch (_) {}
+          try { this.store.removeQuad(q); } catch (_) {}
+        }
+      } catch (_) { /* ignore per-subject remove failures */ }
+
+      // Remove quads where object === iri (object must be a named node to match IRIs)
+      try {
+        const objTerm = namedNode(String(iri));
+        const objQuads = this.store.getQuads(null, null, objTerm, g) || [];
+        for (const q of objQuads) {
+          try { this.bufferSubjectFromQuad(q); } catch (_) {}
+          try { this.store.removeQuad(q); } catch (_) {}
+        }
+      } catch (_) { /* ignore per-object remove failures */ }
+
+      // Notify subscribers once
+      try { this.notifyChange({ kind: "removeAllQuadsForIri", iri, graph: graphName }); } catch (_) {}
+    } catch (err) {
+      try { fallback("rdf.removeAllQuadsForIri.failed", { iri, graphName, error: String(err) }); } catch (_) {}
+    }
+  }
+
+  /**
    * Expand a prefixed URI to full URI
    */
   expandPrefix(prefixedUri: string): string {
