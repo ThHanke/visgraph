@@ -367,7 +367,11 @@ export class RDFManager {
           }
           // Buffer the removed quad so subject-level subscribers receive this removal.
           try {
-            (this as any).bufferSubjectFromQuad && (this as any).bufferSubjectFromQuad(q);
+            if ((this as any).bufferSubjectFromQuad) {
+              try {
+                (this as any).bufferSubjectFromQuad(q);
+              } catch (_) { /* ignore buffering failures */ }
+            }
           } catch (_) {
             /* ignore buffering failures */
           }
@@ -2110,28 +2114,18 @@ export class RDFManager {
     } catch (err) {
       // best-effort: log and continue
       try {
-        ((...__vg_args) => {
-          try {
-            fallback(
-              "console.warn",
-              {
-                args: __vg_args.map((a) =>
-                  a && a.message ? a.message : String(a),
-                ),
-              },
-              { level: "warn" },
-            );
-          } catch (_) {
+        try {
+          if (typeof fallback === "function") {
             try {
-              if (typeof fallback === "function") {
-                fallback("emptyCatch", { error: String(_) });
-              }
-            } catch (_) {
-              /* ignore */
-            }
+              fallback(
+                "console.warn",
+                { args: [ (err && (err as any).message) ? (err as any).message : String(err) ] },
+                { level: "warn" },
+              );
+            } catch (_) { void 0; }
           }
-          console.warn(...__vg_args);
-        })("removeNamespaceAndQuads failed:", err);
+        } catch (_) { void 0; }
+        console.warn("removeNamespaceAndQuads failed:", err);
       } catch (_) {
         try {
           if (typeof fallback === "function") {
@@ -2174,40 +2168,30 @@ export class RDFManager {
       } catch (_) {
         /* ignore */
       }
-    } catch (err) {
-      try {
-        ((...__vg_args) => {
-          try {
-            fallback(
-              "console.warn",
-              {
-                args: __vg_args.map((a) =>
-                  a && a.message ? a.message : String(a),
-                ),
-              },
-              { level: "warn" },
-            );
-          } catch (_) {
-            try {
-              if (typeof fallback === "function") {
-                fallback("emptyCatch", { error: String(_) });
-              }
-            } catch (_) {
-              /* ignore */
-            }
-          }
-          console.warn(...__vg_args);
-        })("removeGraph failed:", err);
-      } catch (_) {
+      } catch (err) {
         try {
-          if (typeof fallback === "function") {
-            fallback("emptyCatch", { error: String(_) });
-          }
+          try {
+            if (typeof fallback === "function") {
+              try {
+                fallback(
+                  "console.warn",
+                  { args: [ (err && (err as any).message) ? (err as any).message : String(err) ] },
+                  { level: "warn" },
+                );
+              } catch (_) { void 0; }
+            }
+          } catch (_) { void 0; }
+          console.warn("removeGraph failed:", err);
         } catch (_) {
-          /* ignore */
+          try {
+            if (typeof fallback === "function") {
+              fallback("emptyCatch", { error: String(_) });
+            }
+          } catch (_) {
+            /* ignore */
+          }
         }
       }
-    }
   }
 
   /**
@@ -2493,7 +2477,7 @@ export class RDFManager {
               this.store.addQuad(quad(subj as any, pred as any, obj as any, g));
               try { this.bufferSubjectFromQuad(quad(subj as any, pred as any, obj as any, g)); } catch (_) { void 0; }
             }
-          } catch (_) { /* ignore per-add */ }
+          } catch (_) { void 0; }
         }
 
         // Notify and dedupe multiple objects per predicate (keep the last)
@@ -2661,7 +2645,7 @@ export class RDFManager {
             this.store.addQuad(quad(subj as any, pred as any, obj as any, g));
             try { this.bufferSubjectFromQuad(quad(subj as any, pred as any, obj as any, g)); } catch (_) { void 0; }
           }
-        } catch (_) { /* ignore per-add */ }
+        } catch (_) { void 0; }
       }
 
       // Notify once after batch applied
@@ -2718,28 +2702,28 @@ export class RDFManager {
         }
       });
     } catch (e) {
-      ((...__vg_args) => {
+      try {
         try {
-          fallback(
-            "console.warn",
-            {
-              args: __vg_args.map((a) =>
-                a && a.message ? a.message : String(a),
-              ),
-            },
-            { level: "warn" },
-          );
-        } catch (_) {
-          try {
-            if (typeof fallback === "function") {
-              fallback("emptyCatch", { error: String(_) });
-            }
-          } catch (_) {
-            /* ignore */
+          if (typeof fallback === "function") {
+            try {
+              fallback(
+                "console.warn",
+                { args: [ (e && (e as any).message) ? (e as any).message : String(e) ] },
+                { level: "warn" },
+              );
+            } catch (_) { void 0; }
           }
+        } catch (_) { void 0; }
+        console.warn("applyParsedNamespaces failed:", e);
+      } catch (_) {
+        try {
+          if (typeof fallback === "function") {
+            fallback("emptyCatch", { error: String(e) });
+          }
+        } catch (_) {
+          /* ignore */
         }
-        console.warn(...__vg_args);
-      })("applyParsedNamespaces failed:", e);
+      }
     }
   }
 

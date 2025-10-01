@@ -259,11 +259,13 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
                         setError("Prefix already registered");
                         return;
                       }
+                      // addNamespace will handle toast notification and idempotency
                       try {
-                        // addNamespace will handle toast notification and idempotency
-                        rdfManager && typeof rdfManager.addNamespace === "function" && rdfManager.addNamespace(p, u);
+                        if (rdfManager && typeof rdfManager.addNamespace === "function") {
+                          try { rdfManager.addNamespace(p, u); } catch (_) { /* ignore */ }
+                        }
                       } catch (_) {
-                        // ignore
+                        /* ignore */
                       }
                       // Force local refresh
                       setShowAdd(false);

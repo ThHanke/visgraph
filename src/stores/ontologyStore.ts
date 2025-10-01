@@ -367,7 +367,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                     if (!exists || exists.length === 0) {
                       try { store.addQuad(DataFactory.quad(subjT, predT, objT, g)); } catch (_) { void 0; }
                     }
-                  } catch (_) { /* ignore per-add */ }
+                  } catch (_) { void 0; }
                 }
               }
             } catch (_) { /* ignore */ }

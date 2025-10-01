@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import { vi, describe, it, expect, beforeEach } from "vitest";
@@ -27,7 +28,6 @@ vi.mock("../../stores/ontologyStore", () => {
 
 // Minimal mocks for React Flow pieces used by CustomOntologyNode
 vi.mock("@xyflow/react", () => {
-  const React = require("react");
   return {
     ReactFlowProvider: ({ children }: any) => React.createElement(React.Fragment, null, children),
     Handle: (props: any) => React.createElement("div", props, null),

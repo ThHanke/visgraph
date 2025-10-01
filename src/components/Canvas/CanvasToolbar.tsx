@@ -279,7 +279,14 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
         setIsLoadOntologyOpen(false);
         toast.success('Ontology loaded');
       } catch (error: any) {
-        ((...__vg_args)=>{try{fallback('console.error',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'error', captureStack:true})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.error(...__vg_args);})('Failed to load ontology:', error);
+        try {
+          if (typeof fallback === "function") {
+            try {
+              fallback('console.error', { args: [(error && error.message) ? error.message : String(error)] }, { level: 'error', captureStack: true });
+            } catch (_) { void 0; }
+          }
+        } catch (_) { void 0; }
+        console.error('Failed to load ontology:', error);
         const msg = (error && error.message) ? error.message : String(error);
         // Keep the dialog open and show a helpful, actionable message to the user.
         // Many CORS/redirect problems return HTML or are blocked by the browser — offer the Paste RDF fallback.
@@ -309,7 +316,14 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
       setNewNodeIri('');
       setIsAddNodeOpen(false);
     } catch (e) {
-      ((...__vg_args)=>{try{fallback('console.error',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'error', captureStack:true})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.error(...__vg_args);})('Failed to add node:', e);
+      try {
+        if (typeof fallback === "function") {
+          try {
+            fallback('console.error', { args: [(e && e.message) ? e.message : String(e)] }, { level: 'error', captureStack: true });
+          } catch (_) { void 0; }
+        }
+      } catch (_) { void 0; }
+      console.error('Failed to add node:', e);
     }
   };
 
@@ -491,7 +505,16 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                         setIsLoadOntologyOpen(false);
                         toast.success('RDF content applied as ontology (prefixes registered)');
                       } catch (err) {
-                        ((...__vg_args)=>{try{fallback('console.error',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'error', captureStack:true})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.error(...__vg_args);})('Failed to load RDF content as ontology:', err);
+                        try {
+  try {
+    if (typeof fallback === "function") {
+      try {
+        fallback('console.error', { args: [(err && err.message) ? err.message : String(err)] }, { level: 'error', captureStack: true });
+      } catch (_) { void 0; }
+    }
+  } catch (_) { void 0; }
+  console.error('Failed to load RDF content as ontology:', err);
+} catch (_) { void 0; }
                         toast.error('Failed to load RDF content');
                       }
                     }}
@@ -794,7 +817,11 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                       if (fileSource.trim() && onLoadFile) {
                         try {
                           // Request a one-shot forced layout after the load mapping completes
-                          try { (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING && (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING(); } catch (_) { void 0; }
+                          try {
+                            if ((window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING) {
+                              try { (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING(); } catch (_) { void 0; }
+                            }
+                          } catch (_) { void 0; }
                           const mockFile = { 
                             url: fileSource.trim(),
                             type: 'url'
@@ -803,7 +830,16 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                           setFileSource('');
                           setIsLoadFileOpen(false);
                         } catch (error) {
-                          ((...__vg_args)=>{try{fallback('console.error',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'error', captureStack:true})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.error(...__vg_args);})('Failed to load file:', error);
+                          try {
+  try {
+    if (typeof fallback === "function") {
+      try {
+        fallback('console.error', { args: [(error && error.message) ? error.message : String(error)] }, { level: 'error', captureStack: true });
+      } catch (_) { void 0; }
+    }
+  } catch (_) { void 0; }
+  console.error('Failed to load file:', error);
+} catch (_) { void 0; }
                         }
                       }
                     }}
@@ -834,11 +870,24 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                 if (file && onLoadFile) {
                   try {
                     // Request a one-shot forced layout after the load mapping completes
-                    try { (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING && (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING(); } catch (_) { void 0; }
+                      try {
+                        if ((window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING) {
+                          try { (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING(); } catch (_) { void 0; }
+                        }
+                      } catch (_) { void 0; }
                     await onLoadFile(file);
                     setIsLoadFileOpen(false);
                   } catch (error) {
-                    ((...__vg_args)=>{try{fallback('console.error',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'error', captureStack:true})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.error(...__vg_args);})('Failed to load file:', error);
+                    try {
+  try {
+    if (typeof fallback === "function") {
+      try {
+        fallback('console.error', { args: [(error && error.message) ? error.message : String(error)] }, { level: 'error', captureStack: true });
+      } catch (_) { void 0; }
+    }
+  } catch (_) { void 0; }
+  console.error('Failed to load file:', error);
+} catch (_) { void 0; }
                   }
                 }
               }}
@@ -912,7 +961,16 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                                   useAppConfigStore.getState().removeAdditionalOntology(ont.url);
                                   toast.success('Removed ontology from auto-load list');
                                 } catch (e) {
-                                  ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})('Failed to remove additional ontology', e);
+                                  try {
+  try {
+    if (typeof fallback === "function") {
+      try {
+        fallback('console.warn', { args: [(e && e.message) ? e.message : String(e)] }, { level: 'warn' });
+      } catch (_) { void 0; }
+    }
+  } catch (_) { void 0; }
+  console.warn('Failed to remove additional ontology', e);
+} catch (_) { void 0; }
                                   toast.error('Failed to update auto-load list');
                                 }
                               }}
@@ -929,7 +987,16 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                                   useAppConfigStore.getState().addAdditionalOntology(ont.url);
                                   toast.success('Added ontology to auto-load list');
                                 } catch (e) {
-                                  ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})('Failed to add additional ontology', e);
+                                  try {
+  try {
+    if (typeof fallback === "function") {
+      try {
+        fallback('console.warn', { args: [(e && e.message) ? e.message : String(e)] }, { level: 'warn' });
+      } catch (_) { void 0; }
+    }
+  } catch (_) { void 0; }
+  console.warn('Failed to add additional ontology', e);
+} catch (_) { void 0; }
                                   toast.error('Failed to update auto-load list');
                                 }
                               }}

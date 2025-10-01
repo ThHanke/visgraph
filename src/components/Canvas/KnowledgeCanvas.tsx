@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-expressions, no-useless-catch */
+/* eslint-disable @typescript-eslint/no-unused-expressions, no-useless-catch, react-hooks/exhaustive-deps */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@xyflow/react/dist/style.css";
 import {

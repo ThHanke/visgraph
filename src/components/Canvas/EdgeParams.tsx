@@ -3,14 +3,26 @@ import { Node, Position, MarkerType, XYPosition, InternalNode } from '@xyflow/re
 // this helper function returns the intersection point
 // of the line between the center of the intersectionNode and the target node
 function getNodeIntersection(intersectionNode: InternalNode, targetNode: InternalNode) {
-  // https://math.stackexchange.com/questions/1724792/an-algorithm-for-finding-the-intersection-point-between-a-center-of-vision-and-a
+  // Safe guard: ensure measured and position information exists; otherwise return a sensible fallback.
+  const measured = intersectionNode.measured;
+  const intersectionPos = intersectionNode.internals?.positionAbsolute;
+  const targetPos = targetNode.internals?.positionAbsolute;
 
-  const { width: intersectionNodeWidth, height: intersectionNodeHeight } = intersectionNode.measured;
-  const intersectionNodePosition = intersectionNode.internals.positionAbsolute;
-  const targetPosition = targetNode.internals.positionAbsolute!;
+  if (!measured || !intersectionPos || !targetPos || !measured.width || !measured.height) {
+    // Return the intersection node center as a fallback
+    return {
+      x: (intersectionPos?.x ?? 0) + ((measured?.width ?? 0) / 2),
+      y: (intersectionPos?.y ?? 0) + ((measured?.height ?? 0) / 2),
+    };
+  }
 
-  const w = intersectionNodeWidth! / 2;
-  const h = intersectionNodeHeight! / 2;
+  const intersectionNodeWidth = measured.width;
+  const intersectionNodeHeight = measured.height;
+  const intersectionNodePosition = intersectionPos;
+  const targetPosition = targetPos;
+
+  const w = intersectionNodeWidth / 2;
+  const h = intersectionNodeHeight / 2;
 
   const x2 = intersectionNodePosition.x + w;
   const y2 = intersectionNodePosition.y + h;
@@ -29,22 +41,26 @@ function getNodeIntersection(intersectionNode: InternalNode, targetNode: Interna
 
 // returns the position (top,right,bottom or right) passed node compared to the intersection point
 function getEdgePosition(node: InternalNode, intersectionPoint: XYPosition) {
-  const n = { ...node.internals.positionAbsolute, ...node };
-  const nx = Math.round(n.x!);
-  const ny = Math.round(n.y!);
-  const px = Math.round(intersectionPoint.x);
-  const py = Math.round(intersectionPoint.y);
+  // Normalize node position shape and avoid non-null assertions.
+  const pos = node.internals?.positionAbsolute ?? { x: 0, y: 0 };
+  const measured = node.measured ?? { width: 0, height: 0 };
+  const nx = Math.round(pos.x ?? 0);
+  const ny = Math.round(pos.y ?? 0);
+  const px = Math.round(intersectionPoint.x ?? 0);
+  const py = Math.round(intersectionPoint.y ?? 0);
+  const width = measured.width ?? 0;
+  const height = measured.height ?? 0;
 
   if (px <= nx + 1) {
     return Position.Left;
   }
-  if (px >= nx + n.measured?.width! - 1) {
+  if (px >= nx + width - 1) {
     return Position.Right;
   }
   if (py <= ny + 1) {
     return Position.Top;
   }
-  if (py >= n.y! + n.measured?.height! - 1) {
+  if (py >= ny + height - 1) {
     return Position.Bottom;
   }
 
