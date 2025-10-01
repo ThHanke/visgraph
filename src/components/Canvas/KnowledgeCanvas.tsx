@@ -240,7 +240,6 @@ const KnowledgeCanvas: React.FC = () => {
   // Small control refs for layout coordination
   const mappingInProgressRef = useRef<boolean>(false);
   const applyRequestedRef = useRef<boolean>(false);
-  const originalAutoLayoutRef = useRef<boolean | null>(null);
   // One-shot flag to force layout after the next successful mapping run (used by loaders)
   const forceLayoutNextMappingRef = useRef<boolean>(false);
 
@@ -571,6 +570,7 @@ const KnowledgeCanvas: React.FC = () => {
 
       setNodes((prev) => applyNodeChanges(nodeChanges as any, prev));
       setEdges((prev) => applyEdgeChanges(edgeChanges as any, prev));
+      
 
       // Signal mapping completion for tests
       try { if (typeof window !== "undefined") (window as any).__VG_LAST_MAPPING_RUN = Date.now(); } catch (_) {}
@@ -925,20 +925,6 @@ const KnowledgeCanvas: React.FC = () => {
     };
   }, []);
 
-  useEffect(() => {
-    const missing = (nodes || []).filter((n) => {
-      try {
-        return !n.position || typeof (n.position as any).x !== "number" || typeof (n.position as any).y !== "number";
-      } catch (_) {
-        return true;
-      }
-    });
-    if (missing.length > 0) {
-      try {
-        // no-op: keep behavior but don't log
-      } catch (_) {}
-    }
-  }, [nodes]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1237,14 +1223,11 @@ const KnowledgeCanvas: React.FC = () => {
     linkSourceRef.current = sourceNode ? (sourceNode.data as any) : null;
     linkTargetRef.current = targetNode ? (targetNode.data as any) : null;
 
-    const edgeIdForEditor = String(
-      (params as any).id ||
-        generateEdgeId(
-          String(claimedSource),
-          String(claimedTarget),
-          String(predUriToUse || ""),
-        ),
-    );
+    // Generate a deterministic edge id based on subject/predicate/object only.
+    // Do NOT include handle ids in the id — keep the mapping canonical to IRIs.
+    const baseEdgeId = generateEdgeId(String(claimedSource), String(claimedTarget), String(predUriToUse || ""));
+    const edgeIdForEditor = String((params as any).id || baseEdgeId);
+
     const selectedEdgeForEditor = {
       id: edgeIdForEditor,
       key: edgeIdForEditor,
@@ -1261,64 +1244,6 @@ const KnowledgeCanvas: React.FC = () => {
     setLinkEditorOpen(true);
   }, [nodes, availableProperties, loadedOntologies]);
 
-  const onEdgeUpdateStrict = useCallback((oldEdge: RFEdge<LinkData>, connection: any) => {
-    if (!connection.source || !connection.target) return;
-    const sourceNode = nodes.find((n) => n.id === connection.source);
-    const targetNode = nodes.find((n) => n.id === connection.target);
-    if (!sourceNode || !targetNode) {
-      toast.error("Invalid edge update endpoints");
-      return;
-    }
-    if (connection.source === connection.target) {
-      toast.error("Cannot create self-loop");
-      return;
-    }
-    const sourceIsTBox = !!(sourceNode.data && (sourceNode.data as any).isTBox);
-    const targetIsTBox = !!(targetNode.data && (targetNode.data as any).isTBox);
-    if (sourceIsTBox !== targetIsTBox) {
-      toast.error("Cannot relink edge across ABox and TBox");
-      return;
-    }
-
-    const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
-    if (mgr && typeof mgr.getStore === "function") {
-      const store = mgr.getStore();
-      const oldData = oldEdge && oldEdge.data ? (oldEdge.data as LinkData) : undefined;
-      const oldPredCandidate = oldData && (oldData.propertyUri || oldData.propertyType)
-        ? oldData.propertyUri || oldData.propertyType
-        : availableProperties && availableProperties.length > 0
-          ? availableProperties[0].iri || (availableProperties[0] as any).key
-          : "http://www.w3.org/2000/01/rdf-schema#seeAlso";
-      const oldPredFull = mgr.expandPrefix && typeof mgr.expandPrefix === "function" ? mgr.expandPrefix(oldPredCandidate) : oldPredCandidate;
-      const oldSubj = oldEdge.source;
-      const oldObj = oldEdge.target;
-
-      const oldSubjTerm = termForIri(String(oldSubj));
-      const oldObjTerm = termForIri(String(oldObj));
-      const g = namedNode("urn:vg:data");
-      const found = store.getQuads(oldSubjTerm, namedNode(oldPredFull), oldObjTerm, g) || [];
-      for (const q of found) store.removeQuad(q);
-
-      const subjIri = (sourceNode.data && (sourceNode.data as NodeData).iri) || sourceNode.id;
-      const objIri = (targetNode.data && (targetNode.data as NodeData).iri) || targetNode.id;
-      const subjTerm = termForIri(String(subjIri));
-      const objTerm = termForIri(String(objIri));
-      const predTerm2 = namedNode(oldPredFull);
-      const exists = store.getQuads(subjTerm, predTerm2, objTerm, g) || [];
-      if (exists.length === 0) store.addQuad(DataFactory.quad(subjTerm, predTerm2, objTerm, g));
-
-    }
-
-    setEdges((eds) =>
-      eds.map((e) =>
-        e.id === oldEdge.id
-          ? { ...e, source: connection.source!, target: connection.target! }
-          : e,
-      ),
-    );
-  }, [nodes, setEdges, availableProperties]);
-
-  const onEdgeUpdateEnd = useCallback(() => {}, []);
 
   const handleSaveNodeProperties = useCallback(
     async (properties: any[]) => {
@@ -1452,24 +1377,7 @@ const KnowledgeCanvas: React.FC = () => {
     [setEdges],
   );
 
-  const rfProps: any = {
-    nodes: safeNodes,
-    edges,
-    onNodesChange,
-    onEdgesChange,
-    onInit,
-    onNodeDoubleClick: onNodeDoubleClickStrict,
-    onEdgeDoubleClick: onEdgeDoubleClickStrict,
-    onConnect: onConnectStrict,
-    onEdgeUpdate: onEdgeUpdateStrict,
-    onEdgeUpdateEnd,
-    nodeTypes: { ontology: OntologyNode },
-    edgeTypes: { floating: FloatingEdge },
-    connectionLineComponent: FloatingConnectionLine,
-    minZoom: 0.1,
-    className: "knowledge-graph-canvas bg-canvas-bg",
-  };
-
+  
   return (
     <div className="w-full h-screen bg-canvas-bg relative">
       <CanvasToolbar

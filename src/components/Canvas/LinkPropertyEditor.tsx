@@ -209,12 +209,31 @@ export const LinkPropertyEditor = ({
       const predFull =
         mgr && typeof mgr.expandPrefix === 'function' ? String(mgr.expandPrefix(uriToSave)) : String(uriToSave);
 
-        if (oldPredIRI!=predFull) {
-          const g = 'urn:vg:data';
-          mgr.removeTriple(subjIri, oldPredIRI, objIri, g);
-          mgr.addTriple(subjIri, predFull, objIri, g);
+      const g = 'urn:vg:data';
+
+      // Creation vs update:
+      // - If there is no existing predicate (create), only add the new triple.
+      // - If there is an existing predicate and it differs, remove exactly that triple and add the new one.
+      // Do NOT perform any removals when creating a link (oldPredIRI is absent) to avoid removing unrelated triples.
+      if (!oldPredIRI) {
+        try {
+          if (typeof mgr.addTriple === "function") {
+            mgr.addTriple(subjIri, predFull, objIri, g);
           }
-        }
+        } catch (_) { /* ignore add failures */ }
+      } else if (String(oldPredIRI) !== String(predFull)) {
+        try {
+          if (typeof mgr.removeTriple === "function") {
+            mgr.removeTriple(subjIri, oldPredIRI, objIri, g);
+          }
+        } catch (_) { /* ignore remove failures */ }
+        try {
+          if (typeof mgr.addTriple === "function") {
+            mgr.addTriple(subjIri, predFull, objIri, g);
+          }
+        } catch (_) { /* ignore add failures */ }
+      }
+    }
     // Notify parent; canvas mapping will pick up the change via RDF manager
     const property = allObjectPropertiesState.find((p) => p.value === uriToSave);
     onSave(uriToSave, property?.label || uriToSave);

@@ -5,69 +5,48 @@ import {
   Position,
   NodeProps,
   useConnection,
-  useUpdateNodeInternals,
 } from "@xyflow/react";
 import { cn } from "../../lib/utils";
 import { Edit3, AlertTriangle, Info } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { shortLocalName, toPrefixed } from "../../utils/termUtils";
-import { debug } from "../../utils/startupDebug";
 import { NodeData } from "../../types/canvas";
 
-const _loggedFingerprints = new Set<string>();
 
-function CustomOntologyNodeInner(props: NodeProps) {
+export function CustomOntologyNode(props: NodeProps) {
   const { data, selected, id } = props;
-  // Use React Flow's built-in connection hook so the node can render conditional handles
-  // and participate in native "connection in progress" state (shows "Drop here" targets etc).
   const connection = useConnection();
-  const updateNodeInternals = useUpdateNodeInternals();
-  // Ensure React Flow knows about conditional handles when connection state changes.
-  // This mirrors the example note: "If handles are conditionally rendered and not present initially,
-  // you need to update the node internals".
-  useEffect(() => {
-    try {
-      if (typeof id === "string") updateNodeInternals(String(id));
-    } catch (_) {
-      /* ignore */
-    }
-  }, [updateNodeInternals, connection?.inProgress, id]);
 
-  const isTarget = !!(
-    connection &&
-    (connection as any).inProgress &&
-    (connection as any).fromNode &&
-    String((connection as any).fromNode.id) !== String(id)
-  );
+  const isTarget = connection.inProgress && connection.fromNode.id !== id;
   const nodeData = (data ?? {}) as NodeData;
   const showHandles = !!((connection as any)?.inProgress || !selected);
 
-  // const rdfManager = useOntologyStore((s) => s.rdfManager);
-  // // const ontologiesVersion = useOntologyStore((s) => s.ontologiesVersion);
-  // const availableClasses = useOntologyStore((s) => s.availableClasses);
-  // const availableProperties = useOntologyStore((s) => s.availableProperties);
+  // // const rdfManager = useOntologyStore((s) => s.rdfManager);
+  // // // const ontologiesVersion = useOntologyStore((s) => s.ontologiesVersion);
+  // // const availableClasses = useOntologyStore((s) => s.availableClasses);
+  // // const availableProperties = useOntologyStore((s) => s.availableProperties);
 
-  const lastFp = useRef<string | null>(null);
-  const rdfTypesKey = Array.isArray(nodeData.rdfTypes)
-    ? nodeData.rdfTypes.join("|")
-    : "";
-  useEffect(() => {
-    try {
-      const uri = String(nodeData.iri || "");
-      const fp = `${uri}`;
-      if (lastFp.current === fp) return;
-      lastFp.current = fp;
-      if (_loggedFingerprints.has(fp)) return;
-      _loggedFingerprints.add(fp);
-      const payload = {
-        uri,
-      };
-    } catch (_) {
-      /* ignore */
-    }
-  }, [
-    nodeData.iri,
-  ]);
+  // const lastFp = useRef<string | null>(null);
+  // const rdfTypesKey = Array.isArray(nodeData.rdfTypes)
+  //   ? nodeData.rdfTypes.join("|")
+  //   : "";
+  // useEffect(() => {
+  //   try {
+  //     const uri = String(nodeData.iri || "");
+  //     const fp = `${uri}`;
+  //     if (lastFp.current === fp) return;
+  //     lastFp.current = fp;
+  //     if (_loggedFingerprints.has(fp)) return;
+  //     _loggedFingerprints.add(fp);
+  //     const payload = {
+  //       uri,
+  //     };
+  //   } catch (_) {
+  //     /* ignore */
+  //   }
+  // }, [
+  //   nodeData.iri,
+  // ]);
 
   // Compute display info for the node IRI and for the meaningful type (classType) if present.
   const { badgeText, subtitleText, headerDisplay, typesList } = useMemo(() => {
@@ -147,7 +126,7 @@ function CustomOntologyNodeInner(props: NodeProps) {
 
 
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const lastMeasuredRef = useRef<{ w: number; h: number } | null>(null);
+  // const lastMeasuredRef = useRef<{ w: number; h: number } | null>(null);
 
   // Apply the colored left border to the parent element of this node container.
   // Some renderers wrap the node element, so the visual left stripe must be applied
@@ -176,7 +155,12 @@ function CustomOntologyNodeInner(props: NodeProps) {
   // Size reporting removed — component is now pure/read-only and does not observe element size.
   // Any measurement responsibilities belong to parent/layout code if needed.
   // Use the node id (IRI) directly as the handle id per project convention.
-  const handleId = String(id || "");
+  // const handleId = String(id || "");
+  // NOTE: Do not URL-encode or escape the handle id here — we rely on the mapper
+  // to use plain IRIs for handle attachment so edges reference source/target directly.
+  // Keeping the raw IRI in the handle id matches the project's canonical representation.
+  // Be aware: some characters in raw IRIs may produce invalid DOM ids; this project
+  // intentionally uses IRIs as node ids and React Flow accepts those as handle ids.
 
   // Connection helpers removed — canvas now relies on React Flow native handle drag.
   // Click-to-connect bridge (vg:start-connection / vg:end-connection) was removed to
@@ -185,6 +169,28 @@ function CustomOntologyNodeInner(props: NodeProps) {
   // When the user interacts with the node, use pointer events for more reliable behavior.
   // onPointerDown starts a pending connection; onPointerUp ends it (if pending). We stop propagation
   // so inner interactive elements don't swallow the gesture. Also emit lightweight debug logs.
+  // const label = nodeData.iri;
+//   return (
+//     <div className="customNode">
+//       <div
+//         className="customNodeBody"
+//         style={{
+//           borderStyle: isTarget ? 'dashed' : 'solid',
+//           backgroundColor: isTarget ? '#ffcce3' : '#ccd9f6',
+//         }}
+//       >
+//         {/* If handles are conditionally rendered and not present initially, you need to update the node internals https://reactflow.dev/docs/api/hooks/use-update-node-internals/ */}
+//         {/* In this case we don't need to use useUpdateNodeInternals, since !isConnecting is true at the beginning and all handles are rendered initially. */}
+//         {!connection.inProgress && <Handle className="customHandle" position={Position.Right} type="source" />}
+//         {/* We want to disable the target handle, if the connection was started from this node */}
+//         {(!connection.inProgress || isTarget) && (
+//           <Handle className="customHandle" position={Position.Left} type="target" isConnectableStart={false} />
+//         )}
+//         {label}
+//       </div>
+//     </div>
+//   );
+// }
   return (
     <div
       ref={rootRef}
@@ -277,29 +283,13 @@ function CustomOntologyNodeInner(props: NodeProps) {
           </div>
         )}
       </div>
-
-      {/* Match example: render source on the Right and target on the Left, with the same conditional logic.
-            This mirrors the provided example so native handle-drag shows the live connection correctly. */}
-      {showHandles && (
-        <>
-          <Handle
-            id={handleId}
-            type="source"
-            position={Position.Right}
-            className="!bg-transparent !border-0"
-            isConnectable={true}
-          />
-          {(!(connection as any)?.inProgress || isTarget) && (
-            <Handle
-              id={handleId}
-              type="target"
-              position={Position.Left}
-              className="!bg-transparent !border-0"
-              isConnectable={true}
-            />
-          )}
-        </>
+      {/* In this case we don't need to use useUpdateNodeInternals, since !isConnecting is true at the beginning and all handles are rendered initially. */}
+      {showHandles && <Handle className="customHandle" position={Position.Right} type="source" />}
+      {/* We want to disable the target handle, if the connection was started from this node */}
+      {(showHandles || isTarget) && (
+        <Handle className="customHandle" position={Position.Left} type="target" isConnectableStart={false} />
       )}
+
     </div>
   );
 }
@@ -331,5 +321,5 @@ function darken(hex: string, amount: number) {
   }
 }
 
-export const CustomOntologyNode = memo(CustomOntologyNodeInner);
-CustomOntologyNode.displayName = "CustomOntologyNode";
+// export const CustomOntologyNode = memo(CustomOntologyNode);
+// CustomOntologyNode.displayName = "CustomOntologyNode";

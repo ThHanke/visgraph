@@ -39,6 +39,7 @@ const FloatingEdge = memo((props: EdgeProps) => {
     targetNode,
   );
 
+
   // Defensive guard: if geometry is not numeric, avoid rendering an invalid path.
   if (![sx, sy, tx, ty].every((v) => Number.isFinite(v))) {
     // Avoid rendering to prevent SVG "<path d='MNaN,...'>" errors.
