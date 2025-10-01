@@ -18,7 +18,9 @@ describe("CanvasToolbar Add Node dialog - class type population", () => {
     // Clear any previous state
     try {
       if (typeof store.clearOntologies === "function") store.clearOntologies();
-    } catch (_) {}
+    } catch (_) {
+      /* intentionally ignored for test cleanup */
+    }
 
     // Load the fixture RDF into the ontology store (persist as ontology so namespaces/classes are registered)
     try {
@@ -26,11 +28,13 @@ describe("CanvasToolbar Add Node dialog - class type population", () => {
       // Reconcile the store so availableClasses / availableProperties are rebuilt from the RDF store
       try {
         await store.reconcileQuads(undefined);
-      } catch (_) {}
+      } catch (_) {
+        /* intentionally ignored during test setup */
+      }
     } catch (e) {
       // If loading fails, surface the reason for test debugging
       // but continue to attempt the rest of the test — the assertion will fail cleanly.
-      // eslint-disable-next-line no-console
+       
       console.error("Failed to load fixture RDF:", e);
     }
 
@@ -66,6 +70,8 @@ describe("CanvasToolbar Add Node dialog - class type population", () => {
     });
 
     // Cleanup
-    try { if (typeof store.clearOntologies === "function") store.clearOntologies(); } catch (_) {}
+    try { if (typeof store.clearOntologies === "function") store.clearOntologies(); } catch (_) {
+      /* intentionally ignored for test cleanup */
+    }
   });
 });

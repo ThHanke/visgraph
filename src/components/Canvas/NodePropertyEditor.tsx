@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components, no-empty */
+/* eslint-disable no-empty */
 /**
  * Node Property Editor (streamlined)
  *

@@ -16,7 +16,7 @@ async function waitForCondition(cond: () => boolean, timeout = 2000, interval = 
       if (cond()) return true;
     } catch (_) {}
     // give background tasks a chance to run
-    // eslint-disable-next-line no-await-in-loop
+     
     await sleep(interval);
   }
   return false;

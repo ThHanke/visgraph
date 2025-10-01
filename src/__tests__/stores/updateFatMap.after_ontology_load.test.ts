@@ -17,7 +17,7 @@ async function waitForCondition(cond: () => boolean, timeout = 5000, interval = 
       if (cond()) return true;
     } catch (_) {}
     // give background tasks a chance to run
-    // eslint-disable-next-line no-await-in-loop
+     
     await sleep(interval);
   }
   return false;
@@ -63,15 +63,15 @@ test("rdfManager triggers store.updateFatMap at end of batch ontology load", asy
     object: q.object && (q.object.value || q.object),
     graph: q.graph && (q.graph.value || q.graph),
   }));
-  // eslint-disable-next-line no-console
+   
   console.log("[TEST_DUMP] store.quads.count", allQuads.length, "quads:", sample);
 
   const stBefore = useOntologyStore.getState();
-  // eslint-disable-next-line no-console
+   
   console.log("[TEST_DUMP] ontologyStore availableProperties:", (stBefore.availableProperties || []).map((p:any)=>p.iri));
-  // eslint-disable-next-line no-console
+   
   console.log("[TEST_DUMP] ontologyStore availableClasses:", (stBefore.availableClasses || []).map((c:any)=>c.iri));
-  // eslint-disable-next-line no-console
+   
   console.log("[TEST_DUMP] ontologyStore ontologiesVersion:", stBefore.ontologiesVersion);
 
   // Wait for the fat-map to reflect the ontology entities

@@ -236,7 +236,7 @@ test("KnowledgeCanvas renders only nodes/edges from mapQuadsToDiagram and ignore
 
   // Wait for React Flow instance to be installed by onInit
   await waitFor(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     if (!(window as any).__VG_RF_INSTANCE) throw new Error("waiting for rf instance");
   }, { timeout: 2000 });
 

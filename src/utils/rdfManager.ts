@@ -11,7 +11,7 @@
  * Internally notifyChange() is invoked whenever quads are added/removed/graphs modified.
  */
 
-/* eslint-disable no-empty, no-unused-expressions */
+/* eslint-disable no-empty */
 
 import {
   Store,
@@ -512,7 +512,7 @@ export class RDFManager {
           // Build authoritative per-subject snapshots from the store (ensure parser writes are visible first).
           // We prefer authoritative store snapshots over buffered deltas so the reconciler
           // always receives the exact triples persisted by the parser for each affected subject.
-          let _storeSnapshots: Quad[] = [];
+          const _storeSnapshots: Quad[] = [];
           try {
             for (const s of subjects) {
               try {

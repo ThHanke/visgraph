@@ -1199,7 +1199,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
       // Quick debug
       try {
-        // eslint-disable-next-line no-console
+         
         console.debug("[VG_DEBUG] updateFatMap.start", { quadsCount: inputQuads.length });
       } catch (_) {}
 
@@ -1366,7 +1366,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       } catch (_) { /* ignore setState failures */ }
 
       try {
-        // eslint-disable-next-line no-console
+         
         console.debug("[VG_DEBUG] updateFatMap.end", { props: propsOut.length, classes: classesOut.length });
       } catch (_) {}
     } catch (e) {
@@ -1475,7 +1475,7 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
 
             // Debug: log detected types for this subject to help diagnose why full rebuild may be empty
             try {
-              // eslint-disable-next-line no-console
+               
               console.debug("[VG_DEBUG] fullRebuild.subject", String(subj && (subj as any).value || subj), { types });
             } catch (_) {}
 
@@ -1592,9 +1592,9 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
 
         // Debug: expose parsed types/labels to aid tests
         try {
-          // eslint-disable-next-line no-console
+           
           console.debug("[VG_DEBUG] parsedTypesBySubject", Object.fromEntries(Object.entries(parsedTypesBySubject).map(([k,v]) => [k, Array.from(v || [])])));
-          // eslint-disable-next-line no-console
+           
           console.debug("[VG_DEBUG] parsedLabelBySubject", { ...parsedLabelBySubject });
         } catch (_) {}
       } catch (_) { /* ignore parsed-quads scanning errors */ }
@@ -1655,7 +1655,7 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
 
           // Debug: log normalized types for this subject to aid diagnosis in integration runs
           try {
-            // eslint-disable-next-line no-console
+             
             console.log("[VG_DEBUG] incremental.subjectTypesNormalized", subjStr, typesNormalized);
           } catch (_) { /* ignore logging failures */ }
 
