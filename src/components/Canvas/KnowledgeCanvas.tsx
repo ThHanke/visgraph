@@ -1456,6 +1456,7 @@ const KnowledgeCanvas: React.FC = () => {
             nodeTypes={{ ontology: OntologyNode }}
             edgeTypes={{ floating: FloatingEdge }}
             connectionLineComponent={FloatingConnectionLine}
+            connectOnClick={false}
             minZoom={0.1}
             className="knowledge-graph-canvas bg-canvas-bg"
           >

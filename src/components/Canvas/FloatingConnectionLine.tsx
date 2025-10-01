@@ -2,13 +2,7 @@ import React from "react";
 import { getBezierPath } from "@xyflow/react";
 import { getEdgeParams } from "./EdgeParams";
 
-interface Props {
-  toX?: number;
-  toY?: number;
-  fromPosition?: any;
-  toPosition?: any;
-  fromNode?: any;
-}
+type Props = any;
 
 const FloatingConnectionLine: React.FC<Props> = ({
   toX,
@@ -34,8 +28,8 @@ const FloatingConnectionLine: React.FC<Props> = ({
   };
 
   const { sx, sy, tx, ty, sourcePos, targetPos } = getEdgeParams(
-    fromNode,
-    targetNode,
+    fromNode as any,
+    targetNode as any,
   );
 
   const [edgePath] = getBezierPath({

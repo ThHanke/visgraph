@@ -17,6 +17,20 @@ export function CustomOntologyNode(props: NodeProps) {
   const { data, selected, id } = props;
   const connection = useConnection();
 
+  React.useEffect(() => {
+    try {
+      const inProgress = Boolean((connection as any)?.inProgress);
+      const fromNode = (connection as any)?.fromNode;
+      const fromNodeId = fromNode && (fromNode.id || (fromNode.measured && fromNode.measured.id)) ? String(fromNode.id || "") : null;
+      console.log("[VG_DEBUG] CustomOntologyNode connection", {
+        nodeId: String(id),
+        selected: !!selected,
+        inProgress,
+        fromNodeId,
+      });
+    } catch (_) {}
+  }, [id, selected, (connection as any)?.inProgress, (connection as any)?.fromNode && (connection as any).fromNode && (connection as any).fromNode.id]);
+
   const isTarget = connection.inProgress && connection.fromNode.id !== id;
   const nodeData = (data ?? {}) as NodeData;
   const showHandles = !!((connection as any)?.inProgress || !selected);
@@ -284,10 +298,33 @@ export function CustomOntologyNode(props: NodeProps) {
         )}
       </div>
       {/* In this case we don't need to use useUpdateNodeInternals, since !isConnecting is true at the beginning and all handles are rendered initially. */}
-      {showHandles && <Handle className="customHandle" position={Position.Right} type="source" />}
+      {showHandles && (
+        <Handle
+          className="customHandle"
+          position={Position.Right}
+          type="source"
+          onPointerDown={() => {
+            try { console.log("[VG_DEBUG] handle pointerdown", { nodeId: id, handle: "source" }); } catch (_) {}
+          }}
+          onPointerUp={() => {
+            try { console.log("[VG_DEBUG] handle pointerup", { nodeId: id, handle: "source" }); } catch (_) {}
+          }}
+        />
+      )}
       {/* We want to disable the target handle, if the connection was started from this node */}
       {(showHandles || isTarget) && (
-        <Handle className="customHandle" position={Position.Left} type="target" isConnectableStart={false} />
+        <Handle
+          className="customHandle"
+          position={Position.Left}
+          type="target"
+          isConnectableStart={false}
+          onPointerDown={() => {
+            try { console.log("[VG_DEBUG] handle pointerdown", { nodeId: id, handle: "target" }); } catch (_) {}
+          }}
+          onPointerUp={() => {
+            try { console.log("[VG_DEBUG] handle pointerup", { nodeId: id, handle: "target" }); } catch (_) {}
+          }}
+        />
       )}
 
     </div>
