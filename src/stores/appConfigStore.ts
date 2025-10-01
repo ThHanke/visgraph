@@ -36,6 +36,8 @@ export interface AppConfig {
   additionalOntologies: string[];
   // Additional ontologies the user explicitly disabled (do not auto-load even if referenced)
   disabledAdditionalOntologies: string[];
+  // When true the app will automatically load configured additionalOntologies on startup
+  persistedAutoload: boolean;
 
   // Blacklist settings: control which prefixes/namespace URIs are excluded from UI subject emissions.
   // When enabled, subjects belonging to these prefixes or namespace URIs will not be emitted to the UI,
@@ -109,7 +111,8 @@ const defaultConfig: AppConfig = {
     'http://www.w3.org/2000/01/rdf-schema#'
   ],
   disabledAdditionalOntologies: [],
-
+  // New: opt-in persisted autoload. When true, configured additionalOntologies will be loaded automatically on startup.
+  persistedAutoload: false,
   // Blacklist defaults (enabled)
   blacklistEnabled: true,
   blacklistedPrefixes: ['owl', 'rdf', 'rdfs', 'xml', 'xsd'],
@@ -316,6 +319,16 @@ export const useAppConfigStore = create<AppConfigStore>()(
         }));
       },
 
+      // Persisted autoload toggle: when true, configured additionalOntologies are auto-loaded on startup
+      setPersistedAutoload: (enabled: boolean) => {
+        set((state) => ({
+          config: {
+            ...state.config,
+            persistedAutoload: Boolean(enabled)
+          }
+        }));
+      },
+      
       // Utility actions
       resetToDefaults: () => {
         set({ config: { ...defaultConfig } });

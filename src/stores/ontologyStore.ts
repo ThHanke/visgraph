@@ -823,11 +823,20 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
           // Delegate to the canonical load path so the ontology is fetched/parsed
           // and registered consistently (no synthetic/mock registration).
-          try {
+            try {
             const norm = normalizeUri(uri);
             // loadOntology will perform canonicalization and proper registration.
             // We intentionally await here to avoid racing further iterations.
             await get().loadOntology(norm);
+            // Recompute fat-map from the authoritative store snapshot so that
+            // previously autoloaded ontologies are included in availableClasses/availableProperties.
+            try {
+              await get().updateFatMap();
+              onProgress?.(95 + Math.floor(((i + 1) / toLoad.length) * 5), `Reconciled store after loading ${ontologyName || uri}`);
+              try { console.debug("[VG_DEBUG] loadAdditionalOntologies.reconciled", norm); } catch (_) {}
+            } catch (_) {
+              /* ignore reconciliation failures */
+            }
           } catch (_) {
             /* ignore per-entry load failures */
           }
@@ -851,7 +860,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                 signal: AbortSignal.timeout(10000),
               });
 
-              if (response && response.ok) {
+                if (response && response.ok) {
                 const content = await response.text();
                 await get().loadOntologyFromRDF(
                   content,
@@ -859,6 +868,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                   true,
                   "urn:vg:ontologies",
                 );
+                // Recompute fat-map after parsing into the store so merged results include previously loaded ontologies.
+                try {
+                  await get().updateFatMap();
+                  onProgress?.(95 + Math.floor(((i + 1) / toLoad.length) * 5), `Reconciled store after loading ${ontologyName || uri}`);
+                  try { console.debug("[VG_DEBUG] loadAdditionalOntologies.reconciled", uri); } catch (_) {}
+                } catch (_) { /* ignore reconciliation failures */ }
+
                 // Register this fetched URI as an explicit loaded ontology so UI counts reflect autoloaded entries
                 try {
                   const norm = normalizeUri(uri);
@@ -940,33 +956,39 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             // Per policy: do not register synthetic ontology metadata on fetch failure.
             continue;
           }
-        } else {
-          // If it's not an http(s) URI, we treat it as inline RDF content and attempt to parse it.
-          try {
-            await get().loadOntologyFromRDF(
-              uri,
-              undefined,
-              true,
-              "urn:vg:ontologies",
-            );
-          } catch (e) {
+          } else {
+            // If it's not an http(s) URI, we treat it as inline RDF content and attempt to parse it.
             try {
-              fallback(
-                "console.warn",
-                {
-                  args: [
-                    `Failed to parse non-http ontology content for ${uri}:`,
-                    String(e),
-                  ],
-                },
-                { level: "warn" },
+              await get().loadOntologyFromRDF(
+                uri,
+                undefined,
+                true,
+                "urn:vg:ontologies",
               );
-            } catch (_) {
-              /* ignore */
+              // Reconcile fat-map after parsing inline ontology content so results are merged.
+              try {
+                await get().updateFatMap();
+                onProgress?.(95 + Math.floor(((i + 1) / toLoad.length) * 5), `Reconciled store after loading ${ontologyName || uri}`);
+                try { console.debug("[VG_DEBUG] loadAdditionalOntologies.reconciled", uri); } catch (_) {}
+              } catch (_) { /* ignore reconciliation failures */ }
+            } catch (e) {
+              try {
+                fallback(
+                  "console.warn",
+                  {
+                    args: [
+                      `Failed to parse non-http ontology content for ${uri}:`,
+                      String(e),
+                    ],
+                  },
+                  { level: "warn" },
+                );
+              } catch (_) {
+                /* ignore */
+              }
+              continue;
             }
-            continue;
           }
-        }
       } catch (error: any) {
         try {
           fallback(
@@ -1255,7 +1277,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           const rawTypesSet = typesBySubject[s] || new Set<any>();
           const typesArr = Array.from(rawTypesSet.values()).map((t) => normTerm(t)).filter(Boolean);
           // debug per-subject normalized types
-          try { /* eslint-disable-next-line no-console */ console.debug("[VG_DEBUG] updateFatMap.subjectTypes", s, typesArr); } catch (_) {}
+          // try { /* eslint-disable-next-line no-console */ console.debug("[VG_DEBUG] updateFatMap.subjectTypes", s, typesArr); } catch (_) {}
 
           const isClass = typesArr.some((iri) => {
             try {

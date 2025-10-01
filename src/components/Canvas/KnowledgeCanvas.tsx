@@ -953,6 +953,43 @@ const KnowledgeCanvas: React.FC = () => {
           startupUrl = "";
         }
 
+        // If user configured additional ontologies and persisted autoload is enabled,
+        // load them immediately on startup (no gates/fallbacks).
+        try {
+          const disabledList = Array.isArray(cfg?.disabledAdditionalOntologies) ? cfg.disabledAdditionalOntologies : [];
+          const toLoad = (additional || []).filter((u: any) => u && !disabledList.includes(u));
+          if (Array.isArray(toLoad) && toLoad.length > 0 && typeof loadAdditionalOntologies === "function" && cfg && cfg.persistedAutoload) {
+            try {
+              console.debug("[VG_DEBUG] Autoload start - configured additionalOntologies:", toLoad);
+              canvasActions.setLoading(true, 5, "Autoloading configured ontologies...");
+              // Mark that the next mapping should trigger layout since these are startup loads
+              try { forceLayoutNextMappingRef.current = true; } catch (_) {}
+              await loadAdditionalOntologies(toLoad, (progress: number, message: string) => {
+                try {
+                  console.debug(`[VG_DEBUG] loadAdditionalOntologies progress ${progress}%: ${message}`);
+                } catch (_) {}
+                try { canvasActions.setLoading(true, Math.max(5, progress), message); } catch (_) {}
+              });
+              try { console.debug("[VG_DEBUG] Autoload complete - requested ontologies loaded"); } catch (_) {}
+              loadTriggerRef.current = true;
+              loadFitRef.current = true;
+            } finally {
+              canvasActions.setLoading(false, 0, "");
+            }
+          } else {
+            // preserve previous trigger behavior when autoload not enabled
+            if (additional && additional.length > 0 && typeof loadAdditionalOntologies === "function") {
+              loadTriggerRef.current = true;
+            }
+          }
+        } catch (err) {
+          try { console.debug("[VG_DEBUG] Autoload error", err); } catch (_) {}
+          // ensure we don't block init on autoload failures
+          if (additional && additional.length > 0 && typeof loadAdditionalOntologies === "function") {
+            loadTriggerRef.current = true;
+          }
+        }
+
         if (startupUrl && typeof loadKnowledgeGraph === "function") {
           try {
             canvasActions.setLoading(true, 5, "Loading startup graph...");
@@ -970,10 +1007,6 @@ const KnowledgeCanvas: React.FC = () => {
           } finally {
             canvasActions.setLoading(false, 0, "");
           }
-        }
-
-        if (additional && additional.length > 0 && typeof loadAdditionalOntologies === "function") {
-          loadTriggerRef.current = true;
         }
       } catch (_) {
         //

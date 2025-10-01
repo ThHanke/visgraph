@@ -195,6 +195,8 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
     setBlacklistEnabled,
     setBlacklistedPrefixes,
     setBlacklistedUris,
+    // Persisted autoload toggle
+    setPersistedAutoload,
     removeAdditionalOntology
   } = useAppConfigStore();
 
@@ -355,6 +357,23 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
                   <Badge variant={config.showLegend ? "default" : "secondary"}>
                     {config.showLegend ? "Visible" : "Hidden"}
                   </Badge>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <Label>Auto-load configured ontologies on startup</Label>
+                  <Switch
+                    checked={!!config.persistedAutoload}
+                    onCheckedChange={(val) => {
+                      try {
+                        // Persist the new setting immediately
+                        setPersistedAutoload(Boolean(val));
+                        toast.success(`Persisted autoload ${val ? "enabled" : "disabled"}`);
+                      } catch (e) {
+                        try { console.debug("[VG_DEBUG] setPersistedAutoload failed", e); } catch (_) {}
+                        toast.error("Failed to update autoload setting");
+                      }
+                    }}
+                  />
                 </div>
               </CardContent>
             </Card>
