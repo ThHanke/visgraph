@@ -187,7 +187,6 @@
   transition: var(--transition-smooth);
   position: relative;
   overflow: hidden;
-  padding: 8px 12px;
 }
 
 /* Left namespace color bar — components can set --node-leftbar-color inline (e.g., hsl(var(--ns-foaf)))

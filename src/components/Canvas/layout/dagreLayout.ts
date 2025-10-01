@@ -48,6 +48,47 @@ export function applyDagreLayout(
     g.setNode(n.id, { width: w, height: h });
   }
 
+  // Compute maximum node dimensions and adjust spacing so layout is node-size-aware.
+  // We add the max lateral size to rank separation and the max cross size to node separation.
+  // This is an additive change (no opt-in, no padding/scaling) as requested.
+  try {
+    let maxWidth = 0;
+    let maxHeight = 0;
+    const allNodeIds = g.nodes() || [];
+    for (const id of allNodeIds) {
+      const v: any = g.node(id);
+      if (!v) continue;
+      if (typeof v.width === 'number' && v.width > maxWidth) maxWidth = v.width;
+      if (typeof v.height === 'number' && v.height > maxHeight) maxHeight = v.height;
+    }
+
+    // Determine final separations depending on layout direction.
+    let finalNodeSep = nodeSep;
+    let finalRankSep = rankSep;
+    if (direction === 'LR' || direction === 'RL') {
+      // Horizontal layout: ranks progress left->right; add max node width to rank separation (X axis)
+      // and add max node height to nodesep (Y-axis spacing within a rank).
+      finalRankSep = (rankSep ?? 0) + maxWidth;
+      finalNodeSep = (nodeSep ?? 0) + maxHeight;
+    } else {
+      // Vertical layout: ranks progress top->bottom; add max node height to rank separation (Y axis)
+      // and add max node width to nodesep (X-axis spacing within a rank).
+      finalRankSep = (rankSep ?? 0) + maxHeight;
+      finalNodeSep = (nodeSep ?? 0) + maxWidth;
+    }
+
+    // Update graph layout settings with the computed separations.
+    g.setGraph({
+      rankdir: direction,
+      nodesep: finalNodeSep,
+      ranksep: finalRankSep,
+      marginx: marginX,
+      marginy: marginY,
+    });
+  } catch (_) {
+    // If anything goes wrong, fall back to the original settings already applied above.
+  }
+
   // Add edges
   for (const e of edges) {
     // dagre expects unique edge ids but we can omit id and provide source/target
