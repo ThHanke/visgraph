@@ -55,7 +55,7 @@ export class RDFManager {
    * - Otherwise calls ontologyStore.reconcileQuads(undefined) and returns a promise that
    *   resolves when reconciliation completes. Errors are propagated to callers (hard fail).
    */
-  private runReconcile(): Promise<void> {
+  private runReconcile(quads?: any[]): Promise<void> {
     try {
       if (this.reconcileInProgress) {
         return this.reconcileInProgress;
@@ -75,14 +75,23 @@ export class RDFManager {
         os = undefined;
       }
 
-      if (!os || typeof os.reconcileQuads !== "function") {
+      try {
+        // Debug visibility for tests: log whether the store object was found and whether updateFatMap is present.
+        try { console.log("[VG_DEBUG] runReconcile.osPresent", Boolean(os), "hasUpdateFatMap:", Boolean(os && typeof os.updateFatMap === "function")); } catch (_) {}
+      } catch (_) {}
+
+      // Require the store to expose the explicit updateFatMap API.
+      // Do NOT fallback to other methods — call updateFatMap directly so behavior is deterministic and testable.
+      if (!os || typeof os.updateFatMap !== "function") {
         return Promise.resolve();
       }
 
       // Start the reconcile and store the in-flight promise so concurrent callers wait on it.
       this.reconcileInProgress = (async () => {
         try {
-          await os.reconcileQuads(undefined);
+          // Call the explicit store API (no fallbacks) so tests and runtime instrumentation
+          // can reliably observe the fat-map update invocation.
+          await os.updateFatMap(quads);
         } finally {
           // clear the in-flight marker regardless of success/failure so future reconciles can run
           this.reconcileInProgress = null;
@@ -492,45 +501,62 @@ export class RDFManager {
       if (this.subjectFlushTimer) {
         window.clearTimeout(this.subjectFlushTimer);
       }
-      this.subjectFlushTimer = window.setTimeout(() => {
+      this.subjectFlushTimer = window.setTimeout(async () => {
         try {
           if (this.subjectChangeBuffer.size === 0) {
             this.subjectFlushTimer = null;
             return;
           }
           const subjects = Array.from(this.subjectChangeBuffer);
-          // Collect quads for the subjects we're about to emit, preserving the exact triples
-          // that triggered the change. This allows consumers to process triple-level increments
-          // without querying the store.
-          const quads: Quad[] = [];
+
+          // Build authoritative per-subject snapshots from the store (ensure parser writes are visible first).
+          // We prefer authoritative store snapshots over buffered deltas so the reconciler
+          // always receives the exact triples persisted by the parser for each affected subject.
+          let _storeSnapshots: Quad[] = [];
           try {
             for (const s of subjects) {
               try {
-                // Prefer authoritative per-subject snapshot from the store so subscribers
-                // receive the full set of triples for the subject (not just the incremental deltas).
                 const subjTerm = namedNode(String(s));
                 const subjectQuads = this.store.getQuads(subjTerm, null, null, null) || [];
                 if (Array.isArray(subjectQuads) && subjectQuads.length > 0) {
-                  quads.push(...subjectQuads);
+                  _storeSnapshots.push(...subjectQuads);
                 }
-                // Clear any buffered deltas for this subject as we've emitted a full snapshot.
-                this.subjectQuadBuffer.delete(s);
-
-              } catch (_) { /* ignore per-subject quad collection failures */ }
+              } catch (_) {
+                /* ignore per-subject store read failures */
+              }
             }
-          } catch (_) { /* ignore overall quad collection failures */ }
+          } catch (_) {
+            /* ignore overall snapshot build failures */
+          }
 
+          // Use undefined to signal a full rebuild only when there are no per-subject snapshots.
+          const reconcileArg = _storeSnapshots.length > 0 ? _storeSnapshots : undefined;
+
+          // Clear buffered deltas for these subjects now that we've captured them.
+          try {
+            for (const s of subjects) {
+              try { this.subjectQuadBuffer.delete(s); } catch (_) {}
+            }
+          } catch (_) {}
+
+          // Clear change buffer and timer before reconcile so subsequent changes schedule anew.
           this.subjectChangeBuffer.clear();
           this.subjectFlushTimer = null;
 
+          // Run reconcile and wait for fat-map to be updated before emitting subject-level notifications.
+          try {
+            await this.runReconcile(reconcileArg);
+          } catch (_) {
+            // Do not abort emission on reconcile failure; emit anyway.
+          }
+
+          // Emit subscribers with the authoritative quads (prefer reconcileArg if present).
+          const emitQuads: Quad[] = reconcileArg || [];
           for (const cb of Array.from(this.subjectChangeSubscribers)) {
             try {
-              // Call subscribers with both subjects and the associated quads.
-              // Existing subscribers that only accept subjects will simply ignore the second arg.
               try {
-                (cb as any)(subjects, quads);
+                (cb as any)(subjects, emitQuads);
               } catch (_) {
-                // Fallback: call with just subjects if subscriber throws when receiving two args.
                 cb(subjects);
               }
             } catch (_) {
@@ -677,11 +703,102 @@ export class RDFManager {
           persistRegistryToStore(buildRegistryFromManager(this));
         } catch (_) { /* ignore persist failures */ }
         try {
-          // End of parsing: allow subject-level flush now that namespaces have been persisted.
-          (this as any).parsingInProgress = false;
-          try { (this as any).scheduleSubjectFlush(0); } catch (_) {}
+          // End of parsing: defer subject-level flush until the ontology store has updated its fat-map.
+          // Collect any buffered quads (per-subject) so the store may perform an incremental update.
+          try {
+            const bufferedQuads: Quad[] = [];
+            try {
+              for (const qArr of Array.from((this as any).subjectQuadBuffer ? (this as any).subjectQuadBuffer.values() : [])) {
+                try {
+                  if (Array.isArray(qArr)) bufferedQuads.push(...qArr);
+                } catch (_) {}
+              }
+            } catch (_) {}
+            // Determine whether any of the buffered quads belong to the ontology graph.
+            // If so, request a full rebuild (pass undefined) so TBox entities in urn:vg:ontologies
+            // are discovered. Otherwise use incremental batch for performance.
+            try {
+              const hasOnt = Array.isArray(bufferedQuads) && bufferedQuads.some((q: any) => {
+                try {
+                  const g = q && ((q.graph && (q.graph as any).value) || q.graph);
+                  if (!g) return false;
+                  const gv = String(g);
+                  return gv.includes("urn:vg:ontologies");
+                } catch (_) {
+                  return false;
+                }
+              });
+              const reconcileArg = hasOnt ? undefined : (bufferedQuads && bufferedQuads.length > 0 ? bufferedQuads : undefined);
+              const maybeReconcile = (this as any).runReconcile
+                ? (this as any).runReconcile.call(this, reconcileArg)
+                : Promise.resolve();
+              try {
+                (maybeReconcile as Promise<void>).finally(() => {
+                  try {
+                    (this as any).parsingInProgress = false;
+                  } catch (_) {}
+                  try { (this as any).scheduleSubjectFlush(0); } catch (_) {}
+                });
+              } catch (_) {
+                try {
+                  (this as any).parsingInProgress = false;
+                } catch (_) {}
+                try { (this as any).scheduleSubjectFlush(0); } catch (_) {}
+              }
+            } catch (_) {
+              try {
+                (this as any).parsingInProgress = false;
+              } catch (_) {}
+              try { (this as any).scheduleSubjectFlush(0); } catch (_) {}
+            }
+          } catch (_) {
+            try {
+              (this as any).parsingInProgress = false;
+            } catch (_) {}
+            try { (this as any).scheduleSubjectFlush(0); } catch (_) {}
+          }
         } catch (_) {}
       }
+
+      // Ensure reconcile runs after parsing regardless of whether prefixes were provided.
+      // Collect buffered quads and request either an incremental update or a full rebuild.
+      try {
+        const bufferedQuads: Quad[] = [];
+        try {
+          for (const qArr of Array.from((this as any).subjectQuadBuffer ? (this as any).subjectQuadBuffer.values() : [])) {
+            try {
+              if (Array.isArray(qArr)) bufferedQuads.push(...qArr);
+            } catch (_) {}
+          }
+        } catch (_) {}
+
+        const hasOnt = Array.isArray(bufferedQuads) && bufferedQuads.some((q: any) => {
+          try {
+            const g = q && ((q.graph && (q.graph as any).value) || q.graph);
+            if (!g) return false;
+            const gv = String(g);
+            return gv.includes("urn:vg:ontologies");
+          } catch (_) {
+            return false;
+          }
+        });
+
+        const reconcileArg = hasOnt ? undefined : (bufferedQuads && bufferedQuads.length > 0 ? bufferedQuads : undefined);
+        const maybeReconcile = (this as any).runReconcile
+          ? (this as any).runReconcile.call(this, reconcileArg)
+          : Promise.resolve();
+
+        try {
+          (maybeReconcile as Promise<void>).finally(() => {
+            try { (this as any).parsingInProgress = false; } catch (_) {}
+            try { (this as any).scheduleSubjectFlush(0); } catch (_) {}
+          });
+        } catch (_) {
+          try { (this as any).parsingInProgress = false; } catch (_) {}
+          try { (this as any).scheduleSubjectFlush(0); } catch (_) {}
+        }
+      } catch (_) {}
+
       // Always emit a visible, developer-friendly snapshot and persist the canonical registry even when no prefixes were parsed.
       try {
         console.info("[VG_NAMESPACES_UPDATED]", { namespaces: { ...(this.namespaces || {}) } });

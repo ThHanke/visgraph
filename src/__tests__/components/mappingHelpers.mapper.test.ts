@@ -18,7 +18,7 @@ describe("mapQuadsToDiagram (mapper) - fat-map authoritative scenarios", () => {
 
     const quads = [q(subj, pred, { value: obj, termType: "NamedNode" })];
 
-    const diagram = mapQuadsToDiagram(quads, { availableProperties: [{ iri: pred }] });
+    const diagram = mapQuadsToDiagram(quads, { availableProperties: [{ iri: pred, propertyKind: "object" }] });
 
     expect(Array.isArray(diagram.edges)).toBeTruthy();
     expect(diagram.edges.length).toBe(1);
@@ -80,7 +80,7 @@ describe("mapQuadsToDiagram (mapper) - fat-map authoritative scenarios", () => {
     // Another triple where the blank node appears as a subject (makes it referenced)
     const t2 = q(bn, "http://www.w3.org/2000/01/rdf-schema#label", { value: "blank label", termType: "Literal" });
 
-    const diagram = mapQuadsToDiagram([t1, t2], { availableProperties: [{ iri: pred }] });
+    const diagram = mapQuadsToDiagram([t1, t2], { availableProperties: [{ iri: pred, propertyKind: "object" }] });
 
     // Edge should be created
     expect(diagram.edges.length).toBe(1);
@@ -100,5 +100,25 @@ describe("mapQuadsToDiagram (mapper) - fat-map authoritative scenarios", () => {
     const node = diagram.nodes.find((n: any) => n.id === subj);
     expect(node).toBeDefined();
     expect(node.data.annotationProperties.some((ap: any) => ap.property === pred && ap.value === obj)).toBeTruthy();
+  });
+
+  it("folds license IRI into ontology subject annotationProperties (no edge)", () => {
+    const subj = "http://example.org/ont1";
+    const pred = "http://purl.org/dc/terms/license";
+    const lic = "https://creativecommons.org/licenses/by/4.0/";
+
+    const quads = [
+      q(subj, "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", { value: "http://www.w3.org/2002/07/owl#Ontology", termType: "NamedNode" }),
+      q(subj, pred, { value: lic, termType: "NamedNode" }),
+    ];
+
+    const diagram = mapQuadsToDiagram(quads, { availableProperties: [] });
+    expect(diagram.edges.length).toBe(0);
+    // Ensure exactly one node (the ontology subject) was created and no standalone node for the license IRI
+    expect(Array.isArray(diagram.nodes)).toBeTruthy();
+    expect(diagram.nodes.length).toBe(1);
+    const node = diagram.nodes.find((n: any) => n.id === subj);
+    expect(node).toBeDefined();
+    expect(node.data.annotationProperties.some((ap: any) => ap.property === pred && ap.value === lic)).toBeTruthy();
   });
 });

@@ -31,7 +31,7 @@ export function CustomOntologyNode(props: NodeProps) {
     } catch (_) {}
   }, [id, selected, (connection as any)?.inProgress, (connection as any)?.fromNode && (connection as any).fromNode && (connection as any).fromNode.id]);
 
-  const isTarget = connection.inProgress && connection.fromNode.id !== id;
+  const isTarget = Boolean(connection && (connection as any).inProgress && (connection as any).fromNode && (connection as any).fromNode.id && String((connection as any).fromNode.id) !== String(id));
   const nodeData = (data ?? {}) as NodeData;
   const showHandles = !!((connection as any)?.inProgress || !selected);
 

@@ -260,6 +260,7 @@ interface OntologyStore {
   ) => ObjectProperty[];
   clearOntologies: () => void;
   exportGraph: (format: "turtle" | "json-ld" | "rdf-xml") => Promise<string>;
+  updateFatMap: (quads?: any[]) => Promise<void>;
   reconcileQuads: (quads: any[] | undefined) => Promise<void>;
   getRdfManager: () => RDFManager;
   removeLoadedOntology: (url: string) => void;
@@ -617,16 +618,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         }
       } catch (_) {
         /* ignore registry snapshot failures */
-      }
-
-      // After parsing and registering namespaces, trigger a full reconcile so the
-      // fat-map (availableClasses / availableProperties) is populated from the RDF store.
-      // This ensures UI components (like the Add Node class selector) see entries immediately
-      // after an RDF ontology is loaded via loadOntologyFromRDF.
-      try {
-        await Promise.resolve(incrementalReconcileFromQuads(undefined, rdfManager));
-      } catch (_) {
-        /* ignore reconcile failures */
       }
 
     } catch (error: any) {
@@ -1132,13 +1123,253 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     }
   },
 
-  reconcileQuads: async (quads: any[] | undefined): Promise<void> => {
+  updateFatMap: async (quads?: any[]): Promise<void> => {
     try {
-      // Use the existing incremental reconciliation helper to update the fat map.
-      // Wrap in a Promise so callers can await completion deterministically.
+      // Deterministic rewrite: derive availableClasses and availableProperties
+      // solely from the provided quads (if any) or from a store snapshot when quads is undefined.
+      const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+      const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
+      const RDFS_DOMAIN = "http://www.w3.org/2000/01/rdf-schema#domain";
+      const RDFS_RANGE = "http://www.w3.org/2000/01/rdf-schema#range";
+      const OWL_CLASS = "http://www.w3.org/2002/07/owl#Class";
+      const OWL_OBJECT_PROPERTY = "http://www.w3.org/2002/07/owl#ObjectProperty";
+      const OWL_DATATYPE_PROPERTY = "http://www.w3.org/2002/07/owl#DatatypeProperty";
+      const OWL_ANNOTATION_PROPERTY = "http://www.w3.org/2002/07/owl#AnnotationProperty";
+
+      // Helper: normalize a term (N3 term or POJO) to its string IRI/value
+      const normTerm = (t: any): string => {
+        try {
+          if (t === null || typeof t === "undefined") return "";
+          if (typeof t === "object") {
+            if (typeof t.value === "string" && t.value !== "") return String(t.value);
+            if (typeof t.id === "string" && t.id !== "") return String(t.id);
+            // If it's a plain object with string-ish content, coerce
+            return String(t || "");
+          }
+          return String(t || "");
+        } catch (_) {
+          return String(t || "");
+        }
+      };
+
+      // Collect authoritative quads to process
+      let inputQuads: any[] = [];
+      if (Array.isArray(quads) && quads.length > 0) {
+        inputQuads = quads.slice();
+      } else {
+        // Fall back to store snapshot (include named graph urn:vg:ontologies explicitly)
+        try {
+          const mgr = get().rdfManager;
+          if (mgr && typeof mgr.getStore === "function") {
+            const store = mgr.getStore();
+            inputQuads = (store.getQuads(null, null, null, null) || []).slice();
+            try {
+              const ont = store.getQuads(null, null, null, namedNode("urn:vg:ontologies")) || [];
+              if (Array.isArray(ont) && ont.length > 0) inputQuads.push(...ont);
+            } catch (_) {
+              // ignore
+            }
+          }
+        } catch (_) {
+          // ignore store snapshot failures (leave inputQuads empty)
+        }
+      }
+
+      // Quick debug
+      try {
+        // eslint-disable-next-line no-console
+        console.debug("[VG_DEBUG] updateFatMap.start", { quadsCount: inputQuads.length });
+      } catch (_) {}
+
+      // Data structures
+      const subjects = new Set<string>();
+      const typesBySubject: Record<string, Set<any>> = {};
+      const labelsBySubject: Record<string, string> = {};
+      const domainByProperty: Record<string, Set<string>> = {};
+      const rangeByProperty: Record<string, Set<string>> = {};
+
+      // Scan quads and populate maps
+      try {
+        for (const q of inputQuads) {
+          try {
+            const sRaw = q && (q.subject && (q.subject.value || q.subject)) || q && q.subject;
+            const pRaw = q && (q.predicate && (q.predicate.value || q.predicate)) || q && q.predicate;
+            const oRaw = q && (q.object) || undefined;
+            const s = normTerm(sRaw);
+            const p = normTerm(pRaw);
+            if (!s || !p) continue;
+            subjects.add(s);
+
+            // rdf:type
+            if (p === RDF_TYPE || p.toLowerCase().endsWith("rdf:type".toLowerCase())) {
+              typesBySubject[s] = typesBySubject[s] || new Set<any>();
+              // Keep the raw object term if available so we can detect NamedNode values; otherwise store the string form
+              if (typeof oRaw !== "undefined" && oRaw !== null) typesBySubject[s].add(oRaw);
+            }
+
+            // rdfs:label
+            if (p === RDFS_LABEL || p.toLowerCase().endsWith("rdfs:label".toLowerCase())) {
+              try {
+                if (oRaw && typeof oRaw.value === "string") labelsBySubject[s] = String(oRaw.value);
+                else labelsBySubject[s] = normTerm(oRaw);
+              } catch (_) { labelsBySubject[s] = normTerm(oRaw); }
+            }
+
+            // domain / range (subject here is typically a property)
+            if (p === RDFS_DOMAIN || p.toLowerCase().endsWith("rdfs:domain".toLowerCase())) {
+              const prop = s;
+              domainByProperty[prop] = domainByProperty[prop] || new Set<string>();
+              if (oRaw) domainByProperty[prop].add(normTerm(oRaw));
+            }
+            if (p === RDFS_RANGE || p.toLowerCase().endsWith("rdfs:range".toLowerCase())) {
+              const prop = s;
+              rangeByProperty[prop] = rangeByProperty[prop] || new Set<string>();
+              if (oRaw) rangeByProperty[prop].add(normTerm(oRaw));
+            }
+          } catch (_) { /* ignore per-quad */ }
+        }
+      } catch (_) { /* ignore scan errors */ }
+
+      // Helpers for local-name and namespace
+      const extractNamespace = (iri: string): string => {
+        try {
+          const m = String(iri || "").match(/^(.*[\/#])/);
+          return m && m[1] ? String(m[1]) : "";
+        } catch (_) { return ""; }
+      };
+      const localName = (iri: string): string => {
+        try {
+          const s = String(iri || "");
+          const m = s.match(/[#\/]([^#\/]+)$/);
+          if (m && m[1]) return m[1];
+          return s;
+        } catch (_) { return String(iri || ""); }
+      };
+
+      // Build final arrays
+      const classesOut: any[] = [];
+      const propsOut: any[] = [];
+
+      for (const s of Array.from(subjects)) {
+        try {
+          const rawTypesSet = typesBySubject[s] || new Set<any>();
+          const typesArr = Array.from(rawTypesSet.values()).map((t) => normTerm(t)).filter(Boolean);
+          // debug per-subject normalized types
+          try { /* eslint-disable-next-line no-console */ console.debug("[VG_DEBUG] updateFatMap.subjectTypes", s, typesArr); } catch (_) {}
+
+          const isClass = typesArr.some((iri) => {
+            try {
+              if (!iri) return false;
+              if (iri === OWL_CLASS) return true;
+              const nn = iri.replace(/[#\/]+$/, "");
+              return /(^|\/|#)Class$/i.test(iri) || /Class$/i.test(nn);
+            } catch (_) { return false; }
+          });
+
+          // Determine precise property kind using OWL markers first then lexical checks.
+          const isObjectProperty = typesArr.some((iri) => {
+            try {
+              if (!iri) return false;
+              if (iri === OWL_OBJECT_PROPERTY) return true;
+              const nn = iri.replace(/[#\/]+$/, "");
+              return /ObjectProperty$/i.test(nn);
+            } catch (_) { return false; }
+          });
+
+          const isDatatypeProperty = typesArr.some((iri) => {
+            try {
+              if (!iri) return false;
+              if (iri === OWL_DATATYPE_PROPERTY) return true;
+              const nn = iri.replace(/[#\/]+$/, "");
+              return /DatatypeProperty$/i.test(nn);
+            } catch (_) { return false; }
+          });
+
+          const isAnnotationProperty = typesArr.some((iri) => {
+            try {
+              if (!iri) return false;
+              if (iri === OWL_ANNOTATION_PROPERTY) return true;
+              const nn = iri.replace(/[#\/]+$/, "");
+              return /AnnotationProperty$/i.test(nn);
+            } catch (_) { return false; }
+          });
+
+          // Fall back to generic Property lexical marker to detect property-like subjects.
+          const isProp = isObjectProperty || isDatatypeProperty || isAnnotationProperty || typesArr.some((iri) => {
+            try {
+              if (!iri) return false;
+              const nn = iri.replace(/[#\/]+$/, "");
+              return /Property$/i.test(nn);
+            } catch (_) { return false; }
+          });
+
+          const label = labelsBySubject[s] || localName(s);
+          const namespace = extractNamespace(s);
+
+          if (isClass) {
+            classesOut.push({
+              iri: s,
+              label,
+              namespace,
+              properties: [],
+              restrictions: {},
+              source: "reconciled",
+            });
+          }
+
+          if (isProp) {
+            const domain = Array.from(domainByProperty[s] || []).filter(Boolean);
+            const range = Array.from(rangeByProperty[s] || []).filter(Boolean);
+            const propertyKind = isObjectProperty ? "object" : isDatatypeProperty ? "datatype" : isAnnotationProperty ? "annotation" : "unknown";
+            propsOut.push({
+              iri: s,
+              label,
+              namespace,
+              domain,
+              range,
+              source: "reconciled",
+              propertyKind,
+            });
+          }
+        } catch (_) { /* ignore per-subject */ }
+      }
+
+      // Atomic state update
+      try {
+        useOntologyStore.setState((st: any) => ({
+          availableProperties: propsOut,
+          availableClasses: classesOut,
+          ontologiesVersion: (st.ontologiesVersion || 0) + 1,
+        }));
+      } catch (_) { /* ignore setState failures */ }
+
+      try {
+        // eslint-disable-next-line no-console
+        console.debug("[VG_DEBUG] updateFatMap.end", { props: propsOut.length, classes: classesOut.length });
+      } catch (_) {}
+    } catch (e) {
+      try {
+        if (typeof fallback === "function") fallback("ontology.updateFatMap.rewrite.failed", { error: String(e) });
+      } catch (_) {}
+    }
+  },
+
+  reconcileQuads: async (quads: any[] | undefined): Promise<void> => {
+    // Backwards-compatibility shim: alias to updateFatMap so existing callers remain functional.
+    try {
+      const fn = (get() as any).updateFatMap;
+      if (typeof fn === "function") {
+        try {
+          await fn(quads);
+          return;
+        } catch (_) {
+          /* ignore alias failure and fall through to legacy path */
+        }
+      }
+      // Legacy fallback in case updateFatMap is not present for some reason.
       try {
         await Promise.resolve(incrementalReconcileFromQuads(quads, get().rdfManager));
-      } catch (e) {
+      } catch (_) {
         /* ignore reconciliation failures */
       }
     } catch (_) {
@@ -1178,7 +1409,21 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
     // Full rebuild when no quads provided
     if (!Array.isArray(quads) || quads.length === 0) {
       try {
+        // Collect all quads across the store AND ensure we include any triples stored
+        // specifically in the ontology named graph (urn:vg:ontologies). Some parsers
+        // or stores may place TBox triples into a named graph which can be missed by
+        // certain queries — explicitly include them to be robust.
         const allQuads = store.getQuads(null, null, null, null) || [];
+        try {
+          const ontQuads = store.getQuads(null, null, null, namedNode("urn:vg:ontologies")) || [];
+          if (Array.isArray(ontQuads) && ontQuads.length > 0) {
+            // merge unique quads (simple concat is fine for small test fixtures)
+            allQuads.push(...ontQuads);
+          }
+        } catch (_) {
+          /* ignore per-store graph read failures */
+        }
+
         const subjects = Array.from(
           new Set(
             allQuads
@@ -1205,6 +1450,13 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
                   .filter(Boolean),
               ),
             );
+
+            // Debug: log detected types for this subject to help diagnose why full rebuild may be empty
+            try {
+              // eslint-disable-next-line no-console
+              console.debug("[VG_DEBUG] fullRebuild.subject", String(subj && (subj as any).value || subj), { types });
+            } catch (_) {}
+
             const isProp = types.some((t: string) =>
               /Property/i.test(String(t)),
             );
@@ -1276,10 +1528,63 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
 
     // Incremental: process subjects found in the provided quads
     try {
+      // Build authoritative maps from the supplied quads first so we don't rely solely
+      // on store queries (this avoids races where the parser invokes updateFatMap
+      // before triples are fully queryable in the store).
+      const parsedQuads = Array.isArray(quads) ? quads.slice() : [];
+      const parsedTypesBySubject: Record<string, Set<string>> = {};
+      const parsedLabelBySubject: Record<string, string> = {};
+
+      try {
+        for (const q of parsedQuads) {
+          try {
+            const s = q && q.subject && (q.subject.value || q.subject);
+            const p = q && q.predicate && (q.predicate.value || q.predicate);
+            // Preserve the original object term when possible (N3 Term), do not coerce to string here.
+            const o = q && q.object ? q.object : undefined;
+            if (!s || !p) continue;
+            const subj = String(s);
+            const pred = String(p);
+            const objTerm = typeof o !== "undefined" && o !== null ? o : undefined;
+
+            // type triples: store the raw object term (NamedNode/Literal) when available.
+            if (pred === RDF_TYPE || /rdf:type$/i.test(pred)) {
+              parsedTypesBySubject[subj] = parsedTypesBySubject[subj] || new Set();
+              if (typeof objTerm !== "undefined" && objTerm !== null) parsedTypesBySubject[subj].add(objTerm);
+            }
+
+            // label triples: extract literal value when object is a literal, otherwise coerce
+            if (pred === RDFS_LABEL || /rdfs:label$/i.test(pred)) {
+              try {
+                if (objTerm && typeof (objTerm as any).value === "string") {
+                  parsedLabelBySubject[subj] = String((objTerm as any).value);
+                } else if (typeof objTerm === "string") {
+                  parsedLabelBySubject[subj] = String(objTerm);
+                }
+              } catch (_) {
+                /* ignore per-label extraction */
+              }
+            }
+          } catch (_) { /* ignore per-quad parse errors */ }
+        }
+
+        // Debug: expose parsed types/labels to aid tests
+        try {
+          // eslint-disable-next-line no-console
+          console.debug("[VG_DEBUG] parsedTypesBySubject", Object.fromEntries(Object.entries(parsedTypesBySubject).map(([k,v]) => [k, Array.from(v || [])])));
+          // eslint-disable-next-line no-console
+          console.debug("[VG_DEBUG] parsedLabelBySubject", { ...parsedLabelBySubject });
+        } catch (_) {}
+      } catch (_) { /* ignore parsed-quads scanning errors */ }
+
       const subjects = Array.from(
         new Set(
-          (quads || [])
-            .map((q: any) => (q && q.subject && q.subject.value) || "")
+          (parsedQuads || [])
+            .map((q: any) => (q && q.subject && (q.subject.value || q.subject)) || "")
+            .concat(
+              // also include any subjects referenced by store (fallback)
+              (store.getQuads(null, null, null, null) || []).map((q:any) => (q && q.subject && q.subject.value) || "")
+            )
             .filter(Boolean),
         ),
       );
@@ -1289,48 +1594,111 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
 
       subjects.forEach((s) => {
         try {
-          const subj = namedNode(String(s));
-          const typeQuads =
-            store.getQuads(subj, namedNode(RDF_TYPE), null, null) || [];
-          const types = Array.from(
-            new Set(
-              typeQuads
-                .map(
-                  (q: any) => (q && q.object && (q.object as any).value) || "",
-                )
-                .filter(Boolean),
-            ),
-          );
-          const isClass = types.some((t: any) => /Class/i.test(String(t)));
-          const isProp = types.some((t: any) => /Property/i.test(String(t)));
+          const subjStr = String(s);
+          // Prefer parsed types/labels when available
+          const parsedTypes = Array.from(parsedTypesBySubject[subjStr] || []);
+          // types may contain raw N3 term objects (NamedNode) or strings; keep original array but normalize below.
+          let types: any[] = parsedTypes && parsedTypes.length > 0 ? parsedTypes.slice() : [];
 
-          const labelQ =
-            store.getQuads(subj, namedNode(RDFS_LABEL), null, null) || [];
-          const label =
-            labelQ.length > 0
-              ? String((labelQ[0].object as any).value)
-              : String(s);
-          const nsMatch = String(s || "").match(/^(.*[\/#])/);
+          // If parsed types are empty, fall back to querying the store (global)
+          if (types.length === 0) {
+            try {
+              const subj = namedNode(subjStr);
+              const typeQuads = store.getQuads(subj, namedNode(RDF_TYPE), null, null) || [];
+              types = Array.from(new Set(typeQuads.map((q:any) => (q && q.object) || "").filter(Boolean)));
+            } catch (_) {
+              types = [];
+            }
+          }
+
+          // Normalize types into IRI strings (handle N3 NamedNode terms and plain strings)
+          const normalizeTermIri = (term: any) => {
+            try {
+              if (term === null || typeof term === "undefined") return "";
+              if (typeof term === "object" && typeof (term as any).termType === "string" && typeof (term as any).value === "string") {
+                // N3 Term (NamedNode/Literal) -> use value
+                return String((term as any).value).trim();
+              }
+              if (typeof term === "object" && typeof (term as any).value === "string") {
+                // Plain POJO with value
+                return String((term as any).value).trim();
+              }
+              return String(term || "").trim();
+            } catch (_) {
+              return String(term || "");
+            }
+          };
+
+          const typesNormalized = Array.from(new Set((types || []).map((t) => normalizeTermIri(t)).filter(Boolean)));
+
+          // Debug: log normalized types for this subject to aid diagnosis in integration runs
+          try {
+            // eslint-disable-next-line no-console
+            console.log("[VG_DEBUG] incremental.subjectTypesNormalized", subjStr, typesNormalized);
+          } catch (_) { /* ignore logging failures */ }
+
+          // Determine label: prefer parsed label then store label then subject string
+          let label = parsedLabelBySubject[subjStr];
+          if (!label) {
+            try {
+              const subj = namedNode(subjStr);
+              const labelQ = store.getQuads(subj, namedNode(RDFS_LABEL), null, null) || [];
+              if (labelQ.length > 0) label = String((labelQ[0].object as any).value);
+            } catch (_) {
+              /* ignore */
+            }
+          }
+          if (!label) label = subjStr;
+
+          // Determine namespace
+          const nsMatch = String(subjStr || "").match(/^(.*[\/#])/);
           const namespace = nsMatch && nsMatch[1] ? String(nsMatch[1]) : "";
 
+          // Prefer deterministic detection of common OWL IRIs using normalized IRI strings
+          const isClass = typesNormalized.some((iri: string) => {
+            try {
+              if (!iri) return false;
+              if (iri === "http://www.w3.org/2002/07/owl#Class") return true;
+              const norm = iri.replace(/[#\/]+$/, "");
+              return /(^|\/|#)Class$/i.test(iri) || /Class$/i.test(norm);
+            } catch (_) {
+              return false;
+            }
+          });
+
+          const isProp = typesNormalized.some((iri: string) => {
+            try {
+              if (!iri) return false;
+              if (
+                iri === "http://www.w3.org/2002/07/owl#ObjectProperty" ||
+                iri === "http://www.w3.org/2002/07/owl#DatatypeProperty"
+              )
+                return true;
+              const norm = iri.replace(/[#\/]+$/, "");
+              return /Property$/i.test(norm);
+            } catch (_) {
+              return false;
+            }
+          });
+
           if (isClass) {
-            classesMap[String(s)] = {
-              iri: String(s),
+            classesMap[subjStr] = {
+              iri: subjStr,
               label,
               namespace,
               properties: [],
               restrictions: {},
-              source: "store",
+              source: "parsed",
             };
           }
           if (isProp) {
-            propsMap[String(s)] = {
-              iri: String(s),
+            propsMap[subjStr] = {
+              iri: subjStr,
               label,
               domain: [],
               range: [],
               namespace,
-              source: "store",
+              source: "parsed",
             };
           }
         } catch (_) {
@@ -1338,6 +1706,7 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
         }
       });
 
+      // Merge parsed results with existing state
       useOntologyStore.setState((st: any) => {
         const existingClasses = Array.isArray(st.availableClasses)
           ? st.availableClasses
@@ -1375,8 +1744,8 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
           ontologiesVersion: (st.ontologiesVersion || 0) + 1,
         };
       });
+
       // After merging available classes/properties, persist a namespace registry snapshot
-      // derived from the RDF manager so consumers (legend/enrichment) can use it.
       try {
         const nsMap = mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
         const prefixes = Object.keys(nsMap || []).sort();

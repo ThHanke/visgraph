@@ -1,0 +1,9 @@
+@prefix ex: <http://example.com/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+ex:prop a owl:ObjectProperty ;
+       rdfs:label "prop" .
+
+ex:SomeClass a owl:Class ;
+       rdfs:label "SomeClass" .

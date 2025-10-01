@@ -78,6 +78,19 @@ export function mapQuadsToDiagram(
     }
   };
 
+  // Prefer an explicit NamedNode check for IRI detection (handles real N3 Terms).
+  const isNamedNode = (obj: any) => {
+    try {
+      if (!obj) return false;
+      if (obj.termType === "NamedNode") return true;
+      const v = obj && obj.value ? String(obj.value) : "";
+      if (!v) return false;
+      return /^https?:\/\//i.test(v);
+    } catch (_) {
+      return false;
+    }
+  };
+
   // Collection structures
   const nodeMap = new Map<
     string,
@@ -109,11 +122,14 @@ export function mapQuadsToDiagram(
   const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
   const XSD_STRING = "http://www.w3.org/2001/XMLSchema#string";
   const OWL_NAMED_INDIVIDUAL = "http://www.w3.org/2002/07/owl#NamedIndividual";
+  const OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
 
   // small local cache for classifier results to avoid repeated work per-predicate
   const predicateKindCache = new Map<string, PredicateKind>();
 
   // Initialize cache from provided fat-map snapshot (availableProperties) if present.
+  // The fat-map now provides an explicit propertyKind for each available property
+  // (e.g. "object" | "datatype" | "annotation" | "unknown"). Honor that when present.
   try {
     const avail =
       options && Array.isArray((options as any).availableProperties)
@@ -122,9 +138,22 @@ export function mapQuadsToDiagram(
     for (const p of avail) {
       try {
         const iri = p && (p.iri || p.key || p) ? String(p.iri || p.key || p) : "";
-        if (iri) {
-          // Treat presence in availableProperties as an object property (authoritative fat-map)
-          predicateKindCache.set(iri, "object");
+        if (!iri) continue;
+        // Prefer explicit propertyKind provided by the fat-map entry
+        const kindRaw = (p && (p.propertyKind || p.kind || p.type)) || undefined;
+        const kind =
+          kindRaw === "object" || kindRaw === "datatype" || kindRaw === "annotation"
+            ? String(kindRaw)
+            : undefined;
+        if (kind) {
+          // Map fat-map kinds to local PredicateKind values
+          if (kind === "object") predicateKindCache.set(iri, "object");
+          else if (kind === "datatype") predicateKindCache.set(iri, "datatype");
+          else if (kind === "annotation") predicateKindCache.set(iri, "annotation");
+        } else {
+          // No explicit propertyKind provided — do not cache so mapper will treat unknown predicates
+          // according to its conservative default (fold into annotation). This avoids mis-classifying
+          // annotation properties when the fat-map entry lacks a kind.
         }
       } catch (_) {
         /* ignore per-entry */
@@ -165,6 +194,41 @@ export function mapQuadsToDiagram(
       return false;
     }
   };
+
+  // Pre-scan incoming quads for rdf:type declarations so we can make deterministic
+  // folding decisions even when rdf:type and metadata arrive in the same batch.
+  const typesBySubject = new Map<string, Set<string>>();
+  const subjectsInBatch = new Set<string>();
+  try {
+    for (const _q of quads || []) {
+      try {
+        const graphVal =
+          _q && _q.graph
+            ? (_q.graph.value || _q.graph.id || (typeof _q.graph === "string" ? _q.graph : undefined))
+            : undefined;
+        if (typeof graphVal === "undefined" || graphVal === null) continue;
+        const gstr = String(graphVal || "");
+        if (!gstr.includes("urn:vg:data")) continue;
+
+        const s = _q && _q.subject ? _q.subject : null;
+        const p = _q && _q.predicate ? _q.predicate : null;
+        const o = _q && _q.object ? _q.object : null;
+        const subjIri = s && s.value ? String(s.value) : "";
+        const predIri = p && p.value ? String(p.value) : "";
+        if (!subjIri || !predIri) continue;
+        subjectsInBatch.add(subjIri);
+        if (predIri === RDF_TYPE) {
+          const val = o && o.value ? String(o.value) : "";
+          if (val) {
+            if (!typesBySubject.has(subjIri)) typesBySubject.set(subjIri, new Set<string>());
+            typesBySubject.get(subjIri)!.add(val);
+          }
+        }
+      } catch (_) {
+        /* ignore pre-scan errors per-quad */
+      }
+    }
+  } catch (_) { /* ignore overall pre-scan errors */ }
 
   for (const q of quads || []) {
     try {
