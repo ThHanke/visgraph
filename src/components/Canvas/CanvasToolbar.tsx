@@ -682,7 +682,11 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
               <div className="w-56">
                 <Slider
                   value={[tempLayoutSpacing]}
-                  onValueChange={([v]) => setTempLayoutSpacing(v)}
+                  onValueChange={([v]) => {
+                    try { setTempLayoutSpacing(v); } catch (_) {}
+                    try { useAppConfigStore.getState().setLayoutSpacing(v); } catch (_) {}
+                    try { onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: v }); } catch (_) {}
+                  }}
                   min={50}
                   max={500}
                   step={10}
@@ -705,7 +709,9 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                 className={`px-3 py-1 rounded text-sm ${currentLayout ? 'bg-muted' : 'bg-muted'}`}
                 onClick={() => {
                   try {
-                    onLayoutChange?.(currentLayout || 'horizontal', true);
+                    const v = tempLayoutSpacing;
+                    try { useAppConfigStore.getState().setLayoutSpacing(v); } catch (_) {}
+                    onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: v });
                   } catch (_) { /* ignore */ }
                 }}
               >

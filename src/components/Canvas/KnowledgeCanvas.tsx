@@ -247,7 +247,7 @@ const KnowledgeCanvas: React.FC = () => {
 
 
   const doLayout = useCallback(
-    async (candidateNodes: RFNode<NodeData>[], candidateEdges: RFEdge<LinkData>[], force = false) => {
+    async (candidateNodes: RFNode<NodeData>[], candidateEdges: RFEdge<LinkData>[], force = false, layoutTypeOverride?: string) => {
       if (!force && (!layoutEnabled || !(config && config.autoApplyLayout))) return;
       if (layoutInProgressRef.current) {
         if (!force) return;
@@ -273,7 +273,7 @@ const KnowledgeCanvas: React.FC = () => {
 
       layoutInProgressRef.current = true;
       try {
-        const layoutType = (config && (config.currentLayout)) || lm.suggestOptimalLayout();
+        const layoutType = layoutTypeOverride || (config && (config.currentLayout)) || lm.suggestOptimalLayout();
 
         // Ask the layout manager to compute node change objects for the provided nodes/edges.
         const nodeChanges = await lm.applyLayout(layoutType as any, { nodeSpacing: (config && (config.layoutSpacing as any)) || undefined }, {
@@ -453,9 +453,9 @@ const KnowledgeCanvas: React.FC = () => {
         useAppConfigStore.getState().setLayoutSpacing(Math.max(50, Math.min(500, options.nodeSpacing)));
       }
 
-    await doLayout(nodes, edges, !!force);
+    await doLayout(nodes, edges, !!force, layoutType);
   },
-    [setCurrentLayout, setCurrentLayoutState, doLayout],
+    [setCurrentLayout, setCurrentLayoutState, doLayout, nodes, edges],
   );
 
   const onInit = useCallback((instance: ReactFlowInstance) => {
