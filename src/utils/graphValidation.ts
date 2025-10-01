@@ -49,7 +49,7 @@ export function validateGraph(
           try {
             const idx = Math.max(iri.lastIndexOf("/"), iri.lastIndexOf("#"));
             if (idx > -1) classLocalNames.add(iri.substring(idx + 1));
-          } catch (_) {}
+          } catch (_) { void 0; }
         } catch (_) { /* ignore per-class */ }
       }
     } catch (_) { /* ignore build errors */ }
@@ -72,7 +72,7 @@ export function validateGraph(
             const tt = String(t);
             const idx = Math.max(tt.lastIndexOf("/"), tt.lastIndexOf("#"));
             if (idx > -1 && classLocalNames.has(tt.substring(idx + 1))) return true;
-          } catch (_) {}
+          } catch (_) { void 0; }
         }
         // 3) check by local name
         if (ct && classLocalNames.has(ct)) return true;
@@ -104,9 +104,9 @@ export function validateGraph(
         try {
           const iri = String(p && (p.iri || p.key || p.propertyUri) ? (p.iri || p.key || p.propertyUri) : "");
           if (iri) propByIri.set(iri, p);
-        } catch (_) {}
+        } catch (_) { void 0; }
       }
-    } catch (_) {}
+    } catch (_) { void 0; }
 
     // Helper to normalize class id for comparison similar to hasClass logic
     const nodePrimaryClass = (node: any) => {
@@ -123,7 +123,7 @@ export function validateGraph(
             const t = String(rdfTypes[0]);
             const idx = Math.max(t.lastIndexOf("/"), t.lastIndexOf("#"));
             return idx > -1 ? t.substring(idx + 1) : t;
-          } catch (_) {}
+          } catch (_) { void 0; }
         }
         return "";
       } catch (_) { return ""; }

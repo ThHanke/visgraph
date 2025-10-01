@@ -249,7 +249,7 @@ export function usePaletteFromRdfManager() {
           const p = String(entry?.prefix || "");
           const c = String(entry?.color || "");
           if (p) map[p] = c || "";
-        } catch (_) {}
+        } catch (_) { void 0; }
       });
       return map;
     } catch (_) {

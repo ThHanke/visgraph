@@ -15,7 +15,7 @@ async function waitForCondition(cond: () => boolean, timeout = 5000, interval = 
   while (Date.now() - start < timeout) {
     try {
       if (cond()) return true;
-    } catch (_) {}
+    } catch (_) { void 0; }
     // give background tasks a chance to run
      
     await sleep(interval);

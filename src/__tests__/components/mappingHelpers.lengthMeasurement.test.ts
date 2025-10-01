@@ -34,7 +34,7 @@ test("mappingHelpers length measurement fixture (parsed via rdf store/parser) - 
         // Place everything into urn:vg:data graph to simulate data-graph load per request
         quads.push({ subject: subj, predicate: pred, object: obj, graph: { value: "urn:vg:data" } });
       }
-    } catch (_) { /* ignore per-quad error */ }
+    } catch (_) { void 0; }
   }
 
   // Derive fat-map (availableProperties / availableClasses) from the parsed quads so mapper can emit edges.
@@ -67,18 +67,18 @@ test("mappingHelpers length measurement fixture (parsed via rdf store/parser) - 
       if (pred === RDFS + "label" && q.object && q.object.value) {
         labels.set(subj, String(q.object.value));
       }
-    } catch (_) {}
+    } catch (_) { void 0; }
   }
 
-  const availableProperties = Array.from(propIris).map((iri) => {
-    const label = labels.get(iri) || String(iri).split(/[#\/]/).filter(Boolean).pop() || iri;
-    const nsMatch = iri.match(/^(.*[\/#])/);
+    const availableProperties = Array.from(propIris).map((iri) => {
+    const label = labels.get(iri) || String(iri).split(new RegExp('[#/]')).filter(Boolean).pop() || iri;
+    const nsMatch = iri.match(new RegExp('^(.*[/#])'));
     return { iri, label, namespace: nsMatch && nsMatch[1] ? nsMatch[1] : "" };
   });
 
   const availableClasses = Array.from(classIris).map((iri) => {
-    const label = labels.get(iri) || String(iri).split(/[#\/]/).filter(Boolean).pop() || iri;
-    const nsMatch = iri.match(/^(.*[\/#])/);
+    const label = labels.get(iri) || String(iri).split(new RegExp('[#/]')).filter(Boolean).pop() || iri;
+    const nsMatch = iri.match(new RegExp('^(.*[/#])'));
     return { iri, label, namespace: nsMatch && nsMatch[1] ? nsMatch[1] : "" };
   });
 
@@ -108,21 +108,21 @@ test("mappingHelpers length measurement fixture (parsed via rdf store/parser) - 
   console.log("Nodes produced:", nodes.length);
   for (const n of nodes) {
     try {
-      const d = n.data || {};
+      const d = (n.data || {}) as any;
       console.log(`- Node id=${String(n.id)} iri=${String(d.iri || n.id)}`);
       console.log(`    rdfTypes: ${JSON.stringify(d.rdfTypes || [])}`);
       console.log(`    displayPrefixed: ${String(d.displayPrefixed || "")}`);
       console.log(`    displayclassType: ${String(d.displayclassType || "")}`);
       console.log(`    isTBox: ${Boolean(d.isTBox)}`);
       console.log(`    label: ${String(d.label || "")}`);
-    } catch (_) {}
+    } catch (_) { void 0; }
   }
   console.log("Edges produced:", edges.length);
-  for (const e of edges) {
+    for (const e of edges) {
     try {
-      const dd = e.data || {};
+      const dd = (e.data || {}) as any;
       console.log(`- Edge id=${e.id} ${e.source} -> ${e.target} prop=${String(dd.propertyUri || dd.propertyType || dd.label || "")}`);
-    } catch (_) {}
+    } catch (_) { void 0; }
   }
   console.log("=== end ===");
   console.log("");

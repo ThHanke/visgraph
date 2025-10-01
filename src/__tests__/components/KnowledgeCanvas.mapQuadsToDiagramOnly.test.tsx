@@ -94,8 +94,17 @@ test("KnowledgeCanvas renders only nodes/edges from mapQuadsToDiagram and ignore
       if (subj && pred && obj) {
         dataQuads.push({ subject: subj, predicate: pred, object: obj, graph: { value: "urn:vg:data" } });
       }
-    } catch (_) {}
+    } catch (_) { void 0; }
   }
+
+  // Derive fat-map (availableProperties / availableClasses) from parsed quads (same heuristic)
+  const RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
+  const OWL = "http://www.w3.org/2002/07/owl#";
+  const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
+
+  const propIris = new Set<string>();
+  const classIris = new Set<string>();
+  const labels = new Map<string, string>();
 
   // Filter out any triples whose subject is an ontology/class/property IRI so the data batch
   // represents only ABox/data-level subjects. This mirrors runtime behavior where ontology
@@ -119,18 +128,7 @@ test("KnowledgeCanvas renders only nodes/edges from mapQuadsToDiagram and ignore
     // replace dataQuads with filtered array
     dataQuads.length = 0;
     for (const d of filtered) dataQuads.push(d);
-  } catch (_) {
-    // ignore filtering failures - fallback to original dataQuads
-  }
-
-  // Derive fat-map (availableProperties / availableClasses) from parsed quads (same heuristic)
-  const RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
-  const OWL = "http://www.w3.org/2002/07/owl#";
-  const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
-
-  const propIris = new Set<string>();
-  const classIris = new Set<string>();
-  const labels = new Map<string, string>();
+  } catch (_) { void 0; }
 
   for (const q of parsed) {
     try {
@@ -149,18 +147,18 @@ test("KnowledgeCanvas renders only nodes/edges from mapQuadsToDiagram and ignore
       if (pred === RDFS + "label" && q.object && q.object.value) {
         labels.set(subj, String(q.object.value));
       }
-    } catch (_) {}
+    } catch (_) { void 0; }
   }
 
   const availableProperties = Array.from(propIris).map((iri) => {
-    const label = labels.get(iri) || String(iri).split(/[#\/]/).filter(Boolean).pop() || iri;
-    const nsMatch = iri.match(/^(.*[\/#])/);
+    const label = labels.get(iri) || String(iri).split(new RegExp('[#/]')).filter(Boolean).pop() || iri;
+    const nsMatch = iri.match(new RegExp('^(.*[/#])'));
     return { iri, label, namespace: nsMatch && nsMatch[1] ? nsMatch[1] : "" };
   });
 
   const availableClasses = Array.from(classIris).map((iri) => {
-    const label = labels.get(iri) || String(iri).split(/[#\/]/).filter(Boolean).pop() || iri;
-    const nsMatch = iri.match(/^(.*[\/#])/);
+    const label = labels.get(iri) || String(iri).split(new RegExp('[#/]')).filter(Boolean).pop() || iri;
+    const nsMatch = iri.match(new RegExp('^(.*[/#])'));
     return { iri, label, namespace: nsMatch && nsMatch[1] ? nsMatch[1] : "" };
   });
 

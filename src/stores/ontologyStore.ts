@@ -285,7 +285,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         namespaceRegistry: Array.isArray(registry) ? registry.slice() : [],
       }));
     } catch (_) {
-      try { set({ namespaceRegistry: [] }); } catch (_) {}
+      try { set({ namespaceRegistry: [] }); } catch (_) { void 0; }
     }
   },
 
@@ -297,7 +297,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     try {
       set({ currentGraph: { nodes: Array.isArray(nodes) ? nodes : [], edges: Array.isArray(edges) ? edges : [] } });
     } catch (_) {
-      try { set({ currentGraph: { nodes: [], edges: [] } }); } catch (_) {}
+      try { set({ currentGraph: { nodes: [], edges: [] } }); } catch (_) { void 0; }
     }
   },
 
@@ -350,7 +350,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             await (mgr as any).applyBatch({ removes: [], adds }, "urn:vg:data");
           } else if (mgr && typeof (mgr as any).addTriple === "function") {
             for (const a of adds) {
-              try { (mgr as any).addTriple(String(a.subject), String(a.predicate), String(a.object), "urn:vg:data"); } catch (_) {}
+              try { (mgr as any).addTriple(String(a.subject), String(a.predicate), String(a.object), "urn:vg:data"); } catch (_) { void 0; }
             }
           } else {
             // last-resort direct store writes
@@ -365,7 +365,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                     const objT = DataFactory.literal(String(a.object));
                     const exists = store.getQuads(subjT, predT, objT, g) || [];
                     if (!exists || exists.length === 0) {
-                      try { store.addQuad(DataFactory.quad(subjT, predT, objT, g)); } catch (_) {}
+                      try { store.addQuad(DataFactory.quad(subjT, predT, objT, g)); } catch (_) { void 0; }
                     }
                   } catch (_) { /* ignore per-add */ }
                 }
@@ -472,7 +472,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         /^\s*<html\b/i.test(content) ||
         (mimeType && mimeType.includes("html"));
       if (looksLikeHtml) {
-        try { console.debug("[VG] loadOntology: fetched content appears to be HTML — skipping RDF parse for", normRequestedUrl); } catch (_) {}
+        try { console.debug("[VG] loadOntology: fetched content appears to be HTML — skipping RDF parse for", normRequestedUrl); } catch (_) { void 0; }
         return;
       }
 
@@ -833,7 +833,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             try {
               await get().updateFatMap();
               onProgress?.(95 + Math.floor(((i + 1) / toLoad.length) * 5), `Reconciled store after loading ${ontologyName || uri}`);
-              try { console.debug("[VG_DEBUG] loadAdditionalOntologies.reconciled", norm); } catch (_) {}
+              try { console.debug("[VG_DEBUG] loadAdditionalOntologies.reconciled", norm); } catch (_) { void 0; }
             } catch (_) {
               /* ignore reconciliation failures */
             }
@@ -872,7 +872,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                 try {
                   await get().updateFatMap();
                   onProgress?.(95 + Math.floor(((i + 1) / toLoad.length) * 5), `Reconciled store after loading ${ontologyName || uri}`);
-                  try { console.debug("[VG_DEBUG] loadAdditionalOntologies.reconciled", uri); } catch (_) {}
+                  try { console.debug("[VG_DEBUG] loadAdditionalOntologies.reconciled", uri); } catch (_) { void 0; }
                 } catch (_) { /* ignore reconciliation failures */ }
 
                 // Register this fetched URI as an explicit loaded ontology so UI counts reflect autoloaded entries
@@ -969,7 +969,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
               try {
                 await get().updateFatMap();
                 onProgress?.(95 + Math.floor(((i + 1) / toLoad.length) * 5), `Reconciled store after loading ${ontologyName || uri}`);
-                try { console.debug("[VG_DEBUG] loadAdditionalOntologies.reconciled", uri); } catch (_) {}
+                try { console.debug("[VG_DEBUG] loadAdditionalOntologies.reconciled", uri); } catch (_) { void 0; }
               } catch (_) { /* ignore reconciliation failures */ }
             } catch (e) {
               try {
@@ -1201,7 +1201,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       try {
          
         console.debug("[VG_DEBUG] updateFatMap.start", { quadsCount: inputQuads.length });
-      } catch (_) {}
+      } catch (_) { void 0; }
 
       // Data structures
       const subjects = new Set<string>();
@@ -1277,7 +1277,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           const rawTypesSet = typesBySubject[s] || new Set<any>();
           const typesArr = Array.from(rawTypesSet.values()).map((t) => normTerm(t)).filter(Boolean);
           // debug per-subject normalized types
-          // try { /* eslint-disable-next-line no-console */ console.debug("[VG_DEBUG] updateFatMap.subjectTypes", s, typesArr); } catch (_) {}
+          // try { /* eslint-disable-next-line no-console */ console.debug("[VG_DEBUG] updateFatMap.subjectTypes", s, typesArr); } catch (_) { void 0; }
 
           const isClass = typesArr.some((iri) => {
             try {
@@ -1368,11 +1368,11 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       try {
          
         console.debug("[VG_DEBUG] updateFatMap.end", { props: propsOut.length, classes: classesOut.length });
-      } catch (_) {}
+      } catch (_) { void 0; }
     } catch (e) {
       try {
         if (typeof fallback === "function") fallback("ontology.updateFatMap.rewrite.failed", { error: String(e) });
-      } catch (_) {}
+      } catch (_) { void 0; }
     }
   },
 
@@ -1477,7 +1477,7 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
             try {
                
               console.debug("[VG_DEBUG] fullRebuild.subject", String(subj && (subj as any).value || subj), { types });
-            } catch (_) {}
+            } catch (_) { void 0; }
 
             const isProp = types.some((t: string) =>
               /Property/i.test(String(t)),
@@ -1596,7 +1596,7 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
           console.debug("[VG_DEBUG] parsedTypesBySubject", Object.fromEntries(Object.entries(parsedTypesBySubject).map(([k,v]) => [k, Array.from(v || [])])));
            
           console.debug("[VG_DEBUG] parsedLabelBySubject", { ...parsedLabelBySubject });
-        } catch (_) {}
+        } catch (_) { void 0; }
       } catch (_) { /* ignore parsed-quads scanning errors */ }
 
       const subjects = Array.from(
@@ -1737,12 +1737,12 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
         existingClasses.forEach((c: any) => {
           try {
             classByIri[String(c.iri)] = c;
-          } catch (_) {}
+          } catch (_) { void 0; }
         });
         Object.values(classesMap).forEach((c: any) => {
           try {
             classByIri[String(c.iri)] = c;
-          } catch (_) {}
+          } catch (_) { void 0; }
         });
 
         const existingProps = Array.isArray(st.availableProperties)
@@ -1752,12 +1752,12 @@ function incrementalReconcileFromQuads(quads: any[] | undefined, mgr?: any) {
         existingProps.forEach((p: any) => {
           try {
             propByIri[String(p.iri)] = p;
-          } catch (_) {}
+          } catch (_) { void 0; }
         });
         Object.values(propsMap).forEach((p: any) => {
           try {
             propByIri[String(p.iri)] = p;
-          } catch (_) {}
+          } catch (_) { void 0; }
         });
 
         return {

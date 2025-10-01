@@ -44,9 +44,17 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   try { // cleanup mock to avoid cross-test leakage
-    // @ts-ignore
-    delete require.cache[require.resolve("../../stores/ontologyStore")];
-  } catch {}
+    const modPath = (() => {
+      try {
+        return require.resolve("../../stores/ontologyStore");
+      } catch {
+        return null;
+      }
+    })();
+    if (modPath && (require as any).cache && (require as any).cache[modPath]) {
+      delete (require as any).cache[modPath];
+    }
+  } catch { void 0; }
 });
 
 test("NodePropertyEditor calls onDelete and closes when delete confirmed", async () => {

@@ -148,7 +148,7 @@ describe("KnowledgeCanvas reconcile orchestration (fat-map + namespace registry)
           } else {
             (mgr as any).getNamespaces = () => ({ ex: "http://example.com/" });
           }
-        } catch (_) {}
+        } catch (_) { void 0; }
         // resolve later
         setTimeout(() => { if (reconcileResolve) reconcileResolve(); }, 10);
         return reconcilePromise;

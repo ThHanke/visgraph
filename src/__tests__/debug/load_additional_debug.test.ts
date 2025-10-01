@@ -17,10 +17,10 @@ describe("debug: loadAdditionalOntologies runtime snapshot", () => {
     // reset stores for a clean run
     try {
       (useAppConfigStore.getState().resetToDefaults || (() => {}))();
-    } catch (_) {}
+    } catch (_) { void 0; }
     try {
       (useOntologyStore.getState().clearOntologies || (() => {}))();
-    } catch (_) {}
+    } catch (_) { void 0; }
 
     // Read configured additionalOntologies from app config
     const cfg = useAppConfigStore.getState().config || {};
@@ -44,7 +44,7 @@ describe("debug: loadAdditionalOntologies runtime snapshot", () => {
     await useOntologyStore.getState().loadAdditionalOntologies(list, (p, m) => {
       try {
         console.debug(`[DEBUG] loadAdditionalOntologies progress ${p}%: ${m}`);
-      } catch (_) {}
+      } catch (_) { void 0; }
     });
 
     // After load, capture rdfManager namespaces

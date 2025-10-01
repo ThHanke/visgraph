@@ -117,7 +117,7 @@ export const LinkPropertyEditor = ({
           // Mirror RF selection into dialog open state only when it would change the open prop.
           const shouldOpen = Boolean(edge);
           if (!linkData && typeof onOpenChange === 'function' && shouldOpen !== open) {
-            try { onOpenChange(shouldOpen); } catch (_) {}
+            try { onOpenChange(shouldOpen); } catch (_) { void 0; }
           }
         } catch (_) { /* ignore per-callback */ }
       },
@@ -274,7 +274,7 @@ export const LinkPropertyEditor = ({
           const o = /^https?:\/\//i.test(String(objIri)) ? namedNode(String(objIri)) : (String(objIri) ? namedNode(String(objIri)) : null);
           const found = store.getQuads(s, p, o, namedNode(g)) || [];
           for (const q of found) {
-            try { if (typeof mgr.bufferSubjectFromQuad === "function") mgr.bufferSubjectFromQuad(q); } catch (_) {}
+            try { if (typeof mgr.bufferSubjectFromQuad === "function") mgr.bufferSubjectFromQuad(q); } catch (_) { void 0; }
             if (typeof store.removeQuad === "function") store.removeQuad(q);
           }
         } catch (_) { /* ignore fallback failures */ }
@@ -284,7 +284,7 @@ export const LinkPropertyEditor = ({
     }
 
     // Close dialog after deletion so UI does not remain open
-    try { if (typeof onOpenChange === 'function') onOpenChange(false); } catch (_) {}
+    try { if (typeof onOpenChange === 'function') onOpenChange(false); } catch (_) { void 0; }
   };
 
   return (

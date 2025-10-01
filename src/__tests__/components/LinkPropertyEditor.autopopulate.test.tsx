@@ -48,6 +48,6 @@ describe("LinkPropertyEditor autocomplete population from fat-map", () => {
     // Cleanup store
     try {
       useOntologyStore.getState().clearOntologies();
-    } catch (_) {}
+    } catch (_) { void 0; }
   });
 });

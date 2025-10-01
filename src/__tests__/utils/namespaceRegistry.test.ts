@@ -7,7 +7,7 @@ describe("namespaceRegistry helpers", () => {
     // Clear any previously persisted registry
     try {
       useOntologyStore.getState().setNamespaceRegistry([]);
-    } catch (_) {}
+    } catch (_) { void 0; }
   });
 
   test("buildRegistryFromManager builds registry and derives palette entries", () => {

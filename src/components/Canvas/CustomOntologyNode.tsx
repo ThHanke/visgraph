@@ -1,4 +1,4 @@
-/* eslint-disable no-empty */
+ 
 import React, { memo, useEffect, useRef, useMemo } from "react";
 import {
   Handle,
@@ -28,7 +28,7 @@ export function CustomOntologyNode(props: NodeProps) {
         inProgress,
         fromNodeId,
       });
-    } catch (_) {}
+    } catch (_) { void 0; }
   }, [id, selected, (connection as any)?.inProgress, (connection as any)?.fromNode && (connection as any).fromNode && (connection as any).fromNode.id]);
 
   const isTarget = Boolean(connection && (connection as any).inProgress && (connection as any).fromNode && (connection as any).fromNode.id && String((connection as any).fromNode.id) !== String(id));
@@ -304,10 +304,10 @@ export function CustomOntologyNode(props: NodeProps) {
           position={Position.Right}
           type="source"
           onPointerDown={() => {
-            try { console.log("[VG_DEBUG] handle pointerdown", { nodeId: id, handle: "source" }); } catch (_) {}
+            try { console.log("[VG_DEBUG] handle pointerdown", { nodeId: id, handle: "source" }); } catch (_) { void 0; }
           }}
           onPointerUp={() => {
-            try { console.log("[VG_DEBUG] handle pointerup", { nodeId: id, handle: "source" }); } catch (_) {}
+            try { console.log("[VG_DEBUG] handle pointerup", { nodeId: id, handle: "source" }); } catch (_) { void 0; }
           }}
         />
       )}
@@ -319,10 +319,10 @@ export function CustomOntologyNode(props: NodeProps) {
           type="target"
           isConnectableStart={false}
           onPointerDown={() => {
-            try { console.log("[VG_DEBUG] handle pointerdown", { nodeId: id, handle: "target" }); } catch (_) {}
+            try { console.log("[VG_DEBUG] handle pointerdown", { nodeId: id, handle: "target" }); } catch (_) { void 0; }
           }}
           onPointerUp={() => {
-            try { console.log("[VG_DEBUG] handle pointerup", { nodeId: id, handle: "target" }); } catch (_) {}
+            try { console.log("[VG_DEBUG] handle pointerup", { nodeId: id, handle: "target" }); } catch (_) { void 0; }
           }}
         />
       )}

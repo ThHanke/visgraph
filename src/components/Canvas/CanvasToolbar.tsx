@@ -683,9 +683,9 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                 <Slider
                   value={[tempLayoutSpacing]}
                   onValueChange={([v]) => {
-                    try { setTempLayoutSpacing(v); } catch (_) {}
-                    try { useAppConfigStore.getState().setLayoutSpacing(v); } catch (_) {}
-                    try { onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: v }); } catch (_) {}
+                    try { setTempLayoutSpacing(v); } catch (_) { void 0; }
+                    try { useAppConfigStore.getState().setLayoutSpacing(v); } catch (_) { void 0; }
+                    try { onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: v }); } catch (_) { void 0; }
                   }}
                   min={50}
                   max={500}
@@ -710,7 +710,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                 onClick={() => {
                   try {
                     const v = tempLayoutSpacing;
-                    try { useAppConfigStore.getState().setLayoutSpacing(v); } catch (_) {}
+                    try { useAppConfigStore.getState().setLayoutSpacing(v); } catch (_) { void 0; }
                     onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: v });
                   } catch (_) { /* ignore */ }
                 }}
@@ -794,7 +794,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                       if (fileSource.trim() && onLoadFile) {
                         try {
                           // Request a one-shot forced layout after the load mapping completes
-                          try { (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING && (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING(); } catch (_) {}
+                          try { (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING && (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING(); } catch (_) { void 0; }
                           const mockFile = { 
                             url: fileSource.trim(),
                             type: 'url'
@@ -834,7 +834,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                 if (file && onLoadFile) {
                   try {
                     // Request a one-shot forced layout after the load mapping completes
-                    try { (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING && (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING(); } catch (_) {}
+                    try { (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING && (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING(); } catch (_) { void 0; }
                     await onLoadFile(file);
                     setIsLoadFileOpen(false);
                   } catch (error) {

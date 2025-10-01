@@ -19,7 +19,7 @@ describe("CanvasToolbar Add Node dialog - class type population", () => {
     try {
       if (typeof store.clearOntologies === "function") store.clearOntologies();
     } catch (_) {
-      /* intentionally ignored for test cleanup */
+      void 0;
     }
 
     // Load the fixture RDF into the ontology store (persist as ontology so namespaces/classes are registered)
@@ -29,7 +29,7 @@ describe("CanvasToolbar Add Node dialog - class type population", () => {
       try {
         await store.reconcileQuads(undefined);
       } catch (_) {
-        /* intentionally ignored during test setup */
+        void 0;
       }
     } catch (e) {
       // If loading fails, surface the reason for test debugging
@@ -71,7 +71,7 @@ describe("CanvasToolbar Add Node dialog - class type population", () => {
 
     // Cleanup
     try { if (typeof store.clearOntologies === "function") store.clearOntologies(); } catch (_) {
-      /* intentionally ignored for test cleanup */
+      void 0;
     }
   });
 });

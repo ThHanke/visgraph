@@ -48,7 +48,6 @@ vi.mock("../../components/Canvas/core/namespacePalette", () => {
 });
 
 vi.mock("@xyflow/react", () => {
-  const React = require("react");
   return {
     ReactFlowProvider: ({ children }: any) =>
       React.createElement(React.Fragment, null, children),

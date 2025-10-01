@@ -1,4 +1,4 @@
-/* eslint-disable no-empty */
+ 
 /**
  * Node Property Editor (streamlined)
  *
@@ -300,7 +300,7 @@ export const NodePropertyEditor = ({
     try {
       await (mgr as any).applyBatch({ removes: removes, adds: adds }, "urn:vg:data");
     } catch (err) {
-      try { console.warn("NodePropertyEditor.applyBatch.failed", err); } catch (_) {}
+      try { console.warn("NodePropertyEditor.applyBatch.failed", err); } catch (_) { void 0; }
       throw err;
     }
 
@@ -311,14 +311,14 @@ export const NodePropertyEditor = ({
       value: p.value,
       type: p.type || "xsd:string",
     }));
-    try { if (typeof onSave === "function") onSave(annotationProperties); } catch (_) {}
+    try { if (typeof onSave === "function") onSave(annotationProperties); } catch (_) { void 0; }
 
     // Close dialog (manager already emits change notifications)
     onOpenChange(false);
 
     // Update initial snapshots so subsequent edits compute diffs relative to latest saved state
-    try { initialPropertiesRef.current = (properties || []).map(p => ({ ...p })); } catch (_) {}
-    try { initialRdfTypesRef.current = (currentTypes || []).slice(); } catch (_) {}
+    try { initialPropertiesRef.current = (properties || []).map(p => ({ ...p })); } catch (_) { void 0; }
+    try { initialRdfTypesRef.current = (currentTypes || []).slice(); } catch (_) { void 0; }
   };
 
   // Delete: remove triples with subject OR object equal to nodeIri from urn:vg:data (writes only).
@@ -350,11 +350,11 @@ export const NodePropertyEditor = ({
         }
       }
     } catch (err) {
-      try { console.warn("NodePropertyEditor.delete.failed", err); } catch (_) {}
+      try { console.warn("NodePropertyEditor.delete.failed", err); } catch (_) { void 0; }
     }
 
     // Ask parent to remove the node visually and then close the dialog
-    try { if (typeof onDelete === "function") onDelete(String(nodeIri)); } catch (_) {}
+    try { if (typeof onDelete === "function") onDelete(String(nodeIri)); } catch (_) { void 0; }
     onOpenChange(false);
   };
 

@@ -35,7 +35,7 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
           const p = entry && (entry.prefix !== undefined && entry.prefix !== null) ? String(entry.prefix) : "";
           const c = String(entry?.color || "");
           m[p] = c || "";
-        } catch (_) {}
+        } catch (_) { void 0; }
       });
       return m;
     } catch (_) {

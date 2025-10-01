@@ -1,4 +1,4 @@
-/* eslint-disable no-empty, @typescript-eslint/no-unused-expressions, no-useless-catch */
+/* eslint-disable @typescript-eslint/no-unused-expressions, no-useless-catch */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@xyflow/react/dist/style.css";
 import {
@@ -362,7 +362,7 @@ const KnowledgeCanvas: React.FC = () => {
       setNodes((prev) =>
         (prev || []).map((n) => {
           const copy = { ...(n as RFNode<NodeData>) } as RFNode<NodeData>;
-          try { delete (copy as any).selected; } catch (_) {}
+          try { delete (copy as any).selected; } catch (_) { void 0; }
           return copy;
         }),
       );
@@ -370,12 +370,12 @@ const KnowledgeCanvas: React.FC = () => {
       setEdges((prev) =>
         (prev || []).map((e) => {
           const copy = { ...(e as RFEdge<LinkData>) } as RFEdge<LinkData>;
-          try { delete (copy as any).selected; } catch (_) {}
+          try { delete (copy as any).selected; } catch (_) { void 0; }
           return copy;
         }),
       );
       // Instrumentation: signal that a mapping run completed so tests can wait deterministically.
-      try { if (typeof window !== "undefined") (window as any).__VG_LAST_MAPPING_RUN = Date.now(); } catch (_) {}
+      try { if (typeof window !== "undefined") (window as any).__VG_LAST_MAPPING_RUN = Date.now(); } catch (_) { void 0; }
     },
     [setPersistedViewMode, canvasActions, setNodes, setEdges],
   );
@@ -425,7 +425,7 @@ const KnowledgeCanvas: React.FC = () => {
         loadFitRef.current = true;
 
         // Ensure the next mapping run performs layout for this user-initiated load
-        try { forceLayoutNextMappingRef.current = true; } catch (_) {}
+        try { forceLayoutNextMappingRef.current = true; } catch (_) { void 0; }
         await loadKnowledgeGraph(text, {
           onProgress: (progress: number, message: string) => {
             canvasActions.setLoading(true, Math.max(progress, 30), message);
@@ -523,7 +523,7 @@ const KnowledgeCanvas: React.FC = () => {
           count: Array.isArray(quads) ? quads.length : 0,
           sample: (Array.isArray(quads) ? quads.slice(0, 10) : quads),
         });
-      } catch (_) {}
+      } catch (_) { void 0; }
       return mapQuadsToDiagram(quads, ({
         predicateKind: predicateClassifier,
         availableProperties: availablePropertiesSnapshot,
@@ -553,7 +553,7 @@ const KnowledgeCanvas: React.FC = () => {
             graph: q && q.graph ? (q.graph as any).value : undefined,
           })),
         });
-      } catch (_) {}
+      } catch (_) { void 0; }
 
       // Minimal, deterministic mapping: translate quads and apply mapper output
       // directly using React Flow's applyNodeChanges/applyEdgeChanges helper.
@@ -566,14 +566,14 @@ const KnowledgeCanvas: React.FC = () => {
       const edgeChanges = (mappedEdges || []).map((e: any) => ({ id: String(e.id), type: "reset", item: e }));
 
       // mark mapping active
-      try { mappingInProgressRef.current = true; } catch (_) {}
+      try { mappingInProgressRef.current = true; } catch (_) { void 0; }
 
       setNodes((prev) => applyNodeChanges(nodeChanges as any, prev));
       setEdges((prev) => applyEdgeChanges(edgeChanges as any, prev));
       
 
       // Signal mapping completion for tests
-      try { if (typeof window !== "undefined") (window as any).__VG_LAST_MAPPING_RUN = Date.now(); } catch (_) {}
+      try { if (typeof window !== "undefined") (window as any).__VG_LAST_MAPPING_RUN = Date.now(); } catch (_) { void 0; }
 
       // Schedule layout and queued-apply processing on next tick (ensures state flushed)
       try {
@@ -590,14 +590,14 @@ const KnowledgeCanvas: React.FC = () => {
               try {
                 await doLayout(mergedNodes, mergedEdges, true);
                 // Give React Flow a moment to apply node changes, then fit the view so the user sees the graph.
-                try { await new Promise((r) => setTimeout(r, 50)); } catch (_) {}
+                try { await new Promise((r) => setTimeout(r, 50)); } catch (_) { void 0; }
                 try {
                   const inst = reactFlowInstance && reactFlowInstance.current;
                   if (inst && typeof (inst as any).fitView === "function") {
-                    try { (inst as any).fitView({ padding: 0.1 }); } catch (_) {}
+                    try { (inst as any).fitView({ padding: 0.1 }); } catch (_) { void 0; }
                   }
-                } catch (_) {}
-              } catch (_) {}
+                } catch (_) { void 0; }
+              } catch (_) { void 0; }
             } else {
               // Otherwise run layout if autoApplyLayout is enabled
               try {
@@ -611,13 +611,13 @@ const KnowledgeCanvas: React.FC = () => {
             // Honor any manual Apply that was queued while mapping was in progress
             if (applyRequestedRef.current) {
               applyRequestedRef.current = false;
-              try { await doLayout(mergedNodes, mergedEdges, true); } catch (_) {}
+              try { await doLayout(mergedNodes, mergedEdges, true); } catch (_) { void 0; }
             }
           } catch (_) {
             /* swallow scheduling failures */
           }
         }, 0);
-      } catch (_) {}
+      } catch (_) { void 0; }
 
     };
 
@@ -646,13 +646,13 @@ const KnowledgeCanvas: React.FC = () => {
             graph: q && q.graph ? (q.graph as any).value : undefined,
           })) : []),
         });
-      } catch (_) {}
+      } catch (_) { void 0; }
 
       // Normalize incoming subjects
       const incomingSubjects = Array.isArray(subs) ? subs.map((s) => String(s)) : [];
       if (incomingSubjects.length > 0) {
         for (const s of incomingSubjects) {
-          try { pendingSubjects.add(String(s)); } catch (_) {}
+          try { pendingSubjects.add(String(s)); } catch (_) { void 0; }
         }
       }
 
@@ -739,7 +739,7 @@ const KnowledgeCanvas: React.FC = () => {
               return out;
             });
           } catch (_) {
-            try { setEdges(mappedEdges); } catch (_) {}
+            try { setEdges(mappedEdges); } catch (_) { void 0; }
           }
 
           // Ensure endpoints referenced by mappedEdges exist as nodes (append placeholders if needed).
@@ -794,7 +794,7 @@ const KnowledgeCanvas: React.FC = () => {
           } catch (_) { /* ignore */ }
 
           // Signal mapping completion for tests
-          try { if (typeof window !== "undefined") (window as any).__VG_LAST_MAPPING_RUN = Date.now(); } catch (_) {}
+          try { if (typeof window !== "undefined") (window as any).__VG_LAST_MAPPING_RUN = Date.now(); } catch (_) { void 0; }
 
           // Schedule layout against the merged mapper output (next tick so state flushes).
           try {
@@ -807,32 +807,32 @@ const KnowledgeCanvas: React.FC = () => {
                   forceLayoutNextMappingRef.current = false;
                   try {
                     await doLayout(mergedNodes, mergedEdges, true);
-                    try { await new Promise((r) => setTimeout(r, 50)); } catch (_) {}
+                    try { await new Promise((r) => setTimeout(r, 50)); } catch (_) { void 0; }
                     try {
                       const inst = reactFlowInstance && reactFlowInstance.current;
                       if (inst && typeof (inst as any).fitView === "function") {
-                        try { (inst as any).fitView({ padding: 0.1 }); } catch (_) {}
+                        try { (inst as any).fitView({ padding: 0.1 }); } catch (_) { void 0; }
                       }
-                    } catch (_) {}
-                  } catch (_) {}
+                    } catch (_) { void 0; }
+                  } catch (_) { void 0; }
                 } else {
                   const autoLayoutEnabled = !!(config && (config as any).autoApplyLayout);
                   if (autoLayoutEnabled) {
-                    try { await doLayout(mergedNodes, mergedEdges, true); } catch (_) {}
+                    try { await doLayout(mergedNodes, mergedEdges, true); } catch (_) { void 0; }
                   }
                 }
 
                 if (applyRequestedRef.current) {
                   applyRequestedRef.current = false;
-                  try { await doLayout(mergedNodes, mergedEdges, true); } catch (_) {}
+                  try { await doLayout(mergedNodes, mergedEdges, true); } catch (_) { void 0; }
                 }
               } catch (_) { /* ignore */ }
             }, 0);
-          } catch (_) {}
+          } catch (_) { void 0; }
 
           return;
         } catch (err) {
-          try { console.debug("[VG_DEBUG] subjectsCallback.directMappingFailed", { err }); } catch (_) {}
+          try { console.debug("[VG_DEBUG] subjectsCallback.directMappingFailed", { err }); } catch (_) { void 0; }
           // fallthrough to queued mapping path below
         }
       }
@@ -890,9 +890,9 @@ const KnowledgeCanvas: React.FC = () => {
     // Expose a helper so other UI components can request that the next mapping run triggers layout.
     try {
       (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING = () => {
-        try { forceLayoutNextMappingRef.current = true; } catch (_) {}
+        try { forceLayoutNextMappingRef.current = true; } catch (_) { void 0; }
       };
-    } catch (_) {}
+    } catch (_) { void 0; }
 
     const pending = (window as any).__VG_APPLY_LAYOUT_PENDING;
       if (Array.isArray(pending) && pending.length > 0) {
@@ -901,9 +901,9 @@ const KnowledgeCanvas: React.FC = () => {
           try {
             await doLayout(nodes, edges, true);
             await new Promise((r) => setTimeout(r, 200));
-            try { req.resolve(true); } catch (_) {}
+            try { req.resolve(true); } catch (_) { void 0; }
           } catch (err) {
-            try { req.resolve(false); } catch (_) {}
+            try { req.resolve(false); } catch (_) { void 0; }
           }
         }
       });
@@ -920,8 +920,8 @@ const KnowledgeCanvas: React.FC = () => {
     };
 
     return () => {
-      try { delete (window as any).__VG_KNOWLEDGE_CANVAS_READY; } catch (_) {}
-      try { delete (window as any).__VG_APPLY_LAYOUT; } catch (_) {}
+      try { delete (window as any).__VG_KNOWLEDGE_CANVAS_READY; } catch (_) { void 0; }
+      try { delete (window as any).__VG_APPLY_LAYOUT; } catch (_) { void 0; }
     };
   }, []);
 
@@ -963,14 +963,14 @@ const KnowledgeCanvas: React.FC = () => {
               console.debug("[VG_DEBUG] Autoload start - configured additionalOntologies:", toLoad);
               canvasActions.setLoading(true, 5, "Autoloading configured ontologies...");
               // Mark that the next mapping should trigger layout since these are startup loads
-              try { forceLayoutNextMappingRef.current = true; } catch (_) {}
+              try { forceLayoutNextMappingRef.current = true; } catch (_) { void 0; }
               await loadAdditionalOntologies(toLoad, (progress: number, message: string) => {
                 try {
                   console.debug(`[VG_DEBUG] loadAdditionalOntologies progress ${progress}%: ${message}`);
-                } catch (_) {}
-                try { canvasActions.setLoading(true, Math.max(5, progress), message); } catch (_) {}
+                } catch (_) { void 0; }
+                try { canvasActions.setLoading(true, Math.max(5, progress), message); } catch (_) { void 0; }
               });
-              try { console.debug("[VG_DEBUG] Autoload complete - requested ontologies loaded"); } catch (_) {}
+              try { console.debug("[VG_DEBUG] Autoload complete - requested ontologies loaded"); } catch (_) { void 0; }
               loadTriggerRef.current = true;
               loadFitRef.current = true;
             } finally {
@@ -983,7 +983,7 @@ const KnowledgeCanvas: React.FC = () => {
             }
           }
         } catch (err) {
-          try { console.debug("[VG_DEBUG] Autoload error", err); } catch (_) {}
+          try { console.debug("[VG_DEBUG] Autoload error", err); } catch (_) { void 0; }
           // ensure we don't block init on autoload failures
           if (additional && additional.length > 0 && typeof loadAdditionalOntologies === "function") {
             loadTriggerRef.current = true;
@@ -994,7 +994,7 @@ const KnowledgeCanvas: React.FC = () => {
           try {
             canvasActions.setLoading(true, 5, "Loading startup graph...");
             // Mark that the next mapping should trigger a layout since this is a user-requested startup load
-            try { forceLayoutNextMappingRef.current = true; } catch (_) {}
+            try { forceLayoutNextMappingRef.current = true; } catch (_) { void 0; }
             await loadKnowledgeGraph(startupUrl, {
               onProgress: (progress: number, message: string) => {
                 canvasActions.setLoading(true, Math.max(progress, 5), message);
@@ -1018,7 +1018,7 @@ const KnowledgeCanvas: React.FC = () => {
     }
 
     return () => {
-      try { delete (window as any).__VG_INIT_APP; } catch (_) {}
+      try { delete (window as any).__VG_INIT_APP; } catch (_) { void 0; }
     };
   }, [loadKnowledgeGraph]);
 
@@ -1117,8 +1117,8 @@ const KnowledgeCanvas: React.FC = () => {
   );
 
   const onNodeDoubleClickStrict = useCallback((event: any, node: any) => {
-    try { event?.stopPropagation && event.stopPropagation(); } catch (_) {}
-    try { suppressSelectionRef.current = true; setTimeout(() => { suppressSelectionRef.current = false; }, 0); } catch (_) {}
+    try { event?.stopPropagation && event.stopPropagation(); } catch (_) { void 0; }
+    try { suppressSelectionRef.current = true; setTimeout(() => { suppressSelectionRef.current = false; }, 0); } catch (_) { void 0; }
     const wasSelected = !!(node && (node as any).selected);
     setSelectedNodePayload(node || null);
     if (wasSelected) {
@@ -1126,13 +1126,13 @@ const KnowledgeCanvas: React.FC = () => {
     } else {
       try {
         setNodes((prev = []) => (prev || []).map((n) => ({ ...n, selected: String(n.id) === String(node.id) })));
-      } catch (_) {}
+      } catch (_) { void 0; }
     }
   }, [setNodes]);
 
   const onEdgeDoubleClickStrict = useCallback((event: any, edge: any) => {
-    try { event?.stopPropagation && event.stopPropagation(); } catch (_) {}
-    try { suppressSelectionRef.current = true; setTimeout(() => { suppressSelectionRef.current = false; }, 0); } catch (_) {}
+    try { event?.stopPropagation && event.stopPropagation(); } catch (_) { void 0; }
+    try { suppressSelectionRef.current = true; setTimeout(() => { suppressSelectionRef.current = false; }, 0); } catch (_) { void 0; }
     const srcId = edge.source || edge.from || (edge.data && edge.data.from) || '';
     const tgtId = edge.target || edge.to || (edge.data && edge.data.to) || '';
 
@@ -1196,7 +1196,7 @@ const KnowledgeCanvas: React.FC = () => {
     } else {
       try {
         setEdges((prev = []) => (prev || []).map((e) => ({ ...e, selected: String(e.id) === String(edge.id) })));
-      } catch (_) {}
+      } catch (_) { void 0; }
     }
   }, [nodes, availableProperties, loadedOntologies, setEdges]);
 
@@ -1537,7 +1537,7 @@ const KnowledgeCanvas: React.FC = () => {
                   }
                 }),
               );
-            } catch (_) {}
+            } catch (_) { void 0; }
             // Remove edges touching the node
             try {
               setEdges((prev = []) =>
@@ -1549,15 +1549,15 @@ const KnowledgeCanvas: React.FC = () => {
                   }
                 }),
               );
-            } catch (_) {}
+            } catch (_) { void 0; }
             // Best-effort: ask react-flow instance to delete elements if supported
             try {
               const inst = reactFlowInstance && reactFlowInstance.current;
               if (inst && typeof (inst as any).deleteElements === "function") {
-                try { (inst as any).deleteElements([{ id }]); } catch (_) {}
+                try { (inst as any).deleteElements([{ id }]); } catch (_) { void 0; }
               }
-            } catch (_) {}
-          } catch (_) {}
+            } catch (_) { void 0; }
+          } catch (_) { void 0; }
         }}
       />
 

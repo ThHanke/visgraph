@@ -70,7 +70,7 @@ export async function computeParsedFromStore(rdfManager: any, graphName?: string
       if (idx > -1) {
         return { prefix: "", local: uri.substring(idx + 1) };
       }
-    } catch (_) {}
+    } catch (_) { void 0; }
     return { prefix: "", local: uri };
   }
 

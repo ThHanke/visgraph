@@ -7,7 +7,9 @@ describe("KnowledgeCanvas autoload initializer", () => {
   beforeEach(() => {
     try {
       delete (window as any).__VG_INIT_APP_RAN;
-    } catch (_) {}
+    } catch (_) {
+      /* intentionally ignored during test setup */
+    }
   });
 
   test("calls the initializer on mount so autoload runs", async () => {

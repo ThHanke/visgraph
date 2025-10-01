@@ -61,14 +61,14 @@ test("mappingHelpers tbox/annotation property examples - human friendly output",
       console.log(`    displayclassType: ${String(d.displayclassType || "")}`);
       console.log(`    isTBox: ${Boolean(d.isTBox)}`);
       console.log(`    label: ${String(d.label || "")}`);
-    } catch (_) {}
+    } catch (_) { void 0; }
   }
   console.log("Edges produced:", edges.length);
   for (const e of edges) {
     try {
       const dd = e.data || {};
       console.log(`- Edge id=${e.id} ${e.source} -> ${e.target} prop=${String(dd.propertyUri || dd.propertyType || dd.label || "")}`);
-    } catch (_) {}
+    } catch (_) { void 0; }
   }
   console.log("=== end ===");
   console.log("");

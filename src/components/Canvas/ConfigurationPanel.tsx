@@ -369,7 +369,7 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
                         setPersistedAutoload(Boolean(val));
                         toast.success(`Persisted autoload ${val ? "enabled" : "disabled"}`);
                       } catch (e) {
-                        try { console.debug("[VG_DEBUG] setPersistedAutoload failed", e); } catch (_) {}
+                        try { console.debug("[VG_DEBUG] setPersistedAutoload failed", e); } catch (_) { void 0; }
                         toast.error("Failed to update autoload setting");
                       }
                     }}
