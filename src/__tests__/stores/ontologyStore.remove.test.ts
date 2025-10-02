@@ -67,7 +67,7 @@ test('removeLoadedOntology removes ontology meta, persisted config entry and nam
   useAppConfigStore.getState().addAdditionalOntology(url);
 
   // Add namespace and a sample triple to RDF manager so removeNamespaceAndQuads has something to remove
-  await rdfManager.loadRDF(`@prefix ${prefix}: <${nsUri}> . ${prefix}:Class a <http://www.w3.org/2002/07/owl#Class> .`);
+  await rdfManager.loadRDFIntoGraph(`@prefix ${prefix}: <${nsUri}> . ${prefix}:Class a <http://www.w3.org/2002/07/owl#Class> .`, "urn:vg:data");
 
   // Sanity checks before removal
   expect(useOntologyStore.getState().loadedOntologies.some((o) => o.url === url)).toBe(true);

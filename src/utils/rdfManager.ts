@@ -59,32 +59,8 @@ export class RDFManager {
       if (this.reconcileInProgress) {
         return this.reconcileInProgress;
       }
-      // Support both real zustand hook shape (useOntologyStore.getState()) and test mocks
       let os: any = undefined;
-      try {
-        if (useOntologyStore && typeof (useOntologyStore as any).getState === "function") {
-          os = (useOntologyStore as any).getState();
-        } else if (typeof useOntologyStore === "function") {
-          // Some tests provide a function that returns the mocked store instance
-          try { os = (useOntologyStore as any)(); } catch (_) { os = undefined; }
-        } else {
-          os = undefined;
-        }
-      } catch (_) {
-        os = undefined;
-      }
-
-      try {
-        // Debug visibility for tests: log whether the store object was found and whether updateFatMap is present.
-        try { console.log("[VG_DEBUG] runReconcile.osPresent", Boolean(os), "hasUpdateFatMap:", Boolean(os && typeof os.updateFatMap === "function")); } catch (_) { void 0; }
-      } catch (_) { void 0; }
-
-      // Require the store to expose the explicit updateFatMap API.
-      // Do NOT fallback to other methods — call updateFatMap directly so behavior is deterministic and testable.
-      if (!os || typeof os.updateFatMap !== "function") {
-        return Promise.resolve();
-      }
-
+      os = (useOntologyStore as any).getState();
       // Start the reconcile and store the in-flight promise so concurrent callers wait on it.
       this.reconcileInProgress = (async () => {
         try {
@@ -513,8 +489,6 @@ export class RDFManager {
           const subjects = Array.from(this.subjectChangeBuffer);
 
           // Build authoritative per-subject snapshots from the store (ensure parser writes are visible first).
-          // We prefer authoritative store snapshots over buffered deltas so the reconciler
-          // always receives the exact triples persisted by the parser for each affected subject.
           const _storeSnapshots: Quad[] = [];
           try {
             for (const s of subjects) {
@@ -531,30 +505,26 @@ export class RDFManager {
           } catch (_) {
             /* ignore overall snapshot build failures */
           }
-
           // Use undefined to signal a full rebuild only when there are no per-subject snapshots.
-          const reconcileArg = _storeSnapshots.length > 0 ? _storeSnapshots : undefined;
+          const reconcileArg = _storeSnapshots;
 
-          // Clear buffered deltas for these subjects now that we've captured them.
+          // Do NOT clear buffered quads yet; perform reconcile first so the emitted quads are exactly the ones reconciled.
+          // Run reconciliation for these snapshots (runReconcile is quads-only and returns a shared in-flight promise).
+          if (Array.isArray(reconcileArg)) {
+            await (this as any).runReconcile(reconcileArg);
+          }
+
+          // After successful reconcile (or if none needed), clear buffered deltas and emit subscribers with authoritative quads.
           try {
             for (const s of subjects) {
               try { this.subjectQuadBuffer.delete(s); } catch (_) { void 0; }
             }
-          } catch (_) { void 0; }
+          } catch (_) { /* ignore */ }
 
-          // Clear change buffer and timer before reconcile so subsequent changes schedule anew.
-          this.subjectChangeBuffer.clear();
-          this.subjectFlushTimer = null;
+          try { this.subjectChangeBuffer.clear(); } catch (_) { /* ignore */ }
+          try { this.subjectFlushTimer = null; } catch (_) { /* ignore */ }
 
-          // Run reconcile and wait for fat-map to be updated before emitting subject-level notifications.
-          try {
-            await this.runReconcile(reconcileArg);
-          } catch (_) {
-            // Do not abort emission on reconcile failure; emit anyway.
-          }
-
-          // Emit subscribers with the authoritative quads (prefer reconcileArg if present).
-          const emitQuads: Quad[] = reconcileArg || [];
+          const emitQuads: Quad[] = reconcileArg;
           for (const cb of Array.from(this.subjectChangeSubscribers)) {
             try {
               try {
@@ -592,7 +562,7 @@ export class RDFManager {
       if (!q || !q.subject || !q.subject.value) return;
       const subj = String((q.subject as any).value);
       // Respect configured blacklist: do not buffer or emit subjects from reserved vocabularies.
-      if (this.isBlacklistedIri(subj)) return;
+      // if (this.isBlacklistedIri(subj)) return;
 
       // Buffer subject for emission
       this.subjectChangeBuffer.add(subj);
@@ -618,13 +588,6 @@ export class RDFManager {
     }
   }
 
-  // ---------- Loading / parsing / applying RDF ----------
-  async loadRDF(rdfContent: string, mimeType?: string): Promise<void> {
-    // Deprecated: prefer `loadRDFIntoGraph` which requires an explicit named graph.
-    // For backward compatibility, forward to `loadRDFIntoGraph` using the data graph.
-    return this.loadRDFIntoGraph(rdfContent, "urn:vg:data", mimeType);
-  }
-
   async loadRDFIntoGraph(
     rdfContent: string,
     graphName?: string,
@@ -634,7 +597,7 @@ export class RDFManager {
     if (rdfContent === null || typeof rdfContent !== "string" || rdfContent.trim() === "") {
       throw new Error("Empty RDF content provided to loadRDFIntoGraph");
     }
-    if (!graphName) return this.loadRDF(rdfContent, mimeType);
+    if (!graphName) return this.loadRDFIntoGraph(rdfContent, "urn:vg:data", mimeType);
 
     const rawKey =
       typeof rdfContent === "string" ? rdfContent : String(rdfContent);
@@ -646,9 +609,7 @@ export class RDFManager {
       return this._inFlightLoads.get(key)!;
     }
 
-    const initialCount = this.store.getQuads(null, null, null, null).length;
     const _vg_loadId = `load-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const _vg_loadStartMs = Date.now();
     try {
       incr("rdfLoads", 1);
       debugLog("rdf.load.start", {
@@ -680,193 +641,32 @@ export class RDFManager {
     try { this.parsingInProgress = true; } catch (_) { void 0; }
 
     const finalize = (prefixes?: Record<string, string>) => {
+      // 1) Merge parsed prefixes and persist namespace registry immediately (UI needs prefixes ASAP)
       if (prefixes) {
-        this.namespaces = { ...this.namespaces, ...prefixes };
-        // Emit an immediate, developer-friendly log whenever parsed prefixes are merged.
-        // Use both console.debug (always visible in devtools) and the existing debug helpers
-        // so logs show up in whatever structured debug sink the app uses.
+        try {
+          this.namespaces = { ...this.namespaces, ...prefixes };
           try {
-          console.info("[VG_NAMESPACES_MERGED] mergedPrefixes:", prefixes, "namespaces:", this.namespaces);
-        } catch (_) { /* ignore console failures */ }
-        try {
-          debug("rdf.namespaces.updated", { namespaces: { ...(this.namespaces || {}) } });
-        } catch (_) { /* ignore debug helper failures */ }
-        try {
-          debugLog("rdf.namespaces.merged", { mergedPrefixes: prefixes, namespaces: { ...(this.namespaces || {}) } });
-        } catch (_) { /* ignore structured log failures */ }
-        // expose to window for quick inspection in dev tooling
-        try {
-          if (typeof window !== "undefined") {
-            (window as any).__VG_NAMESPACES = { ...(window as any).__VG_NAMESPACES || {}, ...(this.namespaces || {}) };
-          }
-        } catch (_) { /* ignore */ }
-        // Persist a canonical registry into the ontology store so UI components (legend, prefixed display)
-        // receive the updated namespace registry immediately after RDF loads.
-        try {
-          persistRegistryToStore(buildRegistryFromManager(this));
-        } catch (_) { /* ignore persist failures */ }
-        try {
-          // End of parsing: defer subject-level flush until the ontology store has updated its fat-map.
-          // Collect any buffered quads (per-subject) so the store may perform an incremental update.
+            console.info("[VG_NAMESPACES_MERGED] mergedPrefixes:", prefixes, "namespaces:", this.namespaces);
+          } catch (_) { /* ignore console failures */ }
+          try { debug("rdf.namespaces.updated", { namespaces: { ...(this.namespaces || {}) } }); } catch (_) { /* ignore */ }
+          try { debugLog("rdf.namespaces.merged", { mergedPrefixes: prefixes, namespaces: { ...(this.namespaces || {}) } }); } catch (_) { /* ignore */ }
+          try { persistRegistryToStore(buildRegistryFromManager(this)); } catch (_) { /* ignore persist failures */ }
           try {
-            const bufferedQuads: Quad[] = [];
-            try {
-              for (const qArr of Array.from((this as any).subjectQuadBuffer ? (this as any).subjectQuadBuffer.values() : [])) {
-                try {
-                  if (Array.isArray(qArr)) bufferedQuads.push(...qArr);
-                } catch (_) { void 0; }
-              }
-            } catch (_) { void 0; }
-            try {
-              const reconcileArg = Array.isArray(bufferedQuads) && bufferedQuads.length > 0 ? bufferedQuads : undefined;
-              if (Array.isArray(reconcileArg) && reconcileArg.length > 0) {
-                const maybeReconcile = (this as any).runReconcile
-                  ? (this as any).runReconcile.call(this, reconcileArg)
-                  : Promise.resolve();
-                try {
-                  (maybeReconcile as Promise<void>).finally(() => {
-                    try { (this as any).parsingInProgress = false; } catch (_) { void 0; }
-                    try { (this as any).scheduleSubjectFlush(0); } catch (_) { void 0; }
-                  });
-                } catch (_) {
-                  try { (this as any).parsingInProgress = false; } catch (_) { void 0; }
-                  try { (this as any).scheduleSubjectFlush(0); } catch (_) { void 0; }
-                }
-              } else {
-                try { (this as any).parsingInProgress = false; } catch (_) { void 0; }
-                try { (this as any).scheduleSubjectFlush(0); } catch (_) { void 0; }
-              }
-            } catch (_) {
-              try { (this as any).parsingInProgress = false; } catch (_) { void 0; }
-              try { (this as any).scheduleSubjectFlush(0); } catch (_) { void 0; }
+            if (typeof window !== "undefined") {
+              (window as any).__VG_NAMESPACES = { ...(window as any).__VG_NAMESPACES || {}, ...(this.namespaces || {}) };
             }
-          } catch (_) {
-            try {
-              (this as any).parsingInProgress = false;
-            } catch (_) { void 0; }
-            try { (this as any).scheduleSubjectFlush(0); } catch (_) { void 0; }
-          }
-        } catch (_) { void 0; }
-      }
-
-      // Ensure reconcile runs after parsing regardless of whether prefixes were provided.
-      // Collect buffered quads and request either an incremental update or a full rebuild.
-      try {
-        const bufferedQuads: Quad[] = [];
-        try {
-          for (const qArr of Array.from((this as any).subjectQuadBuffer ? (this as any).subjectQuadBuffer.values() : [])) {
-            try {
-              if (Array.isArray(qArr)) bufferedQuads.push(...qArr);
-            } catch (_) { void 0; }
-          }
-        } catch (_) { void 0; }
-
-        {
-          const reconcileArg = Array.isArray(bufferedQuads) && bufferedQuads.length > 0 ? bufferedQuads : undefined;
-          if (Array.isArray(reconcileArg) && reconcileArg.length > 0) {
-            const maybeReconcile = (this as any).runReconcile
-              ? (this as any).runReconcile.call(this, reconcileArg)
-              : Promise.resolve();
-            try {
-              (maybeReconcile as Promise<void>).finally(() => {
-                try { (this as any).parsingInProgress = false; } catch (_) { void 0; }
-                try { (this as any).scheduleSubjectFlush(0); } catch (_) { void 0; }
-              });
-            } catch (_) {
-              try { (this as any).parsingInProgress = false; } catch (_) { void 0; }
-              try { (this as any).scheduleSubjectFlush(0); } catch (_) { void 0; }
-            }
-          } else {
-            try { (this as any).parsingInProgress = false; } catch (_) { void 0; }
-            try { (this as any).scheduleSubjectFlush(0); } catch (_) { void 0; }
-          }
-        }
-      } catch (_) { void 0; }
-
-      // Always emit a visible, developer-friendly snapshot and persist the canonical registry even when no prefixes were parsed.
-      try {
-        console.info("[VG_NAMESPACES_UPDATED]", { namespaces: { ...(this.namespaces || {}) } });
-      } catch (_) { /* ignore */ }
-      try { debug("rdf.namespaces.updated", { namespaces: { ...(this.namespaces || {}) } }); } catch (_) { void 0; }
-      try { debugLog("rdf.namespaces.merged", { mergedPrefixes: prefixes || {}, namespaces: { ...(this.namespaces || {}) } }); } catch (_) { void 0; }
-      try { persistRegistryToStore(buildRegistryFromManager(this)); } catch (_) { void 0; }
-
-      const newCount = this.store.getQuads(null, null, null, null).length;
-      const added = Math.max(0, newCount - initialCount);
-
-      let shouldLog = true;
-      try {
-        const state = (useAppConfigStore as any)?.getState
-          ? (useAppConfigStore as any).getState()
-          : null;
-        if (
-          state &&
-          state.config &&
-          typeof state.config.debugRdfLogging === "boolean"
-        ) {
-          shouldLog = Boolean(state.config.debugRdfLogging);
-        }
-      } catch (_) {
-        shouldLog = true;
-      }
-
-      if (shouldLog) {
-        try {
-          const durationMs = Date.now() - (_vg_loadStartMs || Date.now());
-          try {
-            debug("rdf.load.summary", {
-              id: _vg_loadId,
-              key,
-              graphName: graphName || null,
-              added,
-              newCount,
-              durationMs,
-            });
-          } catch (_) {
-            try {
-              if (typeof fallback === "function") {
-                fallback("emptyCatch", { error: String(_) });
-              }
-            } catch (_) {
-              /* ignore */
-            }
-          }
-          try {
-            incr("totalTriplesAdded", added);
-            debugLog("rdf.load.end", {
-              id: _vg_loadId,
-              key,
-              graphName: graphName || null,
-              added,
-              newCount,
-              durationMs,
-            });
-          } catch (_) {
-            try {
-              if (typeof fallback === "function") {
-                fallback("emptyCatch", { error: String(_) });
-              }
-            } catch (_) {
-              /* ignore */
-            }
-          }
+          } catch (_) { /* ignore */ }
         } catch (_) {
-          try {
-            if (typeof fallback === "function") {
-              fallback("emptyCatch", { error: String(_) });
-            }
-          } catch (_) {
-            /* ignore */
-          }
+          /* ignore prefix merge failures */
         }
       }
-
-      // Notify subscribers that RDF changed
+        // Notify subscribers that RDF changed
+      this.notifyChange();
+      try { this.parsingInProgress = false; } catch (_) { /* ignore */ }
+      try { this.scheduleSubjectFlush(0); } catch (_) { /* ignore */ }
       try {
         this.notifyChange();
-      } catch (_) {
-        /* ignore */
-      }
+      } catch (_) { /* ignore notify failures */ }
 
       resolveFn();
     };

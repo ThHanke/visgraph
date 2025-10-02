@@ -34,6 +34,6 @@ export async function loadFixtureRdf(
   if (graphName) {
     await rdfManager.loadRDFIntoGraph(ttl, graphName);
   } else {
-    await rdfManager.loadRDF(ttl);
+    await rdfManager.loadRDFIntoGraph(ttl, "urn:vg:data");
   }
 }

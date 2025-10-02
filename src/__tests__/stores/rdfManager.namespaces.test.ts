@@ -11,7 +11,7 @@ it("recomputes namespaces from Turtle loaded into the store", async () => {
   `;
 
   // Load Turtle into the N3 store
-  await rdfManager.loadRDF(turtle);
+  await rdfManager.loadRDFIntoGraph(turtle, "urn:vg:data");
 
   // The RDFManager debounces namespace recomputation (default ~100ms).
   // Wait a short time to allow the async recompute to run.

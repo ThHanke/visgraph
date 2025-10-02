@@ -261,7 +261,6 @@ interface OntologyStore {
   clearOntologies: () => void;
   exportGraph: (format: "turtle" | "json-ld" | "rdf-xml") => Promise<string>;
   updateFatMap: (quads?: any[]) => Promise<void>;
-  reconcileQuads: (quads: any[] | undefined) => Promise<void>;
   getRdfManager: () => RDFManager;
   removeLoadedOntology: (url: string) => void;
   // Namespace registry (joined prefix -> namespace -> color) persisted after reconcile
@@ -481,9 +480,19 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       try {
         if (mgr && typeof (mgr as any).loadRDFIntoGraph === "function") {
           await (mgr as any).loadRDFIntoGraph(content, targetGraph, mimeType || undefined);
+          try {
+            const store = typeof (mgr as any).getStore === "function" ? (mgr as any).getStore() : null;
+            const tripleCount = store && typeof store.getQuads === "function" ? (store.getQuads(null, null, null, null) || []).length : -1;
+            console.debug("[VG_DEBUG] rdfManager.loadRDFIntoGraph.tripleCount", { tripleCount });
+          } catch (_) { /* ignore debug failures */ }
         } else {
           // fallback to module-level rdfManager
           await (rdfManager as any).loadRDFIntoGraph(content, targetGraph, mimeType || undefined);
+          try {
+            const store = rdfManager && typeof (rdfManager as any).getStore === "function" ? (rdfManager as any).getStore() : null;
+            const tripleCount = store && typeof store.getQuads === "function" ? (store.getQuads(null, null, null, null) || []).length : -1;
+            console.debug("[VG_DEBUG] rdfManager.loadRDFIntoGraph.tripleCount", { tripleCount });
+          } catch (_) { /* ignore debug failures */ }
         }
       } catch (err) {
         warn(
@@ -559,6 +568,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         }
 
         await rdfManager.loadRDFIntoGraph(rdfContent, targetGraph);
+
+        // Debug: report store triple count after parser load
+        try {
+          const store = rdfManager && typeof (rdfManager as any).getStore === "function" ? (rdfManager as any).getStore() : null;
+          const tripleCount = store && typeof store.getQuads === "function" ? (store.getQuads(null, null, null, null) || []).length : -1;
+          console.debug("[VG_DEBUG] rdfManager.loadRDFIntoGraph.tripleCount", { tripleCount });
+        } catch (_) { /* ignore debug failures */ }
       } catch (loadErr) {
         warn(
           "rdfManager.loadIntoGraph.failed",
@@ -829,13 +845,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             await get().loadOntology(norm);
             // Recompute fat-map from the authoritative store snapshot so that
             // previously autoloaded ontologies are included in availableClasses/availableProperties.
-            try {
-              await get().updateFatMap();
-              onProgress?.(95 + Math.floor(((i + 1) / toLoad.length) * 5), `Reconciled store after loading ${ontologyName || uri}`);
-              try { console.debug("[VG_DEBUG] loadAdditionalOntologies.reconciled", norm); } catch (_) { void 0; }
-            } catch (_) {
-              /* ignore reconciliation failures */
-            }
           } catch (_) {
             /* ignore per-entry load failures */
           }
@@ -867,13 +876,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                   true,
                   "urn:vg:ontologies",
                 );
-                // Recompute fat-map after parsing into the store so merged results include previously loaded ontologies.
-                try {
-                  await get().updateFatMap();
-                  onProgress?.(95 + Math.floor(((i + 1) / toLoad.length) * 5), `Reconciled store after loading ${ontologyName || uri}`);
-                  try { console.debug("[VG_DEBUG] loadAdditionalOntologies.reconciled", uri); } catch (_) { void 0; }
-                } catch (_) { /* ignore reconciliation failures */ }
-
                 // Register this fetched URI as an explicit loaded ontology so UI counts reflect autoloaded entries
                 try {
                   const norm = normalizeUri(uri);
@@ -964,12 +966,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                 true,
                 "urn:vg:ontologies",
               );
-              // Reconcile fat-map after parsing inline ontology content so results are merged.
-              try {
-                await get().updateFatMap();
-                onProgress?.(95 + Math.floor(((i + 1) / toLoad.length) * 5), `Reconciled store after loading ${ontologyName || uri}`);
-                try { console.debug("[VG_DEBUG] loadAdditionalOntologies.reconciled", uri); } catch (_) { void 0; }
-              } catch (_) { /* ignore reconciliation failures */ }
             } catch (e) {
               try {
                 fallback(
@@ -1006,6 +1002,14 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         continue;
       }
     }
+
+    // Debug: report triple count after additional ontologies batch load
+    try {
+      const mgr = get().rdfManager;
+      const store = mgr && typeof mgr.getStore === "function" ? mgr.getStore() : null;
+      const tripleCount = store && typeof store.getQuads === "function" ? (store.getQuads(null, null, null, null) || []).length : -1;
+      console.debug("[VG_DEBUG] loadAdditionalOntologies.batchTripleCount", { tripleCount });
+    } catch (_) { /* ignore */ }
 
     onProgress?.(100, "Additional ontologies loaded");
   },
@@ -1149,7 +1153,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     // Do nothing when no quads supplied (caller can invoke buildFatMap explicitly when a full rebuild is desired).
     if (!Array.isArray(quads) || quads.length === 0) return;
 
-    const mgr = get().rdfManager;
     const parsedQuads = quads.slice();
 
     // Helpers
@@ -1182,11 +1185,8 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       }
     }
 
-    // Collect subjects from deltas and optionally include store subjects to ensure we capture referenced nodes
-    const storeSubjects = (mgr && typeof mgr.getStore === "function")
-      ? (mgr.getStore().getQuads(null, null, null, null) || []).map((q:any) => (q && q.subject && (q.subject.value || q.subject)) || "")
-      : [];
-    const subjects = Array.from(new Set(parsedQuads.map((q:any) => (q && q.subject && (q.subject.value || q.subject)) || "").concat(storeSubjects).filter(Boolean)));
+    // Subjects are derived only from the supplied quads (strict quads-only policy).
+    const subjects = Array.from(new Set(parsedQuads.map((q:any) => (q && q.subject && (q.subject.value || q.subject)) || "").filter(Boolean)));
 
     const classesMap: Record<string, any> = {};
     const propsMap: Record<string, any> = {};
@@ -1196,20 +1196,15 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       const parsedTypes = Array.from(parsedTypesBySubject[subjStr] || []);
       let types: any[] = parsedTypes && parsedTypes.length > 0 ? parsedTypes.slice() : [];
 
-      if (types.length === 0 && mgr && typeof mgr.getStore === "function") {
-        const subjTerm = namedNode(subjStr);
-        const typeQuads = mgr.getStore().getQuads(subjTerm, namedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"), null, null) || [];
-        types = Array.from(new Set(typeQuads.map((q:any) => (q && q.object) || "").filter(Boolean)));
+      // Do not fall back to the RDF manager when determining types; rely only on parsed quads.
+      if (types.length === 0) {
+        types = [];
       }
 
       const typesNormalized = Array.from(new Set((types || []).map((t) => normalizeTermIri(t)).filter(Boolean)));
 
       let label = parsedLabelBySubject[subjStr];
-      if (!label && mgr && typeof mgr.getStore === "function") {
-        const subjTerm = namedNode(subjStr);
-        const labelQ = mgr.getStore().getQuads(subjTerm, namedNode("http://www.w3.org/2000/01/rdf-schema#label"), null, null) || [];
-        if (labelQ.length > 0) label = String((labelQ[0].object as any).value);
-      }
+      // Do not query the RDF manager for labels; prefer parsed label or default to subject string.
       if (!label) label = subjStr;
 
       const nsMatch = String(subjStr || "").match(/^(.*[\/#])/);
@@ -1269,14 +1264,18 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       availableProperties: Object.values(propByIri),
       ontologiesVersion: (s.ontologiesVersion || 0) + 1,
     }));
-  },
 
-  // Simple alias: incremental reconcile via updateFatMap
-  reconcileQuads: async (quads: any[] | undefined): Promise<void> => {
-    const fn = (get() as any).updateFatMap;
-    if (typeof fn === "function") {
-      await fn(quads);
-    }
+    // Debug: report incremental update results (counts + samples)
+    try {
+      const classesArr = Object.values(classByIri);
+      const propsArr = Object.values(propByIri);
+      console.debug("[VG_DEBUG] updateFatMap.result", {
+        classesCount: classesArr.length,
+        propertiesCount: propsArr.length,
+        sampleClasses: (classesArr || []).slice(0, 5).map((c: any) => (c && c.iri) || c),
+        sampleProperties: (propsArr || []).slice(0, 5).map((p: any) => (p && p.iri) || p),
+      });
+    } catch (_) { /* ignore debug failures */ }
   },
 
   getRdfManager: () => {
@@ -1357,6 +1356,16 @@ async function buildFatMap(rdfMgr?: any): Promise<void> {
     availableClasses: mergedClasses,
     ontologiesVersion: (st.ontologiesVersion || 0) + 1,
   }));
+
+  // Debug: report full rebuild results (counts + samples)
+  try {
+    console.debug("[VG_DEBUG] buildFatMap.result", {
+      classesCount: mergedClasses.length,
+      propertiesCount: mergedProps.length,
+      sampleClasses: (mergedClasses || []).slice(0,5).map((c:any) => (c && c.iri) || c),
+      sampleProperties: (mergedProps || []).slice(0,5).map((p:any) => (p && p.iri) || p),
+    });
+  } catch (_) { /* ignore debug failures */ }
 
   // Persist namespace registry
   const nsMap = mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};

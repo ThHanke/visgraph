@@ -305,7 +305,7 @@ describe("Complete RDF Workflow", () => {
       const rdfManager = new RDFManager();
 
       // Add namespaces by loading a small Turtle snippet so the prefixes / triples exist in the store.
-      await rdfManager.loadRDF('@prefix ex: <http://example.com/> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .');
+      await rdfManager.loadRDFIntoGraph('@prefix ex: <http://example.com/> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .', "urn:vg:data");
 
       // Load initial data
       const initialRdf = `
@@ -315,7 +315,7 @@ describe("Complete RDF Workflow", () => {
         ex:entity1 a ex:TestClass .
       `;
 
-      await rdfManager.loadRDF(initialRdf);
+      await rdfManager.loadRDFIntoGraph(initialRdf, "urn:vg:data");
 
       // Update entity
       rdfManager.updateNode("http://example.com/entity1", {
@@ -337,7 +337,7 @@ describe("Complete RDF Workflow", () => {
             rdfs:label "Thing" .
       `;
 
-      await rdfManager.loadRDF(additionalRdf);
+      await rdfManager.loadRDFIntoGraph(additionalRdf, "urn:vg:data");
 
       // Verify original entity and its modifications are preserved
       const store = rdfManager.getStore();

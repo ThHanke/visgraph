@@ -28,7 +28,7 @@ ex:LengthMeasurementProcess rdf:type ex:MeasurementProcess .
 
     // Use the rdfManager from the store to load TTL
     const manager = useOntologyStore.getState().rdfManager;
-    await manager.loadRDF(ttl);
+    await manager.loadRDFIntoGraph(ttl, "urn:vg:data");
 
     // Also register a simple availableClass so the editor can map to a prefixed URI if needed.
     useOntologyStore.setState({

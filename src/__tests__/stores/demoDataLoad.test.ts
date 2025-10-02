@@ -13,7 +13,7 @@ describe("Demo data load - ensures triples for Specimen are present", () => {
     const store = useOntologyStore.getState();
     // Load RDF directly into the rdfManager to ensure prefixes are registered and triples are present
     const mgr = store.rdfManager;
-    await mgr.loadRDF(ttl);
+    await mgr.loadRDFIntoGraph(ttl, "urn:vg:data");
 
     // Export current store to Turtle and assert the export contains the Specimen triple (robust check)
     const exportTtl = await mgr.exportToTurtle();

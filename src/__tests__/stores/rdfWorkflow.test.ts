@@ -351,7 +351,7 @@ ex:person1 a foaf:Person ;
     it("should properly expand prefixes", async () => {
       const rdfManager = new RDFManager();
 
-      await rdfManager.loadRDF('@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix foaf: <http://xmlns.com/foaf/0.1/> .');
+      await rdfManager.loadRDFIntoGraph('@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix foaf: <http://xmlns.com/foaf/0.1/> .', "urn:vg:data");
 
       expect(rdfManager.expandPrefix("rdfs:label")).toBe(
         "http://www.w3.org/2000/01/rdf-schema#label",
@@ -367,7 +367,7 @@ ex:person1 a foaf:Person ;
     it("should update and remove entity properties correctly", async () => {
       const rdfManager = new RDFManager();
 
-      await rdfManager.loadRDF('@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix ex: <http://example.com/> .');
+      await rdfManager.loadRDFIntoGraph('@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix ex: <http://example.com/> .', "urn:vg:data");
 
       const entityUri = "http://example.com/entity1";
 
@@ -448,7 +448,7 @@ ex:person1 a foaf:Person ;
     it("should export with correct prefixes and formatting", async () => {
       const rdfManager = new RDFManager();
 
-      await rdfManager.loadRDF('@prefix ex: <http://example.com/> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix foaf: <http://xmlns.com/foaf/0.1/> .');
+      await rdfManager.loadRDFIntoGraph('@prefix ex: <http://example.com/> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix foaf: <http://xmlns.com/foaf/0.1/> .', "urn:vg:data");
 
       // Add some test data
       rdfManager.updateNode("http://example.com/person1", {
