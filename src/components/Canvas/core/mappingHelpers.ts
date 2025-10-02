@@ -127,6 +127,22 @@ export function mapQuadsToDiagram(
   const OWL_NAMED_INDIVIDUAL = "http://www.w3.org/2002/07/owl#NamedIndividual";
   const OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
 
+  // Whitelist of rdf:type IRIs that we treat as TBox (schema-level) entities.
+  // Per request: only explicit declared types from this list are considered TBox.
+  const TBOX_TYPE_IRIS = new Set<string>([
+    "http://www.w3.org/2002/07/owl#Class",
+    "http://www.w3.org/2000/01/rdf-schema#Class",
+    "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property",
+    "http://www.w3.org/2002/07/owl#ObjectProperty",
+    "http://www.w3.org/2002/07/owl#DatatypeProperty",
+    "http://www.w3.org/2002/07/owl#AnnotationProperty",
+    "http://www.w3.org/2002/07/owl#FunctionalProperty",
+    "http://www.w3.org/2002/07/owl#InverseFunctionalProperty",
+    "http://www.w3.org/2002/07/owl#TransitiveProperty",
+    "http://www.w3.org/2002/07/owl#SymmetricProperty",
+    "http://www.w3.org/2002/07/owl#Ontology"
+  ]);
+
   // small local cache for classifier results to avoid repeated work per-predicate
   const predicateKindCache = new Map<string, PredicateKind>();
 
@@ -272,16 +288,18 @@ export function mapQuadsToDiagram(
       // (typesBySubject) when available, otherwise fall back to any rdfTypes already collected.
       let subjectIsTBox = false;
       try {
-        const subjTypes = typesBySubject.has(subjectIri)
-          ? Array.from(typesBySubject.get(subjectIri)!)
+        const subjTypesArr = typesBySubject.has(subjectIri)
+          ? Array.from(typesBySubject.get(subjectIri)!).map(String)
           : Array.isArray(entry.rdfTypes)
           ? entry.rdfTypes.map(String)
           : [];
-        if (Array.isArray(subjTypes) && subjTypes.length > 0) {
-          subjectIsTBox = !subjTypes.includes(OWL_NAMED_INDIVIDUAL);
-        } else {
-          subjectIsTBox = false;
-        }
+
+        // Precedence: explicit NamedIndividual => ABox (not TBox)
+        const hasIndividual = subjTypesArr.includes(OWL_NAMED_INDIVIDUAL);
+        // TBox only when at least one rdf:type appears in the explicit whitelist
+        const hasTboxType = subjTypesArr.some((t) => TBOX_TYPE_IRIS.has(String(t)));
+
+        subjectIsTBox = !hasIndividual && hasTboxType;
       } catch (_) {
         subjectIsTBox = false;
       }
@@ -564,23 +582,17 @@ export function mapQuadsToDiagram(
           namespace = "";
         }
     
-    // Determine TBox/ABox:
-    // - If rdfTypes exist and include owl:NamedIndividual -> ABox (isTBox = false)
-    // - If rdfTypes exist and do NOT include owl:NamedIndividual -> TBox (isTBox = true)
-    // - If no rdfTypes -> ABox (isTBox = false)
+    // Determine TBox/ABox using explicit whitelist + precedence:
+    // - If rdfTypes include owl:NamedIndividual -> ABox (isTBox = false)
+    // - Else if rdfTypes include any whitelist TBox type -> TBox (isTBox = true)
+    // - Else -> ABox (isTBox = false)
     let isTBox = false;
-    if (Array.isArray(info.rdfTypes) && info.rdfTypes.length > 0) {
-      try {
-        const types = info.rdfTypes.map((t: any) => String(t || ""));
-        if (types.includes(OWL_NAMED_INDIVIDUAL)) {
-          isTBox = false;
-        } else {
-          isTBox = true;
-        }
-      } catch (_) {
-        isTBox = false;
-      }
-    } else {
+    try {
+      const types = Array.isArray(info.rdfTypes) ? info.rdfTypes.map((t: any) => String(t || "")) : [];
+      const hasIndividual = types.includes(OWL_NAMED_INDIVIDUAL);
+      const hasTboxType = types.some((t) => TBOX_TYPE_IRIS.has(String(t)));
+      isTBox = !hasIndividual && hasTboxType;
+    } catch (_) {
       isTBox = false;
     }
 

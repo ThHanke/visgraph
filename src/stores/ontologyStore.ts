@@ -505,6 +505,89 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         );
       }
 
+      // After parsing into the ontologies graph, try to discover an owl:Ontology subject
+      // in the newly-loaded graph and register the declared ontology IRI as the canonical
+      // loadedOntologies.url. Do NOT attempt to fetch that declared IRI; use the RDF we
+      // just loaded. Preserve original requested URL by adding it to aliases when appropriate.
+      try {
+        const store =
+          mgr && typeof (mgr as any).getStore === "function"
+            ? (mgr as any).getStore()
+            : rdfManager && typeof (rdfManager as any).getStore === "function"
+            ? (rdfManager as any).getStore()
+            : null;
+
+        if (store && typeof store.getQuads === "function") {
+          const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+          const OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
+          const g = namedNode("urn:vg:ontologies");
+          const ontQuads = store.getQuads(null, namedNode(RDF_TYPE), namedNode(OWL_ONTOLOGY), g) || [];
+          const subjects = Array.from(new Set((ontQuads || []).map((q: any) => (q && q.subject && (q.subject as any).value) || String((q && q.subject) || "")))).filter(Boolean);
+
+          if (subjects.length > 0) {
+            // Prefer an http(s) IRI if present; otherwise take the first subject.
+            const canonical = subjects.find((s: any) => /^https?:\/\//i.test(String(s))) || subjects[0];
+            // Ensure we treat the canonical as a string for TypeScript safety
+            const canonicalStr = canonical ? String(canonical) : "";
+            let canonicalNorm: string = canonicalStr.replace(/\/+$/, "");
+            try {
+              // Prefer a normalized URL when possible
+              canonicalNorm = new URL(canonicalStr).toString();
+            } catch (_) {
+              canonicalNorm = canonicalStr.replace(/\/+$/, "");
+            }
+
+            // Avoid duplicating an existing loaded ontology entry
+            const already = (get().loadedOntologies || []).some((o: any) => {
+              try {
+                return urlsEquivalent(o.url, canonicalNorm);
+              } catch (_) {
+                return String(o.url) === String(canonicalNorm);
+              }
+            });
+
+            if (!already) {
+              // Build aliases: include the originally requested URL if it's different
+              const aliases: string[] = [];
+              try {
+                if (normRequestedUrl && !urlsEquivalent(normRequestedUrl, canonicalNorm)) aliases.push(normRequestedUrl);
+              } catch (_) { /* ignore */ }
+
+              // Capture namespaces from manager if available
+              const namespaces =
+                (mgr && typeof (mgr as any).getNamespaces === "function"
+                  ? (mgr as any).getNamespaces()
+                  : rdfManager && typeof (rdfManager as any).getNamespaces === "function"
+                    ? (rdfManager as any).getNamespaces()
+                    : {}) || {};
+
+              try {
+                set((state: any) => {
+                  const meta: LoadedOntology = {
+                    url: canonicalNorm,
+                    name: deriveOntologyName(String(canonicalNorm || "")),
+                    classes: [],
+                    properties: [],
+                    namespaces: namespaces || {},
+                    aliases: aliases.length ? aliases : undefined,
+                    source: "discovered",
+                    graphName: "urn:vg:ontologies",
+                  };
+                  return {
+                    loadedOntologies: [...(state.loadedOntologies || []), meta],
+                    ontologiesVersion: (state.ontologiesVersion || 0) + 1,
+                  };
+                });
+              } catch (_) {
+                /* ignore registration failures */
+              }
+            }
+          }
+        }
+      } catch (_) {
+        /* best-effort only; do not fail load if discovery fails */
+      }
+
       return;
     } catch (error: any) {
       try {

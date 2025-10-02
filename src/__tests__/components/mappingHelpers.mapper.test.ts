@@ -108,7 +108,7 @@ describe("mapQuadsToDiagram (mapper) - fat-map authoritative scenarios", () => {
     const subj = "http://example.com/s-unknown";
     const pred = "http://example.com/propUnknown";
     const obj = "http://example.com/o-unknown";
-    const classIri = "http://example.com/SomeClass"; // non-NamedIndividual class -> TBox
+    const classIri = "http://www.w3.org/2002/07/owl#Class"; // explicit TBox marker (owl:Class)
 
     const tType = q(subj, "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", { value: classIri, termType: "NamedNode" });
     const tLink = q(subj, pred, { value: obj, termType: "NamedNode" });
