@@ -52,7 +52,6 @@ export class RDFManager {
    *
    * Behavior:
    * - If a reconciliation is already in progress, returns the existing promise.
-   * - Otherwise calls ontologyStore.reconcileQuads(undefined) and returns a promise that
    *   resolves when reconciliation completes. Errors are propagated to callers (hard fail).
    */
   private runReconcile(quads?: any[]): Promise<void> {
@@ -718,41 +717,27 @@ export class RDFManager {
                 } catch (_) { void 0; }
               }
             } catch (_) { void 0; }
-            // Determine whether any of the buffered quads belong to the ontology graph.
-            // If so, request a full rebuild (pass undefined) so TBox entities in urn:vg:ontologies
-            // are discovered. Otherwise use incremental batch for performance.
             try {
-              const hasOnt = Array.isArray(bufferedQuads) && bufferedQuads.some((q: any) => {
+              const reconcileArg = Array.isArray(bufferedQuads) && bufferedQuads.length > 0 ? bufferedQuads : undefined;
+              if (Array.isArray(reconcileArg) && reconcileArg.length > 0) {
+                const maybeReconcile = (this as any).runReconcile
+                  ? (this as any).runReconcile.call(this, reconcileArg)
+                  : Promise.resolve();
                 try {
-                  const g = q && ((q.graph && (q.graph as any).value) || q.graph);
-                  if (!g) return false;
-                  const gv = String(g);
-                  return gv.includes("urn:vg:ontologies");
+                  (maybeReconcile as Promise<void>).finally(() => {
+                    try { (this as any).parsingInProgress = false; } catch (_) { void 0; }
+                    try { (this as any).scheduleSubjectFlush(0); } catch (_) { void 0; }
+                  });
                 } catch (_) {
-                  return false;
-                }
-              });
-              const reconcileArg = hasOnt ? undefined : (bufferedQuads && bufferedQuads.length > 0 ? bufferedQuads : undefined);
-              const maybeReconcile = (this as any).runReconcile
-                ? (this as any).runReconcile.call(this, reconcileArg)
-                : Promise.resolve();
-              try {
-                (maybeReconcile as Promise<void>).finally(() => {
-                  try {
-                    (this as any).parsingInProgress = false;
-                  } catch (_) { void 0; }
+                  try { (this as any).parsingInProgress = false; } catch (_) { void 0; }
                   try { (this as any).scheduleSubjectFlush(0); } catch (_) { void 0; }
-                });
-              } catch (_) {
-                try {
-                  (this as any).parsingInProgress = false;
-                } catch (_) { void 0; }
+                }
+              } else {
+                try { (this as any).parsingInProgress = false; } catch (_) { void 0; }
                 try { (this as any).scheduleSubjectFlush(0); } catch (_) { void 0; }
               }
             } catch (_) {
-              try {
-                (this as any).parsingInProgress = false;
-              } catch (_) { void 0; }
+              try { (this as any).parsingInProgress = false; } catch (_) { void 0; }
               try { (this as any).scheduleSubjectFlush(0); } catch (_) { void 0; }
             }
           } catch (_) {
@@ -776,30 +761,25 @@ export class RDFManager {
           }
         } catch (_) { void 0; }
 
-        const hasOnt = Array.isArray(bufferedQuads) && bufferedQuads.some((q: any) => {
-          try {
-            const g = q && ((q.graph && (q.graph as any).value) || q.graph);
-            if (!g) return false;
-            const gv = String(g);
-            return gv.includes("urn:vg:ontologies");
-          } catch (_) {
-            return false;
-          }
-        });
-
-        const reconcileArg = hasOnt ? undefined : (bufferedQuads && bufferedQuads.length > 0 ? bufferedQuads : undefined);
-        const maybeReconcile = (this as any).runReconcile
-          ? (this as any).runReconcile.call(this, reconcileArg)
-          : Promise.resolve();
-
-        try {
-          (maybeReconcile as Promise<void>).finally(() => {
+        {
+          const reconcileArg = Array.isArray(bufferedQuads) && bufferedQuads.length > 0 ? bufferedQuads : undefined;
+          if (Array.isArray(reconcileArg) && reconcileArg.length > 0) {
+            const maybeReconcile = (this as any).runReconcile
+              ? (this as any).runReconcile.call(this, reconcileArg)
+              : Promise.resolve();
+            try {
+              (maybeReconcile as Promise<void>).finally(() => {
+                try { (this as any).parsingInProgress = false; } catch (_) { void 0; }
+                try { (this as any).scheduleSubjectFlush(0); } catch (_) { void 0; }
+              });
+            } catch (_) {
+              try { (this as any).parsingInProgress = false; } catch (_) { void 0; }
+              try { (this as any).scheduleSubjectFlush(0); } catch (_) { void 0; }
+            }
+          } else {
             try { (this as any).parsingInProgress = false; } catch (_) { void 0; }
             try { (this as any).scheduleSubjectFlush(0); } catch (_) { void 0; }
-          });
-        } catch (_) {
-          try { (this as any).parsingInProgress = false; } catch (_) { void 0; }
-          try { (this as any).scheduleSubjectFlush(0); } catch (_) { void 0; }
+          }
         }
       } catch (_) { void 0; }
 

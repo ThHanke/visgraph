@@ -23,17 +23,7 @@ function CustomOntologyNodeImpl(props: NodeProps) {
       ? String(((connection as any).fromNode.id || ""))
       : ""
   );
-  React.useEffect(() => {
-    try {
-      console.debug("[VG_DEBUG] CustomOntologyNode connection", {
-        nodeId: String(id),
-        selected: !!selected,
-        inProgress: connectionInProgress,
-        fromNodeId: connectionFromNodeId,
-      });
-    } catch (_) { void 0; }
-  }, [id, selected, connectionInProgress, connectionFromNodeId]);
-
+  
   const isTarget = Boolean(connectionInProgress && connectionFromNodeId && connectionFromNodeId !== String(id));
   const nodeData = (data ?? {}) as NodeData;
   const showHandles = !!(connectionInProgress || !selected);

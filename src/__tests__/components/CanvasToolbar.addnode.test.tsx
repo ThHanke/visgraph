@@ -23,15 +23,15 @@ describe("CanvasToolbar Add Node dialog - class type population", () => {
     }
 
     // Load the fixture RDF into the ontology store (persist as ontology so namespaces/classes are registered)
-    try {
-      await store.loadOntologyFromRDF(FIXTURES["autocomplete_test_data"], undefined, true);
-      // Reconcile the store so availableClasses / availableProperties are rebuilt from the RDF store
       try {
-        await store.reconcileQuads(undefined);
-      } catch (_) {
-        void 0;
-      }
-    } catch (e) {
+        await store.loadOntologyFromRDF(FIXTURES["autocomplete_test_data"], undefined, true);
+        // Reconcile the store so availableClasses / availableProperties are rebuilt from the RDF store
+        try {
+          await store.updateFatMap(undefined);
+        } catch (_) {
+          void 0;
+        }
+      } catch (e) {
       // If loading fails, surface the reason for test debugging
       // but continue to attempt the rest of the test — the assertion will fail cleanly.
        
