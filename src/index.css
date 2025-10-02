@@ -184,7 +184,9 @@
   border: 1px solid hsl(var(--node-border));
   border-radius: calc(var(--radius) - 0.25rem);
   box-shadow: var(--node-shadow);
-  transition: var(--transition-smooth);
+  /* Exclude transform from automatic transitions to avoid lag and blinking when React Flow
+     updates node transform during drag. Keep smooth transitions for visual properties only. */
+  transition: background 180ms ease, box-shadow 180ms ease, color 150ms linear, border-color 150ms linear;
   position: relative;
   overflow: hidden;
 }
@@ -217,9 +219,22 @@
   box-shadow: 0 8px 24px hsla(var(--node-outline), var(--node-overlay-alpha));
   transform: translateY(-2px);
 }
+
+/* When a node is being dragged React Flow updates transform inline.
+   Any CSS transition on transform will cause the node to animate towards
+   the dragged position rather than follow the pointer immediately.
+   Disable transitions/animations while dragging so movement is immediate. */
+.react-flow__node.react-flow__node-dragging,
+.react-flow__node.dragging,
+.react-flow__node--dragging {
+  transition: none !important;
+  animation: none !important;
+}
+
 .edge-label-renderer__custom-edge {
   position: absolute;
-  transition: var(--transition-smooth);
+  transition: opacity 120ms linear, transform 120ms linear;
+  will-change: opacity, transform;
 }
 .react-flow__marker {
   position: absolute;
@@ -247,12 +262,14 @@
 /* Edge styling (uses existing tokens) */
 .react-flow__edge {
   stroke-width: 2px;
-  transition: var(--transition-smooth);
+  transition: stroke 120ms linear, opacity 120ms linear;
+  will-change: stroke, opacity;
 }
 
 .react-flow__edge-path {
   stroke: hsl(var(--edge-default));
-  transition: var(--transition-smooth);
+  transition: stroke 120ms linear, opacity 120ms linear;
+  will-change: stroke, opacity;
 }
 
 /* Edge defaults (no debug overrides). Use React Flow's classnames so selectors
@@ -261,7 +278,8 @@
   stroke: hsl(var(--edge-default));
   stroke-width: 2px;
   opacity: 1;
-  transition: var(--transition-smooth);
+  transition: stroke 120ms linear, opacity 120ms linear;
+  will-change: stroke, opacity;
 }
 
 .react-flow__edge.selected .react-flow__edge-path {
@@ -300,7 +318,9 @@
 }
 
 .react-flow__node {
-  animation: nodeAppear 0.3s ease-out;
+  /* Animation removed to avoid re-triggering on drag state changes which caused a blink.
+     If you want a one-time appear animation for newly-added nodes we can add a
+     .node-appear class and apply the animation only when nodes are first inserted. */
 }
 
 /* Custom scrollbar for popovers */

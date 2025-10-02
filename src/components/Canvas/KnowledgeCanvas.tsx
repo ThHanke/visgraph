@@ -92,25 +92,140 @@ const KnowledgeCanvas: React.FC = () => {
   const [edges, setEdges] = useEdgesState<RFEdge<LinkData>>([]);
   const reactFlowInstance = useRef<ReactFlowInstance | null>(null);
   const { state: canvasState, actions: canvasActions } = useCanvasState();
-  const {
-    loadedOntologies,
-    availableClasses,
-    loadKnowledgeGraph,
-    exportGraph,
-    loadAdditionalOntologies,
-    getRdfManager,
-    availableProperties,
-    availableClasses: ac,
-    ontologiesVersion,
-  } = useOntologyStore();
-  const { startReasoning } = useReasoningStore();
-  const { settings } = useSettingsStore();
-  const {
-    config,
-    setCurrentLayout,
-    setShowLegend,
-    setViewMode: setPersistedViewMode,
-  } = useAppConfigStore();
+  // Attempt to use selective selectors for better performance, but fall back to the full store
+  // shape when tests/mock implementations return the raw store object (common in unit tests).
+  const _os_raw = (useOntologyStore as any) && typeof (useOntologyStore as any) === "function" ? (useOntologyStore as any)() : {};
+  const _sel_loadedOntologies = useOntologyStore((s: any) => s.loadedOntologies);
+  const loadedOntologies = ((): any[] => {
+    try {
+      if (Array.isArray(_sel_loadedOntologies)) return _sel_loadedOntologies;
+      if (_sel_loadedOntologies && typeof _sel_loadedOntologies === "object" && Object.prototype.hasOwnProperty.call(_sel_loadedOntologies, "loadedOntologies")) return _sel_loadedOntologies.loadedOntologies;
+    } catch (_) { /* ignore */ }
+    try { return _os_raw && Array.isArray(_os_raw.loadedOntologies) ? _os_raw.loadedOntologies : []; } catch (_) { return []; }
+  })();
+
+  const _sel_availableClasses = useOntologyStore((s: any) => s.availableClasses);
+  const availableClasses = ((): any[] => {
+    try {
+      if (Array.isArray(_sel_availableClasses)) return _sel_availableClasses;
+      if (_sel_availableClasses && typeof _sel_availableClasses === "object" && Object.prototype.hasOwnProperty.call(_sel_availableClasses, "availableClasses")) return _sel_availableClasses.availableClasses;
+    } catch (_) { /* ignore */ }
+    try { return _os_raw && Array.isArray(_os_raw.availableClasses) ? _os_raw.availableClasses : []; } catch (_) { return []; }
+  })();
+  const ac = availableClasses;
+
+  const _sel_loadKnowledgeGraph = useOntologyStore((s: any) => s.loadKnowledgeGraph);
+  const loadKnowledgeGraph = typeof _sel_loadKnowledgeGraph === "function" ? _sel_loadKnowledgeGraph : (_os_raw && typeof _os_raw.loadKnowledgeGraph === "function" ? _os_raw.loadKnowledgeGraph : undefined);
+
+  const _sel_exportGraph = useOntologyStore((s: any) => s.exportGraph);
+  const exportGraph = typeof _sel_exportGraph === "function" ? _sel_exportGraph : (_os_raw && typeof _os_raw.exportGraph === "function" ? _os_raw.exportGraph : undefined);
+
+  const _sel_loadAdditionalOntologies = useOntologyStore((s: any) => s.loadAdditionalOntologies);
+  const loadAdditionalOntologies = typeof _sel_loadAdditionalOntologies === "function" ? _sel_loadAdditionalOntologies : (_os_raw && typeof _os_raw.loadAdditionalOntologies === "function" ? _os_raw.loadAdditionalOntologies : undefined);
+
+  const _sel_getRdfManager = useOntologyStore((s: any) => s.getRdfManager);
+  const getRdfManager = typeof _sel_getRdfManager === "function" ? _sel_getRdfManager : ((_os_raw && typeof _os_raw.getRdfManager === "function") ? _os_raw.getRdfManager : undefined);
+
+  const _sel_availableProperties = useOntologyStore((s: any) => s.availableProperties);
+  const availableProperties = ((): any[] => {
+    try {
+      if (Array.isArray(_sel_availableProperties)) return _sel_availableProperties;
+      if (_sel_availableProperties && typeof _sel_availableProperties === "object" && Object.prototype.hasOwnProperty.call(_sel_availableProperties, "availableProperties")) return _sel_availableProperties.availableProperties;
+    } catch (_) { /* ignore */ }
+    try { return _os_raw && Array.isArray(_os_raw.availableProperties) ? _os_raw.availableProperties : []; } catch (_) { return []; }
+  })();
+
+  const _sel_ontologiesVersion = useOntologyStore((s: any) => s.ontologiesVersion);
+  const ontologiesVersion = (_sel_ontologiesVersion !== undefined) ? _sel_ontologiesVersion : (_os_raw && _os_raw.ontologiesVersion !== undefined ? _os_raw.ontologiesVersion : undefined);
+
+  // Safe getter for the RDF manager: prefer the selector-provided function but fall back to the store's getState accessor.
+  // Some test mocks replace the store-level getter, so this helper ensures we find the manager reliably.
+  const getRdfManagerSafe = useCallback(() => {
+    try {
+      const maybe = typeof getRdfManager === "function" ? getRdfManager() : undefined;
+      if (maybe) return maybe;
+      const gs = (useOntologyStore as any).getState && (useOntologyStore as any).getState().getRdfManager;
+      return typeof gs === "function" ? gs() : undefined;
+    } catch (_) {
+      return undefined;
+    }
+  }, [getRdfManager]);
+
+  // Worker for offloading heavy mapping (mapQuadsToDiagram). Created lazily.
+  const mappingWorkerRef = useRef<Worker | null>(null);
+  useEffect(() => {
+    try {
+      // Create the worker using Vite-friendly URL import
+      // Worker code lives at src/workers/mapQuads.worker.ts
+      // The bundler will handle this import at build time.
+      // Only create the worker in browser environments.
+      if (typeof window !== "undefined" && typeof Worker !== "undefined") {
+        try {
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-ignore
+          mappingWorkerRef.current = new Worker(new URL('../../workers/mapQuads.worker.ts', import.meta.url));
+        } catch (e) {
+          try { console.debug("[VG_DEBUG] mapping worker init failed", e); } catch (_) { void 0; }
+          mappingWorkerRef.current = null;
+        }
+      }
+    } catch (_) {
+      mappingWorkerRef.current = null;
+    }
+    return () => {
+      try {
+        if (mappingWorkerRef.current) {
+          mappingWorkerRef.current.terminate();
+          mappingWorkerRef.current = null;
+        }
+      } catch (_) { /* ignore */ }
+    };
+  }, []);
+
+  const mapQuadsWithWorker = (quads: any[], opts: any) =>
+    new Promise<any>((resolve, reject) => {
+      try {
+        const w = mappingWorkerRef.current;
+        if (!w) {
+          try {
+            const res = mapQuadsToDiagram(quads, opts);
+            resolve(res);
+            return;
+          } catch (err) {
+            reject(err);
+            return;
+          }
+        }
+        const id = Date.now() + Math.floor(Math.random() * 100000);
+        const onMessage = (ev: MessageEvent) => {
+          try {
+            const d = ev.data;
+            if (!d || d.id !== id) return;
+            try { w.removeEventListener('message', onMessage); } catch (_) { void 0; }
+            if (d.error) reject(d.error);
+            else resolve(d.result);
+          } catch (err) {
+            try { w.removeEventListener('message', onMessage); } catch (_) { void 0; }
+            reject(err);
+          }
+        };
+        w.addEventListener('message', onMessage);
+        try {
+          w.postMessage({ type: 'map', id, quads, opts });
+        } catch (errPost) {
+          try { w.removeEventListener('message', onMessage); } catch (_) { void 0; }
+          reject(errPost);
+        }
+      } catch (err) {
+        reject(err);
+      }
+    });
+  const startReasoning = useReasoningStore((s) => s.startReasoning);
+  const settings = useSettingsStore((s) => s.settings);
+  const config = useAppConfigStore((s) => s.config);
+  const setCurrentLayout = useAppConfigStore((s) => s.setCurrentLayout);
+  const setShowLegend = useAppConfigStore((s) => s.setShowLegend);
+  const setPersistedViewMode = useAppConfigStore((s) => s.setViewMode);
 
   const [viewMode, setViewMode] = useState(config.viewMode);
   const [showLegend, setShowLegendState] = useState(config.showLegend);
@@ -147,7 +262,7 @@ const KnowledgeCanvas: React.FC = () => {
     }
 
     // Precise check against RDF store rdf:type triples (authoritative)
-    const mgr = typeof getRdfManager === "function" ? getRdfManager() : undefined;
+    const mgr = getRdfManagerSafe ? getRdfManagerSafe() : (typeof getRdfManager === "function" ? getRdfManager() : undefined);
     if (!mgr || typeof mgr.getStore !== "function") return "unknown";
     const store = mgr.getStore();
     const rdfTypeIri = typeof (mgr as any).expandPrefix === "function" ? (mgr as any).expandPrefix("rdf:type") : "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
@@ -198,23 +313,24 @@ const KnowledgeCanvas: React.FC = () => {
   }, [config.viewMode, config.showLegend, config.currentLayout, config.autoApplyLayout]);
 
   const allEntities = useMemo(() => {
-    return loadedOntologies.flatMap((ontology) => [
-      ...ontology.classes.map((cls) => ({
+    const list = Array.isArray(loadedOntologies) ? loadedOntologies : [];
+    return list.flatMap((ontology) => [
+      ...((Array.isArray(ontology?.classes) ? ontology.classes : []).map((cls: any) => ({
         iri: cls.iri,
         label: cls.label,
         namespace: cls.namespace,
         rdfType: "owl:Class" as const,
         description: `Class from ${ontology.name}`,
-      })),
-      ...ontology.properties.map((prop) => ({
+      }))),
+      ...((Array.isArray(ontology?.properties) ? ontology.properties : []).map((prop: any) => ({
         iri: prop.iri,
         label: prop.label,
         namespace: prop.namespace,
-        rdfType: prop.iri.includes("ObjectProperty")
+        rdfType: String(prop.iri || "").includes("ObjectProperty")
           ? "owl:ObjectProperty"
           : ("owl:AnnotationProperty" as const),
         description: `Property from ${ontology.name}`,
-      })),
+      }))),
     ]);
   }, [ontologiesVersion, loadedOntologies]);
 
@@ -500,7 +616,9 @@ const KnowledgeCanvas: React.FC = () => {
    }, []);
 
   useEffect(() => {
-    const mgr = typeof getRdfManager === "function" ? getRdfManager() : undefined;
+    // Prefer the store-level getter (works with test mocks) then the selector-provided getter.
+    const storeGetter = (useOntologyStore as any).getState && (useOntologyStore as any).getState().getRdfManager;
+    const mgr = (typeof storeGetter === "function" ? storeGetter() : undefined) || (typeof getRdfManager === "function" ? getRdfManager() : (getRdfManagerSafe ? getRdfManagerSafe() : undefined));
     if (!mgr) return;
 
     let mounted = true;
@@ -1601,6 +1719,9 @@ const KnowledgeCanvas: React.FC = () => {
             onEdgesChange={onEdgesChange}
             onInit={onInit}
             onNodeDoubleClick={onNodeDoubleClickStrict}
+            onNodeDragStart={onNodeDragStart}
+            onNodeDrag={onNodeDrag}
+            onNodeDragStop={onNodeDragStop}
             onEdgeDoubleClick={onEdgeDoubleClickStrict}
             onConnect={onConnectStrict}
             onSelectionChange={onSelectionChange}
