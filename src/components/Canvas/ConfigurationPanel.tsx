@@ -197,7 +197,9 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
     setBlacklistedUris,
     // Persisted autoload toggle
     setPersistedAutoload,
-    removeAdditionalOntology
+    removeAdditionalOntology,
+    // Debug master toggle
+    setDebugAll
   } = useAppConfigStore();
 
 
@@ -457,6 +459,33 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
 
           {/* Advanced Settings */}
           <TabsContent value="advanced" className="space-y-4">
+          <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Debug</CardTitle>
+                <CardDescription>Developer debug helpers</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label>Enable debug helpers (VG_* logs & metrics)</Label>
+                  <Switch
+                    id="debugAll"
+                    checked={!!config.debugAll}
+                    onCheckedChange={(val) => {
+                      try {
+                        setDebugAll(Boolean(val));
+                        toast.success(Boolean(val) ? 'Debug enabled' : 'Debug disabled');
+                      } catch (e) {
+                        try { console.debug("[VG_DEBUG] setDebugAll failed", e); } catch (_) { void 0; }
+                        toast.error('Failed to update debug setting');
+                      }
+                    }}
+                  />
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  When enabled, diagnostic logs prefixed with <code>[VG_]</code> and in-canvas metrics become visible.
+                </div>
+              </CardContent>
+            </Card>
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Blacklist</CardTitle>

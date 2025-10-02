@@ -63,6 +63,8 @@ interface AppConfigStore {
   setCanvasTheme: (theme: 'light' | 'dark' | 'auto') => void;
   // Persisted toggle: when true, mapping updates will auto-apply the configured layout
   setAutoApplyLayout: (enabled: boolean) => void;
+  // Persisted autoload: whether configured additionalOntologies should be loaded automatically on startup
+  setPersistedAutoload: (enabled: boolean) => void;
   
   // Performance actions
   setAutoReasoning: (enabled: boolean) => void;
