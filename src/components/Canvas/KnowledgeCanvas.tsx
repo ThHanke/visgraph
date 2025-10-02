@@ -561,16 +561,82 @@ const KnowledgeCanvas: React.FC = () => {
       const mappedNodes: RFNode<NodeData>[] = (diagram && diagram.nodes);
       const mappedEdges: RFEdge<LinkData>[] = (diagram && diagram.edges);
 
-      // Project mapper output to simple change objects (reset each node/edge to mapper's item).
-      const nodeChanges = (mappedNodes || []).map((n: any) => ({ id: String(n.id), type: "reset", item: n }));
-      const edgeChanges = (mappedEdges || []).map((e: any) => ({ id: String(e.id), type: "reset", item: e }));
-
-      // mark mapping active
+      // Build deterministic add/replace change objects so:
+      // - mapper-provided positions are applied only for new nodes
+      // - existing nodes preserve runtime metadata (position, selected, __rf, etc.)
       try { mappingInProgressRef.current = true; } catch (_) { void 0; }
 
-      setNodes((prev) => applyNodeChanges(nodeChanges as any, prev));
-      setEdges((prev) => applyEdgeChanges(edgeChanges as any, prev));
-      
+      // Update nodes using a functional updater so we compare against the latest snapshot.
+      try {
+        setNodes((prev = []) => {
+          const prevArr = prev || [];
+          const prevById = new Map((prevArr || []).map((n: any) => [String(n.id), n]));
+          const changes: any[] = [];
+
+          for (const m of mappedNodes || []) {
+            try {
+              const id = String(m.id);
+              const existing = prevById.get(id);
+              if (existing) {
+                // Existing node: preserve runtime metadata (position, selected, __rf, etc.)
+                // Do NOT overwrite position from the mapper for existing nodes.
+                const item = {
+                  ...existing,
+                  type: m.type || existing.type,
+                  position: existing.position || (m && m.position) || { x: 0, y: 0 },
+                  data: (m && m.data) ? { ...(m.data) } : { ...(existing.data || {}) },
+                } as any;
+                changes.push({ id, type: "replace", item });
+              } else {
+                // New node: allow mapper-provided position (node position is only passed to new nodes)
+                const item = {
+                  ...(m as any),
+                  position: (m && m.position) ? m.position : { x: 0, y: 0 },
+                } as any;
+                changes.push({ type: "add", item });
+              }
+            } catch (_) {
+              // per-item ignore
+            }
+          }
+
+          if (changes.length === 0) return prevArr;
+          return applyNodeChanges(changes as any, prevArr);
+        });
+      } catch (_) { /* ignore node update failures */ }
+
+      // Update edges using a functional updater so we compare against the latest snapshot.
+      try {
+        setEdges((prev = []) => {
+          const prevArr = prev || [];
+          const prevById = new Map(prevArr.map((e: any) => [String(e.id), e]));
+          const changes: any[] = [];
+
+          for (const m of mappedEdges || []) {
+            try {
+              const id = String(m.id);
+              const existing = prevById.get(id);
+              if (existing) {
+                const item = {
+                  ...existing,
+                  source: (m && m.source) ? m.source : existing.source,
+                  target: (m && m.target) ? m.target : existing.target,
+                  data: { ...(existing.data || {}), ...(m && m.data ? m.data : {}) },
+                } as any;
+                changes.push({ id, type: "replace", item });
+              } else {
+                const item = { ...(m as any) } as any;
+                changes.push({ type: "add", item });
+              }
+            } catch (_) {
+              // per-item ignore
+            }
+          }
+
+          if (changes.length === 0) return prevArr;
+          return applyEdgeChanges(changes as any, prevArr);
+        });
+      } catch (_) { /* ignore edge update failures */ }
 
       // Signal mapping completion for tests
       try { if (typeof window !== "undefined") (window as any).__VG_LAST_MAPPING_RUN = Date.now(); } catch (_) { void 0; }
@@ -667,56 +733,49 @@ const KnowledgeCanvas: React.FC = () => {
           const mappedById = new Map((mappedNodes || []).map((m: any) => [String(m.id), m]));
           const mappedEdgeById = new Map((mappedEdges || []).map((e: any) => [String(e.id), e]));
 
-          // Merge mapper output into the current nodes explicitly so mapper-provided
-          // data (e.g. rdfs:label) replaces existing node data fields reliably.
+          // Merge mapper output into the current nodes via add/replace changes so
+          // mapper-provided positions are applied only to new nodes and existing
+          // runtime metadata is preserved.
           try {
             setNodes((prev = []) => {
               const prevArr = prev || [];
               const prevById = new Map((prevArr || []).map((n: any) => [String(n.id), n]));
+              const changes: any[] = [];
 
               for (const m of mappedNodes || []) {
                 try {
                   const id = String(m.id);
                   const existing = prevById.get(id);
                   if (existing) {
-                    // Preserve runtime metadata (position, selected, __rf, etc.) from existing,
-                    // but replace the node's data entirely with the mapper output so fields like label update.
-                    const merged = {
+                    const item = {
                       ...existing,
-                      // keep existing position/runtime but allow mapper to override top-level fields if needed
-                      position: existing.position || m.position || { x: 0, y: 0 },
                       type: m.type || existing.type,
+                      position: existing.position || (m && m.position) || { x: 0, y: 0 },
                       data: (m && m.data) ? { ...(m.data) } : { ...(existing.data || {}) },
                     } as any;
-                    prevById.set(id, merged);
+                    changes.push({ id, type: "replace", item });
                   } else {
-                    // New node from mapper — use it directly
-                    prevById.set(id, { ...(m as any) } as any);
+                    const item = {
+                      ...(m as any),
+                      position: (m && m.position) ? m.position : { x: 0, y: 0 },
+                    } as any;
+                    changes.push({ type: "add", item });
                   }
                 } catch (_) {
                   // per-item ignore
                 }
               }
 
-              return Array.from(prevById.values());
+              if (changes.length === 0) return prevArr;
+              return applyNodeChanges(changes as any, prevArr);
             });
           } catch (_) { /* ignore node update failures */ }
 
-          // Remove edges that touch any of the incoming subjects so mapper output can replace them.
+          // Do not remove edges here — the mapper merge below will update/add edges.
+          // Removing edges that reference changed subjects can drop edges when the mapper
+          // returns a partial result (e.g. node-only updates). Keep the subjectSet
+          // available for future use if explicit deletions become detectable.
           const subjectSet = new Set<string>((incomingSubjects || []).map((s: any) => String(s)));
-          try {
-            setEdges((prev = []) =>
-              (prev || []).filter((e) => {
-                try {
-                  const src = String(e.source);
-                  const tgt = String(e.target);
-                  return !subjectSet.has(src) && !subjectSet.has(tgt);
-                } catch (_) {
-                  return true;
-                }
-              }),
-            );
-          } catch (_) { /* ignore */ }
 
           // Merge/update existing edges and append new edges (functional update).
           try {
