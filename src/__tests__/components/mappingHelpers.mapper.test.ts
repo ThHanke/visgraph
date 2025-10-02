@@ -11,24 +11,6 @@ function q(subject: string, predicate: string, object: any, graph = "urn:vg:data
 }
 
 describe("mapQuadsToDiagram (mapper) - fat-map authoritative scenarios", () => {
-  it("creates an edge when predicate is present in fat-map (object property) and does NOT create an object node", () => {
-    const subj = "http://example.com/s1";
-    const pred = "http://example.com/prop";
-    const obj = "http://example.com/o1";
-
-    const quads = [q(subj, pred, { value: obj, termType: "NamedNode" })];
-
-    const diagram = mapQuadsToDiagram(quads, { availableProperties: [{ iri: pred, propertyKind: "object" }] });
-
-    expect(Array.isArray(diagram.edges)).toBeTruthy();
-    expect(diagram.edges.length).toBe(1);
-
-    // Nodes: mapper should only create the subject node (object IRI not turned into node)
-    expect(Array.isArray(diagram.nodes)).toBeTruthy();
-    const nodeIds = diagram.nodes.map((n: any) => String(n.id));
-    expect(nodeIds).toContain(subj);
-    expect(nodeIds).not.toContain(obj);
-  });
 
   it("folds triples into subject when predicate not in fat-map (no edge)", () => {
     const subj = "http://example.com/s2";
@@ -121,4 +103,50 @@ describe("mapQuadsToDiagram (mapper) - fat-map authoritative scenarios", () => {
     expect(node).toBeDefined();
     expect(node.data.annotationProperties.some((ap: any) => ap.property === pred && ap.value === lic)).toBeTruthy();
   });
+
+  it("creates object node+edge for predicates present in fat-map but lacking kind (unknown) and propagates subject view", () => {
+    const subj = "http://example.com/s-unknown";
+    const pred = "http://example.com/propUnknown";
+    const obj = "http://example.com/o-unknown";
+    const classIri = "http://example.com/SomeClass"; // non-NamedIndividual class -> TBox
+
+    const tType = q(subj, "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", { value: classIri, termType: "NamedNode" });
+    const tLink = q(subj, pred, { value: obj, termType: "NamedNode" });
+
+    // availableProperties contains the predicate but without propertyKind -> treated as 'unknown'
+    const diagram = mapQuadsToDiagram([tType, tLink], { availableProperties: [{ iri: pred }] });
+
+    // Expect an edge and both subject and object nodes to exist
+    expect(Array.isArray(diagram.edges)).toBeTruthy();
+    expect(diagram.edges.length).toBe(1);
+    const ids = (diagram.nodes || []).map((n: any) => String(n.id));
+    expect(ids).toContain(subj);
+    expect(ids).toContain(obj);
+
+    const subjNode = (diagram.nodes || []).find((n: any) => String(n.id) === subj);
+    const objNode = (diagram.nodes || []).find((n: any) => String(n.id) === obj);
+    expect(subjNode).toBeDefined();
+    expect(objNode).toBeDefined();
+    // Subject declared as a class -> should be TBox; object should inherit same view
+    expect(subjNode.data.isTBox).toBeTruthy();
+    expect(objNode.data.isTBox).toBe(subjNode.data.isTBox);
+  });
+
+  it("creates blank-node object node+edge for unknown predicate even when blank node not referenced as subject", () => {
+    const subj = "http://example.com/s-bn-unknown";
+    const pred = "http://example.com/hasBlankUnknown";
+    const bn = "_:bn_unknown";
+
+    const tLink = q(subj, pred, { value: bn, termType: "BlankNode" });
+    // availableProperties contains the predicate but without propertyKind -> treated as 'unknown'
+    const diagram = mapQuadsToDiagram([tLink], { availableProperties: [{ iri: pred }] });
+
+    expect(Array.isArray(diagram.edges)).toBeTruthy();
+    expect(diagram.edges.length).toBe(1);
+
+    const ids = (diagram.nodes || []).map((n: any) => String(n.id));
+    expect(ids).toContain(subj);
+    expect(ids).toContain(bn);
+  });
+
 });

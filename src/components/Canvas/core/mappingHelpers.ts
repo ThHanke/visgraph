@@ -100,6 +100,8 @@ export function mapQuadsToDiagram(
       literalProperties: Array<{ key: string; value: string; type: string }>;
       annotationProperties: Array<{ property: string; value: string }>;
       label?: string | undefined;
+      // optional override used to propagate subject view (TBox/ABox) to objects created due to unknown/object predicates
+      forceIsTBox?: boolean | undefined;
     }
   >();
 
@@ -114,6 +116,7 @@ export function mapQuadsToDiagram(
         literalProperties: [],
         annotationProperties: [],
         label: undefined,
+        forceIsTBox: undefined,
       });
     }
   };
@@ -151,9 +154,13 @@ export function mapQuadsToDiagram(
           else if (kind === "datatype") predicateKindCache.set(iri, "datatype");
           else if (kind === "annotation") predicateKindCache.set(iri, "annotation");
         } else {
-          // No explicit propertyKind provided — do not cache so mapper will treat unknown predicates
-          // according to its conservative default (fold into annotation). This avoids mis-classifying
-          // annotation properties when the fat-map entry lacks a kind.
+          // No explicit propertyKind provided — mark as 'unknown' so mapper can decide to create
+          // object nodes/edges for unknown predicates (caller may still override via options.predicateKind).
+          try {
+            predicateKindCache.set(iri, "unknown");
+          } catch (_) {
+            /* ignore cache errors */
+          }
         }
       } catch (_) {
         /* ignore per-entry */
@@ -257,8 +264,27 @@ export function mapQuadsToDiagram(
       const predIri = pred && pred.value ? String(pred.value) : "";
       if (!subjectIri || !predIri) continue;
 
+      // Ensure subject node exists and compute subject view for propagation when needed.
       ensureNode(subjectIri);
       const entry = nodeMap.get(subjectIri)!;
+
+      // Compute subjectIsTBox for view propagation when needed. Use pre-scanned rdf:type info
+      // (typesBySubject) when available, otherwise fall back to any rdfTypes already collected.
+      let subjectIsTBox = false;
+      try {
+        const subjTypes = typesBySubject.has(subjectIri)
+          ? Array.from(typesBySubject.get(subjectIri)!)
+          : Array.isArray(entry.rdfTypes)
+          ? entry.rdfTypes.map(String)
+          : [];
+        if (Array.isArray(subjTypes) && subjTypes.length > 0) {
+          subjectIsTBox = !subjTypes.includes(OWL_NAMED_INDIVIDUAL);
+        } else {
+          subjectIsTBox = false;
+        }
+      } catch (_) {
+        subjectIsTBox = false;
+      }
 
       // Compute predicate kind using authoritative fat-map (availableProperties) when available,
       // or an optional caller-provided classifier. Default policy: fold into subject (annotation).
@@ -364,18 +390,27 @@ export function mapQuadsToDiagram(
         continue;
       }
 
-      // Handle blank nodes: create node/edge only when blank node is referenced as a subject elsewhere in this batch.
+      // Handle blank nodes: create node/edge when blank node is referenced as a subject elsewhere
+      // in the incoming quad batch OR when the predicate is classified as an object/unknown property.
       if (obj && (obj.termType === "BlankNode" || (obj.value && String(obj.value).startsWith("_:")))) {
         const bn = obj.value ? String(obj.value) : "";
-          if (isBlankNodeReferenced(bn)) {
-            ensureNode(bn);
-            const edgeId = String(generateEdgeId(subjectIri, bn, predIri || ""));
-            rfEdges.push({
-              id: edgeId,
-              source: subjectIri,
-              target: bn,
-              type: "floating",
-              markerEnd: { type: "arrow" as any },
+        // If the predicate is explicitly an object property or unknown, create node+edge regardless
+        // of whether the blank node is referenced elsewhere.
+        if (predicateKindLocal === "object" || predicateKindLocal === "unknown" || isBlankNodeReferenced(bn)) {
+          ensureNode(bn);
+          // Propagate subject view to the object node when predicate is unknown/object
+          try {
+            const objEntry = nodeMap.get(bn);
+            if (objEntry) objEntry.forceIsTBox = subjectIsTBox;
+          } catch (_) { /* ignore */ }
+
+          const edgeId = String(generateEdgeId(subjectIri, bn, predIri || ""));
+          rfEdges.push({
+            id: edgeId,
+            source: subjectIri,
+            target: bn,
+            type: "floating",
+            markerEnd: { type: "arrow" as any },
             data: {
               key: edgeId,
               from: subjectIri,
@@ -398,31 +433,38 @@ export function mapQuadsToDiagram(
               rdfType: "",
             } as LinkData,
           });
-          } else {
-            // Treat unreferenced blank nodes as annotation metadata
-            try {
-              entry.annotationProperties.push({
-                property: toPrefixed(
-                  predIri,
-                  options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                  options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-                  (options as any).registry
-                ),
-                value: bn,
-              });
-            } catch (_) { /* ignore */ }
-          }
-          continue;
+        } else {
+          // Treat unreferenced blank nodes as annotation metadata
+          try {
+            entry.annotationProperties.push({
+              property: toPrefixed(
+                predIri,
+                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                (options as any).registry
+              ),
+              value: bn,
+            });
+          } catch (_) { /* ignore */ }
         }
+        continue;
+      }
 
       // object is NamedNode (IRI)
       if (obj && (obj.termType === "NamedNode" || (obj.value && /^https?:\/\//i.test(String(obj.value))))) {
         const objectIri = obj && obj.value ? String(obj.value) : "";
         if (!objectIri) continue;
 
-        // Create an edge only when predicate is classified as an object property.
-        // Per policy: do NOT create/ensure a UI node for the object here.
-        if (predicateKindLocal === "object") {
+        // Create an edge (and ensure an object node) when predicate is classified as an object
+        // or when it is unknown per fat-map policy. When creating the object node propagate the
+        // subject's view (TBox/ABox) into the object via forceIsTBox.
+        if (predicateKindLocal === "object" || predicateKindLocal === "unknown") {
+          ensureNode(objectIri);
+          try {
+            const objEntry = nodeMap.get(objectIri);
+            if (objEntry) objEntry.forceIsTBox = subjectIsTBox;
+          } catch (_) { /* ignore */ }
+
           const edgeId = String(generateEdgeId(subjectIri, objectIri, predIri || ""));
           const labelForEdge = predIri || "";
           rfEdges.push({
@@ -541,6 +583,15 @@ export function mapQuadsToDiagram(
     } else {
       isTBox = false;
     }
+
+    // Honor explicit override set during mapping (propagate subject view to object nodes for
+    // unknown/object predicates). This allows callers to force object nodes into the same view
+    // as their subjects without synthesizing rdf:type triples.
+    try {
+      if (typeof info.forceIsTBox === "boolean") {
+        isTBox = !!info.forceIsTBox;
+      }
+    } catch (_) { /* ignore */ }
 
       // compute node color using classType (preferred) or the node iri as fallback
       const nodeColor = getNodeColor(classType);
