@@ -27,4 +27,63 @@ try {
   /* ignore startup blacklist application failures */
 }
 
+ // Initialize global debug gate and lightweight console.* wrapper driven by app config.
+ // Messages that start with a "[VG_" prefix are considered diagnostic and will only be
+ // emitted when the master config.debugAll flag is enabled. Non-VG console output is left intact.
+ try {
+   // Seed window flag from persisted config
+   const cfg = (useAppConfigStore as any).getState().config;
+   try { (window as any).__VG_DEBUG__ = Boolean(cfg && cfg.debugAll); } catch (_) { void 0; }
+
+   // Also seed common debug-related flags so older helpers read a consistent value.
+   try { (window as any).__VG_LOG_RDF_WRITES = Boolean(cfg && cfg.debugAll); } catch (_) { void 0; }
+   try { (window as any).__VG_DEBUG_STACKS__ = Boolean(cfg && cfg.debugAll); } catch (_) { void 0; }
+
+   // Helper used by wrappers to determine whether VG_* messages should be emitted.
+   const isVgMessage = (args: any[]) => {
+     try {
+       if (!args || args.length === 0) return false;
+       const first = args[0];
+       return typeof first === "string" && /^\[VG_[A-Z0-9_]+\]/.test(first);
+     } catch (_) {
+       return false;
+     }
+   };
+
+   // Wrap a console method so VG_* messages are gated by config.debugAll while other messages pass through.
+   const wrapConsoleMethod = (methodName: keyof Console) => {
+     try {
+       const orig = (console as any)[methodName] ? (console as any)[methodName].bind(console) : (..._a: any[]) => {};
+       (console as any)[methodName] = (...args: any[]) => {
+         try {
+           // If it's a VG_* message, gate on the master debug flag; otherwise always log.
+           if (isVgMessage(args)) {
+             const enabled = !!((useAppConfigStore as any).getState().config?.debugAll);
+             if (enabled) orig(...args);
+           } else {
+             orig(...args);
+           }
+         } catch (_) {
+           // swallow
+         }
+       };
+     } catch (_) {
+       // swallow wrapping errors
+     }
+   };
+
+   // Wrap commonly used console methods
+   ["debug", "log", "info", "warn", "error"].forEach((m) => wrapConsoleMethod(m as any));
+
+   // Keep window.__VG_DEBUG__ and related flags in sync when the user toggles the flag at runtime.
+   try {
+     const unsub = (useAppConfigStore as any).subscribe((s: any) => s.config?.debugAll, (v: any) => {
+       try { (window as any).__VG_DEBUG__ = Boolean(v); } catch (_) { void 0; }
+       try { (window as any).__VG_LOG_RDF_WRITES = Boolean(v); } catch (_) { void 0; }
+       try { (window as any).__VG_DEBUG_STACKS__ = Boolean(v); } catch (_) { void 0; }
+     });
+     try { (window as any).__VG_DEBUG_SUBSCRIBE_UNSUB = unsub; } catch (_) { void 0; }
+   } catch (_) { /* ignore subscribe failures */ }
+ } catch (_) { /* ignore debug init failures */ }
+
 createRoot(document.getElementById("root")!).render(<App />);

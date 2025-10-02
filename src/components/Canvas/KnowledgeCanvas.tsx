@@ -1189,6 +1189,61 @@ const KnowledgeCanvas: React.FC = () => {
     }
   }, [setNodes]);
 
+  // Drag performance metrics: simple measurement of drag event frequency and derived FPS.
+  // Enabled only when the global debugAll flag is active in app config to avoid overhead in production.
+  const dragMetricsRef = useRef<{ start?: number; last?: number; count: number; intervals: number[] }>({ count: 0, intervals: [] });
+
+  const isDebugMetricsEnabled = () => {
+    try {
+      return !!(config && (config as any).debugAll);
+    } catch (_) {
+      return false;
+    }
+  };
+
+  const onNodeDragStart = useCallback((event: any, node: any) => {
+    try {
+      if (!isDebugMetricsEnabled()) return;
+      const now = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+      dragMetricsRef.current.start = now;
+      dragMetricsRef.current.last = now;
+      dragMetricsRef.current.count = 0;
+      dragMetricsRef.current.intervals = [];
+      try { (window as any).__VG_DRAG_METRICS_ACTIVE = true; } catch (_) { void 0; }
+    } catch (_) { void 0; }
+  }, [config]);
+
+  const onNodeDrag = useCallback((event: any, node: any) => {
+    try {
+      if (!isDebugMetricsEnabled()) return;
+      const now = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+      const last = dragMetricsRef.current.last || now;
+      const delta = now - last;
+      dragMetricsRef.current.intervals.push(delta);
+      dragMetricsRef.current.last = now;
+      dragMetricsRef.current.count = (dragMetricsRef.current.count || 0) + 1;
+    } catch (_) { void 0; }
+  }, [config]);
+
+  const onNodeDragStop = useCallback((event: any, node: any) => {
+    try {
+      if (!isDebugMetricsEnabled()) return;
+      const intervals = dragMetricsRef.current.intervals || [];
+      try { (window as any).__VG_DRAG_METRICS_ACTIVE = false; } catch (_) { void 0; }
+      if (intervals.length === 0) {
+        try { console.debug("[VG_DEBUG] drag metrics: no intervals"); } catch (_) { void 0; }
+      } else {
+        const sum = intervals.reduce((a, b) => a + b, 0);
+        const avg = sum / intervals.length;
+        const fps = avg > 0 ? 1000 / avg : 0;
+        const count = dragMetricsRef.current.count || intervals.length;
+        const metrics = { count, avgMs: Number(avg.toFixed(2)), fps: Math.round(fps) };
+        try { console.debug("[VG_DEBUG] drag metrics", metrics); } catch (_) { void 0; }
+        try { (window as any).__VG_LAST_DRAG_METRICS = metrics; } catch (_) { void 0; }
+      }
+    } catch (_) { void 0; }
+  }, [config]);
+
   const onEdgeDoubleClickStrict = useCallback((event: any, edge: any) => {
     try { event?.stopPropagation && event.stopPropagation(); } catch (_) { void 0; }
     try { suppressSelectionRef.current = true; setTimeout(() => { suppressSelectionRef.current = false; }, 0); } catch (_) { void 0; }
@@ -1450,6 +1505,10 @@ const KnowledgeCanvas: React.FC = () => {
     [selectedLinkPayload, setEdges],
   );
 
+  const memoNodeTypes = useMemo(() => ({ ontology: OntologyNode }), [OntologyNode]);
+  const memoEdgeTypes = useMemo(() => ({ floating: FloatingEdge }), [FloatingEdge]);
+  const memoConnectionLine = useMemo(() => FloatingConnectionLine, [FloatingConnectionLine]);
+
   const safeNodes = useMemo(() => {
     return (nodes || []).map((n) => {
       if (!n || !n.position || typeof (n.position as any).x !== "number" || typeof (n.position as any).y !== "number") {
@@ -1545,9 +1604,9 @@ const KnowledgeCanvas: React.FC = () => {
             onEdgeDoubleClick={onEdgeDoubleClickStrict}
             onConnect={onConnectStrict}
             onSelectionChange={onSelectionChange}
-            nodeTypes={{ ontology: OntologyNode }}
-            edgeTypes={{ floating: FloatingEdge }}
-            connectionLineComponent={FloatingConnectionLine}
+            nodeTypes={memoNodeTypes}
+            edgeTypes={memoEdgeTypes}
+            connectionLineComponent={memoConnectionLine}
             connectOnClick={false}
             minZoom={0.1}
             className="knowledge-graph-canvas bg-canvas-bg"

@@ -13,27 +13,30 @@ import { shortLocalName, toPrefixed } from "../../utils/termUtils";
 import { NodeData } from "../../types/canvas";
 
 
-export function CustomOntologyNode(props: NodeProps) {
+function CustomOntologyNodeImpl(props: NodeProps) {
   const { data, selected, id } = props;
   const connection = useConnection();
 
+  const connectionInProgress = Boolean((connection as any)?.inProgress);
+  const connectionFromNodeId = String(
+    (connection as any)?.fromNode && ((connection as any).fromNode.id || ((connection as any).fromNode as any).measured && ((connection as any).fromNode as any).measured.id)
+      ? String(((connection as any).fromNode.id || ""))
+      : ""
+  );
   React.useEffect(() => {
     try {
-      const inProgress = Boolean((connection as any)?.inProgress);
-      const fromNode = (connection as any)?.fromNode;
-      const fromNodeId = fromNode && (fromNode.id || (fromNode.measured && fromNode.measured.id)) ? String(fromNode.id || "") : null;
-      console.log("[VG_DEBUG] CustomOntologyNode connection", {
+      console.debug("[VG_DEBUG] CustomOntologyNode connection", {
         nodeId: String(id),
         selected: !!selected,
-        inProgress,
-        fromNodeId,
+        inProgress: connectionInProgress,
+        fromNodeId: connectionFromNodeId,
       });
     } catch (_) { void 0; }
-  }, [id, selected, (connection as any)?.inProgress, (connection as any)?.fromNode && (connection as any).fromNode && (connection as any).fromNode.id]);
+  }, [id, selected, connectionInProgress, connectionFromNodeId]);
 
-  const isTarget = Boolean(connection && (connection as any).inProgress && (connection as any).fromNode && (connection as any).fromNode.id && String((connection as any).fromNode.id) !== String(id));
+  const isTarget = Boolean(connectionInProgress && connectionFromNodeId && connectionFromNodeId !== String(id));
   const nodeData = (data ?? {}) as NodeData;
-  const showHandles = !!((connection as any)?.inProgress || !selected);
+  const showHandles = !!(connectionInProgress || !selected);
 
   // // const rdfManager = useOntologyStore((s) => s.rdfManager);
   // // // const ontologiesVersion = useOntologyStore((s) => s.ontologiesVersion);
@@ -95,14 +98,15 @@ export function CustomOntologyNode(props: NodeProps) {
   
   const nodeColor = nodeData.color;
 
-  const themeBg =
-    typeof document !== "undefined"
-      ? (
-          getComputedStyle(document.documentElement).getPropertyValue(
-            "--node-bg",
-          ) || ""
-        ).trim() || "#ffffff"
-      : "#ffffff";
+  const themeBg = useMemo(() => {
+    if (typeof document === "undefined") return "#ffffff";
+    try {
+      const v = (getComputedStyle(document.documentElement).getPropertyValue("--node-bg") || "").trim();
+      return v || "#ffffff";
+    } catch (_) {
+      return "#ffffff";
+    }
+  }, []);
   const hasErrors =
     Array.isArray(nodeData.errors) && nodeData.errors.length > 0;
 
@@ -358,5 +362,5 @@ function darken(hex: string, amount: number) {
   }
 }
 
-// export const CustomOntologyNode = memo(CustomOntologyNode);
-// CustomOntologyNode.displayName = "CustomOntologyNode";
+export const CustomOntologyNode = memo(CustomOntologyNodeImpl);
+CustomOntologyNode.displayName = "CustomOntologyNode";

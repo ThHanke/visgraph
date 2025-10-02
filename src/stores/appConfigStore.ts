@@ -27,6 +27,8 @@ export interface AppConfig {
   // When true RDFManager will emit a console.log reporting how many triples were added
   // during each successful load. Default is true to preserve current behavior; can be disabled.
   debugRdfLogging: boolean;
+  // Master debug switch: when true, enables all debug helpers (drag metrics, verbose logging, test hooks).
+  debugAll: boolean;
   
   // Recently used
   recentOntologies: string[];
@@ -68,6 +70,8 @@ interface AppConfigStore {
 
   // Debugging action to toggle RDFManager logging
   setDebugRdfLogging: (enabled: boolean) => void;
+  // Toggle master debug switch that enables all debug helpers
+  setDebugAll: (enabled: boolean) => void;
 
   // Blacklist actions (UI / config controls)
   setBlacklistEnabled: (enabled: boolean) => void;
@@ -102,6 +106,8 @@ const defaultConfig: AppConfig = {
   autoReasoning: false,
   // Enable RDFManager triple-count logging by default to preserve existing behavior.
   debugRdfLogging: true,
+  // Master debug switch disabled by default
+  debugAll: false,
   maxVisibleNodes: 1000,
   recentOntologies: [],
   recentLayouts: ['horizontal'],
@@ -222,6 +228,16 @@ export const useAppConfigStore = create<AppConfigStore>()(
           config: {
             ...state.config,
             debugRdfLogging: enabled
+          }
+        }));
+      },
+
+      // Master debug toggle: enables or disables aggregated debug helpers used across the app.
+      setDebugAll: (enabled: boolean) => {
+        set((state) => ({
+          config: {
+            ...state.config,
+            debugAll: Boolean(enabled)
           }
         }));
       },
