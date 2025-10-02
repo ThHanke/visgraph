@@ -506,15 +506,15 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                         toast.success('RDF content applied as ontology (prefixes registered)');
                       } catch (err) {
                         try {
-  try {
-    if (typeof fallback === "function") {
-      try {
-        fallback('console.error', { args: [(err && err.message) ? err.message : String(err)] }, { level: 'error', captureStack: true });
-      } catch (_) { void 0; }
-    }
-  } catch (_) { void 0; }
-  console.error('Failed to load RDF content as ontology:', err);
-} catch (_) { void 0; }
+                          try {
+                            if (typeof fallback === "function") {
+                              try {
+                                fallback('console.error', { args: [(err && err.message) ? err.message : String(err)] }, { level: 'error', captureStack: true });
+                              } catch (_) { void 0; }
+                            }
+                          } catch (_) { void 0; }
+                          console.error('Failed to load RDF content as ontology:', err);
+                        } catch (_) { void 0; }
                         toast.error('Failed to load RDF content');
                       }
                     }}
@@ -623,15 +623,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
         <PopoverContent align="start" sideOffset={6} className="w-80 rounded-lg border bg-popover p-4 shadow-lg">
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-medium">Layouts</div>
-            <button
-              type="button"
-              className="text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => {
-                // no-op: PopoverContent will close when trigger toggles or on outside click
-              }}
-            >
-              Close
-            </button>
+            
           </div>
 
           <div className="space-y-2">

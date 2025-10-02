@@ -195,14 +195,6 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
           <GripVertical className="h-4 w-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold">Namespace Legend</h3>
         </div>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="text-muted-foreground hover:text-foreground p-1 rounded-sm hover:bg-muted transition-colors"
-          >
-            <X className="h-3 w-3" />
-          </button>
-        )}
       </div>
 
       {/* Add-namespace UI (tailwind-styled controls) */}

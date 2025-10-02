@@ -151,75 +151,6 @@ const KnowledgeCanvas: React.FC = () => {
     }
   }, [getRdfManager]);
 
-  // Worker for offloading heavy mapping (mapQuadsToDiagram). Created lazily.
-  const mappingWorkerRef = useRef<Worker | null>(null);
-  useEffect(() => {
-    try {
-      // Create the worker using Vite-friendly URL import
-      // Worker code lives at src/workers/mapQuads.worker.ts
-      // The bundler will handle this import at build time.
-      // Only create the worker in browser environments.
-      if (typeof window !== "undefined" && typeof Worker !== "undefined") {
-        try {
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-          // @ts-ignore
-          mappingWorkerRef.current = new Worker(new URL('../../workers/mapQuads.worker.ts', import.meta.url));
-        } catch (e) {
-          try { console.debug("[VG_DEBUG] mapping worker init failed", e); } catch (_) { void 0; }
-          mappingWorkerRef.current = null;
-        }
-      }
-    } catch (_) {
-      mappingWorkerRef.current = null;
-    }
-    return () => {
-      try {
-        if (mappingWorkerRef.current) {
-          mappingWorkerRef.current.terminate();
-          mappingWorkerRef.current = null;
-        }
-      } catch (_) { /* ignore */ }
-    };
-  }, []);
-
-  const mapQuadsWithWorker = (quads: any[], opts: any) =>
-    new Promise<any>((resolve, reject) => {
-      try {
-        const w = mappingWorkerRef.current;
-        if (!w) {
-          try {
-            const res = mapQuadsToDiagram(quads, opts);
-            resolve(res);
-            return;
-          } catch (err) {
-            reject(err);
-            return;
-          }
-        }
-        const id = Date.now() + Math.floor(Math.random() * 100000);
-        const onMessage = (ev: MessageEvent) => {
-          try {
-            const d = ev.data;
-            if (!d || d.id !== id) return;
-            try { w.removeEventListener('message', onMessage); } catch (_) { void 0; }
-            if (d.error) reject(d.error);
-            else resolve(d.result);
-          } catch (err) {
-            try { w.removeEventListener('message', onMessage); } catch (_) { void 0; }
-            reject(err);
-          }
-        };
-        w.addEventListener('message', onMessage);
-        try {
-          w.postMessage({ type: 'map', id, quads, opts });
-        } catch (errPost) {
-          try { w.removeEventListener('message', onMessage); } catch (_) { void 0; }
-          reject(errPost);
-        }
-      } catch (err) {
-        reject(err);
-      }
-    });
   const startReasoning = useReasoningStore((s) => s.startReasoning);
   const settings = useSettingsStore((s) => s.settings);
   const config = useAppConfigStore((s) => s.config);
@@ -338,7 +269,81 @@ const KnowledgeCanvas: React.FC = () => {
     return Array.isArray(availableProperties) ? (availableProperties as any[]).slice() : [];
   }, [availableProperties, ontologiesVersion]);
 
+  // Predicate-kind lookup snapshot (derived from availablePropertiesSnapshot).
+  // The pure mapper can use this lookup synchronously and deterministically.
+  const predicateKindLookup = useMemo(() => {
+    const m = new Map<string, "annotation" | "object" | "datatype" | "unknown">();
+    try {
+      const arr = Array.isArray(availablePropertiesSnapshot) ? availablePropertiesSnapshot : [];
+      for (const p of arr) {
+        try {
+          const iri = p && (p.iri || p.key) ? String(p.iri || p.key) : "";
+          if (!iri) continue;
+          const kindRaw = (p && (p.propertyKind || p.kind || p.type)) || undefined;
+          if (kindRaw === "object" || (Array.isArray(p.range) && p.range.length > 0)) {
+            m.set(iri, "object");
+            continue;
+          }
+          if (kindRaw === "datatype" || (Array.isArray(p.range) && p.range.length === 0 && Array.isArray(p.domain) && p.domain.length === 0)) {
+            m.set(iri, "datatype");
+            continue;
+          }
+          if (kindRaw === "annotation") {
+            m.set(iri, "annotation");
+            continue;
+          }
+          // fallback unknown
+          if (!m.has(iri)) m.set(iri, "unknown");
+        } catch (_) { /* ignore per-entry */ }
+      }
+    } catch (_) { /* ignore */ }
+    return m;
+  }, [availablePropertiesSnapshot, ontologiesVersion]);
+
+  const predicateKindFn = useCallback((predIri: string) => {
+    try {
+      const k = predicateKindLookup.get(String(predIri));
+      return (k as any) || "unknown";
+    } catch (_) {
+      return "unknown";
+    }
+  }, [predicateKindLookup]);
+
+  // Snapshot of available classes derived from the ontology store so we pass
+  // stable references to the mapper/worker and avoid triggering unnecessary work.
+  const availableClassesSnapshot = useMemo(() => {
+    try {
+      return Array.isArray(availableClasses) ? (availableClasses as any[]).slice() : [];
+    } catch (_) {
+      return [];
+    }
+  }, [availableClasses, ontologiesVersion]);
+
+  // Namespace registry snapshot used by the mapper. Use ontologiesVersion as a
+  // cheap and reliable signal that the registry may have changed.
+  const registrySnapshot = useMemo(() => {
+    try {
+      const st = (useOntologyStore as any).getState && (useOntologyStore as any).getState();
+      const reg = st && Array.isArray(st.namespaceRegistry) ? st.namespaceRegistry.slice() : [];
+      return reg;
+    } catch (_) {
+      return [];
+    }
+  }, [ontologiesVersion]);
+
   const initialMapRef = useRef(true);
+
+  // In-process mapper wrapper kept for compatibility with earlier worker-based
+  // experiments. For now we run the pure mapper synchronously on the main thread.
+  // Keeping this wrapper lets us later reintroduce a worker without changing
+  // translateQuadsToDiagram call sites.
+  const mapQuadsWithWorker = async (quads: any[], opts: any) => {
+    try {
+      return mapQuadsToDiagram(quads, opts);
+    } catch (err) {
+      throw err;
+    }
+  };
   const loadTriggerRef = useRef(false);
   const loadFitRef = useRef(false);
 
@@ -626,12 +631,12 @@ const KnowledgeCanvas: React.FC = () => {
     // If a mapping run returns an empty result while we still have a previous snapshot,
     // it's likely a transient race. We schedule a single quick retry and skip applying
     // the empty result to avoid clearing the canvas unexpectedly.
-    let subjectsCallback: ((subs?: string[] | undefined, quads?: any[] | undefined) => void) | null = null;
+    let subjectsCallback: ((subs?: string[] | undefined, quads?: any[] | undefined) => Promise<void>) | null = null;
 
     const pendingQuads: any[] = [];
     const pendingSubjects: Set<string> = new Set<string>();
 
-    const translateQuadsToDiagram = (quads: any[]) => {
+    const translateQuadsToDiagram = async (quads: any[]) => {
       let registry: any = undefined;
       if (typeof useOntologyStore === "function" && typeof (useOntologyStore as any).getState === "function") {
         registry = (useOntologyStore as any).getState().namespaceRegistry;
@@ -642,13 +647,28 @@ const KnowledgeCanvas: React.FC = () => {
           sample: (Array.isArray(quads) ? quads.slice(0, 10) : quads),
         });
       } catch (_) { void 0; }
-      return mapQuadsToDiagram(quads, ({
+
+      const opts = {
         predicateKind: predicateClassifier,
         availableProperties: availablePropertiesSnapshot,
         availableClasses: availableClasses,
         registry,
         palette: palette as any,
-      } as any));
+      } as any;
+
+      // Prefer worker offload; fallback to in-process mapper on failure.
+      try {
+        const res = await mapQuadsWithWorker(quads, opts);
+        return res;
+      } catch (err) {
+        try { console.debug("[VG_DEBUG] mapQuads worker failed, falling back to main thread", { err }); } catch (_) { void 0; }
+        try {
+          return mapQuadsToDiagram(quads, opts);
+        } catch (err2) {
+          try { console.debug("[VG_DEBUG] translateQuadsToDiagram fallback failed", { err2 }); } catch (_) { void 0; }
+          return { nodes: [], edges: [] };
+        }
+      }
     };
 
     const runMapping = async () => {
@@ -675,7 +695,7 @@ const KnowledgeCanvas: React.FC = () => {
 
       // Minimal, deterministic mapping: translate quads and apply mapper output
       // directly using React Flow's applyNodeChanges/applyEdgeChanges helper.
-      const diagram = translateQuadsToDiagram(dataQuads);
+      const diagram = await translateQuadsToDiagram(dataQuads);
       const mappedNodes: RFNode<NodeData>[] = (diagram && diagram.nodes);
       const mappedEdges: RFEdge<LinkData>[] = (diagram && diagram.edges);
 
@@ -819,7 +839,7 @@ const KnowledgeCanvas: React.FC = () => {
       }, 100);
     };
 
-    subjectsCallback = (subs?: string[] | undefined, quads?: any[] | undefined) => {
+    subjectsCallback = async (subs?: string[] | undefined, quads?: any[] | undefined) => {
       try {
         console.debug("[VG_DEBUG] rdfManager.onSubjectsChange", {
           subjects: Array.isArray(subs) ? subs.slice() : subs,
@@ -843,10 +863,10 @@ const KnowledgeCanvas: React.FC = () => {
       // If we have quads for this emission attempt, apply the mapper output directly by
       // projecting mapper items into change objects and using applyNodeChanges/applyEdgeChanges.
       if (Array.isArray(quads) && quads.length > 0) {
-        try {
-          const diagram = translateQuadsToDiagram(quads || []);
-          const mappedNodes: RFNode<NodeData>[] = (diagram && diagram.nodes) || [];
-          const mappedEdges: RFEdge<LinkData>[] = (diagram && diagram.edges) || [];
+          try {
+            const diagram = await translateQuadsToDiagram(quads || []);
+            const mappedNodes: RFNode<NodeData>[] = (diagram && diagram.nodes) || [];
+            const mappedEdges: RFEdge<LinkData>[] = (diagram && diagram.edges) || [];
 
           const mappedById = new Map((mappedNodes || []).map((m: any) => [String(m.id), m]));
           const mappedEdgeById = new Map((mappedEdges || []).map((e: any) => [String(e.id), e]));
@@ -1023,7 +1043,10 @@ const KnowledgeCanvas: React.FC = () => {
 
     // Subscribe to subject-level incremental notifications when available.
     if (typeof mgr.onSubjectsChange === "function" && subjectsCallback) {
-      mgr.onSubjectsChange(subjectsCallback as any);
+      try { console.debug("[VG_DEBUG] registering mgr.onSubjectsChange"); } catch (_) { void 0; }
+      try { mgr.onSubjectsChange(subjectsCallback as any); } catch (err) { try { console.debug("[VG_DEBUG] mgr.onSubjectsChange registration failed", err); } catch (_) { void 0; } }
+    } else {
+      try { console.debug("[VG_DEBUG] mgr.onSubjectsChange not available, subjectsCallback not registered"); } catch (_) { void 0; }
     }
 
     // Run an initial snapshot-to-mapping immediately so the canvas populates on mount
@@ -1036,6 +1059,55 @@ const KnowledgeCanvas: React.FC = () => {
           // Seed pendingQuads from the authoritative store snapshot and run mapping now.
           for (const q of all) pendingQuads.push(q);
 
+          try { console.debug("[VG_DEBUG] seeded pendingQuads from store snapshot", { count: pendingQuads.length }); } catch (_) { void 0; }
+
+          // Eager initial seeding: compute mapper output synchronously so the canvas
+          // has a deterministically seeded node/edge snapshot immediately. This
+          // avoids races in test environments where async mapping scheduling may
+          // run after assertions that expect nodes to be present.
+          try {
+            const eagerOpts = {
+              predicateKind: predicateClassifier,
+              availableProperties: availablePropertiesSnapshot,
+              availableClasses: availableClassesSnapshot,
+              registry: registrySnapshot,
+              palette: palette as any,
+            } as any;
+            try {
+              const diagram = mapQuadsToDiagram(all, eagerOpts);
+              const mappedNodes: RFNode<NodeData>[] = (diagram && diagram.nodes) || [];
+              const mappedEdges: RFEdge<LinkData>[] = (diagram && diagram.edges) || [];
+
+              // Merge into React Flow state without removing existing runtime metadata.
+              try {
+                setNodes((prev = []) => {
+                  const current = prev || [];
+                  const byId = new Map(current.map((n) => [String(n.id), n]));
+                  const out = current.slice();
+                  for (const m of mappedNodes || []) {
+                    if (!byId.has(String(m.id))) out.push(m as any);
+                  }
+                  return out;
+                });
+              } catch (_) { /* ignore */ }
+
+              try {
+                setEdges((prev = []) => {
+                  const current = prev || [];
+                  const byId = new Set(current.map((e) => String(e.id)));
+                  const out = current.slice();
+                  for (const me of mappedEdges || []) {
+                    if (!byId.has(String(me.id))) out.push(me as any);
+                  }
+                  return out;
+                });
+              } catch (_) { /* ignore */ }
+            } catch (errMapSync) {
+              try { console.debug("[VG_DEBUG] eager mapQuadsToDiagram failed", errMapSync); } catch (_) { void 0; }
+            }
+          } catch (_) { void 0; }
+
+          try { scheduleRunMapping(); } catch (err) { try { console.debug("[VG_DEBUG] scheduleRunMapping failed", err); } catch (_) { void 0; } }
         }
       }
     } catch (_) { /* ignore snapshot failures */ }
@@ -1636,6 +1708,17 @@ const KnowledgeCanvas: React.FC = () => {
     });
   }, [nodes]);
 
+  // Memoize edges to provide a stable reference into ReactFlow and avoid
+  // unnecessary reprocessing when edge list content hasn't materially changed.
+  // We compute a small fingerprint based on edge ids to detect content changes.
+  const memoEdges = useMemo(() => {
+    try {
+      return (edges || []).slice();
+    } catch (_) {
+      return edges;
+    }
+  }, [(edges || []).length, (edges || []).map((e: any) => String(e.id)).join(",")]);
+
   // Use React Flow native change handlers so RF manages runtime metadata correctly.
   const onNodesChange = useCallback(
     (changes: any) => setNodes((nodesSnapshot) => applyNodeChanges(changes, nodesSnapshot)),
@@ -1713,8 +1796,8 @@ const KnowledgeCanvas: React.FC = () => {
 
       <div className="w-full h-full">
           <ReactFlow
-            nodes={nodes}
-            edges={edges}
+            nodes={safeNodes}
+            edges={memoEdges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onInit={onInit}
