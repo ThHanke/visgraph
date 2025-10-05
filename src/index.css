@@ -155,7 +155,7 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @reference bg-background text-foreground;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
 }
