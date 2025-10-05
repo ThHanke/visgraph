@@ -184,7 +184,7 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
   return (
     <div
       ref={containerRef}
-      className="absolute bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border rounded-lg shadow-lg resize-none select-none"
+      className="resizable-namespace-legend absolute bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border rounded-lg shadow-lg resize-none select-none"
       style={{ left: position.x, top: position.y, width: size.width, height: size.height, zIndex: 50 }}
     >
       <div
@@ -192,8 +192,8 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
         onPointerDown={(e) => handlePointerDown(e, "drag")}
       >
         <div className="flex items-center gap-2">
-          <GripVertical className="h-4 w-4 text-muted-foreground" />
-          <h3 className="text-sm font-semibold">Namespace Legend</h3>
+          <GripVertical className="h-4 w-4 text-foreground" />
+          <h3 className="text-foreground text-sm font-semibold">Namespace Legend</h3>
         </div>
       </div>
 
@@ -202,7 +202,7 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="text-sm px-2 py-1 rounded border bg-transparent hover:bg-muted"
+            className="text-foreground text-sm px-2 py-1 rounded border bg-transparent hover:bg-muted"
             onClick={() => setShowAdd(true)}
           >
             Add namespace
@@ -297,7 +297,7 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
 
       <div
         ref={contentRef}
-        className={`p-3 overflow-y-auto ${needsScroll ? "scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent" : ""}`}
+        className={needsScroll ? "p-3 overflow-y-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent" : "p-3 overflow-y-auto"}
         style={{ height: size.height - 60, overflowY: needsScroll ? "auto" : "hidden" }}
       >
         <NamespaceLegendCore entries={entries} palette={palette} />

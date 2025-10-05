@@ -1,154 +1,91 @@
+@config "../tailwind.config.ts";
 @import 'tailwindcss';
 
-/* VisGraph Design System - Beautiful pastel colors with excellent contrast */
+/* Theme tokens (keep variables as single source of truth for light/dark) */
+:root {
+  /* Core Background */
+  --background: 210 20% 98%;
+  --foreground: 215 25% 27%;
+  /* Stable dark foreground token for bright-button text (keeps same value across themes) */
+  --text-foreground-dark: 215 25% 27%;
 
-@layer base {
-  :root {
-    /* Core Background */
-    --background: 210 20% 98%;
-    --foreground: 215 25% 27%;
+  /* Surface Colors */
+  --card: 0 0% 100%;
+  --card-foreground: 215 25% 27%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 215 25% 27%;
 
-    /* Surface Colors */
-    --card: 0 0% 100%;
-    --card-foreground: 215 25% 27%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 215 25% 27%;
+  /* Brand Colors */
+  --primary: 250 55% 70%;
+  --primary-foreground: 0 0% 100%;
+  --primary-hover: 250 55% 65%;
 
-    /* Brand Colors - Soft Lavender */
-    --primary: 250 55% 70%;
-    --primary-foreground: 0 0% 100%;
-    --primary-hover: 250 55% 65%;
+  --secondary: 160 40% 85%;
+  --secondary-foreground: 160 30% 25%;
+  --secondary-hover: 160 40% 80%;
 
-    /* Secondary - Soft Mint */
-    --secondary: 160 40% 85%;
-    --secondary-foreground: 160 30% 25%;
-    --secondary-hover: 160 40% 80%;
+  --accent: 25 85% 85%;
+  --accent-foreground: 25 40% 25%;
+  --accent-hover: 25 85% 80%;
 
-    /* Accent - Warm Peach */
-    --accent: 25 85% 85%;
-    --accent-foreground: 25 40% 25%;
-    --accent-hover: 25 85% 80%;
+  --muted: 210 20% 95%;
+  --muted-foreground: 215 15% 50%;
 
-    /* Muted */
-    --muted: 210 20% 95%;
-    --muted-foreground: 215 15% 50%;
+  --destructive: 350 70% 75%;
+  --destructive-foreground: 0 0% 100%;
 
-    /* Destructive - Soft Coral */
-    --destructive: 350 70% 75%;
-    --destructive-foreground: 0 0% 100%;
+  --border: 210 15% 88%;
+  --input: 210 15% 92%;
+  --ring: 250 55% 70%;
+  --radius: 0.75rem;
 
-    /* Borders and Inputs */
-    --border: 210 15% 88%;
-    --input: 210 15% 92%;
-    --ring: 250 55% 70%;
-    --radius: 0.75rem;
+  /* Canvas tokens */
+  /* Variant 3 (darker teal): stronger, darker teal background for lower perceived brightness */
+  --canvas-bg: 172 50% 92%;
+  --canvas-grid: 172 46% 88%;
 
-    /* Canvas Colors - Rich Namespace Colors */
-    --ns-foaf: 250 75% 60%;
-    --ns-org: 160 70% 45%;
-    --ns-rdfs: 25 85% 65%;
-    --ns-owl: 200 80% 55%;
-    --ns-rdf: 190 75% 50%;
-    --ns-skos: 40 80% 60%;
-    --ns-dc: 290 70% 60%;
-    --ns-dct: 240 65% 55%;
-    --ns-xsd: 180 60% 50%;
-    --ns-iof: 330 70% 60%;
-    --ns-default: 215 25% 60%;
-    
-    /* Reasoning specific */
-    --ns-reasoning: 55 90% 85%; /* light yellow reserved for reasoning */
-    
-    /* Additional namespace colors */
-    --ns-sage: 120 50% 50%;
-    --ns-cream: 45 70% 70%;
-    --ns-lilac: 280 65% 65%;
-    --ns-seafoam: 180 55% 50%;
-    --ns-blush: 15 80% 70%;
-    --ns-periwinkle: 220 70% 65%;
-    --ns-coral: 10 85% 65%;
-    --ns-eucalyptus: 140 45% 50%;
-    --ns-champagne: 50 65% 70%;
-    --ns-orchid: 290 70% 65%;
-    --ns-aqua: 190 65% 60%;
-    --ns-apricot: 30 90% 67%;
-    --ns-mauve: 270 55% 65%;
-    --ns-mint-cream: 170 50% 70%;
-    --ns-powder: 240 60% 70%;
-    --ns-honey: 40 80% 70%;
-    --ns-thistle: 260 60% 67%;
+  /* Node tokens */
+  --node-bg: 0 0% 100%;
+  --node-foreground: 215 25% 27%;
+  --node-border: 210 15% 88%;
+  --node-muted: 210 15% 92%;
+  --node-shadow: 0 4px 20px hsla(215, 25%, 27%, 0.1);
+  --node-leftbar-width: 8px;
 
-    /* Canvas Specific */
-    --canvas-bg: 210 25% 97%;
-    --canvas-grid: 210 15% 90%;
-    --node-shadow: 0 4px 20px hsla(215, 25%, 27%, 0.1);
-    --edge-default: 215 20% 60%;
-    --edge-selected: 250 55% 60%;
-    
-    /* Node theme tokens (Light mode defaults)
-       - These are the primary variables used by nodes across the app.
-       - Components / templates should use these variables for consistent theming.
-       - For per-namespace accents, use the existing --ns-<prefix> variables (already defined above).
-    */
-    --node-bg: 0 0% 100%;                 /* white card */
-    --node-foreground: 215 25% 27%;       /* dark text for node content */
-    --node-border: 210 15% 88%;           /* subtle border */
-    --node-muted: 210 15% 92%;            /* for muted backgrounds or badges */
-    --node-highlight: 250 55% 70%;        /* primary-based highlight (lavender) */
-    --node-selected: 250 55% 60%;         /* selected node accent */
-    --node-overlay-alpha: 0.08;           /* overlay alpha for hover/highlight */
-    --node-leftbar-width: 8px;            /* width of namespace color bar on node */
-    --node-outline: 215 25% 27%;          /* outline color for focus states (hsl) */
+  /* Edge tokens */
+  --edge-default: 215 20% 60%;
+  --edge-selected: 250 55% 60%;
 
-    /* Glassmorphism Effects */
-    --glass-bg: hsla(0, 0%, 100%, 0.8);
-    --glass-border: hsla(210, 15%, 88%, 0.6);
-    --glass-shadow: 0 8px 32px hsla(215, 25%, 27%, 0.08);
-
-    /* Animation Variables */
-    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    --transition-spring: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-
-  .dark {
-    --background: 215 30% 8%;
-    --foreground: 210 20% 95%;
-    --card: 215 25% 12%;
-    --card-foreground: 210 20% 95%;
-    --popover: 215 25% 12%;
-    --popover-foreground: 210 20% 95%;
-    --primary: 250 55% 65%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 160 25% 20%;
-    --secondary-foreground: 160 40% 85%;
-    --muted: 215 25% 15%;
-    --muted-foreground: 215 15% 65%;
-    --accent: 25 60% 25%;
-    --accent-foreground: 25 85% 85%;
-    --destructive: 350 70% 65%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 215 20% 20%;
-    --input: 215 20% 18%;
-    --ring: 250 55% 65%;
-    --canvas-bg: 215 30% 10%;
-    --canvas-grid: 215 20% 18%;
-
-    /* Node tokens for dark mode */
-    --node-bg: 215 25% 12%;
-    --node-foreground: 210 20% 95%;
-    --node-border: 215 20% 20%;
-    --node-muted: 215 25% 15%;
-    --node-highlight: 250 55% 65%;
-    --node-selected: 250 55% 55%;
-    --node-overlay-alpha: 0.12;
-    --node-leftbar-width: 8px;
-    --node-outline: 210 20% 95%;
-  }
+  /* Glassmorphism / animation variables */
+  --glass-shadow: 0 8px 32px hsla(215, 25%, 27%, 0.08);
+  --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.dark {
+  --background: 215 30% 8%;
+  --foreground: 210 20% 95%;
+  --card: 215 25% 12%;
+  --card-foreground: 210 20% 95%;
+  --popover: 215 25% 12%;
+  --popover-foreground: 210 20% 95%;
+  --primary: 250 55% 65%;
+  --primary-foreground: 0 0% 100%;
+  --muted: 215 25% 15%;
+  --muted-foreground: 215 15% 78%;
+  --border: 215 18% 28%;
+  --input: 215 20% 18%;
+  --canvas-bg: 172 16% 6%;
+  --canvas-grid: 172 14% 10%;
+  --node-bg: 215 25% 12%;
+  --node-foreground: 210 20% 95%;
+  --node-border: 215 20% 20%;
+  --node-muted: 215 25% 15%;
+  --node-shadow: 0 4px 20px hsla(210,20%,8%,0.12);
+}
+
+/* Minimal base layer: keep only what is required globally */
 @layer base {
   * {
-    /* Use CSS variable directly instead of relying on a missing Tailwind utility */
     border-color: hsl(var(--border));
   }
 
@@ -156,42 +93,42 @@
     @reference bg-background text-foreground;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
+
+  /* Utility: explicit dark foreground for use on bright buttons / surfaces where text-foreground
+     reads too light. This token intentionally does not change in .dark mode. */
+  .text-foreground-dark { color: hsl(var(--text-foreground-dark)); }
 }
+
+/* Low-level React Flow rules that are structural / interaction-critical and
+   not practical to move into component-level Tailwind classes. These are
+   intentionally minimal: keep SVG overflow visible and ensure controls positioning. */
+
+/* Allow custom edge paths to render outside the SVG box */
 .react-flow__edges svg {
   overflow: visible;
   position: absolute;
 }
 
-.react-flow .react-flow__edges {
-	overflow: visible;
-	position: absolute;
-}
-/* Node-level styling that consumes the new theme tokens.
-   These rules provide a default presentation for React Flow nodes.
-   Individual node renderers (TemplateManager / components) may still set inline styles
-   to override namespace-specific left bar colors using the --ns-<prefix> tokens.
-*/
-.react-flow__node {
-  display: inline-flex;
-  align-items: stretch;
-  gap: 0;
-  vertical-align: top;
-  font-family: inherit;
-  background: hsl(var(--node-bg));
-  color: hsl(var(--node-foreground));
-  border: 1px solid hsl(var(--node-border));
-  border-radius: calc(var(--radius) - 0.25rem);
-  box-shadow: var(--node-shadow);
-  /* Exclude transform from automatic transitions to avoid lag and blinking when React Flow
-     updates node transform during drag. Keep smooth transitions for visual properties only. */
-  transition: background 180ms ease, box-shadow 180ms ease, color 150ms linear, border-color 150ms linear;
-  position: relative;
-  overflow: hidden;
+
+/* Keep controls visible above canvas; UI layer should use Tailwind classes where possible */
+.react-flow__controls {
+  z-index: 60;
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  pointer-events: auto;
 }
 
-/* Left namespace color bar — components can set --node-leftbar-color inline (e.g., hsl(var(--ns-foaf)))
-   If not set, the bar is hidden by default to avoid visual clutter.
-*/
+/* Minimal handle defaults kept here to avoid breaking pointer behavior.
+   Visual styles (color, size) should be applied via Tailwind classes on node renderers
+   or via CSS variables on the node elements. */
+.react-flow__handle {
+  transition: var(--transition-smooth);
+}
+
+/* Keep node pseudo-element for left color bar as a fallback. When refactoring nodes
+
+we recommend replacing this with an explicit child element so Tailwind classes can be used. */
 .react-flow__node::before {
   content: "";
   position: absolute;
@@ -203,154 +140,56 @@
   transition: background 0.2s ease;
 }
 
-/* Muted/badge backgrounds inside nodes */
-.react-flow__node .muted {
-  background: hsl(var(--node-muted));
-  color: hsl(var(--node-foreground));
-  padding: 2px 6px;
-  border-radius: 6px;
-  font-size: 12px;
-}
-
-/* Hover / highlight state */
-.react-flow__node:hover {
-  box-shadow: 0 8px 24px hsla(var(--node-outline), var(--node-overlay-alpha));
-  transform: translateY(-2px);
-}
-
-/* When a node is being dragged React Flow updates transform inline.
-   Any CSS transition on transform will cause the node to animate towards
-   the dragged position rather than follow the pointer immediately.
-   Disable transitions/animations while dragging so movement is immediate. */
-.react-flow__node.react-flow__node-dragging,
-.react-flow__node.dragging,
-.react-flow__node--dragging {
-  transition: none !important;
-  animation: none !important;
-}
-
+/* Edge label renderer: keep transitions; let components control badge visuals (do not force solid styling here) */
 .edge-label-renderer__custom-edge {
   position: absolute;
   transition: opacity 120ms linear, transform 120ms linear;
   will-change: opacity, transform;
 }
+
+
+.react-flow__node > * {
+  background: hsl(var(--node-bg));
+  color: hsl(var(--node-foreground));
+  border-color: hsl(var(--node-border));
+  box-shadow: var(--node-shadow);
+}
+
+/* Keep react-flow markers positioned */
 .react-flow__marker {
   position: absolute;
 }
 
-/* Selected node */
-.react-flow__node.selected,
-.react-flow__node.react-flow__node-selected {
-  outline: 2px solid hsl(var(--node-selected));
-  outline-offset: 2px;
-  box-shadow: 0 10px 30px hsla(var(--node-selected), 0.12);
+/* Node badge helper: use the exact node-provided color (hex) via --node-color.
+   The node renderer sets --node-color to the provided hex value so badges and left-bars
+   reflect the node data exactly. Consumers that need derived tones should set additional
+   CSS variables from JavaScript if required. */
+.node-badge {
+  background: var(--node-color, transparent);
+  border: 1px solid var(--node-color, transparent);
+
+  /* badge text color is set per-node with --node-badge-foreground (computed in JS) */
+  color: var(--node-badge-foreground, hsl(var(--node-foreground)));
 }
 
-/* Node focus for keyboard navigation */
-.react-flow__node:focus {
-  box-shadow: 0 0 0 3px hsla(var(--node-outline), 0.14);
+/* Namespace dot: use exact namespace color provided via --ns-color (hex), fallback to transparent.
+   This ensures legend swatches match node colors exactly. */
+[data-ns-dot] {
+  background: var(--ns-color, transparent);
+  border: 1px solid color-mix(in srgb, var(--ns-color) 20%, hsl(var(--border)));
 }
 
-/* Node title / header styling */
-.react-flow__node .node-title {
-  font-weight: 600;
-  color: hsl(var(--node-foreground));
+/* Edge container fallback: allows using currentColor on SVG children for theme-aware strokes/fills */
+.edge-container {
+  color: hsl(var(--edge-default));
 }
 
-/* Edge styling (uses existing tokens) */
-.react-flow__edge {
-  stroke-width: 2px;
-  transition: stroke 120ms linear, opacity 120ms linear;
-  will-change: stroke, opacity;
-}
 
-.react-flow__edge-path {
-  stroke: hsl(var(--edge-default));
-  transition: stroke 120ms linear, opacity 120ms linear;
-  will-change: stroke, opacity;
+.react-flow__handle.connectionindicator {
+	opacity: 0;
 }
-
-/* Edge defaults (no debug overrides). Use React Flow's classnames so selectors
-   work regardless of a containing app-specific wrapper class. */
-.react-flow__edge-path {
-  stroke: hsl(var(--edge-default));
-  stroke-width: 2px;
-  opacity: 1;
-  transition: stroke 120ms linear, opacity 120ms linear;
-  will-change: stroke, opacity;
-}
-
-.react-flow__edge.selected .react-flow__edge-path {
-  stroke: hsl(var(--edge-selected));
-}
-
-/* Handles */
-.react-flow__handle {
-  background: hsl(var(--primary));
-  border: 2px solid hsl(var(--primary-foreground));
-  width: 12px;
-  height: 12px;
-  transition: var(--transition-smooth);
-}
-
-.react-flow__handle:hover {
-  background: hsl(var(--primary-hover));
-  transform: scale(1.2);
-}
-
-/* Glassmorphism for UI elements */
-.shadow-glass {
-  box-shadow: var(--glass-shadow);
-}
-
-/* Node animations */
-@keyframes nodeAppear {
-  from {
-    opacity: 0;
-    transform: scale(0.8);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-.react-flow__node {
-  /* Animation removed to avoid re-triggering on drag state changes which caused a blink.
-     If you want a one-time appear animation for newly-added nodes we can add a
-     .node-appear class and apply the animation only when nodes are first inserted. */
-}
-
-/* Custom scrollbar for popovers */
-.scroll-area {
-  scrollbar-width: thin;
-  scrollbar-color: hsl(var(--muted)) transparent;
-}
-
-.scroll-area::-webkit-scrollbar {
-  width: 6px;
-}
-
-.scroll-area::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.scroll-area::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted));
-  border-radius: 3px;
-}
-
-.scroll-area::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground));
-}
-
-/* Ensure React Flow Controls are visible on the canvas and not obscured by app styles */
-.react-flow__controls {
-  z-index: 60; /* above overlays */
-  position: absolute;
-  left: 8px;
-  bottom: 8px;
-  pointer-events: auto;
+.react-flow__handle-left {
+  opacity: 0;
 }
 
 
@@ -362,3 +201,18 @@
   --tw-bg-opacity: 1;
   background-color: hsl(var(--muted) / var(--tw-bg-opacity, 1)) !important;
   }
+
+.react-flow__minimap {
+  border: 1px solid hsl(var(--border));
+
+  background-color: hsl(var(--canvas-bg) / 1)  !important;;
+  /* background-color: hsl(var(--muted) / var(--tw-bg-opacity, 1)) !important; */
+}
+
+.react-flow__panel.bottom {
+	bottom: 50px !important;
+}
+
+.react-flow__attribution {
+	visibility: hidden;
+}

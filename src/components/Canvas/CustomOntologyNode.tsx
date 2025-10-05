@@ -86,15 +86,44 @@ function CustomOntologyNodeImpl(props: NodeProps) {
   ]);
 
   
+  // Simple helpers to choose readable badge foreground for a given hex color.
+  function hexToRgb(hex?: string) {
+    if (!hex) return null;
+    const c = hex.replace("#", "");
+    const full = c.length === 3 ? c.split("").map((s) => s + s).join("") : c;
+    const num = parseInt(full, 16);
+    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+  }
+
+  function relativeLuminance({ r, g, b }: { r: number; g: number; b: number }) {
+    const srgb = [r, g, b].map((v) => {
+      const s = v / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * srgb[0] + 0.7152 * srgb[1] + 0.0722 * srgb[2];
+  }
+
+  function pickBadgeForeground(hex?: string) {
+    const rgb = hexToRgb(hex || "");
+    if (!rgb) return "hsl(var(--node-foreground))";
+    const L = relativeLuminance(rgb);
+    // contrast with white = (1.05)/(L+0.05), contrast with black = (L+0.05)/0.05
+    const contrastWhite = (1.05) / (L + 0.05);
+    const contrastBlack = (L + 0.05) / 0.05;
+    // prefer white if it has higher contrast, otherwise dark gray
+    return contrastWhite >= contrastBlack ? "#ffffff" : "#111827";
+  }
+
   const nodeColor = nodeData.color;
+  const nodeBadgeForeground = pickBadgeForeground(nodeColor);
 
   const themeBg = useMemo(() => {
-    if (typeof document === "undefined") return "#ffffff";
+    if (typeof document === "undefined") return "hsl(var(--card))";
     try {
       const v = (getComputedStyle(document.documentElement).getPropertyValue("--node-bg") || "").trim();
-      return v || "#ffffff";
+      return v || "hsl(var(--card))";
     } catch (_) {
-      return "#ffffff";
+      return "hsl(var(--card))";
     }
   }, []);
   const hasErrors =
@@ -136,29 +165,6 @@ function CustomOntologyNodeImpl(props: NodeProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   // const lastMeasuredRef = useRef<{ w: number; h: number } | null>(null);
 
-  // Apply the colored left border to the parent element of this node container.
-  // Some renderers wrap the node element, so the visual left stripe must be applied
-  // one level higher than the node's root div. We update the parent element's
-  // inline style here and clean up on unmount/change.
-  useEffect(() => {
-    try {
-      const el = rootRef.current;
-      const parent = el && (el.parentElement as HTMLElement | null);
-      if (parent) {
-        if (nodeColor) parent.style.borderLeft = `4px solid ${nodeColor}`;
-        else parent.style.borderLeft = "";
-      }
-      return () => {
-        try {
-          if (parent) parent.style.borderLeft = "";
-        } catch (_) {
-          /* ignore cleanup errors */
-        }
-      };
-    } catch (_) {
-      /* ignore runtime errors */
-    }
-  }, [nodeColor]);
 
   // Size reporting removed — component is now pure/read-only and does not observe element size.
   // Any measurement responsibilities belong to parent/layout code if needed.
@@ -202,15 +208,23 @@ function CustomOntologyNodeImpl(props: NodeProps) {
   return (
     <div
       ref={rootRef}
+      style={{
+        ['--node-color' as any]: nodeColor || 'transparent',
+        ['--node-badge-foreground' as any]: nodeBadgeForeground || 'hsl(var(--node-foreground))',
+      }}
       className={cn(
-        "inline-flex overflow-hidden",
+        "inline-flex overflow-hidden rounded-md border border-border shadow-sm",
         selected ? "ring-2 ring-primary" : "",
       )}
     >
+      {/* Left namespace color bar — explicit element so Tailwind can style layout; color is dynamic */}
       <div
-        className="px-4 py-3 min-w-0 flex-1 w-auto"
-        style={{ background: themeBg }}
-      >
+        aria-hidden="true"
+        className="w-2 flex-none"
+        style={{ background: nodeColor || "transparent" }}
+      />
+
+      <div className="px-4 py-3 min-w-0 flex-1 w-auto bg-(hsl(var(--node-bg)))">
         <div className="flex items-center gap-3 mb-2">
           <div
             className="text-sm font-bold text-foreground truncate"
@@ -220,11 +234,12 @@ function CustomOntologyNodeImpl(props: NodeProps) {
           </div>
 
           <div
-            className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold text-black flex items-center gap-1"
+            className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold text-foreground flex items-center gap-1 node-badge"
             style={{
-              background: nodeColor,
-              border: nodeColor ? `1px solid ${darken(nodeColor, 0.12)}` : undefined,
+              ['--node-color' as any]: nodeColor || 'transparent',
+              ['--node-badge-foreground' as any]: nodeBadgeForeground || 'hsl(var(--node-foreground))',
             }}
+            aria-hidden="true"
           >
             <span className="truncate">
               {badgeText || nodeData.classType}
@@ -263,7 +278,7 @@ function CustomOntologyNodeImpl(props: NodeProps) {
           </div>
         </div>
 
-        <div className="pt-2 border-t border-gray-100">
+        <div className="pt-2 border-t border-border">
           {annotations.length === 0 ? (
             <div className="text-xs text-muted-foreground">No annotations</div>
           ) : (
@@ -325,32 +340,6 @@ function CustomOntologyNodeImpl(props: NodeProps) {
   );
 }
 
-/**
- * Small color utility to darken a hex color by a factor (0-1).
- */
-function darken(hex: string, amount: number) {
-  try {
-    const c = hex.replace("#", "");
-    const num = parseInt(
-      c.length === 3
-        ? c
-            .split("")
-            .map((s) => s + s)
-            .join("")
-        : c,
-      16,
-    );
-    let r = (num >> 16) & 0xff;
-    let g = (num >> 8) & 0xff;
-    let b = num & 0xff;
-    r = Math.max(0, Math.min(255, Math.round(r * (1 - amount))));
-    g = Math.max(0, Math.min(255, Math.round(g * (1 - amount))));
-    b = Math.max(0, Math.min(255, Math.round(b * (1 - amount))));
-    return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
-  } catch (_) {
-    return hex;
-  }
-}
 
 export const CustomOntologyNode = memo(CustomOntologyNodeImpl);
 CustomOntologyNode.displayName = "CustomOntologyNode";

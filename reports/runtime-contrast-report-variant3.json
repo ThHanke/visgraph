@@ -1,0 +1,288 @@
+{
+  "timestamp": "2025-10-05T17:55:09.100Z",
+  "variant": "variant3",
+  "light": {
+    "snapshot": {
+      "nodes": [
+        {
+          "nodeBg": "rgba(0, 0, 0, 0)",
+          "nodeColor": "rgb(0, 0, 0)",
+          "badgeBg": "rgb(251, 207, 232)",
+          "badgeColor": "rgb(17, 24, 39)",
+          "leftBarBg": "rgb(251, 207, 232)",
+          "title": ":Specimen"
+        },
+        {
+          "nodeBg": "rgba(0, 0, 0, 0)",
+          "nodeColor": "rgb(0, 0, 0)",
+          "badgeBg": "rgb(199, 178, 254)",
+          "badgeColor": "rgb(17, 24, 39)",
+          "leftBarBg": "rgb(199, 178, 254)",
+          "title": ":SpecimenLength"
+        },
+        {
+          "nodeBg": "rgba(0, 0, 0, 0)",
+          "nodeColor": "rgb(0, 0, 0)",
+          "badgeBg": "rgb(253, 230, 138)",
+          "badgeColor": "rgb(17, 24, 39)",
+          "leftBarBg": "rgb(253, 230, 138)",
+          "title": ":LengthMeasurementProcess"
+        },
+        {
+          "nodeBg": "rgba(0, 0, 0, 0)",
+          "nodeColor": "rgb(0, 0, 0)",
+          "badgeBg": "rgb(251, 207, 232)",
+          "badgeColor": "rgb(17, 24, 39)",
+          "leftBarBg": "rgb(251, 207, 232)",
+          "title": ":Caliper"
+        },
+        {
+          "nodeBg": "rgba(0, 0, 0, 0)",
+          "nodeColor": "rgb(0, 0, 0)",
+          "badgeBg": "rgb(253, 230, 138)",
+          "badgeColor": "rgb(17, 24, 39)",
+          "leftBarBg": "rgb(253, 230, 138)",
+          "title": ":LengthData"
+        },
+        {
+          "nodeBg": "rgba(0, 0, 0, 0)",
+          "nodeColor": "rgb(0, 0, 0)",
+          "badgeBg": "rgb(251, 207, 232)",
+          "badgeColor": "rgb(17, 24, 39)",
+          "leftBarBg": "rgb(251, 207, 232)",
+          "title": ":LengthMeasureCapability"
+        }
+      ],
+      "vars": {
+        "canvasBg": "172 16% 6%",
+        "canvasGrid": "172 14% 10%",
+        "nodeBgVar": "0 0% 100%",
+        "nodeFgVar": "215 25% 27%"
+      },
+      "docBg": "rgba(0, 0, 0, 0)",
+      "url": "http://localhost:8080/?rdfUrl=https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl"
+    },
+    "analysis": [
+      {
+        "index": 0,
+        "title": ":Specimen",
+        "badgeBg": "rgb(251, 207, 232)",
+        "badgeColor": "rgb(17, 24, 39)",
+        "badgeContrast": 12.83,
+        "badgePass": true,
+        "nodeBg": "rgba(0, 0, 0, 0)",
+        "nodeColor": "rgb(0, 0, 0)",
+        "nodeTextOnNode": 1,
+        "nodeTextPass": false,
+        "leftBarBg": "rgb(251, 207, 232)"
+      },
+      {
+        "index": 1,
+        "title": ":SpecimenLength",
+        "badgeBg": "rgb(199, 178, 254)",
+        "badgeColor": "rgb(17, 24, 39)",
+        "badgeContrast": 9.48,
+        "badgePass": true,
+        "nodeBg": "rgba(0, 0, 0, 0)",
+        "nodeColor": "rgb(0, 0, 0)",
+        "nodeTextOnNode": 1,
+        "nodeTextPass": false,
+        "leftBarBg": "rgb(199, 178, 254)"
+      },
+      {
+        "index": 2,
+        "title": ":LengthMeasurementProcess",
+        "badgeBg": "rgb(253, 230, 138)",
+        "badgeColor": "rgb(17, 24, 39)",
+        "badgeContrast": 14.24,
+        "badgePass": true,
+        "nodeBg": "rgba(0, 0, 0, 0)",
+        "nodeColor": "rgb(0, 0, 0)",
+        "nodeTextOnNode": 1,
+        "nodeTextPass": false,
+        "leftBarBg": "rgb(253, 230, 138)"
+      },
+      {
+        "index": 3,
+        "title": ":Caliper",
+        "badgeBg": "rgb(251, 207, 232)",
+        "badgeColor": "rgb(17, 24, 39)",
+        "badgeContrast": 12.83,
+        "badgePass": true,
+        "nodeBg": "rgba(0, 0, 0, 0)",
+        "nodeColor": "rgb(0, 0, 0)",
+        "nodeTextOnNode": 1,
+        "nodeTextPass": false,
+        "leftBarBg": "rgb(251, 207, 232)"
+      },
+      {
+        "index": 4,
+        "title": ":LengthData",
+        "badgeBg": "rgb(253, 230, 138)",
+        "badgeColor": "rgb(17, 24, 39)",
+        "badgeContrast": 14.24,
+        "badgePass": true,
+        "nodeBg": "rgba(0, 0, 0, 0)",
+        "nodeColor": "rgb(0, 0, 0)",
+        "nodeTextOnNode": 1,
+        "nodeTextPass": false,
+        "leftBarBg": "rgb(253, 230, 138)"
+      },
+      {
+        "index": 5,
+        "title": ":LengthMeasureCapability",
+        "badgeBg": "rgb(251, 207, 232)",
+        "badgeColor": "rgb(17, 24, 39)",
+        "badgeContrast": 12.83,
+        "badgePass": true,
+        "nodeBg": "rgba(0, 0, 0, 0)",
+        "nodeColor": "rgb(0, 0, 0)",
+        "nodeTextOnNode": 1,
+        "nodeTextPass": false,
+        "leftBarBg": "rgb(251, 207, 232)"
+      }
+    ]
+  },
+  "dark": {
+    "snapshot": {
+      "nodes": [
+        {
+          "nodeBg": "rgba(0, 0, 0, 0)",
+          "nodeColor": "rgb(0, 0, 0)",
+          "badgeBg": "rgb(251, 207, 232)",
+          "badgeColor": "rgb(17, 24, 39)",
+          "leftBarBg": "rgb(251, 207, 232)",
+          "title": ":Specimen"
+        },
+        {
+          "nodeBg": "rgba(0, 0, 0, 0)",
+          "nodeColor": "rgb(0, 0, 0)",
+          "badgeBg": "rgb(199, 178, 254)",
+          "badgeColor": "rgb(17, 24, 39)",
+          "leftBarBg": "rgb(199, 178, 254)",
+          "title": ":SpecimenLength"
+        },
+        {
+          "nodeBg": "rgba(0, 0, 0, 0)",
+          "nodeColor": "rgb(0, 0, 0)",
+          "badgeBg": "rgb(253, 230, 138)",
+          "badgeColor": "rgb(17, 24, 39)",
+          "leftBarBg": "rgb(253, 230, 138)",
+          "title": ":LengthMeasurementProcess"
+        },
+        {
+          "nodeBg": "rgba(0, 0, 0, 0)",
+          "nodeColor": "rgb(0, 0, 0)",
+          "badgeBg": "rgb(251, 207, 232)",
+          "badgeColor": "rgb(17, 24, 39)",
+          "leftBarBg": "rgb(251, 207, 232)",
+          "title": ":Caliper"
+        },
+        {
+          "nodeBg": "rgba(0, 0, 0, 0)",
+          "nodeColor": "rgb(0, 0, 0)",
+          "badgeBg": "rgb(253, 230, 138)",
+          "badgeColor": "rgb(17, 24, 39)",
+          "leftBarBg": "rgb(253, 230, 138)",
+          "title": ":LengthData"
+        },
+        {
+          "nodeBg": "rgba(0, 0, 0, 0)",
+          "nodeColor": "rgb(0, 0, 0)",
+          "badgeBg": "rgb(251, 207, 232)",
+          "badgeColor": "rgb(17, 24, 39)",
+          "leftBarBg": "rgb(251, 207, 232)",
+          "title": ":LengthMeasureCapability"
+        }
+      ],
+      "vars": {
+        "canvasBg": "172 16% 6%",
+        "canvasGrid": "172 14% 10%",
+        "nodeBgVar": "0 0% 100%",
+        "nodeFgVar": "215 25% 27%"
+      },
+      "docBg": "rgba(0, 0, 0, 0)",
+      "url": "http://localhost:8080/?theme=dark&rdfUrl=https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl"
+    },
+    "analysis": [
+      {
+        "index": 0,
+        "title": ":Specimen",
+        "badgeBg": "rgb(251, 207, 232)",
+        "badgeColor": "rgb(17, 24, 39)",
+        "badgeContrast": 12.83,
+        "badgePass": true,
+        "nodeBg": "rgba(0, 0, 0, 0)",
+        "nodeColor": "rgb(0, 0, 0)",
+        "nodeTextOnNode": 1,
+        "nodeTextPass": false,
+        "leftBarBg": "rgb(251, 207, 232)"
+      },
+      {
+        "index": 1,
+        "title": ":SpecimenLength",
+        "badgeBg": "rgb(199, 178, 254)",
+        "badgeColor": "rgb(17, 24, 39)",
+        "badgeContrast": 9.48,
+        "badgePass": true,
+        "nodeBg": "rgba(0, 0, 0, 0)",
+        "nodeColor": "rgb(0, 0, 0)",
+        "nodeTextOnNode": 1,
+        "nodeTextPass": false,
+        "leftBarBg": "rgb(199, 178, 254)"
+      },
+      {
+        "index": 2,
+        "title": ":LengthMeasurementProcess",
+        "badgeBg": "rgb(253, 230, 138)",
+        "badgeColor": "rgb(17, 24, 39)",
+        "badgeContrast": 14.24,
+        "badgePass": true,
+        "nodeBg": "rgba(0, 0, 0, 0)",
+        "nodeColor": "rgb(0, 0, 0)",
+        "nodeTextOnNode": 1,
+        "nodeTextPass": false,
+        "leftBarBg": "rgb(253, 230, 138)"
+      },
+      {
+        "index": 3,
+        "title": ":Caliper",
+        "badgeBg": "rgb(251, 207, 232)",
+        "badgeColor": "rgb(17, 24, 39)",
+        "badgeContrast": 12.83,
+        "badgePass": true,
+        "nodeBg": "rgba(0, 0, 0, 0)",
+        "nodeColor": "rgb(0, 0, 0)",
+        "nodeTextOnNode": 1,
+        "nodeTextPass": false,
+        "leftBarBg": "rgb(251, 207, 232)"
+      },
+      {
+        "index": 4,
+        "title": ":LengthData",
+        "badgeBg": "rgb(253, 230, 138)",
+        "badgeColor": "rgb(17, 24, 39)",
+        "badgeContrast": 14.24,
+        "badgePass": true,
+        "nodeBg": "rgba(0, 0, 0, 0)",
+        "nodeColor": "rgb(0, 0, 0)",
+        "nodeTextOnNode": 1,
+        "nodeTextPass": false,
+        "leftBarBg": "rgb(253, 230, 138)"
+      },
+      {
+        "index": 5,
+        "title": ":LengthMeasureCapability",
+        "badgeBg": "rgb(251, 207, 232)",
+        "badgeColor": "rgb(17, 24, 39)",
+        "badgeContrast": 12.83,
+        "badgePass": true,
+        "nodeBg": "rgba(0, 0, 0, 0)",
+        "nodeColor": "rgb(0, 0, 0)",
+        "nodeTextOnNode": 1,
+        "nodeTextPass": false,
+        "leftBarBg": "rgb(251, 207, 232)"
+      }
+    ]
+  }
+}

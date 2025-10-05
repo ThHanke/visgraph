@@ -60,12 +60,16 @@ const FloatingEdge = memo((props: EdgeProps) => {
   // Prefer mapper-provided prefixed property when available (propertyPrefixed), then fall back to label fields.
   let badgeText = "";
 
+  // Ensure edge strokes/fills use a theme token — if no explicit style.color is provided,
+  // fall back to the CSS variable --edge-default by setting color (used as currentColor in SVG).
+  const edgeStyle = { ...(style || {}), color: (style && (style as any).color) || "hsl(var(--edge-default))" };
+
   // 1) prefixed property from mapper -> props/data.propertyPrefixed
   badgeText = String((dataTyped as any)?.propertyPrefixed || (props as any)?.label || (dataTyped as any)?.label || "").trim();
 
   return (
     <>
-      <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={style} />
+      <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={edgeStyle} />
       <EdgeLabelRenderer>
         <div
           style={{

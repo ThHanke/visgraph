@@ -47,7 +47,8 @@ export const NamespaceLegendCore = memo(function NamespaceLegendCore({
             <div className="flex items-center gap-1.5 shrink-0">
               <div
                 className="w-3 h-3 rounded-full border border-border/50"
-                style={{ backgroundColor: getColor(String(prefix)) || undefined }}
+                style={{ ['--ns-color' as any]: getColor(String(prefix)) || '', backgroundColor: getColor(String(prefix)) || undefined }}
+                data-ns-dot
                 aria-hidden="true"
               />
               <Badge variant="outline" className="font-mono text-xs px-1.5 py-0.5">
@@ -55,7 +56,7 @@ export const NamespaceLegendCore = memo(function NamespaceLegendCore({
               </Badge>
             </div>
             <span
-              className="text-muted-foreground truncate flex-1 text-xs leading-relaxed"
+              className="text-foreground truncate flex-1 text-xs leading-relaxed"
               title={String(uri || "")}
             >
               {String(uri || "")}

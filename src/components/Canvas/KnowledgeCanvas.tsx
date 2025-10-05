@@ -1817,19 +1817,23 @@ const KnowledgeCanvas: React.FC = () => {
             minZoom={0.1}
             className="knowledge-graph-canvas bg-canvas-bg"
           >
-          <Controls position="bottom-left" showInteractive={true} showZoom={true} showFitView={true} />
-          <MiniMap nodeStrokeWidth={3} />
+          <Controls position="bottom-left" showInteractive={true} showZoom={true} showFitView={true} className="bg-muted/50" />
+          <MiniMap nodeStrokeWidth={3} pannable={true}/>
           <Background gap={16} color="var(--grid-color, rgba(0,0,0,0.03))" />
         </ReactFlow>
 
       </div>
 
-      <ReasoningIndicator
-        onOpenReport={() => canvasActions.toggleReasoningReport(true)}
-        onRunReason={() => {
-            void triggerReasoningStrict(nodes, edges, true);
-        }}
-      />
+      <div className="fixed bottom-4 left-0 right-0 z-50 pointer-events-none">
+        <div className="flex items-center justify-end gap-6 pointer-events-auto w-full px-4">
+          <ReasoningIndicator
+            onOpenReport={() => canvasActions.toggleReasoningReport(true)}
+            onRunReason={() => {
+              void triggerReasoningStrict(nodes, edges, true);
+            }}
+          />
+        </div>
+      </div>
 
       <ReasoningReportModal
         open={canvasState.showReasoningReport}

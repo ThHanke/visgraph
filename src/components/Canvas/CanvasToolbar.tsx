@@ -402,8 +402,8 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
     <div className="absolute top-4 left-4 z-10 flex flex-wrap gap-2">
       {/* Add Node Dialog */}
       <Dialog open={isAddNodeOpen} onOpenChange={setIsAddNodeOpen}>
-        <DialogTrigger asChild>
-          <Button variant="default" size="sm" className="shadow-glass backdrop-blur-sm">
+          <DialogTrigger asChild>
+          <Button variant="default" size="sm" className="shadow-glass backdrop-blur-sm text-foreground">
             <Plus className="h-4 w-4 mr-2" />
             Add Node
           </Button>
@@ -456,8 +456,8 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
 
       {/* Load Ontology Dialog */}
       <Dialog open={isLoadOntologyOpen} onOpenChange={setIsLoadOntologyOpen}>
-        <DialogTrigger asChild>
-          <Button variant="secondary" size="sm" className="shadow-glass backdrop-blur-sm">
+          <DialogTrigger asChild>
+          <Button variant="secondary" size="sm" className="shadow-glass backdrop-blur-sm text-foreground-dark">
             <Upload className="h-4 w-4 mr-2" />
             Load Ontology
           </Button>
@@ -578,12 +578,12 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
       </Dialog>
 
       {/* View Mode Toggle */}
-      <div className="flex items-center bg-card/80 backdrop-blur-sm border border-border rounded-md shadow-glass">
+        <div className="flex items-center bg-card/80 backdrop-blur-sm border border-border rounded-md shadow-glass">
         <Button
           variant={viewMode === 'abox' ? 'default' : 'ghost'}
           size="sm"
           onClick={() => onViewModeChange('abox')}
-          className="rounded-r-none"
+          className="rounded-r-none text-foreground"
         >
           A-Box
         </Button>
@@ -591,7 +591,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
           variant={viewMode === 'tbox' ? 'default' : 'ghost'}
           size="sm"
           onClick={() => onViewModeChange('tbox')}
-          className="rounded-l-none"
+          className="rounded-l-none text-foreground"
         >
           T-Box
         </Button>
@@ -602,17 +602,17 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
         variant="secondary" 
         size="sm" 
         onClick={onToggleLegend}
-        className="shadow-glass backdrop-blur-sm bg-accent hover:bg-accent-hover"
+        className="shadow-glass backdrop-blur-sm bg-accent hover:bg-accent-hover text-foreground-dark"
       >
         {showLegend ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
         Legend
       </Button>
 
       <Popover>
-        <PopoverTrigger asChild>
+          <PopoverTrigger asChild>
           <button
             type="button"
-            className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-card/80 border border-border shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary/40"
+            className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-card/80 border border-border shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground"
             aria-expanded="false"
           >
             <Layout className="h-4 w-4" />
@@ -626,7 +626,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
             
           </div>
 
-          <div className="space-y-2">
+          <div className="">
             {layoutOptions.map((layout) => {
               const IconComponent = getLayoutIcon(layout.icon as any);
               return (
@@ -637,7 +637,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                       onLayoutChange?.(layout.type, true, { nodeSpacing: config.layoutSpacing });
                     } catch (_) { /* ignore */ }
                   }}
-                  className="w-full text-left flex items-start gap-3 p-2 rounded hover:bg-accent"
+                  className=""
                 >
                   <IconComponent className="h-5 w-5 mt-0.5 shrink-0" />
                   <div className="flex-1 min-w-0">
@@ -721,7 +721,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                className={`px-3 py-1 rounded text-sm ${currentLayout ? 'bg-muted' : 'bg-muted'}`}
+                className="px-3 py-1 rounded text-sm bg-muted"
                 onClick={() => {
                   try {
                     const v = tempLayoutSpacing;
@@ -763,7 +763,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                     /* ignore */
                   }
                 }}
-                className={`px-3 py-1 rounded text-sm border ${ layoutEnabled ? 'bg-primary text-white' : 'bg-card' }`}
+                className={layoutEnabled ? 'px-3 py-1 rounded text-sm border bg-primary text-white' : 'px-3 py-1 rounded text-sm border bg-card'}
                 aria-pressed={layoutEnabled}
               >
                 Auto
@@ -777,11 +777,11 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
 
       {/* Load File */}
       <Dialog open={isLoadFileOpen} onOpenChange={setIsLoadFileOpen}>
-        <DialogTrigger asChild>
+          <DialogTrigger asChild>
           <Button
-            variant="outline"
+            variant="outline" 
             size="sm"
-            className="shadow-glass backdrop-blur-sm"
+            className="shadow-glass backdrop-blur-sm text-foreground"
           >
             <Upload className="h-4 w-4 mr-2" />
             Load File
@@ -900,7 +900,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
       {/* Export Options */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="shadow-glass backdrop-blur-sm">
+          <Button variant="outline" size="sm" className="shadow-glass backdrop-blur-sm text-foreground">
             <Download className="h-4 w-4 mr-2" />
             Export
           </Button>
@@ -1005,7 +1005,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <div className="ml-auto flex items-center">
+      <div className="text-foreground ml-auto flex items-center">
         <ConfigurationPanel triggerVariant="inline-icon" />
       </div>
     </div>
