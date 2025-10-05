@@ -140,3 +140,7 @@
     height: 20px !important;
   }
 }
+
+.knowledge-graph-canvas .react-flow__panel.bottom {
+	bottom: 80px;
+}

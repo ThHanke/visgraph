@@ -121,6 +121,8 @@ html, body, #root {
 }
 
 /* Safeguard: ensure React Flow root does not clip overflowing SVG content */
-.react-flow {
-  overflow: visible;
+.knowledge-graph-canvas .react-flow {
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
 }

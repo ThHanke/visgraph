@@ -9,7 +9,9 @@ import {
   Background,
   applyNodeChanges,
   applyEdgeChanges,
+  MiniMap,
 } from "@xyflow/react";
+// import '../../tailwind-config.js';
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { DataFactory } from "n3";
 import { useReasoningStore } from "../../stores/reasoningStore";
@@ -1795,7 +1797,7 @@ const KnowledgeCanvas: React.FC = () => {
       )}
 
       <div className="w-full h-full">
-          <ReactFlow
+        <ReactFlow
             nodes={safeNodes}
             edges={memoEdges}
             onNodesChange={onNodesChange}
@@ -1816,8 +1818,10 @@ const KnowledgeCanvas: React.FC = () => {
             className="knowledge-graph-canvas bg-canvas-bg"
           >
           <Controls position="bottom-left" showInteractive={true} showZoom={true} showFitView={true} />
+          <MiniMap nodeStrokeWidth={3} />
           <Background gap={16} color="var(--grid-color, rgba(0,0,0,0.03))" />
         </ReactFlow>
+
       </div>
 
       <ReasoningIndicator
@@ -1831,7 +1835,6 @@ const KnowledgeCanvas: React.FC = () => {
         open={canvasState.showReasoningReport}
         onOpenChange={canvasActions.toggleReasoningReport}
       />
-
       <NodePropertyEditor
         open={nodeEditorOpen}
         onOpenChange={(open) => {
