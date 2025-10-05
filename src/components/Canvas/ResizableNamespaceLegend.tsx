@@ -215,14 +215,14 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
             <Input
               aria-label="prefix"
               placeholder="prefix"
-              className="w-full sm:w-24 text-sm min-w-0 flex-none bg-transparent !bg-transparent text-foreground !text-foreground placeholder:text-muted-foreground !placeholder:text-muted-foreground"
+              className="w-full sm:w-24 text-sm min-w-0 flex-none bg-transparent bg-transparent! text-foreground !text-foreground placeholder:text-muted-foreground !placeholder:text-muted-foreground"
               value={newPrefix}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPrefix(String(e.target.value))}
             />
             <Input
               aria-label="namespace-uri"
               placeholder="https://example.org/"
-              className="w-full sm:flex-1 text-sm min-w-0 bg-transparent !bg-transparent text-foreground !text-foreground placeholder:text-muted-foreground !placeholder:text-muted-foreground"
+              className="w-full sm:flex-1 text-sm min-w-0 bg-transparent bg-transparent! text-foreground !text-foreground placeholder:text-muted-foreground !placeholder:text-muted-foreground"
               value={newUri}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUri(String(e.target.value))}
             />

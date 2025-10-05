@@ -490,7 +490,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                   value={rdfBody}
                   onChange={(e) => setRdfBody(e.target.value)}
                   placeholder="Paste Turtle / RDF/XML / JSON-LD here to register its prefixes and optionally load it as an ontology"
-                  className="w-full min-h-[6rem] p-2 bg-input border border-border rounded"
+                  className="w-full min-h-24 p-2 bg-input border border-border rounded"
                 />
                 <div className="flex gap-2">
                   <Button
@@ -639,7 +639,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                   }}
                   className="w-full text-left flex items-start gap-3 p-2 rounded hover:bg-accent"
                 >
-                  <IconComponent className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                  <IconComponent className="h-5 w-5 mt-0.5 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm">{layout.label}</div>
                     <div className="text-xs text-muted-foreground">{layout.description}</div>
