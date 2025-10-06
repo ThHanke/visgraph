@@ -134,7 +134,7 @@
 .react-flow__node > * {
   /* background: var(--node-bg); */
   color: var(--node-foreground);
-  border-color: var(--node-border);
+  /* border-color: var(--node-border); */
   box-shadow: var(--node-shadow);
 }
 

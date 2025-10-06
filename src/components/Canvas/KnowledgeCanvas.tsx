@@ -1338,27 +1338,101 @@ const KnowledgeCanvas: React.FC = () => {
       const edgesPayload = (es || []).map((e) => ({ id: e.id, source: e.source, target: e.target }));
       const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
       const result = await startReasoning(nodesPayload as any, edgesPayload as any, mgr && mgr.getStore && mgr.getStore());
+
+      const errors = Array.isArray(result?.errors) ? result.errors : [];
+      const warnings = Array.isArray(result?.warnings) ? result.warnings : [];
+
+      const nodeErrMap = new Map<string, string[]>();
+      const nodeWarnMap = new Map<string, string[]>();
+      const edgeErrMap = new Map<string, string[]>();
+      const edgeWarnMap = new Map<string, string[]>();
+
+      try {
+        for (const er of errors) {
+          try {
+            if (er && er.nodeId) {
+              const a = nodeErrMap.get(String(er.nodeId)) || [];
+              a.push(String(er.message || er));
+              nodeErrMap.set(String(er.nodeId), a);
+            }
+            if (er && er.edgeId) {
+              const a = edgeErrMap.get(String(er.edgeId)) || [];
+              a.push(String(er.message || er));
+              edgeErrMap.set(String(er.edgeId), a);
+            }
+          } catch (_) { /* per-item */ }
+        }
+      } catch (_) { /* ignore */ }
+
+      try {
+        for (const w of warnings) {
+          try {
+            if (w && w.nodeId) {
+              const a = nodeWarnMap.get(String(w.nodeId)) || [];
+              a.push(String(w.message || w));
+              nodeWarnMap.set(String(w.nodeId), a);
+            }
+            if (w && w.edgeId) {
+              const a = edgeWarnMap.get(String(w.edgeId)) || [];
+              a.push(String(w.message || w));
+              edgeWarnMap.set(String(w.edgeId), a);
+            }
+          } catch (_) { /* per-item */ }
+        }
+      } catch (_) { /* ignore */ }
+
+      // Merge targeted node updates (only nodes referenced in the reasoning result)
       setNodes((nds) =>
         (nds || []).map((n) => {
           try {
-            const hasNodeErr = !!(
-              Array.isArray(result?.errors) &&
-              result.errors.find((er: any) => er.nodeId === n.id)
-            );
-            return { ...(n as RFNode<NodeData>), data: { ...(n.data as NodeData), hasReasoningError: hasNodeErr } } as RFNode<NodeData>;
+            const id = String(n.id);
+            const errs = nodeErrMap.get(id) || [];
+            const warns = nodeWarnMap.get(id) || [];
+            const prevErrs = (n.data && (n.data as any).reasoningErrors) || [];
+            const prevWarns = (n.data && (n.data as any).reasoningWarnings) || [];
+            const changed =
+              JSON.stringify(prevErrs) !== JSON.stringify(errs) ||
+              JSON.stringify(prevWarns) !== JSON.stringify(warns);
+            if (!changed) return n;
+            return {
+              ...(n as RFNode<NodeData>),
+              data: {
+                ...(n.data as NodeData),
+                reasoningErrors: errs,
+                reasoningWarnings: warns,
+                hasReasoningError: errs.length > 0,
+                hasReasoningWarning: warns.length > 0,
+              },
+            } as RFNode<NodeData>;
           } catch (_) {
             return n;
           }
         }),
       );
+
+      // Merge targeted edge updates (only edges referenced in the reasoning result)
       setEdges((eds) =>
         (eds || []).map((e) => {
           try {
-            const hasEdgeErr = !!(
-              Array.isArray(result?.errors) &&
-              result.errors.find((er: any) => er.edgeId === e.id)
-            );
-            return { ...(e as RFEdge<LinkData>), data: { ...(e.data as LinkData), hasReasoningError: hasEdgeErr } } as RFEdge<LinkData>;
+            const id = String(e.id);
+            const errs = edgeErrMap.get(id) || [];
+            const warns = edgeWarnMap.get(id) || [];
+            const prevErrs = (e.data && (e.data as any).reasoningErrors) || [];
+            const prevWarns = (e.data && (e.data as any).reasoningWarnings) || [];
+            const changed =
+              JSON.stringify(prevErrs) !== JSON.stringify(errs) ||
+              JSON.stringify(prevWarns) !== JSON.stringify(warns);
+            if (!changed) return e;
+            return {
+              ...(e as RFEdge<LinkData>),
+              data: {
+                ...(e.data as LinkData),
+                reasoningErrors: errs,
+                reasoningWarnings: warns,
+                hasReasoningError: errs.length > 0,
+                hasReasoningWarning: warns.length > 0,
+              },
+            } as RFEdge<LinkData>;
           } catch (_) {
             return e;
           }

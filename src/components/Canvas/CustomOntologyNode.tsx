@@ -118,6 +118,18 @@ function CustomOntologyNodeImpl(props: NodeProps) {
   const hasErrors =
     Array.isArray(nodeData.errors) && nodeData.errors.length > 0;
 
+  const hasReasoningError =
+    Array.isArray((nodeData as any).reasoningErrors) && (nodeData as any).reasoningErrors.length > 0;
+  const hasReasoningWarning =
+    Array.isArray((nodeData as any).reasoningWarnings) && (nodeData as any).reasoningWarnings.length > 0;
+
+  const reasoningClass = hasReasoningError
+    ? "border-2 border-destructive ring-4 ring-destructive/20"
+    : hasReasoningWarning
+      ? "border-2 border-amber-500 ring-4 ring-amber-300"
+      : "";
+
+
   const annotations: Array<{ term: string; value: string }> = [];
   if (Array.isArray(nodeData.properties) && nodeData.properties.length > 0) {
     (nodeData.properties as Array<{ property: string; value: any }>).slice(0, 6).forEach((ap) => {
@@ -201,8 +213,9 @@ function CustomOntologyNodeImpl(props: NodeProps) {
         ['--node-color' as any]: nodeColor || 'transparent',
       }}
       className={cn(
-        "flex items-stretch overflow-hidden rounded-md shadow-sm",
+        "flex items-stretch overflow-hidden rounded-md shadow-sm box-border border-solid",
         selected ? "ring-2 ring-primary" : "",
+        reasoningClass
       )}
     >
       {/* Left namespace color bar — explicit element so Tailwind can style layout; color is dynamic */}
@@ -275,10 +288,10 @@ function CustomOntologyNodeImpl(props: NodeProps) {
         </TooltipTrigger>
 
         <TooltipContent side="top">
-          <div className="text-left text-sm space-y-2 max-w-xs">
-            <div className="font-semibold truncate">{headerDisplay}</div>
+          <div className="text-left text-sm space-y-2 max-w-[32rem]">
+            <div className="font-semibold break-words whitespace-pre-wrap">{headerDisplay}</div>
             <div className="text-xs text-muted-foreground">{badgeText || nodeData.classType}</div>
-            {subtitleText && <div className="text-xs text-muted-foreground truncate">{subtitleText}</div>}
+            {subtitleText && <div className="text-xs text-muted-foreground break-words whitespace-pre-wrap">{subtitleText}</div>}
 
             <div className="mt-2">
               <div className="font-medium text-xs text-muted-foreground mb-1">Annotations</div>
@@ -300,12 +313,34 @@ function CustomOntologyNodeImpl(props: NodeProps) {
               <div className="mt-2">
                 <div className="text-xs text-muted-foreground font-medium">Types</div>
                 <ul className="text-xs space-y-0.5">
-                  {typesList.map((t, idx) => <li key={idx} className="truncate">{String(t)}</li>)}
+                  {typesList.map((t, idx) => <li key={idx} className="break-words whitespace-pre-wrap">{String(t)}</li>)}
                 </ul>
               </div>
             )}
 
-            {nodeData.iri && <div className="text-xs text-muted-foreground mt-1 truncate">{String(nodeData.iri)}</div>}
+            {Array.isArray((nodeData as any).reasoningErrors) && (nodeData as any).reasoningErrors.length > 0 && (
+              <div>
+                <div className="text-xs font-medium text-destructive mb-1">Reasoning errors</div>
+                <ul className="text-xs text-destructive space-y-0.5">
+                  {(nodeData as any).reasoningErrors.map((m: any, i: number) => (
+                    <li key={i} className="break-words whitespace-pre-wrap">{String(m)}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {Array.isArray((nodeData as any).reasoningWarnings) && (nodeData as any).reasoningWarnings.length > 0 && (
+              <div>
+                <div className="text-xs font-medium text-amber-600 mb-1">Reasoning warnings</div>
+                <ul className="text-xs text-amber-700 space-y-0.5">
+                  {(nodeData as any).reasoningWarnings.map((m: any, i: number) => (
+                    <li key={i} className="break-words whitespace-pre-wrap">{String(m)}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {nodeData.iri && <div className="text-xs text-muted-foreground mt-1 break-words whitespace-pre-wrap">{String(nodeData.iri)}</div>}
           </div>
         </TooltipContent>
       </Tooltip>

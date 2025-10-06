@@ -27,6 +27,9 @@ import type { LinkData } from "../../types/canvas";
 const FloatingEdge = memo((props: EdgeProps) => {
   const { id, source, target, style, data, markerEnd: propMarkerEnd } = props as any;
   const dataTyped = data as LinkData;
+
+  const hasEdgeErrors = Array.isArray((dataTyped as any).reasoningErrors) && (dataTyped as any).reasoningErrors.length > 0;
+  const hasEdgeWarnings = Array.isArray((dataTyped as any).reasoningWarnings) && (dataTyped as any).reasoningWarnings.length > 0;
   
 
 
@@ -84,13 +87,19 @@ const FloatingEdge = memo((props: EdgeProps) => {
           {badgeText ? (
             <Tooltip delayDuration={250}>
               <TooltipTrigger asChild>
-                <button
+                  <button
                   type="button"
                   className="p-0 bg-transparent border-0 pointer-events-auto"
                 >
                   <Badge
-                    variant="secondary"
-                    className="text-xs px-2 py-1 shadow-md border cursor-pointer"
+                    variant={hasEdgeErrors ? "destructive" : "secondary"}
+                    className={
+                      hasEdgeErrors
+                        ? "text-xs px-2 py-1 shadow-md border cursor-pointer border-destructive text-destructive"
+                        : hasEdgeWarnings
+                          ? "text-xs px-2 py-1 shadow-md border cursor-pointer bg-amber-100 text-amber-700 border-amber-300"
+                          : "text-xs px-2 py-1 shadow-md border cursor-pointer"
+                    }
                   >
                     {badgeText}
                   </Badge>
@@ -100,7 +109,7 @@ const FloatingEdge = memo((props: EdgeProps) => {
                 <div className="space-y-3 text-sm">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <div className="text-sm font-semibold text-foreground truncate">
+                      <div className="text-sm font-semibold text-foreground break-words whitespace-pre-wrap">
                         {String(dataTyped.propertyPrefixed || dataTyped.label || badgeText)}
                       </div>
                       <div className="text-xs text-muted-foreground break-words mt-1">
@@ -118,60 +127,33 @@ const FloatingEdge = memo((props: EdgeProps) => {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <div className="text-xs font-medium text-muted-foreground mb-1">Source Node</div>
-                      <PropertyList
-                        items={
-                          sourceNode && sourceNode.data
-                            ? [
-                                { key: "IRI", value: sourceNode.data.iri },
-                                { key: "Label", value: sourceNode.data.label },
-                                { key: "Display", value: sourceNode.data.displayPrefixed || sourceNode.data.displayShort },
-                                { key: "Class", value: sourceNode.data.classType || sourceNode.data.displayclassType },
-                                ...(Array.isArray(sourceNode.data.properties)
-                                  ? (sourceNode.data.properties as Array<{ property: string; value: any }>).map((p) => ({
-                                      key: String(p.property || ""),
-                                      value: p.value,
-                                    }))
-                                  : []),
-                              ]
-                            : []
-                        }
-                        searchable={false}
-                        maxHeight="max-h-36"
-                      />
+                      <div className="text-xs font-medium text-muted-foreground mb-1">Source IRI</div>
+                      <div className="text-xs text-foreground break-words">{(sourceNode && sourceNode.data && sourceNode.data.iri) ? String(sourceNode.data.iri) : String(source)}</div>
                     </div>
 
                     <div>
-                      <div className="text-xs font-medium text-muted-foreground mb-1">Target Node</div>
-                      <PropertyList
-                        items={
-                          targetNode && targetNode.data
-                            ? [
-                                { key: "IRI", value: targetNode.data.iri },
-                                { key: "Label", value: targetNode.data.label },
-                                { key: "Display", value: targetNode.data.displayPrefixed || targetNode.data.displayShort },
-                                { key: "Class", value: targetNode.data.classType || targetNode.data.displayclassType },
-                                ...(Array.isArray(targetNode.data.properties)
-                                  ? (targetNode.data.properties as Array<{ property: string; value: any }>).map((p) => ({
-                                      key: String(p.property || ""),
-                                      value: p.value,
-                                    }))
-                                  : []),
-                              ]
-                            : []
-                        }
-                        searchable={false}
-                        maxHeight="max-h-36"
-                      />
+                      <div className="text-xs font-medium text-muted-foreground mb-1">Target IRI</div>
+                      <div className="text-xs text-foreground break-words">{(targetNode && targetNode.data && targetNode.data.iri) ? String(targetNode.data.iri) : String(target)}</div>
                     </div>
                   </div>
+
+                  {Array.isArray(dataTyped.reasoningWarnings) && dataTyped.reasoningWarnings.length > 0 && (
+                    <div>
+                      <div className="text-xs font-medium text-amber-600 mb-1">Reasoning warnings</div>
+                      <ul className="text-xs text-amber-700 space-y-0.5">
+                        {dataTyped.reasoningWarnings.map((w: any, i: number) => (
+                          <li key={i} className="break-words whitespace-pre-wrap">{String(w)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
                   {Array.isArray(dataTyped.reasoningErrors) && dataTyped.reasoningErrors.length > 0 && (
                     <div>
                       <div className="text-xs font-medium text-destructive mb-1">Reasoning errors</div>
                       <ul className="text-xs text-destructive space-y-0.5">
                         {dataTyped.reasoningErrors.map((e: any, i: number) => (
-                          <li key={i} className="truncate">{String(e)}</li>
+                          <li key={i} className="break-words whitespace-pre-wrap">{String(e)}</li>
                         ))}
                       </ul>
                     </div>
