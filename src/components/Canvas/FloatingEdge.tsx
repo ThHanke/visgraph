@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import React, { memo, useState } from "react";
 import {
   getBezierPath,
   EdgeLabelRenderer,
@@ -7,6 +7,8 @@ import {
   useInternalNode,
 } from "@xyflow/react";
 import { Badge } from "../ui/badge";
+import { Popover, PopoverTrigger, PopoverContent } from "../ui/popover";
+import PropertyList from "../ui/PropertyList";
 import { getEdgeParams } from "./EdgeParams";
 import { resolveEdgeRenderProps } from "./core/edgeStyle";
 import type { LinkData } from "../../types/canvas";
@@ -25,7 +27,7 @@ import type { LinkData } from "../../types/canvas";
 const FloatingEdge = memo((props: EdgeProps) => {
   const { id, source, target, style, data, markerEnd: propMarkerEnd } = props as any;
   const dataTyped = data as LinkData;
-  try { console.debug('[VG] FloatingEdge.render', { id, style }); } catch (_) { void 0; }
+  const [open, setOpen] = useState(false);
 
 
   const sourceNode = useInternalNode(source);
@@ -77,15 +79,108 @@ const FloatingEdge = memo((props: EdgeProps) => {
           style={{
             transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
           }}
-          className="edge-label-renderer__custom-edge nodrag nopan"
+          className="edge-label-renderer__custom-edge nodrag nopan pointer-events-auto"
         >
           {badgeText ? (
-            <Badge
-              variant="secondary"
-              className="text-xs px-2 py-1 shadow-md border"
-            >
-              {badgeText}
-            </Badge>
+            <Popover open={open} onOpenChange={setOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="p-0 bg-transparent border-0 pointer-events-auto"
+                  onMouseEnter={() => setOpen(true)}
+                  onMouseLeave={() => setOpen(false)}
+                >
+                  <Badge
+                    variant="secondary"
+                    className="text-xs px-2 py-1 shadow-md border cursor-pointer"
+                  >
+                    {badgeText}
+                  </Badge>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+                <div className="space-y-3 text-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-semibold text-foreground truncate">
+                        {String(dataTyped.propertyPrefixed || dataTyped.label || badgeText)}
+                      </div>
+                      <div className="text-xs text-muted-foreground break-words mt-1">
+                        {String(dataTyped.propertyUri || "")}
+                      </div>
+                    </div>
+                    {dataTyped.color ? (
+                      <div
+                        className="w-6 h-6 rounded-full border"
+                        style={{ background: String(dataTyped.color) }}
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <div className="text-xs font-medium text-muted-foreground mb-1">Source Node</div>
+                      <PropertyList
+                        items={
+                          sourceNode && sourceNode.data
+                            ? [
+                                { key: "IRI", value: sourceNode.data.iri },
+                                { key: "Label", value: sourceNode.data.label },
+                                { key: "Display", value: sourceNode.data.displayPrefixed || sourceNode.data.displayShort },
+                                { key: "Class", value: sourceNode.data.classType || sourceNode.data.displayclassType },
+                                ...(Array.isArray(sourceNode.data.properties)
+                                  ? (sourceNode.data.properties as Array<{ property: string; value: any }>).map((p) => ({
+                                      key: String(p.property || ""),
+                                      value: p.value,
+                                    }))
+                                  : []),
+                              ]
+                            : []
+                        }
+                        searchable={false}
+                        maxHeight="max-h-36"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-medium text-muted-foreground mb-1">Target Node</div>
+                      <PropertyList
+                        items={
+                          targetNode && targetNode.data
+                            ? [
+                                { key: "IRI", value: targetNode.data.iri },
+                                { key: "Label", value: targetNode.data.label },
+                                { key: "Display", value: targetNode.data.displayPrefixed || targetNode.data.displayShort },
+                                { key: "Class", value: targetNode.data.classType || targetNode.data.displayclassType },
+                                ...(Array.isArray(targetNode.data.properties)
+                                  ? (targetNode.data.properties as Array<{ property: string; value: any }>).map((p) => ({
+                                      key: String(p.property || ""),
+                                      value: p.value,
+                                    }))
+                                  : []),
+                              ]
+                            : []
+                        }
+                        searchable={false}
+                        maxHeight="max-h-36"
+                      />
+                    </div>
+                  </div>
+
+                  {Array.isArray(dataTyped.reasoningErrors) && dataTyped.reasoningErrors.length > 0 && (
+                    <div>
+                      <div className="text-xs font-medium text-destructive mb-1">Reasoning errors</div>
+                      <ul className="text-xs text-destructive space-y-0.5">
+                        {dataTyped.reasoningErrors.map((e: any, i: number) => (
+                          <li key={i} className="truncate">{String(e)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
           ) : null}
         </div>
       </EdgeLabelRenderer>

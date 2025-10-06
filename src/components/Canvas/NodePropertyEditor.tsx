@@ -418,7 +418,7 @@ export const NodePropertyEditor = ({
                       <Info className="h-4 w-4" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-64" side="top">
+                  <PopoverContent side="top">
                     <div className="text-xs">
                       The selected rdf:type is not present in the loaded fat-map. It will be saved as the displayType but not resolved to a known class.
                     </div>

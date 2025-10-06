@@ -1,7 +1,7 @@
  
 import React, { memo, useEffect, useRef, useMemo } from "react";
 import {
-  Handle,
+  Handle, 
   Position,
   NodeProps,
   useConnection,
@@ -105,7 +105,6 @@ function CustomOntologyNodeImpl(props: NodeProps) {
 
   function pickBadgeForeground(hex?: string) {
     const rgb = hexToRgb(hex || "");
-    if (!rgb) return "hsl(var(--node-foreground))";
     const L = relativeLuminance(rgb);
     // contrast with white = (1.05)/(L+0.05), contrast with black = (L+0.05)/0.05
     const contrastWhite = (1.05) / (L + 0.05);
@@ -117,15 +116,7 @@ function CustomOntologyNodeImpl(props: NodeProps) {
   const nodeColor = nodeData.color;
   const nodeBadgeForeground = pickBadgeForeground(nodeColor);
 
-  const themeBg = useMemo(() => {
-    if (typeof document === "undefined") return "hsl(var(--card))";
-    try {
-      const v = (getComputedStyle(document.documentElement).getPropertyValue("--node-bg") || "").trim();
-      return v || "hsl(var(--card))";
-    } catch (_) {
-      return "hsl(var(--card))";
-    }
-  }, []);
+  
   const hasErrors =
     Array.isArray(nodeData.errors) && nodeData.errors.length > 0;
 
@@ -224,7 +215,7 @@ function CustomOntologyNodeImpl(props: NodeProps) {
         style={{ background: nodeColor || "transparent" }}
       />
 
-      <div className="px-4 py-3 min-w-0 flex-1 w-auto bg-(hsl(var(--node-bg)))">
+      <div className="px-4 py-3 min-w-0 flex-1 w-auto node-bg">
         <div className="flex items-center gap-3 mb-2">
           <div
             className="text-sm font-bold text-foreground truncate"
