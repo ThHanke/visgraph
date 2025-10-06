@@ -55,11 +55,6 @@ export function initializeEdge(raw: any) {
   };
 }
 
-export function safeMarkerIdFromEdgeId(edgeId?: string | number) {
-  const id = String(edgeId || "");
-  // sanitize to a safe DOM id fragment (lowercase, alnum, -, _)
-  return `vg-arrow-${id.replace(/[^a-z0-9\\-_]/gi, "-")}`;
-}
 
 export function getMarkerSizeFromCss(defaultPx = 6) {
   try {
@@ -97,11 +92,17 @@ export function resolveEdgeRenderProps(opts: { id?: string | number; style?: any
     strokeLinejoin: "round" as any,
   };
 
-  const safeMarkerId = safeMarkerIdFromEdgeId(id);
-  const markerUrl = `url(#${safeMarkerId})`;
+  // Pass through markerEnd if provided on the edge data or style so callers can
+  // use the same simple API as xyflow/reactflow: either a string like "arrow"
+  // or an object describing the marker.
+  const markerEndProp =
+    (data && (data as any).markerEnd) ||
+    (mergedStyle && (mergedStyle as any).markerEnd) ||
+    undefined;
+
   const markerSize = getMarkerSizeFromCss(6);
 
-  return { edgeStyle, safeMarkerId, markerUrl, markerSize };
+  return { edgeStyle, markerEnd: markerEndProp, markerSize };
 }
 
 export default initializeEdge;

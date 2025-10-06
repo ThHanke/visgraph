@@ -23,7 +23,7 @@ import type { LinkData } from "../../types/canvas";
  * accidental syntax errors introduced during iterative edits.
  */
 const FloatingEdge = memo((props: EdgeProps) => {
-  const { id, source, target, style, data } = props;
+  const { id, source, target, style, data, markerEnd: propMarkerEnd } = props as any;
   const dataTyped = data as LinkData;
   try { console.debug('[VG] FloatingEdge.render', { id, style }); } catch (_) { void 0; }
 
@@ -62,7 +62,8 @@ const FloatingEdge = memo((props: EdgeProps) => {
   // Prefer mapper-provided prefixed property when available (propertyPrefixed), then fall back to label fields.
   let badgeText = "";
 
-  const { edgeStyle, safeMarkerId, markerUrl, markerSize } = resolveEdgeRenderProps({ id, style, data });
+  const { edgeStyle, markerEnd, markerSize } = resolveEdgeRenderProps({ id, style, data });
+  const finalMarkerEnd = (props as any).markerEnd ?? propMarkerEnd ?? markerEnd;
 
   // 1) prefixed property from mapper -> props/data.propertyPrefixed
   badgeText = String((dataTyped as any)?.propertyPrefixed || (props as any)?.label || (dataTyped as any)?.label || "").trim();
@@ -70,14 +71,7 @@ const FloatingEdge = memo((props: EdgeProps) => {
   return (
     <>
 
-      <svg style={{ position: 'absolute', width: 0, height: 0, pointerEvents: 'none', color: edgeStyle.color }} aria-hidden>
-        <defs>
-          <marker id={safeMarkerId} markerUnits="userSpaceOnUse" markerWidth={markerSize} markerHeight={markerSize} refX="6" refY="3" orient="auto" viewBox="0 0 6 6">
-            <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" />
-          </marker>
-        </defs>
-      </svg>
-      <BaseEdge id={id} path={edgePath} markerEnd={markerUrl} style={edgeStyle} />
+      <BaseEdge id={id} path={edgePath} markerEnd={finalMarkerEnd} style={edgeStyle} />
       <EdgeLabelRenderer>
         <div
           style={{
