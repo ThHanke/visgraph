@@ -95,27 +95,26 @@ function CustomOntologyNodeImpl(props: NodeProps) {
     return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
   }
 
-  function relativeLuminance({ r, g, b }: { r: number; g: number; b: number }) {
-    const srgb = [r, g, b].map((v) => {
-      const s = v / 255;
-      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-    });
-    return 0.2126 * srgb[0] + 0.7152 * srgb[1] + 0.0722 * srgb[2];
-  }
+  // function relativeLuminance({ r, g, b }: { r: number; g: number; b: number }) {
+  //   const srgb = [r, g, b].map((v) => {
+  //     const s = v / 255;
+  //     return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  //   });
+  //   return 0.2126 * srgb[0] + 0.7152 * srgb[1] + 0.0722 * srgb[2];
+  // }
 
-  function pickBadgeForeground(hex?: string) {
-    const rgb = hexToRgb(hex || "");
-    const L = relativeLuminance(rgb);
-    // contrast with white = (1.05)/(L+0.05), contrast with black = (L+0.05)/0.05
-    const contrastWhite = (1.05) / (L + 0.05);
-    const contrastBlack = (L + 0.05) / 0.05;
-    // prefer white if it has higher contrast, otherwise dark gray
-    return contrastWhite >= contrastBlack ? "#ffffff" : "#111827";
-  }
+  // function pickBadgeForeground(hex?: string) {
+  //   const rgb = hexToRgb(hex || "");
+  //   // const L = relativeLuminance(rgb);
+  //   // contrast with white = (1.05)/(L+0.05), contrast with black = (L+0.05)/0.05
+  //   const contrastWhite = (1.05) / (L + 0.05);
+  //   const contrastBlack = (L + 0.05) / 0.05;
+  //   // prefer white if it has higher contrast, otherwise dark gray
+  //   return contrastWhite >= contrastBlack ? "#ffffff" : "#111827";
+  // }
 
   const nodeColor = nodeData.color;
-  const nodeBadgeForeground = pickBadgeForeground(nodeColor);
-
+  
   
   const hasErrors =
     Array.isArray(nodeData.errors) && nodeData.errors.length > 0;
@@ -201,7 +200,6 @@ function CustomOntologyNodeImpl(props: NodeProps) {
       ref={rootRef}
       style={{
         ['--node-color' as any]: nodeColor || 'transparent',
-        ['--node-badge-foreground' as any]: nodeBadgeForeground ,
       }}
       className={cn(
         "flex items-stretch overflow-hidden rounded-md shadow-sm",
@@ -225,14 +223,13 @@ function CustomOntologyNodeImpl(props: NodeProps) {
           </div>
 
           <div
-            className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold text-foreground flex items-center gap-1 node-badge"
+            className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 node-badge"
             style={{
               ['--node-color' as any]: nodeColor || 'transparent',
-              ['--node-badge-foreground' as any]: nodeBadgeForeground || 'hsl(var(--node-foreground))',
             }}
             aria-hidden="true"
           >
-            <span className="truncate">
+            <span className="truncate text-foreground-dark">
               {badgeText || nodeData.classType}
             </span>
           </div>
