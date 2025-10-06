@@ -29,6 +29,7 @@ import mapQuadsToDiagram from "./core/mappingHelpers";
 import { CustomOntologyNode as OntologyNode } from "./CustomOntologyNode";
 import FloatingEdge from "./FloatingEdge";
 import FloatingConnectionLine from "./FloatingConnectionLine";
+import createEdge from "./core/createEdge";
 import { generateEdgeId } from "./core/edgeHelpers";
 import { usePaletteFromRdfManager } from "./core/namespacePalette";
 import { useCanvasState } from "../../hooks/useCanvasState";
@@ -699,7 +700,7 @@ const KnowledgeCanvas: React.FC = () => {
       // directly using React Flow's applyNodeChanges/applyEdgeChanges helper.
       const diagram = await translateQuadsToDiagram(dataQuads);
       const mappedNodes: RFNode<NodeData>[] = (diagram && diagram.nodes);
-      const mappedEdges: RFEdge<LinkData>[] = (diagram && diagram.edges);
+      const mappedEdges: RFEdge<LinkData>[] = ((diagram && diagram.edges) || []).map((e: any) => createEdge(e));
 
       // Build deterministic add/replace change objects so:
       // - mapper-provided positions are applied only for new nodes
@@ -1078,7 +1079,7 @@ const KnowledgeCanvas: React.FC = () => {
             try {
               const diagram = mapQuadsToDiagram(all, eagerOpts);
               const mappedNodes: RFNode<NodeData>[] = (diagram && diagram.nodes) || [];
-              const mappedEdges: RFEdge<LinkData>[] = (diagram && diagram.edges) || [];
+              const mappedEdges: RFEdge<LinkData>[] = ((diagram && diagram.edges) || []).map((e: any) => createEdge(e));
 
               // Merge into React Flow state without removing existing runtime metadata.
               try {
@@ -1506,6 +1507,47 @@ const KnowledgeCanvas: React.FC = () => {
     }
   }, [nodes, availableProperties, loadedOntologies, setEdges]);
 
+  const onEdgeClickStrict = useCallback((event: any, edge: any) => {
+    try { event?.stopPropagation && event.stopPropagation(); } catch (_) { void 0; }
+    try { suppressSelectionRef.current = true; setTimeout(() => { suppressSelectionRef.current = false; }, 0); } catch (_) { void 0; }
+    const srcId = edge.source || edge.from || (edge.data && edge.data.from) || '';
+    const tgtId = edge.target || edge.to || (edge.data && edge.data.to) || '';
+
+    const findNode = (id: string) =>
+      nodes.find((n) => {
+        try {
+          return (
+            String(n.id) === String(id) ||
+            String((n as any).key) === String(id) ||
+            (n.data && (String(n.data.iri) === String(id) || String(n.data.key) === String(id)))
+          );
+        } catch {
+          return false;
+        }
+      });
+
+    const sourceNode = findNode(srcId);
+    const targetNode = findNode(tgtId);
+
+    linkSourceRef.current = sourceNode ? (sourceNode.data as any) : null;
+    linkTargetRef.current = targetNode ? (targetNode.data as any) : null;
+
+    const selectedLinkPayload = {
+      id: edge.id || edge.key || `${srcId}-${tgtId}`,
+      key: edge.id || edge.key || `${srcId}-${tgtId}`,
+      source: srcId,
+      target: tgtId,
+      data: {
+        propertyType: edge.data?.propertyType || edge.propertyType || '',
+        propertyUri: edge.data?.propertyUri || edge.propertyUri || '',
+        label: edge.data?.label || '',
+      },
+    };
+
+    setSelectedLinkPayload(selectedLinkPayload || edge || null);
+    setLinkEditorOpen(true);
+  }, [nodes]);
+
   const onConnectStrict = useCallback((params: any) => {
     if (!params || !params.source || !params.target) return;
     const sourceNode = nodes.find((n) => n.id === params.source);
@@ -1733,7 +1775,7 @@ const KnowledgeCanvas: React.FC = () => {
 
   
   return (
-    <div className="w-full h-screen bg-canvas-bg relative">
+    <div className="h-lvh h-lvw h-screen bg-canvas-bg relative">
       <CanvasToolbar
         onAddNode={(payload: any) => {
           let normalizedUri = String(payload && (payload.iri || payload) ? (payload.iri || payload) : "");
@@ -1807,7 +1849,7 @@ const KnowledgeCanvas: React.FC = () => {
             onNodeDragStart={onNodeDragStart}
             onNodeDrag={onNodeDrag}
             onNodeDragStop={onNodeDragStop}
-            onEdgeDoubleClick={onEdgeDoubleClickStrict}
+            onEdgeClick={onEdgeClickStrict}
             onConnect={onConnectStrict}
             onSelectionChange={onSelectionChange}
             nodeTypes={memoNodeTypes}

@@ -33,8 +33,7 @@
   --radius: 0.75rem;
 
   /* Canvas tokens */
-  /* Variant 3 (darker teal): stronger, darker teal background for lower perceived brightness */
-  --canvas-bg: oklch(80.2% 0.007 187.5);
+  --canvas-bg: oklch(44.6% 0.03 256.802);
   --canvas-grid: oklch(92.9% 0.03 186.9);
   /* Node tokens */
   --node-bg: oklch(100.0% 0 0);
@@ -45,8 +44,11 @@
   --node-leftbar-width: 8px;
 
   /* Edge tokens */
-  --edge-default: oklch(66.7% 0.041 256.8);
+  --edge-default: oklch(86.7% 0.041 256.8);
   --edge-selected: oklch(56.6% 0.166 287.5);
+  /* Edge sizing (themeable) */
+  --edge-width: 2.0px;
+  --edge-marker-size: 16;
   /* Glassmorphism / animation variables */
   --glass-shadow: 0 8px 32px oklch(0.3752 0.0394 256.8 / 0.08);
   --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -173,6 +175,19 @@ we recommend replacing this with an explicit child element so Tailwind classes c
 /* Edge container fallback: allows using currentColor on SVG children for theme-aware strokes/fills */
 .edge-container {
   color: var(--edge-default);
+}
+
+/* FloatingConnectionLine visuals: use currentColor and theme tokens for stroke/size */
+.edge-container path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: var(--edge-width);
+}
+
+.edge-container .edge-connection-circle {
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: calc(var(--edge-width) * 0.75);
 }
 
 

@@ -8,6 +8,7 @@ import {
 } from "@xyflow/react";
 import { Badge } from "../ui/badge";
 import { getEdgeParams } from "./EdgeParams";
+import { resolveEdgeRenderProps } from "./core/edgeStyle";
 import type { LinkData } from "../../types/canvas";
 
 /**
@@ -22,8 +23,9 @@ import type { LinkData } from "../../types/canvas";
  * accidental syntax errors introduced during iterative edits.
  */
 const FloatingEdge = memo((props: EdgeProps) => {
-  const { id, source, target, markerEnd, style, data } = props;
+  const { id, source, target, style, data } = props;
   const dataTyped = data as LinkData;
+  try { console.debug('[VG] FloatingEdge.render', { id, style }); } catch (_) { void 0; }
 
 
   const sourceNode = useInternalNode(source);
@@ -60,16 +62,22 @@ const FloatingEdge = memo((props: EdgeProps) => {
   // Prefer mapper-provided prefixed property when available (propertyPrefixed), then fall back to label fields.
   let badgeText = "";
 
-  // Ensure edge strokes/fills use a theme token — if no explicit style.color is provided,
-  // fall back to the CSS variable --edge-default by setting color (used as currentColor in SVG).
-  const edgeStyle = { ...(style || {}), color: (style && (style as any).color) || "hsl(var(--edge-default))" };
+  const { edgeStyle, safeMarkerId, markerUrl, markerSize } = resolveEdgeRenderProps({ id, style, data });
 
   // 1) prefixed property from mapper -> props/data.propertyPrefixed
   badgeText = String((dataTyped as any)?.propertyPrefixed || (props as any)?.label || (dataTyped as any)?.label || "").trim();
 
   return (
     <>
-      <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={edgeStyle} />
+
+      <svg style={{ position: 'absolute', width: 0, height: 0, pointerEvents: 'none', color: edgeStyle.color }} aria-hidden>
+        <defs>
+          <marker id={safeMarkerId} markerUnits="userSpaceOnUse" markerWidth={markerSize} markerHeight={markerSize} refX="6" refY="3" orient="auto" viewBox="0 0 6 6">
+            <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" />
+          </marker>
+        </defs>
+      </svg>
+      <BaseEdge id={id} path={edgePath} markerEnd={markerUrl} style={edgeStyle} />
       <EdgeLabelRenderer>
         <div
           style={{

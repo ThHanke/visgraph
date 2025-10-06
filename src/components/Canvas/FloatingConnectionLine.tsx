@@ -42,21 +42,16 @@ const FloatingConnectionLine: React.FC<Props> = ({
   });
 
   return (
-    <g className="edge-container" style={{ color: 'hsl(var(--edge-default))' }}>
+    <g className="edge-container">
       <path
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.5}
         className="animated"
         d={edgePath}
       />
       <circle
         cx={tx || toX}
         cy={ty || toY}
-        fill="currentColor"
         r={3}
-        stroke="currentColor"
-        strokeWidth={1.5}
+        className="edge-connection-circle"
       />
     </g>
   );

@@ -210,10 +210,10 @@ function CustomOntologyNodeImpl(props: NodeProps) {
       ref={rootRef}
       style={{
         ['--node-color' as any]: nodeColor || 'transparent',
-        ['--node-badge-foreground' as any]: nodeBadgeForeground || 'hsl(var(--node-foreground))',
+        ['--node-badge-foreground' as any]: nodeBadgeForeground ,
       }}
       className={cn(
-        "inline-flex overflow-hidden rounded-md border border-border shadow-sm",
+        "flex items-stretch overflow-hidden rounded-md shadow-sm",
         selected ? "ring-2 ring-primary" : "",
       )}
     >

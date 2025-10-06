@@ -428,7 +428,6 @@ export function mapQuadsToDiagram(
             source: subjectIri,
             target: bn,
             type: "floating",
-            markerEnd: { type: "arrow" as any },
             data: {
               key: edgeId,
               from: subjectIri,
@@ -490,7 +489,6 @@ export function mapQuadsToDiagram(
             source: subjectIri,
             target: objectIri,
             type: "floating",
-            markerEnd: { type: "arrow" as any },
             data: {
               key: edgeId,
               from: subjectIri,
