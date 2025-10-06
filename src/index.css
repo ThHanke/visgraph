@@ -4,89 +4,89 @@
 /* Theme tokens (keep variables as single source of truth for light/dark) */
 :root {
   /* Core Background */
-  --background: 210 20% 98%;
-  --foreground: 215 25% 27%;
+  --background: 0.9843 0.0017 247.8;
+  --foreground: 0.3752 0.0394 256.8;
   /* Stable dark foreground token for bright-button text (keeps same value across themes) */
-  --text-foreground-dark: 215 25% 27%;
+  --text-foreground-dark: 0.3752 0.0394 256.8;
 
   /* Surface Colors */
-  --card: 0 0% 100%;
-  --card-foreground: 215 25% 27%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 215 25% 27%;
+  --card: 1.0000 0.0000 0.0;
+  --card-foreground: 0.3752 0.0394 256.8;
+  --popover: 1.0000 0.0000 0.0;
+  --popover-foreground: 0.3752 0.0394 256.8;
 
   /* Brand Colors */
-  --primary: 250 55% 70%;
-  --primary-foreground: 0 0% 100%;
-  --primary-hover: 250 55% 65%;
+  --primary: 0.6748 0.1228 290.4;
+  --primary-foreground: 1.0000 0.0000 0.0;
+  --primary-hover: 0.6202 0.1447 289.1;
 
-  --secondary: 160 40% 85%;
-  --secondary-foreground: 160 30% 25%;
-  --secondary-hover: 160 40% 80%;
+  --secondary: 0.9061 0.0350 173.4;
+  --secondary-foreground: 0.4091 0.0492 170.3;
+  --secondary-hover: 0.8750 0.0465 172.9;
 
-  --accent: 25 85% 85%;
-  --accent-foreground: 25 40% 25%;
-  --accent-hover: 25 85% 80%;
+  --accent: 0.8932 0.0560 57.5;
+  --accent-foreground: 0.3832 0.0536 55.9;
+  --accent-hover: 0.8587 0.0753 57.1;
 
-  --muted: 210 20% 95%;
-  --muted-foreground: 215 15% 50%;
+  --muted: 0.9607 0.0044 247.9;
+  --muted-foreground: 0.5825 0.0392 256.8;
 
-  --destructive: 350 70% 75%;
-  --destructive-foreground: 0 0% 100%;
+  --destructive: 0.7575 0.1089 9.2;
+  --destructive-foreground: 1.0000 0.0000 0.0;
 
-  --border: 210 15% 88%;
-  --input: 210 15% 92%;
-  --ring: 250 55% 70%;
+  --border: 0.9057 0.0080 247.9;
+  --input: 0.9374 0.0053 247.9;
+  --ring: 0.6748 0.1228 290.4;
   --radius: 0.75rem;
 
   /* Canvas tokens */
   /* Variant 3 (darker teal): stronger, darker teal background for lower perceived brightness */
-  --canvas-bg: 172 50% 92%;
-  --canvas-grid: 172 46% 88%;
+  --canvas-bg: 0.8024 0.0075 187.5;
+  --canvas-grid: 0.9291 0.0299 186.9;
 
   /* Node tokens */
-  --node-bg: 0 0% 100%;
-  --node-foreground: 215 25% 27%;
-  --node-border: 210 15% 88%;
-  --node-muted: 210 15% 92%;
-  --node-shadow: 0 4px 20px hsla(215, 25%, 27%, 0.1);
+  --node-bg: 1.0000 0.0000 0.0;
+  --node-foreground: 0.3752 0.0394 256.8;
+  --node-border: 0.9057 0.0080 247.9;
+  --node-muted: 0.9374 0.0053 247.9;
+  --node-shadow: 0 4px 20px oklch(0.3752 0.0394 256.8 / 0.1);
   --node-leftbar-width: 8px;
 
   /* Edge tokens */
-  --edge-default: 215 20% 60%;
-  --edge-selected: 250 55% 60%;
+  --edge-default: 0.6666 0.0405 256.8;
+  --edge-selected: 0.5665 0.1664 287.5;
 
   /* Glassmorphism / animation variables */
-  --glass-shadow: 0 8px 32px hsla(215, 25%, 27%, 0.08);
+  --glass-shadow: 0 8px 32px oklch(0.3752 0.0394 256.8 / 0.08);
   --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .dark {
-  --background: 215 30% 8%;
-  --foreground: 210 20% 95%;
-  --card: 215 25% 12%;
-  --card-foreground: 210 20% 95%;
-  --popover: 215 25% 12%;
-  --popover-foreground: 210 20% 95%;
-  --primary: 250 55% 65%;
-  --primary-foreground: 0 0% 100%;
-  --muted: 215 25% 15%;
-  --muted-foreground: 215 15% 78%;
-  --border: 215 18% 28%;
-  --input: 215 20% 18%;
-  --canvas-bg: 172 16% 6%;
-  --canvas-grid: 172 14% 10%;
-  --node-bg: 215 25% 12%;
-  --node-foreground: 210 20% 95%;
-  --node-border: 215 20% 20%;
-  --node-muted: 215 25% 15%;
-  --node-shadow: 0 4px 20px hsla(210,20%,8%,0.12);
+  --background: 0.1866 0.0167 256.8;
+  --foreground: 0.9607 0.0044 247.9;
+  --card: 0.2299 0.0198 256.8;
+  --card-foreground: 0.9607 0.0044 247.9;
+  --popover: 0.2299 0.0198 256.8;
+  --popover-foreground: 0.9607 0.0044 247.9;
+  --primary: 0.6202 0.1447 289.1;
+  --primary-foreground: 1.0000 0.0000 0.0;
+  --muted: 0.2605 0.0240 256.8;
+  --muted-foreground: 0.8225 0.0158 256.7;
+  --border: 0.3879 0.0292 256.8;
+  --input: 0.2920 0.0224 256.8;
+  --canvas-bg: 0.1755 0.0078 186.6;
+  --canvas-grid: 0.2235 0.0107 186.5;
+  --node-bg: 0.2299 0.0198 256.8;
+  --node-foreground: 0.9607 0.0044 247.9;
+  --node-border: 0.3115 0.0245 256.8;
+  --node-muted: 0.2605 0.0240 256.8;
+  --node-shadow: 0 4px 20px oklch(0.1906 0.0105 248.4 / 0.12);
 }
 
 /* Minimal base layer: keep only what is required globally */
 @layer base {
   * {
-    border-color: hsl(var(--border));
+    border-color: oklch(var(--border));
   }
 
   body {
@@ -96,7 +96,7 @@
 
   /* Utility: explicit dark foreground for use on bright buttons / surfaces where text-foreground
      reads too light. This token intentionally does not change in .dark mode. */
-  .text-foreground-dark { color: hsl(var(--text-foreground-dark)); }
+  .text-foreground-dark { color: oklch(var(--text-foreground-dark)); }
 }
 
 /* Low-level React Flow rules that are structural / interaction-critical and
@@ -144,14 +144,14 @@ we recommend replacing this with an explicit child element so Tailwind classes c
 .edge-label-renderer__custom-edge {
   position: absolute;
   transition: opacity 120ms linear, transform 120ms linear;
-  will-change: opacity, transform;
+  /* will-change: opacity, transform; */
 }
 
 
 .react-flow__node > * {
-  background: hsl(var(--node-bg));
-  color: hsl(var(--node-foreground));
-  border-color: hsl(var(--node-border));
+  background: oklch(var(--node-bg));
+  color: oklch(var(--node-foreground));
+  border-color: oklch(var(--node-border));
   box-shadow: var(--node-shadow);
 }
 
@@ -169,19 +169,19 @@ we recommend replacing this with an explicit child element so Tailwind classes c
   border: 1px solid var(--node-color, transparent);
 
   /* badge text color is set per-node with --node-badge-foreground (computed in JS) */
-  color: var(--node-badge-foreground, hsl(var(--node-foreground)));
+  color: var(--node-badge-foreground, oklch(var(--node-foreground)));
 }
 
 /* Namespace dot: use exact namespace color provided via --ns-color (hex), fallback to transparent.
    This ensures legend swatches match node colors exactly. */
 [data-ns-dot] {
   background: var(--ns-color, transparent);
-  border: 1px solid color-mix(in srgb, var(--ns-color) 20%, hsl(var(--border)));
+  border: 1px solid color-mix(in srgb, var(--ns-color) 20%, oklch(var(--border)));
 }
 
 /* Edge container fallback: allows using currentColor on SVG children for theme-aware strokes/fills */
 .edge-container {
-  color: hsl(var(--edge-default));
+  color: oklch(var(--edge-default));
 }
 
 
@@ -195,18 +195,18 @@ we recommend replacing this with an explicit child element so Tailwind classes c
 
 .react-flow__controls-button {
 	border: none;
-	color:  hsl(var(--muted-foreground) / var(--tw-text-opacity, 1));
-  border: 1px solid hsl(var(--border));
-  border-bottom: 1px solid hsl(var(--background) / 1) !important;
+	color:  oklch(var(--muted-foreground) / var(--tw-text-opacity, 1));
+  border: 1px solid oklch(var(--border));
+  border-bottom: 1px solid oklch(var(--background) / 1) !important;
   --tw-bg-opacity: 1;
-  background-color: hsl(var(--muted) / var(--tw-bg-opacity, 1)) !important;
+  background-color: oklch(var(--muted) / var(--tw-bg-opacity, 1)) !important;
   }
 
 .react-flow__minimap {
-  border: 1px solid hsl(var(--border));
+  border: 1px solid oklch(var(--border));
 
-  background-color: hsl(var(--canvas-bg) / 1)  !important;;
-  /* background-color: hsl(var(--muted) / var(--tw-bg-opacity, 1)) !important; */
+  background-color: oklch(var(--canvas-bg) / 1)  !important;;
+  /* background-color: oklch(var(--muted) / var(--tw-bg-opacity, 1)) !important; */
 }
 
 .react-flow__panel.bottom {
