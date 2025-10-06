@@ -17,45 +17,45 @@ export default {
     extend: {
       colors: {
         // Core
-        'background': 'oklch(var(--background) / <alpha-value>)',
-        'foreground': 'oklch(var(--foreground) / <alpha-value>)',
+        'background': 'var(--background)',
+        'foreground': 'var(--foreground)',
 
         // Surface
-        'card': 'oklch(var(--card) / <alpha-value>)',
-        'card-foreground': 'oklch(var(--card-foreground) / <alpha-value>)',
-        'popover': 'oklch(var(--popover) / <alpha-value>)',
-        'popover-foreground': 'oklch(var(--popover-foreground) / <alpha-value>)',
+        'card': 'var(--card)',
+        'card-foreground': 'var(--card-foreground)',
+        'popover': 'var(--popover)',
+        'popover-foreground': 'var(--popover-foreground)',
 
         // Brand
-        'primary': 'oklch(var(--primary) / <alpha-value>)',
-        'primary-foreground': 'oklch(var(--primary-foreground) / <alpha-value>)',
-        'primary-hover': 'oklch(var(--primary-hover) / <alpha-value>)',
+        'primary': 'var(--primary)',
+        'primary-foreground': 'var(--primary-foreground)',
+        'primary-hover': 'var(--primary-hover)',
 
-        'secondary': 'oklch(var(--secondary) / <alpha-value>)',
-        'secondary-foreground': 'oklch(var(--secondary-foreground) / <alpha-value>)',
-        'secondary-hover': 'oklch(var(--secondary-hover) / <alpha-value>)',
+        'secondary': 'var(--secondary)',
+        'secondary-foreground': 'var(--secondary-foreground)',
+        'secondary-hover': 'var(--secondary-hover)',
 
-        'accent': 'oklch(var(--accent) / <alpha-value>)',
-        'accent-foreground': 'oklch(var(--accent-foreground) / <alpha-value>)',
-        'accent-hover': 'oklch(var(--accent-hover) / <alpha-value>)',
+        'accent': 'var(--accent)',
+        'accent-foreground': 'var(--accent-foreground)',
+        'accent-hover': 'var(--accent-hover)',
 
         // Muted / Destructive / Inputs
-        'muted': 'oklch(var(--muted) / <alpha-value>)',
-        'muted-foreground': 'oklch(var(--muted-foreground) / <alpha-value>)',
-        'destructive': 'oklch(var(--destructive) / <alpha-value>)',
-        'destructive-foreground': 'oklch(var(--destructive-foreground) / <alpha-value>)',
+        'muted': 'var(--muted)',
+        'muted-foreground': 'var(--muted-foreground)',
+        'destructive': 'var(--destructive)',
+        'destructive-foreground': 'var(--destructive-foreground)',
 
         // Borders / Inputs / Rings
-        'border': 'oklch(var(--border) / <alpha-value>)',
-        'input': 'oklch(var(--input) / <alpha-value>)',
-        'ring': 'oklch(var(--ring) / <alpha-value>)',
+        'border': 'var(--border)',
+        'input': 'var(--input)',
+        'ring': 'var(--ring)',
 
         // Canvas / card helper
-        'canvas-bg': 'oklch(var(--canvas-bg) / <alpha-value>)',
-        'canvas-grid': 'oklch(var(--canvas-grid) / <alpha-value>)',
+        'canvas-bg': 'var(--canvas-bg)',
+        'canvas-grid': 'var(--canvas-grid)',
 
         // Additional tokens that appear in code
-        'sidebar-border': 'oklch(var(--glass-border) / <alpha-value>)',
+        'sidebar-border': 'var(--glass-border)',
       },
     },
   },

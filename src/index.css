@@ -4,89 +4,80 @@
 /* Theme tokens (keep variables as single source of truth for light/dark) */
 :root {
   /* Core Background */
-  --background: 0.9843 0.0017 247.8;
-  --foreground: 0.3752 0.0394 256.8;
+  --background: oklch(98.4% 0.002 247.8);
+  --foreground: oklch(37.5% 0.039 256.8);
   /* Stable dark foreground token for bright-button text (keeps same value across themes) */
-  --text-foreground-dark: 0.3752 0.0394 256.8;
-
+  --text-foreground-dark: oklch(37.5% 0.039 256.8);
   /* Surface Colors */
-  --card: 1.0000 0.0000 0.0;
-  --card-foreground: 0.3752 0.0394 256.8;
-  --popover: 1.0000 0.0000 0.0;
-  --popover-foreground: 0.3752 0.0394 256.8;
-
+  --card: oklch(100.0% 0 0);
+  --card-foreground: oklch(37.5% 0.039 256.8);
+  --popover: oklch(100.0% 0 0);
+  --popover-foreground: oklch(37.5% 0.039 256.8);
   /* Brand Colors */
-  --primary: 0.6748 0.1228 290.4;
-  --primary-foreground: 1.0000 0.0000 0.0;
-  --primary-hover: 0.6202 0.1447 289.1;
-
-  --secondary: 0.9061 0.0350 173.4;
-  --secondary-foreground: 0.4091 0.0492 170.3;
-  --secondary-hover: 0.8750 0.0465 172.9;
-
-  --accent: 0.8932 0.0560 57.5;
-  --accent-foreground: 0.3832 0.0536 55.9;
-  --accent-hover: 0.8587 0.0753 57.1;
-
-  --muted: 0.9607 0.0044 247.9;
-  --muted-foreground: 0.5825 0.0392 256.8;
-
-  --destructive: 0.7575 0.1089 9.2;
-  --destructive-foreground: 1.0000 0.0000 0.0;
-
-  --border: 0.9057 0.0080 247.9;
-  --input: 0.9374 0.0053 247.9;
-  --ring: 0.6748 0.1228 290.4;
+  --primary: oklch(67.5% 0.123 290.4);
+  --primary-foreground: oklch(100.0% 0 0);
+  --primary-hover: oklch(62.0% 0.145 289.1);
+  --secondary: oklch(90.6% 0.035 173.4);
+  --secondary-foreground: oklch(40.9% 0.049 170.3);
+  --secondary-hover: oklch(87.5% 0.046 172.9);
+  --accent: oklch(89.3% 0.056 57.5);
+  --accent-foreground: oklch(38.3% 0.054 55.9);
+  --accent-hover: oklch(85.9% 0.075 57.1);
+  --muted: oklch(96.1% 0.004 247.9);
+  --muted-foreground: oklch(58.3% 0.039 256.8);
+  --destructive: oklch(75.8% 0.109 9.2);
+  --destructive-foreground: oklch(100.0% 0 0);
+  --border: oklch(90.6% 0.008 247.9);
+  --input: oklch(93.7% 0.005 247.9);
+  --ring: oklch(67.5% 0.123 290.4);
   --radius: 0.75rem;
 
   /* Canvas tokens */
   /* Variant 3 (darker teal): stronger, darker teal background for lower perceived brightness */
-  --canvas-bg: 0.8024 0.0075 187.5;
-  --canvas-grid: 0.9291 0.0299 186.9;
-
+  --canvas-bg: oklch(80.2% 0.007 187.5);
+  --canvas-grid: oklch(92.9% 0.03 186.9);
   /* Node tokens */
-  --node-bg: 1.0000 0.0000 0.0;
-  --node-foreground: 0.3752 0.0394 256.8;
-  --node-border: 0.9057 0.0080 247.9;
-  --node-muted: 0.9374 0.0053 247.9;
+  --node-bg: oklch(100.0% 0 0);
+  --node-foreground: oklch(37.5% 0.039 256.8);
+  --node-border: oklch(90.6% 0.008 247.9);
+  --node-muted: oklch(93.7% 0.005 247.9);
   --node-shadow: 0 4px 20px oklch(0.3752 0.0394 256.8 / 0.1);
   --node-leftbar-width: 8px;
 
   /* Edge tokens */
-  --edge-default: 0.6666 0.0405 256.8;
-  --edge-selected: 0.5665 0.1664 287.5;
-
+  --edge-default: oklch(66.7% 0.041 256.8);
+  --edge-selected: oklch(56.6% 0.166 287.5);
   /* Glassmorphism / animation variables */
   --glass-shadow: 0 8px 32px oklch(0.3752 0.0394 256.8 / 0.08);
   --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .dark {
-  --background: 0.1866 0.0167 256.8;
-  --foreground: 0.9607 0.0044 247.9;
-  --card: 0.2299 0.0198 256.8;
-  --card-foreground: 0.9607 0.0044 247.9;
-  --popover: 0.2299 0.0198 256.8;
-  --popover-foreground: 0.9607 0.0044 247.9;
-  --primary: 0.6202 0.1447 289.1;
-  --primary-foreground: 1.0000 0.0000 0.0;
-  --muted: 0.2605 0.0240 256.8;
-  --muted-foreground: 0.8225 0.0158 256.7;
-  --border: 0.3879 0.0292 256.8;
-  --input: 0.2920 0.0224 256.8;
-  --canvas-bg: 0.1755 0.0078 186.6;
-  --canvas-grid: 0.2235 0.0107 186.5;
-  --node-bg: 0.2299 0.0198 256.8;
-  --node-foreground: 0.9607 0.0044 247.9;
-  --node-border: 0.3115 0.0245 256.8;
-  --node-muted: 0.2605 0.0240 256.8;
+  --background: oklch(18.7% 0.017 256.8);
+  --foreground: oklch(96.1% 0.004 247.9);
+  --card: oklch(23.0% 0.02 256.8);
+  --card-foreground: oklch(96.1% 0.004 247.9);
+  --popover: oklch(23.0% 0.02 256.8);
+  --popover-foreground: oklch(96.1% 0.004 247.9);
+  --primary: oklch(62.0% 0.145 289.1);
+  --primary-foreground: oklch(100.0% 0 0);
+  --muted: oklch(26.1% 0.024 256.8);
+  --muted-foreground: oklch(82.3% 0.016 256.7);
+  --border: oklch(38.8% 0.029 256.8);
+  --input: oklch(29.2% 0.022 256.8);
+  --canvas-bg: oklch(17.5% 0.008 186.6);
+  --canvas-grid: oklch(22.4% 0.011 186.5);
+  --node-bg: oklch(23.0% 0.02 256.8);
+  --node-foreground: oklch(96.1% 0.004 247.9);
+  --node-border: oklch(31.1% 0.025 256.8);
+  --node-muted: oklch(26.1% 0.024 256.8);
   --node-shadow: 0 4px 20px oklch(0.1906 0.0105 248.4 / 0.12);
 }
 
 /* Minimal base layer: keep only what is required globally */
 @layer base {
   * {
-    border-color: oklch(var(--border));
+    border-color: var(--border);
   }
 
   body {
@@ -96,7 +87,7 @@
 
   /* Utility: explicit dark foreground for use on bright buttons / surfaces where text-foreground
      reads too light. This token intentionally does not change in .dark mode. */
-  .text-foreground-dark { color: oklch(var(--text-foreground-dark)); }
+  .text-foreground-dark { color: var(--text-foreground-dark); }
 }
 
 /* Low-level React Flow rules that are structural / interaction-critical and
@@ -149,9 +140,9 @@ we recommend replacing this with an explicit child element so Tailwind classes c
 
 
 .react-flow__node > * {
-  background: oklch(var(--node-bg));
-  color: oklch(var(--node-foreground));
-  border-color: oklch(var(--node-border));
+  background: var(--node-bg);
+  color: var(--node-foreground);
+  border-color: var(--node-border);
   box-shadow: var(--node-shadow);
 }
 
@@ -169,19 +160,19 @@ we recommend replacing this with an explicit child element so Tailwind classes c
   border: 1px solid var(--node-color, transparent);
 
   /* badge text color is set per-node with --node-badge-foreground (computed in JS) */
-  color: var(--node-badge-foreground, oklch(var(--node-foreground)));
+  color: var(--node-badge-foreground, var(--node-foreground));
 }
 
 /* Namespace dot: use exact namespace color provided via --ns-color (hex), fallback to transparent.
    This ensures legend swatches match node colors exactly. */
 [data-ns-dot] {
   background: var(--ns-color, transparent);
-  border: 1px solid color-mix(in srgb, var(--ns-color) 20%, oklch(var(--border)));
+  border: 1px solid color-mix(in srgb, var(--ns-color) 20%, var(--border));
 }
 
 /* Edge container fallback: allows using currentColor on SVG children for theme-aware strokes/fills */
 .edge-container {
-  color: oklch(var(--edge-default));
+  color: var(--edge-default);
 }
 
 
@@ -196,16 +187,16 @@ we recommend replacing this with an explicit child element so Tailwind classes c
 .react-flow__controls-button {
 	border: none;
 	color:  oklch(var(--muted-foreground) / var(--tw-text-opacity, 1));
-  border: 1px solid oklch(var(--border));
-  border-bottom: 1px solid oklch(var(--background) / 1) !important;
+  border: 1px solid var(--border);
+  border-bottom: 1px solid var(--background) !important;
   --tw-bg-opacity: 1;
   background-color: oklch(var(--muted) / var(--tw-bg-opacity, 1)) !important;
   }
 
 .react-flow__minimap {
-  border: 1px solid oklch(var(--border));
+  border: 1px solid var(--border);
 
-  background-color: oklch(var(--canvas-bg) / 1)  !important;;
+  background-color: var(--canvas-bg)  !important;;
   /* background-color: oklch(var(--muted) / var(--tw-bg-opacity, 1)) !important; */
 }
 
