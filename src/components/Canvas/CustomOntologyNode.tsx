@@ -7,10 +7,9 @@ import {
   useConnection,
 } from "@xyflow/react";
 import { cn } from "../../lib/utils";
-import { Edit3, AlertTriangle, Info } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { shortLocalName, toPrefixed } from "../../utils/termUtils";
 import { NodeData } from "../../types/canvas";
+import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip";
 
 
 function CustomOntologyNodeImpl(props: NodeProps) {
@@ -213,87 +212,103 @@ function CustomOntologyNodeImpl(props: NodeProps) {
         style={{ background: nodeColor || "transparent" }}
       />
 
-      <div className="px-4 py-3 min-w-0 flex-1 w-auto node-bg">
-        <div className="flex items-center gap-3 mb-2">
-          <div
-            className="text-sm font-bold text-foreground truncate"
-            title={headerDisplay}
-          >
-            {headerDisplay}
-          </div>
+      <Tooltip delayDuration={250}>
+        <TooltipTrigger asChild>
+          <div className="px-4 py-3 min-w-0 flex-1 w-auto node-bg">
+            <div className="flex items-center gap-3 mb-2">
+              <div
+                className="text-sm font-bold text-foreground truncate"
+                title={headerDisplay}
+              >
+                {headerDisplay}
+              </div>
 
-          <div
-            className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 node-badge"
-            style={{
-              ['--node-color' as any]: nodeColor || 'transparent',
-            }}
-            aria-hidden="true"
-          >
-            <span className="truncate text-foreground-dark">
-              {badgeText || nodeData.classType}
-            </span>
-          </div>
+              <div
+                className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 node-badge"
+                style={{
+                  ['--node-color' as any]: nodeColor || 'transparent',
+                }}
+                aria-hidden="true"
+              >
+                <span className="truncate text-foreground-dark">
+                  {badgeText || nodeData.classType}
+                </span>
+              </div>
 
-          {hasErrors && (
-            <div className="ml-auto">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button
-                    className="h-6 w-6 p-0 text-destructive flex items-center justify-center"
-                    aria-label="Errors"
-                  >
-                    <AlertTriangle className="h-4 w-4" />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64">
-                  <div className="space-y-2 text-sm">
-                    <div className="font-medium">Validation Errors</div>
-                    <ul className="text-xs text-muted-foreground space-y-1">
-                      {nodeData.errors?.map((e, idx) => (
-                        <li key={idx}>{String(e)}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </PopoverContent>
-              </Popover>
+              {hasErrors}
             </div>
-          )}
-        </div>
 
-        <div className="text-sm text-muted-foreground mb-3">
-          <div className="text-xs text-muted-foreground mt-1 truncate">
-            {subtitleText}
-          </div>
-        </div>
+            <div className="text-sm text-muted-foreground mb-3">
+              <div className="text-xs text-muted-foreground mt-1 truncate">
+                {subtitleText}
+              </div>
+            </div>
 
-        <div className="pt-2 border-t border-border">
-          {annotations.length === 0 ? (
-            <div className="text-xs text-muted-foreground">No annotations</div>
-          ) : (
-            <div className="space-y-2">
-              {annotations.map((a, idx) => (
-                <div
-                  key={idx}
-                  className="grid grid-cols-[110px_1fr] gap-2 text-sm"
-                >
-                  <div className="font-medium text-xs text-muted-foreground truncate">
-                    {a.term}
-                  </div>
-                  <div className="text-xs text-foreground truncate">
-                    {a.value}
-                  </div>
+            <div className="pt-2 border-t border-border">
+              {annotations.length === 0 ? (
+                <div className="text-xs text-muted-foreground">No annotations</div>
+              ) : (
+                <div className="space-y-2">
+                  {annotations.map((a, idx) => (
+                    <div
+                      key={idx}
+                      className="grid grid-cols-[110px_1fr] gap-2 text-sm"
+                    >
+                      <div className="font-medium text-xs text-muted-foreground truncate">
+                        {a.term}
+                      </div>
+                      <div className="text-xs text-foreground truncate">
+                        {a.value}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
 
-        {typePresentButNotLoaded && (
-          <div className="mt-2 text-xs text-muted-foreground">
-            Type present but ontology not loaded
+            {typePresentButNotLoaded && (
+              <div className="mt-2 text-xs text-muted-foreground">
+                Type present but ontology not loaded
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </TooltipTrigger>
+
+        <TooltipContent side="top">
+          <div className="text-left text-sm space-y-2 max-w-xs">
+            <div className="font-semibold truncate">{headerDisplay}</div>
+            <div className="text-xs text-muted-foreground">{badgeText || nodeData.classType}</div>
+            {subtitleText && <div className="text-xs text-muted-foreground truncate">{subtitleText}</div>}
+
+            <div className="mt-2">
+              <div className="font-medium text-xs text-muted-foreground mb-1">Annotations</div>
+              {annotations.length === 0 ? (
+                <div className="text-xs text-muted-foreground">No annotations</div>
+              ) : (
+                <ul className="text-sm space-y-1">
+                  {annotations.map((a, i) => (
+                    <li key={i} className="flex gap-2">
+                      <div className="w-28 text-xs text-muted-foreground truncate">{a.term}</div>
+                      <div className="text-xs text-foreground truncate">{a.value}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {Array.isArray(typesList) && typesList.length > 0 && (
+              <div className="mt-2">
+                <div className="text-xs text-muted-foreground font-medium">Types</div>
+                <ul className="text-xs space-y-0.5">
+                  {typesList.map((t, idx) => <li key={idx} className="truncate">{String(t)}</li>)}
+                </ul>
+              </div>
+            )}
+
+            {nodeData.iri && <div className="text-xs text-muted-foreground mt-1 truncate">{String(nodeData.iri)}</div>}
+          </div>
+        </TooltipContent>
+      </Tooltip>
       {/* In this case we don't need to use useUpdateNodeInternals, since !isConnecting is true at the beginning and all handles are rendered initially. */}
       {showHandles && (
         <Handle

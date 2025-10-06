@@ -1,4 +1,4 @@
-import React, { memo, useState } from "react";
+import React, { memo } from "react";
 import {
   getBezierPath,
   EdgeLabelRenderer,
@@ -7,7 +7,7 @@ import {
   useInternalNode,
 } from "@xyflow/react";
 import { Badge } from "../ui/badge";
-import { Popover, PopoverTrigger, PopoverContent } from "../ui/popover";
+import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip";
 import PropertyList from "../ui/PropertyList";
 import { getEdgeParams } from "./EdgeParams";
 import { resolveEdgeRenderProps } from "./core/edgeStyle";
@@ -27,7 +27,7 @@ import type { LinkData } from "../../types/canvas";
 const FloatingEdge = memo((props: EdgeProps) => {
   const { id, source, target, style, data, markerEnd: propMarkerEnd } = props as any;
   const dataTyped = data as LinkData;
-  const [open, setOpen] = useState(false);
+  
 
 
   const sourceNode = useInternalNode(source);
@@ -82,13 +82,11 @@ const FloatingEdge = memo((props: EdgeProps) => {
           className="edge-label-renderer__custom-edge nodrag nopan pointer-events-auto"
         >
           {badgeText ? (
-            <Popover open={open} onOpenChange={setOpen}>
-              <PopoverTrigger asChild>
+            <Tooltip delayDuration={250}>
+              <TooltipTrigger asChild>
                 <button
                   type="button"
                   className="p-0 bg-transparent border-0 pointer-events-auto"
-                  onMouseEnter={() => setOpen(true)}
-                  onMouseLeave={() => setOpen(false)}
                 >
                   <Badge
                     variant="secondary"
@@ -97,8 +95,8 @@ const FloatingEdge = memo((props: EdgeProps) => {
                     {badgeText}
                   </Badge>
                 </button>
-              </PopoverTrigger>
-              <PopoverContent onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+              </TooltipTrigger>
+              <TooltipContent side="top">
                 <div className="space-y-3 text-sm">
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -179,8 +177,8 @@ const FloatingEdge = memo((props: EdgeProps) => {
                     </div>
                   )}
                 </div>
-              </PopoverContent>
-            </Popover>
+              </TooltipContent>
+            </Tooltip>
           ) : null}
         </div>
       </EdgeLabelRenderer>
