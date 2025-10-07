@@ -18,6 +18,9 @@ export interface AppConfig {
   showLegend: boolean;
   viewMode: 'abox' | 'tbox';
   canvasTheme: 'light' | 'dark' | 'auto';
+  // Whether tooltips are enabled in the UI. Tests may disable this flag before importing UI
+  // components to avoid tooltip DOM rendering during headless runs.
+  tooltipEnabled: boolean;
   
   // Performance settings
   autoReasoning: boolean;
@@ -63,6 +66,8 @@ interface AppConfigStore {
   setShowLegend: (show: boolean) => void;
   setViewMode: (mode: 'abox' | 'tbox') => void;
   setCanvasTheme: (theme: 'light' | 'dark' | 'auto') => void;
+  // Toggle UI tooltips
+  setTooltipEnabled: (enabled: boolean) => void;
   // Persisted toggle: when true, mapping updates will auto-apply the configured layout
   setAutoApplyLayout: (enabled: boolean) => void;
   // Persisted autoload: whether configured additionalOntologies should be loaded automatically on startup
@@ -108,6 +113,7 @@ const defaultConfig: AppConfig = {
   showLegend: false,
   viewMode: 'abox',
   canvasTheme: 'auto',
+  tooltipEnabled: true,
   autoReasoning: false,
   // Enable RDFManager triple-count logging by default to preserve existing behavior.
   debugRdfLogging: true,
@@ -196,6 +202,16 @@ export const useAppConfigStore = create<AppConfigStore>()(
           config: {
             ...state.config,
             canvasTheme: theme
+          }
+        }));
+      },
+
+      // Toggle UI tooltip rendering
+      setTooltipEnabled: (enabled: boolean) => {
+        set((state) => ({
+          config: {
+            ...state.config,
+            tooltipEnabled: Boolean(enabled)
           }
         }));
       },

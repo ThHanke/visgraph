@@ -86,8 +86,11 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
     // Persisted autoload toggle
     setPersistedAutoload,
     removeAdditionalOntology,
+    // Debugging toggles
+    setDebugRdfLogging,
     // Debug master toggle
-    setDebugAll
+    setDebugAll,
+    setTooltipEnabled,
   } = useAppConfigStore();
 
 
@@ -248,6 +251,22 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
                   <Badge variant={config.showLegend ? "default" : "secondary"}>
                     {config.showLegend ? "Visible" : "Hidden"}
                   </Badge>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <Label>Enable tooltips</Label>
+                  <Switch
+                    checked={config.tooltipEnabled}
+                    onCheckedChange={(val) => {
+                      try {
+                        setTooltipEnabled(Boolean(val));
+                        toast.success(`Tooltips ${val ? "enabled" : "disabled"}`);
+                      } catch (e) {
+                        try { console.debug("[VG_DEBUG] setTooltipEnabled failed", e); } catch (_) { void 0; }
+                        toast.error("Failed to update tooltip setting");
+                      }
+                    }}
+                  />
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -419,9 +438,40 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
                 <CardDescription>Developer debug helpers</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                
                 <div className="text-xs text-muted-foreground">
                   When enabled, diagnostic logs prefixed with <code>[VG_]</code> and in-canvas metrics become visible.
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <Label>Enable developer debug (master)</Label>
+                  <Switch
+                    checked={config.debugAll}
+                    onCheckedChange={(val) => {
+                      try {
+                        setDebugAll(Boolean(val));
+                        toast.success(`Debug ${val ? "enabled" : "disabled"}`);
+                      } catch (e) {
+                        try { console.debug("[VG_DEBUG] setDebugAll failed", e); } catch (_) { void 0; }
+                        toast.error("Failed to update debug setting");
+                      }
+                    }}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <Label>Enable RDF write logging</Label>
+                  <Switch
+                    checked={config.debugRdfLogging}
+                    onCheckedChange={(val) => {
+                      try {
+                        setDebugRdfLogging(Boolean(val));
+                        toast.success(`RDF write logging ${val ? "enabled" : "disabled"}`);
+                      } catch (e) {
+                        try { console.debug("[VG_DEBUG] setDebugRdfLogging failed", e); } catch (_) { void 0; }
+                        toast.error("Failed to update RDF logging setting");
+                      }
+                    }}
+                  />
                 </div>
               </CardContent>
             </Card>

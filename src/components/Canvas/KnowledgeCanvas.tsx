@@ -1561,10 +1561,18 @@ const KnowledgeCanvas: React.FC = () => {
           const allNodeIris = (nodes || []).map((n) =>
             (n && n.data && (n.data as any).iri) ? String((n.data as any).iri) : String(n.id),
           );
-          // Fire-and-forget but catch errors to avoid blocking UI
-          (mgr as any).triggerSubjectUpdate(allNodeIris).catch((err: any) => {
-            try { console.debug("[VG_DEBUG] triggerSubjectUpdate failed", err); } catch (_) { /* ignore */ }
-          });
+          // Only trigger the subject update when the canvas has fully initialized.
+          // This prevents premature emissions during test renders before providers
+          // (e.g. TooltipProvider) are mounted, which would cause provider-required
+          // components to throw.
+          if (typeof window !== "undefined" && (window as any).__VG_KNOWLEDGE_CANVAS_READY) {
+            // Fire-and-forget but catch errors to avoid blocking UI
+            (mgr as any).triggerSubjectUpdate(allNodeIris).catch((err: any) => {
+              try { console.debug("[VG_DEBUG] triggerSubjectUpdate failed", err); } catch (_) { /* ignore */ }
+            });
+          } else {
+            try { console.debug("[VG_DEBUG] skipping triggerSubjectUpdate: canvas not ready"); } catch (_) { /* ignore */ }
+          }
         } catch (err) {
           try { console.debug("[VG_DEBUG] triggerSubjectUpdate invocation failed", err); } catch (_) { /* ignore */ }
         }

@@ -487,15 +487,30 @@ export class RDFManager {
       if (!Array.isArray(subjectIris) || subjectIris.length === 0) return;
 
       const subjects: string[] = [];
-      const perSubjectSnapshots: Quad[] = [];
 
-      // Normalize and filter subjects (respect blacklist)
+      // Normalize and filter subjects (respect blacklist) and buffer them
       for (const sRaw of subjectIris) {
         try {
           const s = String(sRaw || "").trim();
           if (!s) continue;
           if (this.isBlacklistedIri && this.isBlacklistedIri(s)) continue;
           subjects.push(s);
+
+          // Buffer authoritative per-subject quads when possible so scheduleSubjectFlush can emit them.
+          try {
+            const subjTerm = namedNode(String(s));
+            const subjectQuads = this.store.getQuads(subjTerm, null, null, null) || [];
+            if (Array.isArray(subjectQuads) && subjectQuads.length > 0) {
+              const existing = this.subjectQuadBuffer.get(s) || [];
+              existing.push(...subjectQuads);
+              this.subjectQuadBuffer.set(s, existing);
+            }
+          } catch (_) {
+            // ignore per-subject read failures but still ensure the subject is buffered
+          }
+
+          // Mark subject buffered so schedule/flush behavior is consistent
+          try { this.subjectChangeBuffer.add(s); } catch (_) { /* ignore */ }
         } catch (_) {
           /* ignore per-item failures */
         }
@@ -503,93 +518,16 @@ export class RDFManager {
 
       if (subjects.length === 0) return;
 
+      // Schedule an immediate subject flush (async). scheduleSubjectFlush will
+      // perform reconciliation and emit to subscribers in the same shape as normal.
       try {
-        // Build authoritative per-subject snapshots from the store whenever possible.
-        for (const s of subjects) {
-          try {
-            const subjTerm = namedNode(String(s));
-            const subjectQuads = this.store.getQuads(subjTerm, null, null, null) || [];
-            if (Array.isArray(subjectQuads) && subjectQuads.length > 0) {
-              perSubjectSnapshots.push(...subjectQuads);
-              // Buffer these quads so internal buffers remain consistent (and consumers that inspect buffers can see them)
-              try {
-                const existing = this.subjectQuadBuffer.get(s) || [];
-                existing.push(...subjectQuads);
-                this.subjectQuadBuffer.set(s, existing);
-              } catch (_) { /* ignore buffering failures */ }
-              // Mark subject buffered so schedule/flush behavior is consistent
-              try { this.subjectChangeBuffer.add(s); } catch (_) { /* ignore */ }
-            } else {
-              // Even if there are no quads currently, still ensure subject is buffered so subscribers see the subject.
-              try { this.subjectChangeBuffer.add(s); } catch (_) { /* ignore */ }
-            }
-          } catch (_) {
-            /* ignore per-subject read failures */
-            try { this.subjectChangeBuffer.add(s); } catch (_) { /* ignore */ }
-          }
-        }
+        this.scheduleSubjectFlush(0);
       } catch (e) {
-        /* ignore snapshot build failures */
-      }
-
-      // If we have snapshots, run reconciliation to ensure fat-map is updated before emission
-      try {
-        const reconcileArg = Array.isArray(perSubjectSnapshots) && perSubjectSnapshots.length > 0 ? perSubjectSnapshots : undefined;
-        if (Array.isArray(reconcileArg)) {
-          await (this as any).runReconcile(reconcileArg);
-        } else {
-          // Still run a reconcile with undefined to ensure any pending reconcile semantics run
-          // but only if runReconcile is available.
-          try {
-            await (this as any).runReconcile(undefined);
-          } catch (_) { /* ignore reconcile failures */ }
-        }
-      } catch (_) {
-        /* ignore reconcile failures */
-      }
-
-      // Build authoritative emission quads: prefer the snapshots we already collected,
-      // otherwise re-read per-subject quads from the store so subscribers receive authoritative triples.
-      const authoritativeQuads: Quad[] = [];
-      try {
-        if (perSubjectSnapshots && perSubjectSnapshots.length > 0) {
-          authoritativeQuads.push(...perSubjectSnapshots);
-        } else {
-          for (const s of subjects) {
-            try {
-              const subjTerm = namedNode(String(s));
-              const subjectQuads = this.store.getQuads(subjTerm, null, null, null) || [];
-              if (Array.isArray(subjectQuads) && subjectQuads.length > 0) {
-                authoritativeQuads.push(...subjectQuads);
-              }
-            } catch (_) { /* ignore per-subject read failures */ }
-          }
-        }
-      } catch (_) {
-        /* ignore authoritative quad build failures */
-      }
-
-      // Clear subject buffers for the subjects we emitted (behaves similarly to scheduleSubjectFlush)
-      try {
-        for (const s of subjects) {
-          try { this.subjectQuadBuffer.delete(s); } catch (_) { /* ignore */ }
-        }
-      } catch (_) { /* ignore */ }
-
-      try { this.subjectChangeBuffer.clear(); } catch (_) { /* ignore */ }
-
-      // Emit to subscribers using the same call-shape scheduleSubjectFlush uses: (subjects, quads)
-      for (const cb of Array.from(this.subjectChangeSubscribers)) {
         try {
-          try {
-            (cb as any)(subjects, authoritativeQuads);
-          } catch (_) {
-            // Fallback: call with subjects-only for subscribers that expect old signature
-            cb(subjects);
+          if (typeof fallback === "function") {
+            fallback("rdf.triggerSubjectUpdate.schedule_failed", { error: String(e) });
           }
-        } catch (_) {
-          /* ignore individual subscriber errors */
-        }
+        } catch (_) { /* ignore */ }
       }
     } catch (err) {
       try {
@@ -619,7 +557,15 @@ export class RDFManager {
             this.subjectFlushTimer = null;
             return;
           }
-          const subjects = Array.from(this.subjectChangeBuffer);
+          // Filter out any blacklisted subjects before emitting. This ensures core vocab IRIs
+          // (e.g., rdf:, rdfs:, owl:) do not trigger canvas updates even if they were buffered.
+          const subjects = Array.from(this.subjectChangeBuffer).filter((s) => {
+            try {
+              return !(this.isBlacklistedIri && this.isBlacklistedIri(String(s)));
+            } catch (_) {
+              return true;
+            }
+          });
 
           // Build authoritative per-subject snapshots from the store (ensure parser writes are visible first).
           const _storeSnapshots: Quad[] = [];
@@ -695,7 +641,9 @@ export class RDFManager {
       if (!q || !q.subject || !q.subject.value) return;
       const subj = String((q.subject as any).value);
       // Respect configured blacklist: do not buffer or emit subjects from reserved vocabularies.
-      // if (this.isBlacklistedIri(subj)) return;
+      if (this.isBlacklistedIri && this.isBlacklistedIri(subj)) {
+        return;
+      }
 
       // Buffer subject for emission
       this.subjectChangeBuffer.add(subj);
@@ -800,6 +748,24 @@ export class RDFManager {
       try {
         this.notifyChange();
       } catch (_) { /* ignore notify failures */ }
+
+      // Developer debug: report per-graph triple counts after a batch load
+      try {
+        const allQuads = this.store.getQuads(null, null, null, null) || [];
+        const graphCounts: Record<string, number> = {};
+        for (const qq of allQuads) {
+          try {
+            const g = (qq && qq.graph && (qq.graph as any).value) ? (qq.graph as any).value : "default";
+            graphCounts[g] = (graphCounts[g] || 0) + 1;
+          } catch (_) {
+            /* ignore per-quad counting failures */
+          }
+        }
+        try { debugLog("rdf.load.batchCounts", { id: _vg_loadId, graphCounts }); } catch (_) { void 0; }
+        try { console.debug("[VG_DEBUG] rdf.load.batchCounts", { id: _vg_loadId, graphCounts }); } catch (_) { void 0; }
+      } catch (_) {
+        /* ignore debug failures */
+      }
 
       resolveFn();
     };
