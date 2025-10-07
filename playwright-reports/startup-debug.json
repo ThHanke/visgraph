@@ -1,20 +1,20 @@
 {
-  "url": "http://localhost:8080/?rdfUrl=https://example.com/graph.ttl&vg_debug=1",
-  "startTime": "2025-09-25T16:16:25.836Z",
-  "settledTime": "2025-09-25T16:16:27.871Z",
-  "loadDurationMs": 2035,
+  "url": "http://localhost:8080/?rdfUrl=https%3A%2F%2Fraw.githubusercontent.com%2FMat-O-Lab%2FIOFMaterialsTutorial%2Frefs%2Fheads%2Fmain%2FLengthMeasurement.ttl&vg_debug=1",
+  "startTime": "2025-10-07T15:37:01.861Z",
+  "settledTime": "2025-10-07T15:37:04.670Z",
+  "loadDurationMs": 2809,
   "consoleEntries": [
     {
-      "ts": "2025-09-25T16:16:25.844Z",
+      "ts": "2025-10-07T15:37:01.884Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/?rdfUrl=https://example.com/graph.ttl&vg_debug=1",
+        "url": "http://localhost:8080/?rdfUrl=https%3A%2F%2Fraw.githubusercontent.com%2FMat-O-Lab%2FIOFMaterialsTutorial%2Frefs%2Fheads%2Fmain%2FLengthMeasurement.ttl&vg_debug=1",
         "method": "GET",
         "resourceType": "document"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.866Z",
+      "ts": "2025-10-07T15:37:01.898Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/@vite/client",
@@ -23,23 +23,23 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.867Z",
+      "ts": "2025-10-07T15:37:01.899Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/src/main.tsx?t=1758816936240",
+        "url": "http://localhost:8080/src/main.tsx?t=1759851416709",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.868Z",
+      "ts": "2025-10-07T15:37:01.902Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/?rdfUrl=https://example.com/graph.ttl&vg_debug=1"
+        "url": "http://localhost:8080/?rdfUrl=https%3A%2F%2Fraw.githubusercontent.com%2FMat-O-Lab%2FIOFMaterialsTutorial%2Frefs%2Fheads%2Fmain%2FLengthMeasurement.ttl&vg_debug=1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.869Z",
+      "ts": "2025-10-07T15:37:01.902Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/@react-refresh",
@@ -48,66 +48,50 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.925Z",
+      "ts": "2025-10-07T15:37:01.904Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/main.tsx?t=1758816936240"
+        "url": "http://localhost:8080/src/main.tsx?t=1759851416709"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.933Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/@vite/client"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.933Z",
+      "ts": "2025-10-07T15:37:01.920Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=82408c83",
+        "url": "http://localhost:8080/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=d86c6fb1",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.934Z",
+      "ts": "2025-10-07T15:37:01.920Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/react-dom_client.js?v=82408c83",
+        "url": "http://localhost:8080/node_modules/.vite/deps/react-dom_client.js?v=d86c6fb1",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.934Z",
+      "ts": "2025-10-07T15:37:01.920Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/src/App.tsx?t=1758816936240",
+        "url": "http://localhost:8080/src/App.tsx?t=1759850576522",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.934Z",
+      "ts": "2025-10-07T15:37:01.921Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/src/index.css?t=1758816936240",
+        "url": "http://localhost:8080/src/index.css?t=1759851416709",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.935Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/src/reactflow-controls.css",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.935Z",
+      "ts": "2025-10-07T15:37:01.921Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/node_modules/@xyflow/react/dist/style.css",
@@ -116,7 +100,7 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.935Z",
+      "ts": "2025-10-07T15:37:01.921Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/node_modules/reactflow/dist/style.css",
@@ -125,7 +109,7 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.935Z",
+      "ts": "2025-10-07T15:37:01.921Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/utils/theme.ts",
@@ -134,16 +118,16 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.935Z",
+      "ts": "2025-10-07T15:37:01.921Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/src/utils/rdfManager.ts?t=1758802990764",
+        "url": "http://localhost:8080/src/utils/rdfManager.ts",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.935Z",
+      "ts": "2025-10-07T15:37:01.921Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/stores/appConfigStore.ts",
@@ -152,7 +136,14 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.935Z",
+      "ts": "2025-10-07T15:37:01.930Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/@vite/client"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.930Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/node_modules/vite/dist/client/env.mjs",
@@ -161,92 +152,106 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.940Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/react-dom_client.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.942Z",
+      "ts": "2025-10-07T15:37:01.931Z",
       "kind": "requestfinished",
       "payload": {
         "url": "http://localhost:8080/@react-refresh"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.942Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JHUGEO63.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.942Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OIM7OLJW.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.942Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-RDKGUBC5.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.944Z",
+      "ts": "2025-10-07T15:37:01.938Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/App.tsx?t=1758816936240"
+        "url": "http://localhost:8080/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.946Z",
+      "ts": "2025-10-07T15:37:01.938Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/reactflow-controls.css"
+        "url": "http://localhost:8080/node_modules/.vite/deps/react-dom_client.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.946Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/index.css?t=1758816936240"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.946Z",
+      "ts": "2025-10-07T15:37:01.938Z",
       "kind": "requestfinished",
       "payload": {
         "url": "http://localhost:8080/node_modules/@xyflow/react/dist/style.css"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.949Z",
+      "ts": "2025-10-07T15:37:01.938Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=82408c83"
+        "url": "http://localhost:8080/node_modules/reactflow/dist/style.css"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.949Z",
+      "ts": "2025-10-07T15:37:01.939Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/App.tsx?t=1759850576522"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.939Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/utils/theme.ts"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.939Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/index.css?t=1759851416709"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.939Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/react.js?v=82408c83",
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OIM7OLJW.js?v=d86c6fb1",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.949Z",
+      "ts": "2025-10-07T15:37:01.939Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-RDKGUBC5.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.939Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/stores/appConfigStore.ts"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.939Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JHUGEO63.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.961Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/react.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.961Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/toaster.tsx",
@@ -255,7 +260,7 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.949Z",
+      "ts": "2025-10-07T15:37:01.961Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/sonner.tsx",
@@ -264,7 +269,7 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.949Z",
+      "ts": "2025-10-07T15:37:01.961Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/tooltip.tsx",
@@ -273,34 +278,34 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.950Z",
+      "ts": "2025-10-07T15:37:01.961Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@tanstack_react-query.js?v=82408c83",
+        "url": "http://localhost:8080/node_modules/.vite/deps/@tanstack_react-query.js?v=d86c6fb1",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.950Z",
+      "ts": "2025-10-07T15:37:01.961Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/react-router-dom.js?v=82408c83",
+        "url": "http://localhost:8080/node_modules/.vite/deps/react-router-dom.js?v=d86c6fb1",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.950Z",
+      "ts": "2025-10-07T15:37:01.961Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/src/pages/Index.tsx?t=1758816936240",
+        "url": "http://localhost:8080/src/pages/Index.tsx?t=1759850576522",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.950Z",
+      "ts": "2025-10-07T15:37:01.961Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/pages/NotFound.tsx",
@@ -309,53 +314,32 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.950Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/reactflow/dist/style.css"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.951Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/utils/theme.ts"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.952Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/stores/appConfigStore.ts"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.952Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/zustand.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.952Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/zustand_middleware.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.953Z",
+      "ts": "2025-10-07T15:37:01.961Z",
       "kind": "requestfinished",
       "payload": {
         "url": "http://localhost:8080/node_modules/vite/dist/client/env.mjs"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.955Z",
+      "ts": "2025-10-07T15:37:01.962Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/zustand.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.962Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/zustand_middleware.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.962Z",
       "kind": "console",
       "payload": {
         "type": "debug",
@@ -363,32 +347,46 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.959Z",
+      "ts": "2025-10-07T15:37:01.962Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/utils/rdfManager.ts?t=1758802990764"
+        "url": "http://localhost:8080/src/utils/rdfManager.ts"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.959Z",
+      "ts": "2025-10-07T15:37:01.962Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OIM7OLJW.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.962Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-RDKGUBC5.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.963Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/n3.js?v=82408c83",
+        "url": "http://localhost:8080/node_modules/.vite/deps/n3.js?v=d86c6fb1",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.959Z",
+      "ts": "2025-10-07T15:37:01.963Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/src/stores/ontologyStore.ts?t=1758802990764",
+        "url": "http://localhost:8080/src/stores/ontologyStore.ts",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.959Z",
+      "ts": "2025-10-07T15:37:01.963Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/utils/wellKnownOntologies.ts",
@@ -397,7 +395,7 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.959Z",
+      "ts": "2025-10-07T15:37:01.963Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/utils/startupDebug.ts",
@@ -406,7 +404,16 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.965Z",
+      "ts": "2025-10-07T15:37:01.963Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/utils/namespaceRegistry.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.963Z",
       "kind": "console",
       "payload": {
         "type": "debug",
@@ -414,28 +421,63 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.967Z",
+      "ts": "2025-10-07T15:37:01.963Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-RDKGUBC5.js?v=82408c83"
+        "url": "http://localhost:8080/node_modules/.vite/deps/react.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.967Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/react.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.967Z",
+      "ts": "2025-10-07T15:37:01.969Z",
       "kind": "requestfinished",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/toaster.tsx"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.967Z",
+      "ts": "2025-10-07T15:37:01.970Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/sonner.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.970Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/tooltip.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.970Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/pages/Index.tsx?t=1759850576522"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.970Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/pages/NotFound.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.970Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@tanstack_react-query.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.970Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/react-router-dom.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.970Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/hooks/use-toast.ts",
@@ -444,7 +486,7 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.968Z",
+      "ts": "2025-10-07T15:37:01.970Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/toast.tsx",
@@ -453,39 +495,32 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.974Z",
+      "ts": "2025-10-07T15:37:01.970Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/ui/sonner.tsx"
+        "url": "http://localhost:8080/node_modules/.vite/deps/zustand.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.974Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OIM7OLJW.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.975Z",
+      "ts": "2025-10-07T15:37:01.970Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/next-themes.js?v=82408c83",
+        "url": "http://localhost:8080/node_modules/.vite/deps/next-themes.js?v=d86c6fb1",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.975Z",
+      "ts": "2025-10-07T15:37:01.970Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/sonner.js?v=82408c83",
+        "url": "http://localhost:8080/node_modules/.vite/deps/sonner.js?v=d86c6fb1",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.975Z",
+      "ts": "2025-10-07T15:37:01.970Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/helpers/sonnerHelpers.ts",
@@ -494,65 +529,16 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.987Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/components/ui/tooltip.tsx"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.991Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/pages/Index.tsx?t=1758816936240"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.992Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/zustand.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.993Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@tanstack_react-query.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.993Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/pages/NotFound.tsx"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.993Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/zustand_middleware.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.993Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/react-router-dom.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.996Z",
+      "ts": "2025-10-07T15:37:01.970Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=82408c83",
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=d86c6fb1",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.996Z",
+      "ts": "2025-10-07T15:37:01.970Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/lib/utils.ts",
@@ -561,358 +547,319 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.996Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/KnowledgeCanvas.tsx?t=1758816936240",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.996Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-PXMHN2KN.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:25.996Z",
+      "ts": "2025-10-07T15:37:01.971Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/utils/wellKnownOntologies.ts"
+        "url": "http://localhost:8080/node_modules/.vite/deps/zustand_middleware.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.996Z",
+      "ts": "2025-10-07T15:37:01.971Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/KnowledgeCanvas.tsx?t=1759850576522",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.971Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-PXMHN2KN.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.971Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/n3.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.971Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-E4PXOTUK.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.972Z",
       "kind": "requestfinished",
       "payload": {
         "url": "http://localhost:8080/src/hooks/use-toast.ts"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.996Z",
+      "ts": "2025-10-07T15:37:01.973Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/utils/startupDebug.ts"
+        "url": "http://localhost:8080/src/stores/ontologyStore.ts"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.998Z",
+      "ts": "2025-10-07T15:37:01.973Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/stores/ontologyStore.ts?t=1758802990764"
+        "url": "http://localhost:8080/node_modules/.vite/deps/next-themes.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.998Z",
+      "ts": "2025-10-07T15:37:01.973Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/n3.js?v=82408c83"
+        "url": "http://localhost:8080/src/utils/wellKnownOntologies.ts"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.998Z",
-      "kind": "request",
+      "ts": "2025-10-07T15:37:01.985Z",
+      "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/core/namespacePalette.ts?t=1758802990764",
-        "method": "GET",
-        "resourceType": "script"
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JHUGEO63.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:25.999Z",
-      "kind": "request",
+      "ts": "2025-10-07T15:37:01.985Z",
+      "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-E4PXOTUK.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
+        "url": "http://localhost:8080/src/utils/namespaceRegistry.ts"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.000Z",
+      "ts": "2025-10-07T15:37:01.985Z",
       "kind": "requestfinished",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/toast.tsx"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.003Z",
+      "ts": "2025-10-07T15:37:01.986Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JHUGEO63.js?v=82408c83"
+        "url": "http://localhost:8080/src/utils/startupDebug.ts"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.003Z",
+      "ts": "2025-10-07T15:37:01.986Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/next-themes.js?v=82408c83"
+        "url": "http://localhost:8080/node_modules/.vite/deps/sonner.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.003Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-toast.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.003Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/class-variance-authority.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.003Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/lucide-react.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.003Z",
+      "ts": "2025-10-07T15:37:01.986Z",
       "kind": "requestfinished",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/helpers/sonnerHelpers.ts"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/sonner.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-UWSBPLXK.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-EWYWMK3A.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-GZY7TS5M.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-R53JE3PD.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OIXQXOEB.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-UKOJGTHM.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-LOUVBAIY.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TAPLXRBH.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.007Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-R6YSPWPO.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.007Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-B64GZIWT.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.007Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-DU3GT3GH.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.007Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-BAFYI26D.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.007Z",
+      "ts": "2025-10-07T15:37:01.986Z",
       "kind": "requestfinished",
       "payload": {
         "url": "http://localhost:8080/src/lib/utils.ts"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.007Z",
+      "ts": "2025-10-07T15:37:01.986Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/clsx.js?v=82408c83",
+        "url": "http://localhost:8080/src/components/Canvas/core/namespacePalette.ts",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.007Z",
+      "ts": "2025-10-07T15:37:01.986Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.986Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/tailwind-merge.js?v=82408c83",
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-toast.js?v=d86c6fb1",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.013Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/class-variance-authority.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.014Z",
+      "ts": "2025-10-07T15:37:01.986Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-U7P2NEEE.js?v=82408c83",
+        "url": "http://localhost:8080/node_modules/.vite/deps/class-variance-authority.js?v=d86c6fb1",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.014Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-PXMHN2KN.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.015Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/core/namespacePalette.ts?t=1758802990764"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.016Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-toast.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.018Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/KnowledgeCanvas.tsx?t=1758816936240"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.019Z",
+      "ts": "2025-10-07T15:37:01.986Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-M6BE3SF4.js?v=82408c83",
+        "url": "http://localhost:8080/node_modules/.vite/deps/lucide-react.js?v=d86c6fb1",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:01.986Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/clsx.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.986Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/tailwind-merge.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.986Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-LOUVBAIY.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.986Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-UWSBPLXK.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.986Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-EWYWMK3A.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.987Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-R53JE3PD.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.991Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-GZY7TS5M.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.991Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OIXQXOEB.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.991Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-UKOJGTHM.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.991Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TAPLXRBH.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.991Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-R6YSPWPO.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.991Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-B64GZIWT.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.991Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-DU3GT3GH.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:01.991Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-BAFYI26D.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.003Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-E4PXOTUK.js?v=82408c83"
+        "url": "http://localhost:8080/src/components/Canvas/KnowledgeCanvas.tsx?t=1759850576522"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:02.003Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@xyflow_react.js?v=82408c83",
+        "url": "http://localhost:8080/node_modules/.vite/deps/@xyflow_react.js?v=d86c6fb1",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:02.003Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/src/stores/reasoningStore.ts?t=1758795885037",
+        "url": "http://localhost:8080/src/stores/reasoningStore.ts",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:02.003Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/stores/settingsStore.ts",
@@ -921,25 +868,25 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:02.003Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/CanvasToolbar.tsx?t=1758802990764",
+        "url": "http://localhost:8080/src/components/Canvas/CanvasToolbar.tsx",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:02.003Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/ResizableNamespaceLegend.tsx?t=1758802990764",
+        "url": "http://localhost:8080/src/components/Canvas/ResizableNamespaceLegend.tsx",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:02.003Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/Canvas/ReasoningIndicator.tsx",
@@ -948,7 +895,7 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:02.003Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/Canvas/ReasoningReportModal.tsx",
@@ -957,7 +904,7 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:02.003Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/progress.tsx",
@@ -966,34 +913,34 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:02.004Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/core/mappingHelpers.ts?t=1758797678694",
+        "url": "http://localhost:8080/src/components/Canvas/core/mappingHelpers.ts",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:02.004Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/CustomOntologyNode.tsx?t=1758802990764",
+        "url": "http://localhost:8080/src/components/Canvas/CustomOntologyNode.tsx",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:02.004Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/FloatingEdge.tsx?t=1758802990764",
+        "url": "http://localhost:8080/src/components/Canvas/FloatingEdge.tsx",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:02.004Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/Canvas/FloatingConnectionLine.tsx",
@@ -1002,7 +949,16 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:02.004Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/core/createEdge.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.004Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/Canvas/core/edgeHelpers.ts",
@@ -1011,16 +967,34 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.025Z",
+      "ts": "2025-10-07T15:37:02.004Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/src/hooks/useCanvasState.ts?t=1758810924975",
+        "url": "http://localhost:8080/src/components/Canvas/core/downloadHelpers.ts?t=1759850576522",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.025Z",
+      "ts": "2025-10-07T15:37:02.004Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/core/exportHelpers.ts?t=1759850576522",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.004Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/hooks/useCanvasState.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.004Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/Canvas/LayoutManager.ts",
@@ -1029,272 +1003,183 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.029Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-GZY7TS5M.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.032Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-R53JE3PD.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.032Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-UWSBPLXK.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.032Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-EWYWMK3A.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.033Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OIXQXOEB.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.037Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TAPLXRBH.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.038Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-UKOJGTHM.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.038Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-R6YSPWPO.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.039Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-LOUVBAIY.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.039Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-B64GZIWT.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.057Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-DU3GT3GH.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.057Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/clsx.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.057Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-BAFYI26D.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.057Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-U7P2NEEE.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.057Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/tailwind-merge.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.057Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-M6BE3SF4.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.071Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/stores/settingsStore.ts"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.072Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/stores/reasoningStore.ts?t=1758795885037"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.072Z",
+      "ts": "2025-10-07T15:37:02.004Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/src/utils/termUtils.ts?t=1758795885037",
+        "url": "http://localhost:8080/src/components/Canvas/NodePropertyEditor.tsx",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.079Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/ReasoningIndicator.tsx"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.079Z",
+      "ts": "2025-10-07T15:37:02.004Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/src/components/ui/button.tsx",
+        "url": "http://localhost:8080/src/components/Canvas/LinkPropertyEditor.tsx",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.079Z",
+      "ts": "2025-10-07T15:37:02.028Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/class-variance-authority.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.028Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-PXMHN2KN.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.028Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/core/namespacePalette.ts"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.028Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-toast.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.028Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/src/components/ui/badge.tsx",
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-U7P2NEEE.js?v=d86c6fb1",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.088Z",
-      "kind": "requestfinished",
+      "ts": "2025-10-07T15:37:02.028Z",
+      "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/lucide-react.js?v=82408c83"
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-M6BE3SF4.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.088Z",
+      "ts": "2025-10-07T15:37:02.028Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/ResizableNamespaceLegend.tsx?t=1758802990764"
+        "url": "http://localhost:8080/node_modules/.vite/deps/clsx.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.090Z",
+      "ts": "2025-10-07T15:37:02.029Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/ReasoningReportModal.tsx"
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-UWSBPLXK.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.090Z",
+      "ts": "2025-10-07T15:37:02.029Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/ui/progress.tsx"
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-LOUVBAIY.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.091Z",
+      "ts": "2025-10-07T15:37:02.029Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/core/mappingHelpers.ts?t=1758797678694"
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-R53JE3PD.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.092Z",
+      "ts": "2025-10-07T15:37:02.029Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/CustomOntologyNode.tsx?t=1758802990764"
+        "url": "http://localhost:8080/node_modules/.vite/deps/tailwind-merge.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.095Z",
+      "ts": "2025-10-07T15:37:02.029Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/FloatingConnectionLine.tsx"
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-GZY7TS5M.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.095Z",
+      "ts": "2025-10-07T15:37:02.029Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/core/edgeHelpers.ts"
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OIXQXOEB.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.096Z",
+      "ts": "2025-10-07T15:37:02.029Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/LayoutManager.ts"
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TAPLXRBH.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.096Z",
+      "ts": "2025-10-07T15:37:02.029Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/hooks/useCanvasState.ts?t=1758810924975"
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-UKOJGTHM.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.096Z",
+      "ts": "2025-10-07T15:37:02.029Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/FloatingEdge.tsx?t=1758802990764"
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-EWYWMK3A.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.097Z",
+      "ts": "2025-10-07T15:37:02.034Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/CanvasToolbar.tsx?t=1758802990764"
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-E4PXOTUK.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.098Z",
+      "ts": "2025-10-07T15:37:02.034Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/ui/badge.tsx"
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-R6YSPWPO.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.098Z",
+      "ts": "2025-10-07T15:37:02.035Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/ui/button.tsx"
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-DU3GT3GH.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.098Z",
+      "ts": "2025-10-07T15:37:02.035Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/utils/termUtils.ts?t=1758795885037"
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-B64GZIWT.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.100Z",
+      "ts": "2025-10-07T15:37:02.035Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-BAFYI26D.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.035Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/ResizableNamespaceLegend.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.035Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/Canvas/NamespaceLegendCore.tsx",
@@ -1303,7 +1188,7 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.100Z",
+      "ts": "2025-10-07T15:37:02.035Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/input.tsx",
@@ -1312,7 +1197,67 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.100Z",
+      "ts": "2025-10-07T15:37:02.035Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/ReasoningIndicator.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.035Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/stores/settingsStore.ts"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.035Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/ReasoningReportModal.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.035Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/progress.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.035Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/core/createEdge.ts"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.035Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/button.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.035Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/badge.tsx",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.035Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/stores/reasoningStore.ts"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.035Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/dialog.tsx",
@@ -1321,7 +1266,7 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.100Z",
+      "ts": "2025-10-07T15:37:02.035Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/tabs.tsx",
@@ -1330,7 +1275,7 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.100Z",
+      "ts": "2025-10-07T15:37:02.036Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/scroll-area.tsx",
@@ -1339,7 +1284,7 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.100Z",
+      "ts": "2025-10-07T15:37:02.036Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/card.tsx",
@@ -1348,50 +1293,32 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.100Z",
+      "ts": "2025-10-07T15:37:02.036Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-progress.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.036Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/core/edgeStyle.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.036Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@xyflow_react.js?v=82408c83"
+        "url": "http://localhost:8080/src/components/Canvas/CanvasToolbar.tsx"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.100Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-progress.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.101Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/src/components/ui/popover.tsx",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.101Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/helpers/namespaceHelpers.ts",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.101Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/EdgeParams.tsx",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.103Z",
+      "ts": "2025-10-07T15:37:02.036Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/label.tsx",
@@ -1400,7 +1327,7 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.104Z",
+      "ts": "2025-10-07T15:37:02.036Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/slider.tsx",
@@ -1409,7 +1336,7 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.104Z",
+      "ts": "2025-10-07T15:37:02.036Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/dropdown-menu.tsx",
@@ -1418,7 +1345,7 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.104Z",
+      "ts": "2025-10-07T15:37:02.036Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/EntityAutocomplete.tsx",
@@ -1427,330 +1354,129 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.104Z",
+      "ts": "2025-10-07T15:37:02.036Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/ConfigurationPanel.tsx?t=1758802990764",
+        "url": "http://localhost:8080/src/components/Canvas/ConfigurationPanel.tsx",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.104Z",
+      "ts": "2025-10-07T15:37:02.036Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/src/components/ui/badgeVariants.ts",
+        "url": "http://localhost:8080/src/components/ui/popover.tsx",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.104Z",
+      "ts": "2025-10-07T15:37:02.043Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/core/mappingHelpers.ts"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.043Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slot.js?v=82408c83",
+        "url": "http://localhost:8080/src/utils/termUtils.ts",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.104Z",
+      "ts": "2025-10-07T15:37:02.043Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/core/edgeHelpers.ts"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.043Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/FloatingConnectionLine.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.043Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/core/downloadHelpers.ts?t=1759850576522"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.043Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/src/components/ui/buttonVariants.ts",
+        "url": "http://localhost:8080/src/components/Canvas/EdgeParams.tsx",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.105Z",
+      "ts": "2025-10-07T15:37:02.043Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/ui/input.tsx"
+        "url": "http://localhost:8080/src/components/Canvas/CustomOntologyNode.tsx"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.105Z",
+      "ts": "2025-10-07T15:37:02.043Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/NamespaceLegendCore.tsx"
+        "url": "http://localhost:8080/src/components/Canvas/FloatingEdge.tsx"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.110Z",
+      "ts": "2025-10-07T15:37:02.043Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/ui/dialog.tsx"
+        "url": "http://localhost:8080/src/components/Canvas/core/exportHelpers.ts?t=1759850576522"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.114Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/components/ui/tabs.tsx"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.114Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/components/ui/scroll-area.tsx"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.115Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/components/ui/card.tsx"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.115Z",
+      "ts": "2025-10-07T15:37:02.043Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dialog.js?v=82408c83",
+        "url": "http://localhost:8080/node_modules/.vite/deps/html-to-image.js?v=d86c6fb1",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.115Z",
+      "ts": "2025-10-07T15:37:02.043Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/ui/popover.tsx"
+        "url": "http://localhost:8080/node_modules/.vite/deps/@xyflow_react.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.115Z",
+      "ts": "2025-10-07T15:37:02.043Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-progress.js?v=82408c83"
+        "url": "http://localhost:8080/src/hooks/useCanvasState.ts"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.115Z",
+      "ts": "2025-10-07T15:37:02.043Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/helpers/namespaceHelpers.ts"
+        "url": "http://localhost:8080/src/components/Canvas/LayoutManager.ts"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.115Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tabs.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.115Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-scroll-area.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.115Z",
+      "ts": "2025-10-07T15:37:02.044Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/EdgeParams.tsx"
+        "url": "http://localhost:8080/src/components/Canvas/NodePropertyEditor.tsx"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.115Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-popover.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.119Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/components/ui/label.tsx"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.120Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/components/ui/slider.tsx"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.121Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/components/ui/EntityAutocomplete.tsx"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.121Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/components/ui/dropdown-menu.tsx"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.121Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/components/ui/badgeVariants.ts"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.123Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/components/ui/buttonVariants.ts"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.123Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slot.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.123Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dialog.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.123Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tabs.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.123Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-label.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-scroll-area.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-popover.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slider.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/src/components/ui/command.tsx",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dropdown-menu.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-MYWMKMBE.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-WO75AEQQ.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OSI24F5G.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-676JM23W.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/src/components/Canvas/ConfigurationPanel.tsx?t=1758802990764"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-6ZMM2PAV.js?v=82408c83",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.128Z",
-      "kind": "requestfinished",
-      "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-label.js?v=82408c83"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.128Z",
-      "kind": "request",
-      "payload": {
-        "url": "http://localhost:8080/src/components/ui/switch.tsx",
-        "method": "GET",
-        "resourceType": "script"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.128Z",
+      "ts": "2025-10-07T15:37:02.044Z",
       "kind": "request",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/select.tsx",
@@ -1759,141 +1485,527 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.133Z",
-      "kind": "requestfinished",
+      "ts": "2025-10-07T15:37:02.044Z",
+      "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-MYWMKMBE.js?v=82408c83"
+        "url": "http://localhost:8080/src/components/ui/AutoComplete.tsx",
+        "method": "GET",
+        "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.133Z",
+      "ts": "2025-10-07T15:37:02.044Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-676JM23W.js?v=82408c83"
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-U7P2NEEE.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.134Z",
+      "ts": "2025-10-07T15:37:02.044Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slider.js?v=82408c83"
+        "url": "http://localhost:8080/src/components/Canvas/LinkPropertyEditor.tsx"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.135Z",
+      "ts": "2025-10-07T15:37:02.044Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/ui/command.tsx"
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-M6BE3SF4.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.136Z",
+      "ts": "2025-10-07T15:37:02.044Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-WO75AEQQ.js?v=82408c83"
+        "url": "http://localhost:8080/src/components/Canvas/NamespaceLegendCore.tsx"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.137Z",
+      "ts": "2025-10-07T15:37:02.045Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OSI24F5G.js?v=82408c83"
+        "url": "http://localhost:8080/src/components/ui/input.tsx"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.139Z",
+      "ts": "2025-10-07T15:37:02.053Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dropdown-menu.js?v=82408c83"
+        "url": "http://localhost:8080/src/components/ui/button.tsx"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.139Z",
+      "ts": "2025-10-07T15:37:02.053Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-6ZMM2PAV.js?v=82408c83"
+        "url": "http://localhost:8080/src/components/ui/scroll-area.tsx"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.139Z",
+      "ts": "2025-10-07T15:37:02.053Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/src/components/ui/switch.tsx"
+        "url": "http://localhost:8080/src/components/ui/dialog.tsx"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.139Z",
+      "ts": "2025-10-07T15:37:02.055Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/tabs.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.055Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/badge.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.057Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/lucide-react.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.059Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slot.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.060Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/buttonVariants.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.060Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-scroll-area.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.060Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dialog.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.060Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tabs.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.060Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/badgeVariants.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.060Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/label.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.060Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/card.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.063Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/EntityAutocomplete.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.063Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/slider.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.063Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/popover.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.063Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-progress.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.063Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/core/edgeStyle.ts"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.063Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/dropdown-menu.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.063Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/EdgeParams.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.063Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/html-to-image.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.063Z",
       "kind": "requestfinished",
       "payload": {
         "url": "http://localhost:8080/src/components/ui/select.tsx"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.140Z",
+      "ts": "2025-10-07T15:37:02.064Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/utils/termUtils.ts"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.064Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/AutoComplete.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.066Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/ConfigurationPanel.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.067Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JSB5LOZ5.js?v=82408c83",
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-label.js?v=d86c6fb1",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.140Z",
+      "ts": "2025-10-07T15:37:02.067Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/cmdk.js?v=82408c83",
+        "url": "http://localhost:8080/src/components/ui/command.tsx",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.140Z",
+      "ts": "2025-10-07T15:37:02.067Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-switch.js?v=82408c83",
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slider.js?v=d86c6fb1",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.140Z",
+      "ts": "2025-10-07T15:37:02.067Z",
       "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-select.js?v=82408c83",
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-popover.js?v=d86c6fb1",
         "method": "GET",
         "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.141Z",
-      "kind": "requestfinished",
+      "ts": "2025-10-07T15:37:02.067Z",
+      "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JSB5LOZ5.js?v=82408c83"
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dropdown-menu.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.141Z",
-      "kind": "requestfinished",
+      "ts": "2025-10-07T15:37:02.067Z",
+      "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/cmdk.js?v=82408c83"
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-select.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.142Z",
-      "kind": "requestfinished",
+      "ts": "2025-10-07T15:37:02.067Z",
+      "kind": "request",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-switch.js?v=82408c83"
+        "url": "http://localhost:8080/src/components/ui/switch.tsx",
+        "method": "GET",
+        "resourceType": "script"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.142Z",
+      "ts": "2025-10-07T15:37:02.069Z",
       "kind": "requestfinished",
       "payload": {
-        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-select.js?v=82408c83"
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slot.js?v=d86c6fb1"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.175Z",
+      "ts": "2025-10-07T15:37:02.069Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/badgeVariants.ts"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.069Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/buttonVariants.ts"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.069Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dialog.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.070Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-scroll-area.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.070Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tabs.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.070Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TSJ2ADLG.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.070Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-ZBTP3JZL.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.070Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-6ZMM2PAV.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.070Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-676JM23W.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.070Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OSI24F5G.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.070Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-label.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.072Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/command.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.072Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/cmdk.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.072Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-popover.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.073Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slider.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.073Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JSB5LOZ5.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.078Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dropdown-menu.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.078Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/ui/switch.tsx"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.078Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-switch.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.080Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-select.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.080Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-676JM23W.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.082Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-6ZMM2PAV.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.082Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TSJ2ADLG.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.082Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-ZBTP3JZL.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.082Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OSI24F5G.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.082Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JSB5LOZ5.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.083Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/cmdk.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.083Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-switch.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.114Z",
       "kind": "console",
       "payload": {
         "type": "info",
@@ -1901,32 +2013,16 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.246Z",
-      "kind": "console",
-      "payload": {
-        "type": "debug",
-        "text": "[VG] Render editors {showNodeEditor: false, selectedNode: null, showLinkEditor: false, selectedLink: null}"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.292Z",
-      "kind": "console",
-      "payload": {
-        "type": "debug",
-        "text": "[VG_DEBUG] CanvasToolbar.loadedOntologies change {registeredCount: 0, configuredCount: 3, sample: Array(0)}"
-      }
-    },
-    {
-      "ts": "2025-09-25T16:16:26.312Z",
+      "ts": "2025-10-07T15:37:02.255Z",
       "kind": "request",
       "payload": {
-        "url": "https://example.com/graph.ttl",
+        "url": "https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl",
         "method": "GET",
         "resourceType": "fetch"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.313Z",
+      "ts": "2025-10-07T15:37:02.256Z",
       "kind": "console",
       "payload": {
         "type": "warning",
@@ -1934,7 +2030,7 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.314Z",
+      "ts": "2025-10-07T15:37:02.256Z",
       "kind": "console",
       "payload": {
         "type": "warning",
@@ -1942,1204 +2038,1620 @@
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.326Z",
-      "kind": "console",
+      "ts": "2025-10-07T15:37:02.319Z",
+      "kind": "requestfinished",
       "payload": {
-        "type": "debug",
-        "text": "[VG] Render editors {showNodeEditor: false, selectedNode: null, showLinkEditor: false, selectedLink: null}"
+        "url": "https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl"
       }
     },
     {
-      "ts": "2025-09-25T16:16:26.352Z",
+      "ts": "2025-10-07T15:37:02.335Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/utils/parsedFromStore.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.366Z",
       "kind": "console",
       "payload": {
         "type": "debug",
-        "text": "[VG] KnowledgeCanvas onInit {hasInstance: true}"
+        "text": "canvas.rebuild.end"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.366Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/utils/parsedFromStore.ts"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.371Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/layout/dagreLayout.ts",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.527Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/src/components/Canvas/layout/dagreLayout.ts"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.572Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "canvas.rebuild.end"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.581Z",
+      "kind": "request",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/dagre.js?v=d86c6fb1",
+        "method": "GET",
+        "resourceType": "script"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.625Z",
+      "kind": "requestfinished",
+      "payload": {
+        "url": "http://localhost:8080/node_modules/.vite/deps/dagre.js?v=d86c6fb1"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.716Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "canvas.layout.apply.completed horizontal"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:02.989Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "canvas.rebuild.end"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:03.015Z",
+      "kind": "console",
+      "payload": {
+        "type": "info",
+        "text": "startup.fixture.injected_via_paste"
+      }
+    },
+    {
+      "ts": "2025-10-07T15:37:03.091Z",
+      "kind": "console",
+      "payload": {
+        "type": "debug",
+        "text": "canvas.rebuild.end"
       }
     }
   ],
   "requests": [
     {
-      "ts": "2025-09-25T16:16:25.844Z",
-      "url": "http://localhost:8080/?rdfUrl=https://example.com/graph.ttl&vg_debug=1",
+      "ts": "2025-10-07T15:37:01.884Z",
+      "url": "http://localhost:8080/?rdfUrl=https%3A%2F%2Fraw.githubusercontent.com%2FMat-O-Lab%2FIOFMaterialsTutorial%2Frefs%2Fheads%2Fmain%2FLengthMeasurement.ttl&vg_debug=1",
       "method": "GET",
       "resourceType": "document"
     },
     {
-      "ts": "2025-09-25T16:16:25.866Z",
+      "ts": "2025-10-07T15:37:01.898Z",
       "url": "http://localhost:8080/@vite/client",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.867Z",
-      "url": "http://localhost:8080/src/main.tsx?t=1758816936240",
+      "ts": "2025-10-07T15:37:01.899Z",
+      "url": "http://localhost:8080/src/main.tsx?t=1759851416709",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.869Z",
+      "ts": "2025-10-07T15:37:01.902Z",
       "url": "http://localhost:8080/@react-refresh",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.933Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.920Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.934Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/react-dom_client.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.920Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/react-dom_client.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.934Z",
-      "url": "http://localhost:8080/src/App.tsx?t=1758816936240",
+      "ts": "2025-10-07T15:37:01.920Z",
+      "url": "http://localhost:8080/src/App.tsx?t=1759850576522",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.934Z",
-      "url": "http://localhost:8080/src/index.css?t=1758816936240",
+      "ts": "2025-10-07T15:37:01.920Z",
+      "url": "http://localhost:8080/src/index.css?t=1759851416709",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.935Z",
-      "url": "http://localhost:8080/src/reactflow-controls.css",
-      "method": "GET",
-      "resourceType": "script"
-    },
-    {
-      "ts": "2025-09-25T16:16:25.935Z",
+      "ts": "2025-10-07T15:37:01.921Z",
       "url": "http://localhost:8080/node_modules/@xyflow/react/dist/style.css",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.935Z",
+      "ts": "2025-10-07T15:37:01.921Z",
       "url": "http://localhost:8080/node_modules/reactflow/dist/style.css",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.935Z",
+      "ts": "2025-10-07T15:37:01.921Z",
       "url": "http://localhost:8080/src/utils/theme.ts",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.935Z",
-      "url": "http://localhost:8080/src/utils/rdfManager.ts?t=1758802990764",
+      "ts": "2025-10-07T15:37:01.921Z",
+      "url": "http://localhost:8080/src/utils/rdfManager.ts",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.935Z",
+      "ts": "2025-10-07T15:37:01.921Z",
       "url": "http://localhost:8080/src/stores/appConfigStore.ts",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.935Z",
+      "ts": "2025-10-07T15:37:01.930Z",
       "url": "http://localhost:8080/node_modules/vite/dist/client/env.mjs",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.942Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JHUGEO63.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.939Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OIM7OLJW.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.942Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OIM7OLJW.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.939Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-RDKGUBC5.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.942Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-RDKGUBC5.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.939Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JHUGEO63.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.949Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/react.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.961Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/react.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.949Z",
+      "ts": "2025-10-07T15:37:01.961Z",
       "url": "http://localhost:8080/src/components/ui/toaster.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.949Z",
+      "ts": "2025-10-07T15:37:01.961Z",
       "url": "http://localhost:8080/src/components/ui/sonner.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.949Z",
+      "ts": "2025-10-07T15:37:01.961Z",
       "url": "http://localhost:8080/src/components/ui/tooltip.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.950Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@tanstack_react-query.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.961Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@tanstack_react-query.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.950Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/react-router-dom.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.961Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/react-router-dom.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.950Z",
-      "url": "http://localhost:8080/src/pages/Index.tsx?t=1758816936240",
+      "ts": "2025-10-07T15:37:01.961Z",
+      "url": "http://localhost:8080/src/pages/Index.tsx?t=1759850576522",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.950Z",
+      "ts": "2025-10-07T15:37:01.961Z",
       "url": "http://localhost:8080/src/pages/NotFound.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.952Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/zustand.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.962Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/zustand.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.952Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/zustand_middleware.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.962Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/zustand_middleware.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.959Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/n3.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.963Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/n3.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.959Z",
-      "url": "http://localhost:8080/src/stores/ontologyStore.ts?t=1758802990764",
+      "ts": "2025-10-07T15:37:01.963Z",
+      "url": "http://localhost:8080/src/stores/ontologyStore.ts",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.959Z",
+      "ts": "2025-10-07T15:37:01.963Z",
       "url": "http://localhost:8080/src/utils/wellKnownOntologies.ts",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.959Z",
+      "ts": "2025-10-07T15:37:01.963Z",
       "url": "http://localhost:8080/src/utils/startupDebug.ts",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.967Z",
+      "ts": "2025-10-07T15:37:01.963Z",
+      "url": "http://localhost:8080/src/utils/namespaceRegistry.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:01.970Z",
       "url": "http://localhost:8080/src/hooks/use-toast.ts",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.968Z",
+      "ts": "2025-10-07T15:37:01.970Z",
       "url": "http://localhost:8080/src/components/ui/toast.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.975Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/next-themes.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.970Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/next-themes.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.975Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/sonner.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.970Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/sonner.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.975Z",
+      "ts": "2025-10-07T15:37:01.970Z",
       "url": "http://localhost:8080/src/components/ui/helpers/sonnerHelpers.ts",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.996Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.970Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.996Z",
+      "ts": "2025-10-07T15:37:01.970Z",
       "url": "http://localhost:8080/src/lib/utils.ts",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.996Z",
-      "url": "http://localhost:8080/src/components/Canvas/KnowledgeCanvas.tsx?t=1758816936240",
+      "ts": "2025-10-07T15:37:01.971Z",
+      "url": "http://localhost:8080/src/components/Canvas/KnowledgeCanvas.tsx?t=1759850576522",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.996Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-PXMHN2KN.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.971Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-PXMHN2KN.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.998Z",
-      "url": "http://localhost:8080/src/components/Canvas/core/namespacePalette.ts?t=1758802990764",
+      "ts": "2025-10-07T15:37:01.971Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-E4PXOTUK.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:25.999Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-E4PXOTUK.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.986Z",
+      "url": "http://localhost:8080/src/components/Canvas/core/namespacePalette.ts",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.003Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-toast.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.986Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-toast.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.003Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/class-variance-authority.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.986Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/class-variance-authority.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.003Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/lucide-react.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.986Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/lucide-react.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-UWSBPLXK.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.986Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/clsx.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-EWYWMK3A.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.986Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/tailwind-merge.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-GZY7TS5M.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.986Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-LOUVBAIY.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-R53JE3PD.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.986Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-UWSBPLXK.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OIXQXOEB.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.986Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-EWYWMK3A.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-UKOJGTHM.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.987Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-R53JE3PD.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-LOUVBAIY.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.991Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-GZY7TS5M.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TAPLXRBH.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.991Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OIXQXOEB.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.007Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-R6YSPWPO.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.991Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-UKOJGTHM.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.007Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-B64GZIWT.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.991Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TAPLXRBH.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.007Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-DU3GT3GH.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.991Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-R6YSPWPO.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.007Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-BAFYI26D.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.991Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-B64GZIWT.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.007Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/clsx.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.991Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-DU3GT3GH.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.007Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/tailwind-merge.js?v=82408c83",
+      "ts": "2025-10-07T15:37:01.991Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-BAFYI26D.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.014Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-U7P2NEEE.js?v=82408c83",
+      "ts": "2025-10-07T15:37:02.003Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@xyflow_react.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.019Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-M6BE3SF4.js?v=82408c83",
+      "ts": "2025-10-07T15:37:02.003Z",
+      "url": "http://localhost:8080/src/stores/reasoningStore.ts",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@xyflow_react.js?v=82408c83",
-      "method": "GET",
-      "resourceType": "script"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.020Z",
-      "url": "http://localhost:8080/src/stores/reasoningStore.ts?t=1758795885037",
-      "method": "GET",
-      "resourceType": "script"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:02.003Z",
       "url": "http://localhost:8080/src/stores/settingsStore.ts",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
-      "url": "http://localhost:8080/src/components/Canvas/CanvasToolbar.tsx?t=1758802990764",
+      "ts": "2025-10-07T15:37:02.003Z",
+      "url": "http://localhost:8080/src/components/Canvas/CanvasToolbar.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
-      "url": "http://localhost:8080/src/components/Canvas/ResizableNamespaceLegend.tsx?t=1758802990764",
+      "ts": "2025-10-07T15:37:02.003Z",
+      "url": "http://localhost:8080/src/components/Canvas/ResizableNamespaceLegend.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:02.003Z",
       "url": "http://localhost:8080/src/components/Canvas/ReasoningIndicator.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:02.003Z",
       "url": "http://localhost:8080/src/components/Canvas/ReasoningReportModal.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:02.003Z",
       "url": "http://localhost:8080/src/components/ui/progress.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
-      "url": "http://localhost:8080/src/components/Canvas/core/mappingHelpers.ts?t=1758797678694",
+      "ts": "2025-10-07T15:37:02.004Z",
+      "url": "http://localhost:8080/src/components/Canvas/core/mappingHelpers.ts",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
-      "url": "http://localhost:8080/src/components/Canvas/CustomOntologyNode.tsx?t=1758802990764",
+      "ts": "2025-10-07T15:37:02.004Z",
+      "url": "http://localhost:8080/src/components/Canvas/CustomOntologyNode.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
-      "url": "http://localhost:8080/src/components/Canvas/FloatingEdge.tsx?t=1758802990764",
+      "ts": "2025-10-07T15:37:02.004Z",
+      "url": "http://localhost:8080/src/components/Canvas/FloatingEdge.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:02.004Z",
       "url": "http://localhost:8080/src/components/Canvas/FloatingConnectionLine.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
+      "ts": "2025-10-07T15:37:02.004Z",
+      "url": "http://localhost:8080/src/components/Canvas/core/createEdge.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.004Z",
       "url": "http://localhost:8080/src/components/Canvas/core/edgeHelpers.ts",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.021Z",
-      "url": "http://localhost:8080/src/hooks/useCanvasState.ts?t=1758810924975",
+      "ts": "2025-10-07T15:37:02.004Z",
+      "url": "http://localhost:8080/src/components/Canvas/core/downloadHelpers.ts?t=1759850576522",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.025Z",
+      "ts": "2025-10-07T15:37:02.004Z",
+      "url": "http://localhost:8080/src/components/Canvas/core/exportHelpers.ts?t=1759850576522",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.004Z",
+      "url": "http://localhost:8080/src/hooks/useCanvasState.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.004Z",
       "url": "http://localhost:8080/src/components/Canvas/LayoutManager.ts",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.072Z",
-      "url": "http://localhost:8080/src/utils/termUtils.ts?t=1758795885037",
+      "ts": "2025-10-07T15:37:02.004Z",
+      "url": "http://localhost:8080/src/components/Canvas/NodePropertyEditor.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.079Z",
-      "url": "http://localhost:8080/src/components/ui/button.tsx",
+      "ts": "2025-10-07T15:37:02.004Z",
+      "url": "http://localhost:8080/src/components/Canvas/LinkPropertyEditor.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.079Z",
-      "url": "http://localhost:8080/src/components/ui/badge.tsx",
+      "ts": "2025-10-07T15:37:02.028Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-U7P2NEEE.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.100Z",
+      "ts": "2025-10-07T15:37:02.028Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-M6BE3SF4.js?v=d86c6fb1",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.035Z",
       "url": "http://localhost:8080/src/components/Canvas/NamespaceLegendCore.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.100Z",
+      "ts": "2025-10-07T15:37:02.035Z",
       "url": "http://localhost:8080/src/components/ui/input.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.100Z",
+      "ts": "2025-10-07T15:37:02.035Z",
+      "url": "http://localhost:8080/src/components/ui/button.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.035Z",
+      "url": "http://localhost:8080/src/components/ui/badge.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.035Z",
       "url": "http://localhost:8080/src/components/ui/dialog.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.100Z",
+      "ts": "2025-10-07T15:37:02.035Z",
       "url": "http://localhost:8080/src/components/ui/tabs.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.100Z",
+      "ts": "2025-10-07T15:37:02.036Z",
       "url": "http://localhost:8080/src/components/ui/scroll-area.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.100Z",
+      "ts": "2025-10-07T15:37:02.036Z",
       "url": "http://localhost:8080/src/components/ui/card.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.100Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-progress.js?v=82408c83",
+      "ts": "2025-10-07T15:37:02.036Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-progress.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.101Z",
-      "url": "http://localhost:8080/src/components/ui/popover.tsx",
+      "ts": "2025-10-07T15:37:02.036Z",
+      "url": "http://localhost:8080/src/components/Canvas/core/edgeStyle.ts",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.101Z",
-      "url": "http://localhost:8080/src/components/Canvas/helpers/namespaceHelpers.ts",
-      "method": "GET",
-      "resourceType": "script"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.101Z",
-      "url": "http://localhost:8080/src/components/Canvas/EdgeParams.tsx",
-      "method": "GET",
-      "resourceType": "script"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.103Z",
+      "ts": "2025-10-07T15:37:02.036Z",
       "url": "http://localhost:8080/src/components/ui/label.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.104Z",
+      "ts": "2025-10-07T15:37:02.036Z",
       "url": "http://localhost:8080/src/components/ui/slider.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.104Z",
+      "ts": "2025-10-07T15:37:02.036Z",
       "url": "http://localhost:8080/src/components/ui/dropdown-menu.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.104Z",
+      "ts": "2025-10-07T15:37:02.036Z",
       "url": "http://localhost:8080/src/components/ui/EntityAutocomplete.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.104Z",
-      "url": "http://localhost:8080/src/components/Canvas/ConfigurationPanel.tsx?t=1758802990764",
+      "ts": "2025-10-07T15:37:02.036Z",
+      "url": "http://localhost:8080/src/components/Canvas/ConfigurationPanel.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.104Z",
-      "url": "http://localhost:8080/src/components/ui/badgeVariants.ts",
+      "ts": "2025-10-07T15:37:02.036Z",
+      "url": "http://localhost:8080/src/components/ui/popover.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.104Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slot.js?v=82408c83",
+      "ts": "2025-10-07T15:37:02.043Z",
+      "url": "http://localhost:8080/src/utils/termUtils.ts",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.104Z",
-      "url": "http://localhost:8080/src/components/ui/buttonVariants.ts",
+      "ts": "2025-10-07T15:37:02.043Z",
+      "url": "http://localhost:8080/src/components/Canvas/EdgeParams.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.115Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dialog.js?v=82408c83",
+      "ts": "2025-10-07T15:37:02.043Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/html-to-image.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.115Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tabs.js?v=82408c83",
-      "method": "GET",
-      "resourceType": "script"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.115Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-scroll-area.js?v=82408c83",
-      "method": "GET",
-      "resourceType": "script"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.115Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-popover.js?v=82408c83",
-      "method": "GET",
-      "resourceType": "script"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.123Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-label.js?v=82408c83",
-      "method": "GET",
-      "resourceType": "script"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slider.js?v=82408c83",
-      "method": "GET",
-      "resourceType": "script"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "url": "http://localhost:8080/src/components/ui/command.tsx",
-      "method": "GET",
-      "resourceType": "script"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dropdown-menu.js?v=82408c83",
-      "method": "GET",
-      "resourceType": "script"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-MYWMKMBE.js?v=82408c83",
-      "method": "GET",
-      "resourceType": "script"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-WO75AEQQ.js?v=82408c83",
-      "method": "GET",
-      "resourceType": "script"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OSI24F5G.js?v=82408c83",
-      "method": "GET",
-      "resourceType": "script"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-676JM23W.js?v=82408c83",
-      "method": "GET",
-      "resourceType": "script"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-6ZMM2PAV.js?v=82408c83",
-      "method": "GET",
-      "resourceType": "script"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.128Z",
-      "url": "http://localhost:8080/src/components/ui/switch.tsx",
-      "method": "GET",
-      "resourceType": "script"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.128Z",
+      "ts": "2025-10-07T15:37:02.044Z",
       "url": "http://localhost:8080/src/components/ui/select.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.140Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JSB5LOZ5.js?v=82408c83",
+      "ts": "2025-10-07T15:37:02.044Z",
+      "url": "http://localhost:8080/src/components/ui/AutoComplete.tsx",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.140Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/cmdk.js?v=82408c83",
+      "ts": "2025-10-07T15:37:02.059Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slot.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.140Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-switch.js?v=82408c83",
+      "ts": "2025-10-07T15:37:02.060Z",
+      "url": "http://localhost:8080/src/components/ui/buttonVariants.ts",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.140Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-select.js?v=82408c83",
+      "ts": "2025-10-07T15:37:02.060Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-scroll-area.js?v=d86c6fb1",
       "method": "GET",
       "resourceType": "script"
     },
     {
-      "ts": "2025-09-25T16:16:26.312Z",
-      "url": "https://example.com/graph.ttl",
+      "ts": "2025-10-07T15:37:02.060Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dialog.js?v=d86c6fb1",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.060Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tabs.js?v=d86c6fb1",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.060Z",
+      "url": "http://localhost:8080/src/components/ui/badgeVariants.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.067Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-label.js?v=d86c6fb1",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.067Z",
+      "url": "http://localhost:8080/src/components/ui/command.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.067Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slider.js?v=d86c6fb1",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.067Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-popover.js?v=d86c6fb1",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.067Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dropdown-menu.js?v=d86c6fb1",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.067Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-select.js?v=d86c6fb1",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.067Z",
+      "url": "http://localhost:8080/src/components/ui/switch.tsx",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.070Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TSJ2ADLG.js?v=d86c6fb1",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.070Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-ZBTP3JZL.js?v=d86c6fb1",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.070Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-6ZMM2PAV.js?v=d86c6fb1",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.070Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-676JM23W.js?v=d86c6fb1",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.070Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OSI24F5G.js?v=d86c6fb1",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.072Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/cmdk.js?v=d86c6fb1",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.073Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JSB5LOZ5.js?v=d86c6fb1",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.078Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-switch.js?v=d86c6fb1",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.255Z",
+      "url": "https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl",
       "method": "GET",
       "resourceType": "fetch"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.335Z",
+      "url": "http://localhost:8080/src/utils/parsedFromStore.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.371Z",
+      "url": "http://localhost:8080/src/components/Canvas/layout/dagreLayout.ts",
+      "method": "GET",
+      "resourceType": "script"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.581Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/dagre.js?v=d86c6fb1",
+      "method": "GET",
+      "resourceType": "script"
     }
   ],
   "requestFinished": [
     {
-      "ts": "2025-09-25T16:16:25.868Z",
-      "url": "http://localhost:8080/?rdfUrl=https://example.com/graph.ttl&vg_debug=1"
+      "ts": "2025-10-07T15:37:01.902Z",
+      "url": "http://localhost:8080/?rdfUrl=https%3A%2F%2Fraw.githubusercontent.com%2FMat-O-Lab%2FIOFMaterialsTutorial%2Frefs%2Fheads%2Fmain%2FLengthMeasurement.ttl&vg_debug=1"
     },
     {
-      "ts": "2025-09-25T16:16:25.925Z",
-      "url": "http://localhost:8080/src/main.tsx?t=1758816936240"
+      "ts": "2025-10-07T15:37:01.904Z",
+      "url": "http://localhost:8080/src/main.tsx?t=1759851416709"
     },
     {
-      "ts": "2025-09-25T16:16:25.933Z",
+      "ts": "2025-10-07T15:37:01.930Z",
       "url": "http://localhost:8080/@vite/client"
     },
     {
-      "ts": "2025-09-25T16:16:25.940Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/react-dom_client.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:25.942Z",
+      "ts": "2025-10-07T15:37:01.931Z",
       "url": "http://localhost:8080/@react-refresh"
     },
     {
-      "ts": "2025-09-25T16:16:25.944Z",
-      "url": "http://localhost:8080/src/App.tsx?t=1758816936240"
+      "ts": "2025-10-07T15:37:01.938Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:25.946Z",
-      "url": "http://localhost:8080/src/reactflow-controls.css"
+      "ts": "2025-10-07T15:37:01.938Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/react-dom_client.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:25.946Z",
-      "url": "http://localhost:8080/src/index.css?t=1758816936240"
-    },
-    {
-      "ts": "2025-09-25T16:16:25.946Z",
+      "ts": "2025-10-07T15:37:01.938Z",
       "url": "http://localhost:8080/node_modules/@xyflow/react/dist/style.css"
     },
     {
-      "ts": "2025-09-25T16:16:25.949Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:25.950Z",
+      "ts": "2025-10-07T15:37:01.938Z",
       "url": "http://localhost:8080/node_modules/reactflow/dist/style.css"
     },
     {
-      "ts": "2025-09-25T16:16:25.951Z",
+      "ts": "2025-10-07T15:37:01.939Z",
+      "url": "http://localhost:8080/src/App.tsx?t=1759850576522"
+    },
+    {
+      "ts": "2025-10-07T15:37:01.939Z",
       "url": "http://localhost:8080/src/utils/theme.ts"
     },
     {
-      "ts": "2025-09-25T16:16:25.952Z",
+      "ts": "2025-10-07T15:37:01.939Z",
+      "url": "http://localhost:8080/src/index.css?t=1759851416709"
+    },
+    {
+      "ts": "2025-10-07T15:37:01.939Z",
       "url": "http://localhost:8080/src/stores/appConfigStore.ts"
     },
     {
-      "ts": "2025-09-25T16:16:25.953Z",
+      "ts": "2025-10-07T15:37:01.961Z",
       "url": "http://localhost:8080/node_modules/vite/dist/client/env.mjs"
     },
     {
-      "ts": "2025-09-25T16:16:25.959Z",
-      "url": "http://localhost:8080/src/utils/rdfManager.ts?t=1758802990764"
+      "ts": "2025-10-07T15:37:01.962Z",
+      "url": "http://localhost:8080/src/utils/rdfManager.ts"
     },
     {
-      "ts": "2025-09-25T16:16:25.967Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-RDKGUBC5.js?v=82408c83"
+      "ts": "2025-10-07T15:37:01.962Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OIM7OLJW.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:25.967Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/react.js?v=82408c83"
+      "ts": "2025-10-07T15:37:01.962Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-RDKGUBC5.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:25.967Z",
+      "ts": "2025-10-07T15:37:01.963Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/react.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:01.969Z",
       "url": "http://localhost:8080/src/components/ui/toaster.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:25.974Z",
+      "ts": "2025-10-07T15:37:01.970Z",
       "url": "http://localhost:8080/src/components/ui/sonner.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:25.974Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OIM7OLJW.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:25.987Z",
+      "ts": "2025-10-07T15:37:01.970Z",
       "url": "http://localhost:8080/src/components/ui/tooltip.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:25.991Z",
-      "url": "http://localhost:8080/src/pages/Index.tsx?t=1758816936240"
+      "ts": "2025-10-07T15:37:01.970Z",
+      "url": "http://localhost:8080/src/pages/Index.tsx?t=1759850576522"
     },
     {
-      "ts": "2025-09-25T16:16:25.992Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/zustand.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:25.993Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@tanstack_react-query.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:25.993Z",
+      "ts": "2025-10-07T15:37:01.970Z",
       "url": "http://localhost:8080/src/pages/NotFound.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:25.993Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/zustand_middleware.js?v=82408c83"
+      "ts": "2025-10-07T15:37:01.970Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@tanstack_react-query.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:25.993Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/react-router-dom.js?v=82408c83"
+      "ts": "2025-10-07T15:37:01.970Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/react-router-dom.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:25.996Z",
-      "url": "http://localhost:8080/src/utils/wellKnownOntologies.ts"
+      "ts": "2025-10-07T15:37:01.970Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/zustand.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:25.996Z",
+      "ts": "2025-10-07T15:37:01.971Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/zustand_middleware.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:01.971Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/n3.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:01.972Z",
       "url": "http://localhost:8080/src/hooks/use-toast.ts"
     },
     {
-      "ts": "2025-09-25T16:16:25.996Z",
-      "url": "http://localhost:8080/src/utils/startupDebug.ts"
+      "ts": "2025-10-07T15:37:01.973Z",
+      "url": "http://localhost:8080/src/stores/ontologyStore.ts"
     },
     {
-      "ts": "2025-09-25T16:16:25.998Z",
-      "url": "http://localhost:8080/src/stores/ontologyStore.ts?t=1758802990764"
+      "ts": "2025-10-07T15:37:01.973Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/next-themes.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:25.998Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/n3.js?v=82408c83"
+      "ts": "2025-10-07T15:37:01.973Z",
+      "url": "http://localhost:8080/src/utils/wellKnownOntologies.ts"
     },
     {
-      "ts": "2025-09-25T16:16:26.000Z",
+      "ts": "2025-10-07T15:37:01.985Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JHUGEO63.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:01.985Z",
+      "url": "http://localhost:8080/src/utils/namespaceRegistry.ts"
+    },
+    {
+      "ts": "2025-10-07T15:37:01.985Z",
       "url": "http://localhost:8080/src/components/ui/toast.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.003Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JHUGEO63.js?v=82408c83"
+      "ts": "2025-10-07T15:37:01.986Z",
+      "url": "http://localhost:8080/src/utils/startupDebug.ts"
     },
     {
-      "ts": "2025-09-25T16:16:26.003Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/next-themes.js?v=82408c83"
+      "ts": "2025-10-07T15:37:01.986Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/sonner.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.003Z",
+      "ts": "2025-10-07T15:37:01.986Z",
       "url": "http://localhost:8080/src/components/ui/helpers/sonnerHelpers.ts"
     },
     {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/sonner.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.006Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.007Z",
+      "ts": "2025-10-07T15:37:01.986Z",
       "url": "http://localhost:8080/src/lib/utils.ts"
     },
     {
-      "ts": "2025-09-25T16:16:26.013Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/class-variance-authority.js?v=82408c83"
+      "ts": "2025-10-07T15:37:01.986Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.014Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-PXMHN2KN.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.003Z",
+      "url": "http://localhost:8080/src/components/Canvas/KnowledgeCanvas.tsx?t=1759850576522"
     },
     {
-      "ts": "2025-09-25T16:16:26.015Z",
-      "url": "http://localhost:8080/src/components/Canvas/core/namespacePalette.ts?t=1758802990764"
+      "ts": "2025-10-07T15:37:02.028Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/class-variance-authority.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.016Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-toast.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.028Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-PXMHN2KN.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.018Z",
-      "url": "http://localhost:8080/src/components/Canvas/KnowledgeCanvas.tsx?t=1758816936240"
+      "ts": "2025-10-07T15:37:02.028Z",
+      "url": "http://localhost:8080/src/components/Canvas/core/namespacePalette.ts"
     },
     {
-      "ts": "2025-09-25T16:16:26.020Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-E4PXOTUK.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.028Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-toast.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.029Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-GZY7TS5M.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.028Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/clsx.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.032Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-R53JE3PD.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.029Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-UWSBPLXK.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.032Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-UWSBPLXK.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.029Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-LOUVBAIY.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.032Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-EWYWMK3A.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.029Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-R53JE3PD.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.033Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OIXQXOEB.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.029Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/tailwind-merge.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.037Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TAPLXRBH.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.029Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-GZY7TS5M.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.037Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-UKOJGTHM.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.029Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OIXQXOEB.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.038Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-R6YSPWPO.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.029Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TAPLXRBH.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.039Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-LOUVBAIY.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.029Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-UKOJGTHM.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.039Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-B64GZIWT.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.029Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-EWYWMK3A.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.057Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-DU3GT3GH.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.034Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-E4PXOTUK.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.057Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/clsx.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.034Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-R6YSPWPO.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.057Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-BAFYI26D.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.035Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-DU3GT3GH.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.057Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-U7P2NEEE.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.035Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-B64GZIWT.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.057Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/tailwind-merge.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.035Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-BAFYI26D.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.057Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-M6BE3SF4.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.035Z",
+      "url": "http://localhost:8080/src/components/Canvas/ResizableNamespaceLegend.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.071Z",
-      "url": "http://localhost:8080/src/stores/settingsStore.ts"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.072Z",
-      "url": "http://localhost:8080/src/stores/reasoningStore.ts?t=1758795885037"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.079Z",
+      "ts": "2025-10-07T15:37:02.035Z",
       "url": "http://localhost:8080/src/components/Canvas/ReasoningIndicator.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.088Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/lucide-react.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.035Z",
+      "url": "http://localhost:8080/src/stores/settingsStore.ts"
     },
     {
-      "ts": "2025-09-25T16:16:26.088Z",
-      "url": "http://localhost:8080/src/components/Canvas/ResizableNamespaceLegend.tsx?t=1758802990764"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.090Z",
+      "ts": "2025-10-07T15:37:02.035Z",
       "url": "http://localhost:8080/src/components/Canvas/ReasoningReportModal.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.090Z",
+      "ts": "2025-10-07T15:37:02.035Z",
       "url": "http://localhost:8080/src/components/ui/progress.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.091Z",
-      "url": "http://localhost:8080/src/components/Canvas/core/mappingHelpers.ts?t=1758797678694"
+      "ts": "2025-10-07T15:37:02.035Z",
+      "url": "http://localhost:8080/src/components/Canvas/core/createEdge.ts"
     },
     {
-      "ts": "2025-09-25T16:16:26.092Z",
-      "url": "http://localhost:8080/src/components/Canvas/CustomOntologyNode.tsx?t=1758802990764"
+      "ts": "2025-10-07T15:37:02.035Z",
+      "url": "http://localhost:8080/src/stores/reasoningStore.ts"
     },
     {
-      "ts": "2025-09-25T16:16:26.095Z",
-      "url": "http://localhost:8080/src/components/Canvas/FloatingConnectionLine.tsx"
+      "ts": "2025-10-07T15:37:02.036Z",
+      "url": "http://localhost:8080/src/components/Canvas/CanvasToolbar.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.095Z",
+      "ts": "2025-10-07T15:37:02.043Z",
+      "url": "http://localhost:8080/src/components/Canvas/core/mappingHelpers.ts"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.043Z",
       "url": "http://localhost:8080/src/components/Canvas/core/edgeHelpers.ts"
     },
     {
-      "ts": "2025-09-25T16:16:26.096Z",
+      "ts": "2025-10-07T15:37:02.043Z",
+      "url": "http://localhost:8080/src/components/Canvas/FloatingConnectionLine.tsx"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.043Z",
+      "url": "http://localhost:8080/src/components/Canvas/core/downloadHelpers.ts?t=1759850576522"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.043Z",
+      "url": "http://localhost:8080/src/components/Canvas/CustomOntologyNode.tsx"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.043Z",
+      "url": "http://localhost:8080/src/components/Canvas/FloatingEdge.tsx"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.043Z",
+      "url": "http://localhost:8080/src/components/Canvas/core/exportHelpers.ts?t=1759850576522"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.043Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@xyflow_react.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.043Z",
+      "url": "http://localhost:8080/src/hooks/useCanvasState.ts"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.043Z",
       "url": "http://localhost:8080/src/components/Canvas/LayoutManager.ts"
     },
     {
-      "ts": "2025-09-25T16:16:26.096Z",
-      "url": "http://localhost:8080/src/hooks/useCanvasState.ts?t=1758810924975"
+      "ts": "2025-10-07T15:37:02.044Z",
+      "url": "http://localhost:8080/src/components/Canvas/NodePropertyEditor.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.096Z",
-      "url": "http://localhost:8080/src/components/Canvas/FloatingEdge.tsx?t=1758802990764"
+      "ts": "2025-10-07T15:37:02.044Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-U7P2NEEE.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.097Z",
-      "url": "http://localhost:8080/src/components/Canvas/CanvasToolbar.tsx?t=1758802990764"
+      "ts": "2025-10-07T15:37:02.044Z",
+      "url": "http://localhost:8080/src/components/Canvas/LinkPropertyEditor.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.098Z",
-      "url": "http://localhost:8080/src/components/ui/badge.tsx"
+      "ts": "2025-10-07T15:37:02.044Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-M6BE3SF4.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.098Z",
-      "url": "http://localhost:8080/src/components/ui/button.tsx"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.098Z",
-      "url": "http://localhost:8080/src/utils/termUtils.ts?t=1758795885037"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.100Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@xyflow_react.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.105Z",
-      "url": "http://localhost:8080/src/components/ui/input.tsx"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.105Z",
+      "ts": "2025-10-07T15:37:02.044Z",
       "url": "http://localhost:8080/src/components/Canvas/NamespaceLegendCore.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.109Z",
-      "url": "http://localhost:8080/src/components/ui/dialog.tsx"
+      "ts": "2025-10-07T15:37:02.045Z",
+      "url": "http://localhost:8080/src/components/ui/input.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.114Z",
-      "url": "http://localhost:8080/src/components/ui/tabs.tsx"
+      "ts": "2025-10-07T15:37:02.053Z",
+      "url": "http://localhost:8080/src/components/ui/button.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.114Z",
+      "ts": "2025-10-07T15:37:02.053Z",
       "url": "http://localhost:8080/src/components/ui/scroll-area.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.115Z",
-      "url": "http://localhost:8080/src/components/ui/card.tsx"
+      "ts": "2025-10-07T15:37:02.053Z",
+      "url": "http://localhost:8080/src/components/ui/dialog.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.115Z",
-      "url": "http://localhost:8080/src/components/ui/popover.tsx"
+      "ts": "2025-10-07T15:37:02.055Z",
+      "url": "http://localhost:8080/src/components/ui/tabs.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.115Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-progress.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.055Z",
+      "url": "http://localhost:8080/src/components/ui/badge.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.115Z",
-      "url": "http://localhost:8080/src/components/Canvas/helpers/namespaceHelpers.ts"
+      "ts": "2025-10-07T15:37:02.057Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/lucide-react.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.115Z",
-      "url": "http://localhost:8080/src/components/Canvas/EdgeParams.tsx"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.119Z",
+      "ts": "2025-10-07T15:37:02.060Z",
       "url": "http://localhost:8080/src/components/ui/label.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.120Z",
-      "url": "http://localhost:8080/src/components/ui/slider.tsx"
+      "ts": "2025-10-07T15:37:02.060Z",
+      "url": "http://localhost:8080/src/components/ui/card.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.121Z",
+      "ts": "2025-10-07T15:37:02.063Z",
       "url": "http://localhost:8080/src/components/ui/EntityAutocomplete.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.121Z",
+      "ts": "2025-10-07T15:37:02.063Z",
+      "url": "http://localhost:8080/src/components/ui/slider.tsx"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.063Z",
+      "url": "http://localhost:8080/src/components/ui/popover.tsx"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.063Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-progress.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.063Z",
+      "url": "http://localhost:8080/src/components/Canvas/core/edgeStyle.ts"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.063Z",
       "url": "http://localhost:8080/src/components/ui/dropdown-menu.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.121Z",
-      "url": "http://localhost:8080/src/components/ui/badgeVariants.ts"
+      "ts": "2025-10-07T15:37:02.063Z",
+      "url": "http://localhost:8080/src/components/Canvas/EdgeParams.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.123Z",
-      "url": "http://localhost:8080/src/components/ui/buttonVariants.ts"
+      "ts": "2025-10-07T15:37:02.063Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/html-to-image.js?v=d86c6fb1"
     },
     {
-      "ts": "2025-09-25T16:16:26.123Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slot.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.123Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dialog.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.123Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tabs.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-scroll-area.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-popover.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.127Z",
-      "url": "http://localhost:8080/src/components/Canvas/ConfigurationPanel.tsx?t=1758802990764"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.128Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-label.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.133Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-MYWMKMBE.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.133Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-676JM23W.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.134Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slider.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.135Z",
-      "url": "http://localhost:8080/src/components/ui/command.tsx"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.136Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-WO75AEQQ.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.137Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OSI24F5G.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.139Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dropdown-menu.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.139Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-6ZMM2PAV.js?v=82408c83"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.139Z",
-      "url": "http://localhost:8080/src/components/ui/switch.tsx"
-    },
-    {
-      "ts": "2025-09-25T16:16:26.139Z",
+      "ts": "2025-10-07T15:37:02.063Z",
       "url": "http://localhost:8080/src/components/ui/select.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.141Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JSB5LOZ5.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.064Z",
+      "url": "http://localhost:8080/src/utils/termUtils.ts"
     },
     {
-      "ts": "2025-09-25T16:16:26.141Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/cmdk.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.064Z",
+      "url": "http://localhost:8080/src/components/ui/AutoComplete.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.142Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-switch.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.066Z",
+      "url": "http://localhost:8080/src/components/Canvas/ConfigurationPanel.tsx"
     },
     {
-      "ts": "2025-09-25T16:16:26.142Z",
-      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-select.js?v=82408c83"
+      "ts": "2025-10-07T15:37:02.069Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slot.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.069Z",
+      "url": "http://localhost:8080/src/components/ui/badgeVariants.ts"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.069Z",
+      "url": "http://localhost:8080/src/components/ui/buttonVariants.ts"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.069Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dialog.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.070Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-scroll-area.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.070Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tabs.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.070Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-label.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.072Z",
+      "url": "http://localhost:8080/src/components/ui/command.tsx"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.072Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-popover.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.073Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-slider.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.078Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-dropdown-menu.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.078Z",
+      "url": "http://localhost:8080/src/components/ui/switch.tsx"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.080Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-select.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.080Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-676JM23W.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.082Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-6ZMM2PAV.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.082Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-TSJ2ADLG.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.082Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-ZBTP3JZL.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.082Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-OSI24F5G.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.082Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/chunk-JSB5LOZ5.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.083Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/cmdk.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.083Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-switch.js?v=d86c6fb1"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.319Z",
+      "url": "https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.366Z",
+      "url": "http://localhost:8080/src/utils/parsedFromStore.ts"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.527Z",
+      "url": "http://localhost:8080/src/components/Canvas/layout/dagreLayout.ts"
+    },
+    {
+      "ts": "2025-10-07T15:37:02.625Z",
+      "url": "http://localhost:8080/node_modules/.vite/deps/dagre.js?v=d86c6fb1"
     }
   ],
   "requestFailed": [],
-  "vgSummary": null,
-  "serverPid": 780707,
-  "screenshotPath": "/home/hanke/visgraph/playwright-reports/layout-applied.png"
+  "vgSummary": {
+    "startedAt": "2025-10-07T15:37:02.318Z",
+    "logs": [
+      {
+        "ts": "2025-10-07T15:37:02.318Z",
+        "level": "debug",
+        "event": "rdf.load.start",
+        "meta": {
+          "id": "load-1759851422318-nroxxc",
+          "key": "len:3015",
+          "graphName": "urn:vg:data",
+          "contentLen": 3216
+        }
+      },
+      {
+        "ts": "2025-10-07T15:37:02.325Z",
+        "level": "debug",
+        "event": "rdf.namespaces.updated",
+        "meta": {
+          "namespaces": {
+            "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+            "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+            "owl": "http://www.w3.org/2002/07/owl#",
+            "xsd": "http://www.w3.org/2001/XMLSchema#",
+            "": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/",
+            "dcterms": "http://purl.org/dc/terms/",
+            "iof": "https://spec.industrialontologies.org/ontology/core/Core/",
+            "iof-mat": "https://spec.industrialontologies.org/ontology/materials/Materials/",
+            "iof-qual": "https://spec.industrialontologies.org/ontology/qualities/",
+            "mod": "https://w3id.org/mod#",
+            "mutil": "https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/"
+          }
+        }
+      },
+      {
+        "ts": "2025-10-07T15:37:02.325Z",
+        "level": "debug",
+        "event": "rdf.namespaces.merged",
+        "meta": {
+          "mergedPrefixes": {
+            "": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/",
+            "dcterms": "http://purl.org/dc/terms/",
+            "iof": "https://spec.industrialontologies.org/ontology/core/Core/",
+            "iof-mat": "https://spec.industrialontologies.org/ontology/materials/Materials/",
+            "iof-qual": "https://spec.industrialontologies.org/ontology/qualities/",
+            "mod": "https://w3id.org/mod#",
+            "mutil": "https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/",
+            "owl": "http://www.w3.org/2002/07/owl#",
+            "rdfs": "http://www.w3.org/2000/01/rdf-schema#"
+          },
+          "namespaces": {
+            "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+            "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+            "owl": "http://www.w3.org/2002/07/owl#",
+            "xsd": "http://www.w3.org/2001/XMLSchema#",
+            "": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/",
+            "dcterms": "http://purl.org/dc/terms/",
+            "iof": "https://spec.industrialontologies.org/ontology/core/Core/",
+            "iof-mat": "https://spec.industrialontologies.org/ontology/materials/Materials/",
+            "iof-qual": "https://spec.industrialontologies.org/ontology/qualities/",
+            "mod": "https://w3id.org/mod#",
+            "mutil": "https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/"
+          }
+        }
+      },
+      {
+        "ts": "2025-10-07T15:37:02.326Z",
+        "level": "debug",
+        "event": "rdf.load.batchCounts",
+        "meta": {
+          "id": "load-1759851422318-nroxxc",
+          "graphCounts": {
+            "urn:vg:data": 62
+          }
+        }
+      },
+      {
+        "ts": "2025-10-07T15:37:02.641Z",
+        "level": "debug",
+        "event": "dagre.layout.start",
+        "meta": {
+          "nodeCount": 28,
+          "edgeCount": 12,
+          "opts": {
+            "direction": "LR",
+            "nodeSep": 120,
+            "rankSep": 120
+          }
+        }
+      },
+      {
+        "ts": "2025-10-07T15:37:02.675Z",
+        "level": "debug",
+        "event": "dagre.layout.end",
+        "meta": {
+          "sample": [
+            {
+              "id": "http://purl.org/dc/terms/abstract",
+              "x": 110,
+              "y": 52,
+              "width": 180,
+              "height": 64
+            },
+            {
+              "id": "http://purl.org/dc/terms/creator",
+              "x": 110,
+              "y": 300,
+              "width": 180,
+              "height": 64
+            },
+            {
+              "id": "http://purl.org/dc/terms/license",
+              "x": 110,
+              "y": 548,
+              "width": 180,
+              "height": 64
+            },
+            {
+              "id": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/",
+              "x": 110,
+              "y": 796,
+              "width": 180,
+              "height": 64
+            },
+            {
+              "id": "https://creativecommons.org/licenses/by/4.0/",
+              "x": 590,
+              "y": 300,
+              "width": 180,
+              "height": 64
+            },
+            {
+              "id": "https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl",
+              "x": 590,
+              "y": 548,
+              "width": 180,
+              "height": 64
+            }
+          ],
+          "total": 28
+        }
+      },
+      {
+        "ts": "2025-10-07T15:37:02.963Z",
+        "level": "debug",
+        "event": "rdf.load.start",
+        "meta": {
+          "id": "load-1759851422963-nk8pzg",
+          "key": "len:3015",
+          "graphName": "urn:vg:ontologies",
+          "contentLen": 3216
+        }
+      },
+      {
+        "ts": "2025-10-07T15:37:02.967Z",
+        "level": "debug",
+        "event": "rdf.namespaces.updated",
+        "meta": {
+          "namespaces": {
+            "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+            "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+            "owl": "http://www.w3.org/2002/07/owl#",
+            "xsd": "http://www.w3.org/2001/XMLSchema#",
+            "": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/",
+            "dcterms": "http://purl.org/dc/terms/",
+            "iof": "https://spec.industrialontologies.org/ontology/core/Core/",
+            "iof-mat": "https://spec.industrialontologies.org/ontology/materials/Materials/",
+            "iof-qual": "https://spec.industrialontologies.org/ontology/qualities/",
+            "mod": "https://w3id.org/mod#",
+            "mutil": "https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/"
+          }
+        }
+      },
+      {
+        "ts": "2025-10-07T15:37:02.967Z",
+        "level": "debug",
+        "event": "rdf.namespaces.merged",
+        "meta": {
+          "mergedPrefixes": {
+            "": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/",
+            "dcterms": "http://purl.org/dc/terms/",
+            "iof": "https://spec.industrialontologies.org/ontology/core/Core/",
+            "iof-mat": "https://spec.industrialontologies.org/ontology/materials/Materials/",
+            "iof-qual": "https://spec.industrialontologies.org/ontology/qualities/",
+            "mod": "https://w3id.org/mod#",
+            "mutil": "https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/",
+            "owl": "http://www.w3.org/2002/07/owl#",
+            "rdfs": "http://www.w3.org/2000/01/rdf-schema#"
+          },
+          "namespaces": {
+            "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+            "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+            "owl": "http://www.w3.org/2002/07/owl#",
+            "xsd": "http://www.w3.org/2001/XMLSchema#",
+            "": "https://github.com/Mat-O-Lab/IOFMaterialsTutorial/",
+            "dcterms": "http://purl.org/dc/terms/",
+            "iof": "https://spec.industrialontologies.org/ontology/core/Core/",
+            "iof-mat": "https://spec.industrialontologies.org/ontology/materials/Materials/",
+            "iof-qual": "https://spec.industrialontologies.org/ontology/qualities/",
+            "mod": "https://w3id.org/mod#",
+            "mutil": "https://github.com/Mat-O-Lab/MSEO/raw/main/domain/util/readable_bfo_iris.ttl/"
+          }
+        }
+      },
+      {
+        "ts": "2025-10-07T15:37:02.968Z",
+        "level": "debug",
+        "event": "rdf.load.batchCounts",
+        "meta": {
+          "id": "load-1759851422963-nk8pzg",
+          "graphCounts": {
+            "urn:vg:data": 62,
+            "urn:vg:ontologies": 62
+          }
+        }
+      }
+    ],
+    "milestones": [],
+    "counters": {
+      "rdfLoads": 2
+    },
+    "anomalies": [],
+    "fallbacks": []
+  },
+  "serverPid": 3418118,
+  "screenshotPath": "/home/hanke/visgraph/playwright-reports/layout-applied.png",
+  "svgExportPath": "/home/hanke/visgraph/playwright-reports/export-svg-2025-10-07T15-37-04-817Z-visgraph-full-2025-10-07T15-37-04-817Z.svg",
+  "pngExportPath": "/home/hanke/visgraph/playwright-reports/export-png-2025-10-07T15-37-04-817Z-visgraph-full-2025-10-07T15-37-04-817Z.png"
 }
