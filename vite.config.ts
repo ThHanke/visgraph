@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from "http";
 import react from "@vitejs/plugin-react-swc";
 import tailwind from "@tailwindcss/vite";
 import path from "path";
+import fs from "fs";
 
 // Vite dev server proxy helper:
 // We expose a small dev-only endpoint at /__external?url=<encoded-url>
@@ -17,6 +18,23 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
     allowedHosts: true,
+    // If developer has placed certs in .certs/localhost.pem and .certs/localhost-key.pem
+    // enable HTTPS automatically to avoid mixed-content issues during export testing.
+    // Return undefined when no certs are present so the config type matches Vite's ServerOptions.
+    https: (() => {
+      try {
+        const certDir = path.resolve(__dirname, '.certs');
+        const certPath = path.join(certDir, 'localhost.pem');
+        const keyPath = path.join(certDir, 'localhost-key.pem');
+        if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
+          return {
+            cert: fs.readFileSync(certPath),
+            key: fs.readFileSync(keyPath),
+          };
+        }
+      } catch (_) { /* ignore and fall back to http */ }
+      return undefined;
+    })(),
     fs: {
       // Allow serving files from the project root during development so
       // requests like "/?url=..." that Vite rejects by default (403) will work.
