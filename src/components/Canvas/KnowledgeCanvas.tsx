@@ -1550,6 +1550,26 @@ const KnowledgeCanvas: React.FC = () => {
         }
       }),
     );
+
+    // After applying reasoning-specific updates, trigger a subject-level emission
+    // for all known nodes so consumers (mapper/canvas) receive authoritative quads
+    // even if the reasoner wrote inferred triples directly into the raw store.
+    try {
+      const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
+      if (mgr && typeof (mgr as any).triggerSubjectUpdate === "function") {
+        try {
+          const allNodeIris = (nodes || []).map((n) =>
+            (n && n.data && (n.data as any).iri) ? String((n.data as any).iri) : String(n.id),
+          );
+          // Fire-and-forget but catch errors to avoid blocking UI
+          (mgr as any).triggerSubjectUpdate(allNodeIris).catch((err: any) => {
+            try { console.debug("[VG_DEBUG] triggerSubjectUpdate failed", err); } catch (_) { /* ignore */ }
+          });
+        } catch (err) {
+          try { console.debug("[VG_DEBUG] triggerSubjectUpdate invocation failed", err); } catch (_) { /* ignore */ }
+        }
+      }
+    } catch (_) { /* ignore */ }
   }, [currentReasoning, setNodes, setEdges]);
 
   const onNodeDoubleClickStrict = useCallback((event: any, node: any) => {

@@ -469,6 +469,139 @@ export class RDFManager {
     this.subjectChangeSubscribers.delete(cb);
   }
 
+  /**
+   * Trigger subject-level change notifications for the provided list of subject IRIs.
+   *
+   * This public helper allows callers (for example: the reasoner or UI) to request
+   * that the RDFManager emit the same subject-level events that would normally be
+   * emitted when quads are added/removed via the manager's own APIs. The method
+   * reads authoritative per-subject quads from the internal store (unless the
+   * store is inaccessible) and runs the same reconciliation path used by the
+   * internal subject flush so consumers receive consistent payloads.
+   *
+   * Note: callers must pass an array of IRIs (strings). The method will skip
+   * blacklisted IRIs and will resolve only after subscribers have been invoked.
+   */
+  public async triggerSubjectUpdate(subjectIris: string[]): Promise<void> {
+    try {
+      if (!Array.isArray(subjectIris) || subjectIris.length === 0) return;
+
+      const subjects: string[] = [];
+      const perSubjectSnapshots: Quad[] = [];
+
+      // Normalize and filter subjects (respect blacklist)
+      for (const sRaw of subjectIris) {
+        try {
+          const s = String(sRaw || "").trim();
+          if (!s) continue;
+          if (this.isBlacklistedIri && this.isBlacklistedIri(s)) continue;
+          subjects.push(s);
+        } catch (_) {
+          /* ignore per-item failures */
+        }
+      }
+
+      if (subjects.length === 0) return;
+
+      try {
+        // Build authoritative per-subject snapshots from the store whenever possible.
+        for (const s of subjects) {
+          try {
+            const subjTerm = namedNode(String(s));
+            const subjectQuads = this.store.getQuads(subjTerm, null, null, null) || [];
+            if (Array.isArray(subjectQuads) && subjectQuads.length > 0) {
+              perSubjectSnapshots.push(...subjectQuads);
+              // Buffer these quads so internal buffers remain consistent (and consumers that inspect buffers can see them)
+              try {
+                const existing = this.subjectQuadBuffer.get(s) || [];
+                existing.push(...subjectQuads);
+                this.subjectQuadBuffer.set(s, existing);
+              } catch (_) { /* ignore buffering failures */ }
+              // Mark subject buffered so schedule/flush behavior is consistent
+              try { this.subjectChangeBuffer.add(s); } catch (_) { /* ignore */ }
+            } else {
+              // Even if there are no quads currently, still ensure subject is buffered so subscribers see the subject.
+              try { this.subjectChangeBuffer.add(s); } catch (_) { /* ignore */ }
+            }
+          } catch (_) {
+            /* ignore per-subject read failures */
+            try { this.subjectChangeBuffer.add(s); } catch (_) { /* ignore */ }
+          }
+        }
+      } catch (e) {
+        /* ignore snapshot build failures */
+      }
+
+      // If we have snapshots, run reconciliation to ensure fat-map is updated before emission
+      try {
+        const reconcileArg = Array.isArray(perSubjectSnapshots) && perSubjectSnapshots.length > 0 ? perSubjectSnapshots : undefined;
+        if (Array.isArray(reconcileArg)) {
+          await (this as any).runReconcile(reconcileArg);
+        } else {
+          // Still run a reconcile with undefined to ensure any pending reconcile semantics run
+          // but only if runReconcile is available.
+          try {
+            await (this as any).runReconcile(undefined);
+          } catch (_) { /* ignore reconcile failures */ }
+        }
+      } catch (_) {
+        /* ignore reconcile failures */
+      }
+
+      // Build authoritative emission quads: prefer the snapshots we already collected,
+      // otherwise re-read per-subject quads from the store so subscribers receive authoritative triples.
+      const authoritativeQuads: Quad[] = [];
+      try {
+        if (perSubjectSnapshots && perSubjectSnapshots.length > 0) {
+          authoritativeQuads.push(...perSubjectSnapshots);
+        } else {
+          for (const s of subjects) {
+            try {
+              const subjTerm = namedNode(String(s));
+              const subjectQuads = this.store.getQuads(subjTerm, null, null, null) || [];
+              if (Array.isArray(subjectQuads) && subjectQuads.length > 0) {
+                authoritativeQuads.push(...subjectQuads);
+              }
+            } catch (_) { /* ignore per-subject read failures */ }
+          }
+        }
+      } catch (_) {
+        /* ignore authoritative quad build failures */
+      }
+
+      // Clear subject buffers for the subjects we emitted (behaves similarly to scheduleSubjectFlush)
+      try {
+        for (const s of subjects) {
+          try { this.subjectQuadBuffer.delete(s); } catch (_) { /* ignore */ }
+        }
+      } catch (_) { /* ignore */ }
+
+      try { this.subjectChangeBuffer.clear(); } catch (_) { /* ignore */ }
+
+      // Emit to subscribers using the same call-shape scheduleSubjectFlush uses: (subjects, quads)
+      for (const cb of Array.from(this.subjectChangeSubscribers)) {
+        try {
+          try {
+            (cb as any)(subjects, authoritativeQuads);
+          } catch (_) {
+            // Fallback: call with subjects-only for subscribers that expect old signature
+            cb(subjects);
+          }
+        } catch (_) {
+          /* ignore individual subscriber errors */
+        }
+      }
+    } catch (err) {
+      try {
+        if (typeof fallback === "function") {
+          fallback("rdf.triggerSubjectUpdate.failed", { error: String(err) });
+        }
+      } catch (_) {
+        /* ignore fallback errors */
+      }
+    }
+  }
+
   private scheduleSubjectFlush(delay = 50) {
     // If a parsing/load is still in progress, delay emitting subject-level notifications
     // until after namespaces/fat-map have been persisted. Parsing sets parsingInProgress = true
