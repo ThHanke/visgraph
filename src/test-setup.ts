@@ -134,7 +134,7 @@ try {
   // ignore
 }
 
-// Polyfill Element.scrollIntoView for jsdom (some UI libs call it)
+ // Polyfill Element.scrollIntoView for jsdom (some UI libs call it)
 try {
   if (typeof (globalThis as any).Element !== "undefined" && typeof (globalThis as any).Element.prototype.scrollIntoView === "undefined") {
     (globalThis as any).Element.prototype.scrollIntoView = function () { /* no-op for tests */ };
@@ -142,3 +142,27 @@ try {
 } catch (_) {
   // ignore
 }
+
+/*
+  Ensure tests run with tooltips disabled by default so tooltip DOM (and Radix
+  context) doesn't interfere with unrelated tests. Individual tests can opt-in
+  to enable tooltips by calling useAppConfigStore.getState().setTooltipEnabled(true)
+  before importing UI components.
+*/
+void (async () => {
+  try {
+    const mod = await import('./stores/appConfigStore');
+    // The store exports a named `useAppConfigStore`. Access it via `any` to avoid
+    // TypeScript errors in the test setup environment.
+    const useAppConfigStore = (mod as any).useAppConfigStore;
+    if (useAppConfigStore && typeof useAppConfigStore.getState === 'function') {
+      try {
+        useAppConfigStore.getState().setTooltipEnabled(false);
+      } catch (_) {
+        // ignore if setter not present yet
+      }
+    }
+  } catch (_) {
+    // best-effort; do not fail test setup
+  }
+})();

@@ -1,4 +1,4 @@
-import { Node, Position, MarkerType, XYPosition, InternalNode } from '@xyflow/react';
+import {Position, XYPosition, InternalNode } from '@xyflow/react';
 
 // this helper function returns the intersection point
 // of the line between the center of the intersectionNode and the target node
@@ -105,9 +105,6 @@ export function createNodesAndEdges() {
       target: 'target',
       source: `${i}`,
       type: 'floating',
-      markerEnd: {
-        type: MarkerType.Arrow,
-      },
     });
   }
 

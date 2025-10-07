@@ -469,6 +469,77 @@ export class RDFManager {
     this.subjectChangeSubscribers.delete(cb);
   }
 
+  /**
+   * Trigger subject-level change notifications for the provided list of subject IRIs.
+   *
+   * This public helper allows callers (for example: the reasoner or UI) to request
+   * that the RDFManager emit the same subject-level events that would normally be
+   * emitted when quads are added/removed via the manager's own APIs. The method
+   * reads authoritative per-subject quads from the internal store (unless the
+   * store is inaccessible) and runs the same reconciliation path used by the
+   * internal subject flush so consumers receive consistent payloads.
+   *
+   * Note: callers must pass an array of IRIs (strings). The method will skip
+   * blacklisted IRIs and will resolve only after subscribers have been invoked.
+   */
+  public async triggerSubjectUpdate(subjectIris: string[]): Promise<void> {
+    try {
+      if (!Array.isArray(subjectIris) || subjectIris.length === 0) return;
+
+      const subjects: string[] = [];
+
+      // Normalize and filter subjects (respect blacklist) and buffer them
+      for (const sRaw of subjectIris) {
+        try {
+          const s = String(sRaw || "").trim();
+          if (!s) continue;
+          if (this.isBlacklistedIri && this.isBlacklistedIri(s)) continue;
+          subjects.push(s);
+
+          // Buffer authoritative per-subject quads when possible so scheduleSubjectFlush can emit them.
+          try {
+            const subjTerm = namedNode(String(s));
+            const subjectQuads = this.store.getQuads(subjTerm, null, null, null) || [];
+            if (Array.isArray(subjectQuads) && subjectQuads.length > 0) {
+              const existing = this.subjectQuadBuffer.get(s) || [];
+              existing.push(...subjectQuads);
+              this.subjectQuadBuffer.set(s, existing);
+            }
+          } catch (_) {
+            // ignore per-subject read failures but still ensure the subject is buffered
+          }
+
+          // Mark subject buffered so schedule/flush behavior is consistent
+          try { this.subjectChangeBuffer.add(s); } catch (_) { /* ignore */ }
+        } catch (_) {
+          /* ignore per-item failures */
+        }
+      }
+
+      if (subjects.length === 0) return;
+
+      // Schedule an immediate subject flush (async). scheduleSubjectFlush will
+      // perform reconciliation and emit to subscribers in the same shape as normal.
+      try {
+        this.scheduleSubjectFlush(0);
+      } catch (e) {
+        try {
+          if (typeof fallback === "function") {
+            fallback("rdf.triggerSubjectUpdate.schedule_failed", { error: String(e) });
+          }
+        } catch (_) { /* ignore */ }
+      }
+    } catch (err) {
+      try {
+        if (typeof fallback === "function") {
+          fallback("rdf.triggerSubjectUpdate.failed", { error: String(err) });
+        }
+      } catch (_) {
+        /* ignore fallback errors */
+      }
+    }
+  }
+
   private scheduleSubjectFlush(delay = 50) {
     // If a parsing/load is still in progress, delay emitting subject-level notifications
     // until after namespaces/fat-map have been persisted. Parsing sets parsingInProgress = true
@@ -486,7 +557,15 @@ export class RDFManager {
             this.subjectFlushTimer = null;
             return;
           }
-          const subjects = Array.from(this.subjectChangeBuffer);
+          // Filter out any blacklisted subjects before emitting. This ensures core vocab IRIs
+          // (e.g., rdf:, rdfs:, owl:) do not trigger canvas updates even if they were buffered.
+          const subjects = Array.from(this.subjectChangeBuffer).filter((s) => {
+            try {
+              return !(this.isBlacklistedIri && this.isBlacklistedIri(String(s)));
+            } catch (_) {
+              return true;
+            }
+          });
 
           // Build authoritative per-subject snapshots from the store (ensure parser writes are visible first).
           const _storeSnapshots: Quad[] = [];
@@ -562,7 +641,9 @@ export class RDFManager {
       if (!q || !q.subject || !q.subject.value) return;
       const subj = String((q.subject as any).value);
       // Respect configured blacklist: do not buffer or emit subjects from reserved vocabularies.
-      // if (this.isBlacklistedIri(subj)) return;
+      if (this.isBlacklistedIri && this.isBlacklistedIri(subj)) {
+        return;
+      }
 
       // Buffer subject for emission
       this.subjectChangeBuffer.add(subj);
@@ -667,6 +748,24 @@ export class RDFManager {
       try {
         this.notifyChange();
       } catch (_) { /* ignore notify failures */ }
+
+      // Developer debug: report per-graph triple counts after a batch load
+      try {
+        const allQuads = this.store.getQuads(null, null, null, null) || [];
+        const graphCounts: Record<string, number> = {};
+        for (const qq of allQuads) {
+          try {
+            const g = (qq && qq.graph && (qq.graph as any).value) ? (qq.graph as any).value : "default";
+            graphCounts[g] = (graphCounts[g] || 0) + 1;
+          } catch (_) {
+            /* ignore per-quad counting failures */
+          }
+        }
+        try { debugLog("rdf.load.batchCounts", { id: _vg_loadId, graphCounts }); } catch (_) { void 0; }
+        try { console.debug("[VG_DEBUG] rdf.load.batchCounts", { id: _vg_loadId, graphCounts }); } catch (_) { void 0; }
+      } catch (_) {
+        /* ignore debug failures */
+      }
 
       resolveFn();
     };

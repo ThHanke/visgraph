@@ -18,10 +18,15 @@ export interface AppConfig {
   showLegend: boolean;
   viewMode: 'abox' | 'tbox';
   canvasTheme: 'light' | 'dark' | 'auto';
+  // Whether tooltips are enabled in the UI. Tests may disable this flag before importing UI
+  // components to avoid tooltip DOM rendering during headless runs.
+  tooltipEnabled: boolean;
   
   // Performance settings
   autoReasoning: boolean;
   maxVisibleNodes: number;
+  // Which reasoning ruleset files to load (filenames under public/reasoning-rules)
+  reasoningRulesets: string[];
 
   // Debug / developer toggles
   // When true RDFManager will emit a console.log reporting how many triples were added
@@ -61,6 +66,8 @@ interface AppConfigStore {
   setShowLegend: (show: boolean) => void;
   setViewMode: (mode: 'abox' | 'tbox') => void;
   setCanvasTheme: (theme: 'light' | 'dark' | 'auto') => void;
+  // Toggle UI tooltips
+  setTooltipEnabled: (enabled: boolean) => void;
   // Persisted toggle: when true, mapping updates will auto-apply the configured layout
   setAutoApplyLayout: (enabled: boolean) => void;
   // Persisted autoload: whether configured additionalOntologies should be loaded automatically on startup
@@ -69,6 +76,7 @@ interface AppConfigStore {
   // Performance actions
   setAutoReasoning: (enabled: boolean) => void;
   setMaxVisibleNodes: (max: number) => void;
+  setReasoningRulesets: (reasoningRulesets: string[]) => void;
 
   // Debugging action to toggle RDFManager logging
   setDebugRdfLogging: (enabled: boolean) => void;
@@ -105,12 +113,14 @@ const defaultConfig: AppConfig = {
   showLegend: false,
   viewMode: 'abox',
   canvasTheme: 'auto',
+  tooltipEnabled: true,
   autoReasoning: false,
   // Enable RDFManager triple-count logging by default to preserve existing behavior.
   debugRdfLogging: true,
   // Master debug switch disabled by default
   debugAll: false,
   maxVisibleNodes: 1000,
+  reasoningRulesets: ['best-practice.n3','owl-rl.n3'],
   recentOntologies: [],
   recentLayouts: ['horizontal'],
   additionalOntologies: [
@@ -196,6 +206,16 @@ export const useAppConfigStore = create<AppConfigStore>()(
         }));
       },
 
+      // Toggle UI tooltip rendering
+      setTooltipEnabled: (enabled: boolean) => {
+        set((state) => ({
+          config: {
+            ...state.config,
+            tooltipEnabled: Boolean(enabled)
+          }
+        }));
+      },
+
       setAutoApplyLayout: (enabled: boolean) => {
         set((state) => ({
           config: {
@@ -220,6 +240,16 @@ export const useAppConfigStore = create<AppConfigStore>()(
           config: {
             ...state.config,
             maxVisibleNodes: Math.max(100, Math.min(5000, max)) // Clamp between 100-5000
+          }
+        }));
+      },
+
+      // Configure reasoning rulesets (filenames under public/reasoning-rules)
+      setReasoningRulesets: (reasoningRulesets: string[]) => {
+        set((state) => ({
+          config: {
+            ...state.config,
+            reasoningRulesets: Array.isArray(reasoningRulesets) ? reasoningRulesets.slice() : []
           }
         }));
       },

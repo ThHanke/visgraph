@@ -1,0 +1,229 @@
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+
+{ 
+    ?S ?P ?O .
+} 
+=>
+{
+    ?S owl:sameAs ?S .
+    ?P owl:sameAs ?P .
+    ?O owl:sameAs ?O .
+} .
+
+{
+    ?S owl:sameAs ?O .
+}
+=>
+{
+    ?O owl:sameAs ?S .
+} .
+
+{
+    ?Q owl:sameAs ?R . 
+    ?R owl:sameAs ?P .
+}
+=> 
+{
+    ?Q owl:sameAs ?P .
+} .
+
+{ 
+    ?S owl:sameAs ?S2 . 
+    ?S ?P ?O .
+} 
+=> 
+{
+    ?S2 ?P ?O .
+}.
+
+{   
+    ?P owl:sameAs ?P2 . 
+    ?S ?P ?O .
+} 
+=> 
+{
+    ?S ?P2 ?O .
+} .
+
+{
+    ?O owl:sameAs ?O2 . 
+    ?S ?P ?O . 
+} 
+=> 
+{
+    ?S ?P ?O2 .
+} .
+
+{
+    ?Q owl:sameAs ?R . 
+    ?Q owl:differentFrom ?R .
+} 
+=> false .
+
+{
+    ?P1 owl:equivalentProperty ?P2 . 
+    ?Q ?P1 ?R .
+} 
+=> 
+{
+    ?Q ?P2 ?R .
+}.
+
+{
+    ?P1 owl:equivalentProperty ?P2 . 
+    ?Q ?P2 ?R .
+} 
+=> 
+{
+    ?Q ?P1 ?R .
+} .
+
+{
+    ?P1 owl:inverseOf ?P2 . 
+    ?Q ?P1 ?R .
+} 
+=> 
+{
+    ?R ?P2 ?Q .
+} . 
+
+{
+    ?P1 owl:inverseOf ?P2 . 
+    ?Q ?P2 ?R .
+} 
+=> 
+{
+    ?R ?P1 ?Q .
+} .
+
+{
+    ?P rdf:type owl:FunctionalProperty . 
+    ?X ?P ?Y1 . 
+    ?X ?P ?Y2 .
+} 
+=> 
+{
+    ?Y1 owl:sameAs ?Y2 .
+}.
+
+{
+    ?P rdf:type owl:InverseFunctionalProperty . 
+    ?X1 ?P ?Y . 
+    ?X2 ?P ?Y . 
+} 
+=> 
+{
+    ?X1 owl:sameAs ?X2 .
+} .
+
+{
+    ?P rdf:type owl:SymmetricProperty . 
+    ?X ?P ?Y . 
+} 
+=> 
+{
+    ?Y ?P ?X .
+} .
+
+{
+    ?P rdf:type owl:TransitiveProperty . 
+    ?X ?P ?Y . 
+    ?Y ?P ?Z . 
+} 
+=> 
+{
+    ?X ?P ?Z . 
+} .
+
+{
+    ?A owl:equivalentClass ?B . 
+    ?X rdf:type ?A .
+}
+=> 
+{
+    ?X rdf:type ?B . 
+} .
+
+{
+    ?A owl:equivalentClass ?B . 
+    ?X rdf:type ?B .
+} 
+=> 
+{   
+    ?X rdf:type ?A .
+} .
+
+{
+    ?A owl:disjointWith ?B . 
+    ?X rdf:type ?A . 
+    ?X rdf:type ?B .
+} 
+=> false .
+
+{
+    ?C rdf:type owl:Class .
+} 
+=> 
+{
+    ?C rdfs:subClassOf ?C . 
+    ?C rdfs:subClassOf owl:Thing . 
+    ?C owl:equivalentClass ?C . 
+    owl:Nothing rdfs:subClassOf ?C .
+} .
+
+{
+    ?A owl:equivalentClass ?B . 
+} 
+=> 
+{
+    ?A rdfs:subClassOf ?B . 
+    ?B rdfs:subClassOf ?A .
+} .
+
+{   
+    ?A rdfs:subClassOf ?B . 
+    ?B rdfs:subClassOf ?A .
+} 
+=> 
+{
+    ?A owl:equivalentClass ?B .
+} .
+
+{
+    ?P rdf:type owl:ObjectProperty .
+}
+=>
+{
+    ?P rdfs:subPropertyOf ?P. 
+    ?P owl:equivalentProperty ?P
+} .
+
+{
+    ?P rdf:type owl:DatatypeProperty .
+} 
+=> 
+{
+    ?P rdfs:subPropertyOf ?P . 
+    ?P owl:equivalentProperty ?P .
+} .
+
+{
+    ?P owl:equivalentProperty ?R .
+} 
+=> 
+{
+    ?P rdfs:subPropertyOf ?R . 
+    ?R rdfs:subPropertyOf ?P .
+} .
+
+{
+    ?P rdfs:subPropertyOf ?R . 
+    ?R rdfs:subPropertyOf ?P .
+} 
+=> 
+{
+    ?P owl:equivalentProperty ?R .
+} .

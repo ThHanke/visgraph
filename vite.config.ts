@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import type { ViteDevServer } from "vite";
 import type { IncomingMessage, ServerResponse } from "http";
 import react from "@vitejs/plugin-react-swc";
+import tailwind from "@tailwindcss/vite";
 import path from "path";
 
 // Vite dev server proxy helper:
@@ -24,7 +25,8 @@ export default defineConfig(({ mode }) => ({
     }
   },
   plugins: [
-    react()
+    react(),
+    tailwind()
   ],
   resolve: {
     alias: {

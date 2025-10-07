@@ -56,7 +56,11 @@ export function mapQuadsToDiagram(
   // Small helpers to detect term kinds robustly across N3 and POJO shapes.
   const isNamedOrBlank = (obj: any) => {
     try {
-      if (!obj) return false;
+      if (obj === null || typeof obj === "undefined") return false;
+      // Plain string representing an IRI or blank node id
+      if (typeof obj === "string") {
+        return /^https?:\/\//i.test(obj) || obj.startsWith("_:");
+      }
       if (obj.termType === "NamedNode" || obj.termType === "BlankNode") return true;
       const v = obj && obj.value ? String(obj.value) : "";
       if (!v) return false;
@@ -68,7 +72,9 @@ export function mapQuadsToDiagram(
 
   const isLiteral = (obj: any) => {
     try {
-      if (!obj) return false;
+      if (obj === null || typeof obj === "undefined") return false;
+      // plain string -> literal
+      if (typeof obj === "string") return true;
       if (obj.termType === "Literal") return true;
       const v = obj && obj.value ? String(obj.value) : "";
       if (!v) return false;
@@ -81,7 +87,8 @@ export function mapQuadsToDiagram(
   // Prefer an explicit NamedNode check for IRI detection (handles real N3 Terms).
   const isNamedNode = (obj: any) => {
     try {
-      if (!obj) return false;
+      if (obj === null || typeof obj === "undefined") return false;
+      if (typeof obj === "string") return /^https?:\/\//i.test(obj);
       if (obj.termType === "NamedNode") return true;
       const v = obj && obj.value ? String(obj.value) : "";
       if (!v) return false;
@@ -99,6 +106,7 @@ export function mapQuadsToDiagram(
       rdfTypes: string[];
       literalProperties: Array<{ key: string; value: string; type: string }>;
       annotationProperties: Array<{ property: string; value: string }>;
+      inferredProperties: Array<{ property: string; value: string }>;
       label?: string | undefined;
       // optional override used to propagate subject view (TBox/ABox) to objects created due to unknown/object predicates
       forceIsTBox?: boolean | undefined;
@@ -115,6 +123,7 @@ export function mapQuadsToDiagram(
         rdfTypes: [],
         literalProperties: [],
         annotationProperties: [],
+        inferredProperties: [],
         label: undefined,
         forceIsTBox: undefined,
       });
@@ -147,8 +156,6 @@ export function mapQuadsToDiagram(
   const predicateKindCache = new Map<string, PredicateKind>();
 
   // Initialize cache from provided fat-map snapshot (availableProperties) if present.
-  // The fat-map now provides an explicit propertyKind for each available property
-  // (e.g. "object" | "datatype" | "annotation" | "unknown"). Honor that when present.
   try {
     const avail =
       options && Array.isArray((options as any).availableProperties)
@@ -158,25 +165,17 @@ export function mapQuadsToDiagram(
       try {
         const iri = p && (p.iri || p.key || p) ? String(p.iri || p.key || p) : "";
         if (!iri) continue;
-        // Prefer explicit propertyKind provided by the fat-map entry
         const kindRaw = (p && (p.propertyKind || p.kind || p.type)) || undefined;
         const kind =
           kindRaw === "object" || kindRaw === "datatype" || kindRaw === "annotation"
             ? String(kindRaw)
             : undefined;
         if (kind) {
-          // Map fat-map kinds to local PredicateKind values
           if (kind === "object") predicateKindCache.set(iri, "object");
           else if (kind === "datatype") predicateKindCache.set(iri, "datatype");
           else if (kind === "annotation") predicateKindCache.set(iri, "annotation");
         } else {
-          // No explicit propertyKind provided — mark as 'unknown' so mapper can decide to create
-          // object nodes/edges for unknown predicates (caller may still override via options.predicateKind).
-          try {
-            predicateKindCache.set(iri, "unknown");
-          } catch (_) {
-            /* ignore cache errors */
-          }
+          predicateKindCache.set(iri, "unknown");
         }
       } catch (_) {
         /* ignore per-entry */
@@ -194,7 +193,6 @@ export function mapQuadsToDiagram(
       if (!iri) return false;
       const s = String(iri).trim();
       if (!s) return false;
-      // URN-based ontology graphs
       if (s.includes("urn:vg:ontologies")) return true;
       return false;
     } catch (_) {
@@ -202,15 +200,15 @@ export function mapQuadsToDiagram(
     }
   };
 
-  // Helper: determine whether a blank node id (e.g. '_:b0') appears as a subject
-  // elsewhere in the incoming quad batch. If so, treat the blank node as an ABox entity.
-  const isBlankNodeReferenced = (bn?: string | null) => {
+  // Blank node referenced checker (in the provided quad batch)
+  const isBlankNodeReferenced = (bn?: string | null, quadsToCheck?: QuadLike[]) => {
     try {
       if (!bn) return false;
       const id = String(bn);
       if (!id.startsWith("_:")) return false;
-      if (!Array.isArray(quads) || quads.length === 0) return false;
-      return quads.some((qq: any) => {
+      const arr = Array.isArray(quadsToCheck) ? quadsToCheck : quads;
+      if (!Array.isArray(arr) || arr.length === 0) return false;
+      return arr.some((qq: any) => {
         try { return qq && qq.subject && String(qq.subject.value) === id; } catch (_) { return false; }
       });
     } catch (_) {
@@ -218,28 +216,48 @@ export function mapQuadsToDiagram(
     }
   };
 
-  // Pre-scan incoming quads for rdf:type declarations so we can make deterministic
-  // folding decisions even when rdf:type and metadata arrive in the same batch.
-  const typesBySubject = new Map<string, Set<string>>();
-  const subjectsInBatch = new Set<string>();
+
+  // Step 2: split quads by origin (graph name)
+  const dataQuads: QuadLike[] = [];
+  const inferredQuads: QuadLike[] = [];
   try {
-    for (const _q of quads || []) {
+    for (const q of quads || []) {
       try {
         const graphVal =
-          _q && _q.graph
-            ? (_q.graph.value || _q.graph.id || (typeof _q.graph === "string" ? _q.graph : undefined))
+          q && q.graph
+            ? (q.graph.value || q.graph.id || (typeof q.graph === "string" ? q.graph : undefined))
             : undefined;
-        if (typeof graphVal === "undefined" || graphVal === null) continue;
-        const gstr = String(graphVal || "");
-        if (!gstr.includes("urn:vg:data")) continue;
+        const gstr = typeof graphVal !== "undefined" && graphVal !== null ? String(graphVal || "") : "";
+        // default detection: data quads include "urn:vg:data"
+        if (gstr && gstr.includes("urn:vg:data")) {
+          dataQuads.push(q);
+          continue;
+        }
+        // inferred quads detection: includes "urn:vg:inferred"
+        if (gstr && gstr.includes("urn:vg:inferred")) {
+          inferredQuads.push(q);
+          continue;
+        }
+        // fallback: treat other graphs as data if no graph provided
+        if (!gstr) {
+          // If no graph we treat as data by default (preserve previous behaviour in many cases)
+          dataQuads.push(q);
+        }
+      } catch (_) { /* ignore per-quad */ }
+    }
+  } catch (_) { /* ignore overall */ }
 
-        const s = _q && _q.subject ? _q.subject : null;
-        const p = _q && _q.predicate ? _q.predicate : null;
-        const o = _q && _q.object ? _q.object : null;
+  // Pre-scan dataQuads for rdf:type declarations so we can make deterministic decisions
+  const typesBySubject = new Map<string, Set<string>>();
+  try {
+    for (const q of dataQuads || []) {
+      try {
+        const s = q && q.subject ? q.subject : null;
+        const p = q && q.predicate ? q.predicate : null;
+        const o = q && q.object ? q.object : null;
         const subjIri = s && s.value ? String(s.value) : "";
         const predIri = p && p.value ? String(p.value) : "";
         if (!subjIri || !predIri) continue;
-        subjectsInBatch.add(subjIri);
         if (predIri === RDF_TYPE) {
           const val = o && o.value ? String(o.value) : "";
           if (val) {
@@ -247,321 +265,325 @@ export function mapQuadsToDiagram(
             typesBySubject.get(subjIri)!.add(val);
           }
         }
-      } catch (_) {
-        /* ignore pre-scan errors per-quad */
-      }
+      } catch (_) { /* ignore per-quad */ }
     }
-  } catch (_) { /* ignore overall pre-scan errors */ }
+  } catch (_) { /* ignore overall */ }
 
-  for (const q of quads || []) {
-    try {
-      // Small defensive normalization for quad.graph values
-      const graphVal =
-        q && q.graph
-          ? (q.graph.value || q.graph.id || (typeof q.graph === "string" ? q.graph : undefined))
-          : undefined;
-
-      // Map ONLY triples that were explicitly written into urn:vg:data.
-      // This prevents ontology/TBox graphs from creating canvas nodes.
-      // If graph is absent or not the data graph, skip.
+  // Step 3: loop over data quads and fill the properties of the already existing nodes
+  try {
+    for (const q of dataQuads || []) {
       try {
-        if (typeof graphVal === "undefined" || graphVal === null) continue;
-        const gstr = String(graphVal || "");
-        if (!gstr.includes("urn:vg:data")) continue;
-      } catch (_) {
-        continue;
-      }
+        const subj = q && q.subject ? q.subject : null;
+        const pred = q && q.predicate ? q.predicate : null;
+        const obj = q && q.object ? q.object : null;
 
-      const subj = q && q.subject ? q.subject : null;
-      const pred = q && q.predicate ? q.predicate : null;
-      const obj = q && q.object ? q.object : null;
+        const subjectIri = subj && subj.value ? String(subj.value) : "";
+        const predIri = pred && pred.value ? String(pred.value) : "";
+        if (!subjectIri || !predIri) continue;
 
-      const subjectIri = subj && subj.value ? String(subj.value) : "";
-      const predIri = pred && pred.value ? String(pred.value) : "";
-      if (!subjectIri || !predIri) continue;
+        // ensure the node exists (pre-pass should have created it, but be defensive)
+        ensureNode(subjectIri);
+        const entry = nodeMap.get(subjectIri)!;
 
-      // Ensure subject node exists and compute subject view for propagation when needed.
-      ensureNode(subjectIri);
-      const entry = nodeMap.get(subjectIri)!;
+        // Determine subjectIsTBox using pre-scanned types (prefer deterministic)
+        let subjectIsTBox = false;
+        try {
+          const subjTypesArr = typesBySubject.has(subjectIri)
+            ? Array.from(typesBySubject.get(subjectIri)!).map(String)
+            : Array.isArray(entry.rdfTypes)
+            ? entry.rdfTypes.map(String)
+            : [];
 
-      // Compute subjectIsTBox for view propagation when needed. Use pre-scanned rdf:type info
-      // (typesBySubject) when available, otherwise fall back to any rdfTypes already collected.
-      let subjectIsTBox = false;
-      try {
-        const subjTypesArr = typesBySubject.has(subjectIri)
-          ? Array.from(typesBySubject.get(subjectIri)!).map(String)
-          : Array.isArray(entry.rdfTypes)
-          ? entry.rdfTypes.map(String)
-          : [];
+          const hasIndividual = subjTypesArr.includes(OWL_NAMED_INDIVIDUAL);
+          const hasTboxType = subjTypesArr.some((t) => TBOX_TYPE_IRIS.has(String(t)));
+          subjectIsTBox = !hasIndividual && hasTboxType;
+        } catch (_) {
+          subjectIsTBox = false;
+        }
 
-        // Precedence: explicit NamedIndividual => ABox (not TBox)
-        const hasIndividual = subjTypesArr.includes(OWL_NAMED_INDIVIDUAL);
-        // TBox only when at least one rdf:type appears in the explicit whitelist
-        const hasTboxType = subjTypesArr.some((t) => TBOX_TYPE_IRIS.has(String(t)));
-
-        subjectIsTBox = !hasIndividual && hasTboxType;
-      } catch (_) {
-        subjectIsTBox = false;
-      }
-
-      // Compute predicate kind using authoritative fat-map (availableProperties) when available,
-      // or an optional caller-provided classifier. Default policy: fold into subject (annotation).
-      let predicateKindLocal: PredicateKind = "annotation";
-      try {
-        if (predicateKindCache.has(predIri)) {
-          predicateKindLocal = predicateKindCache.get(predIri)!;
-        } else if (options && typeof options.predicateKind === "function") {
-          try {
-            const k = options.predicateKind(String(predIri));
-            predicateKindLocal = k || "annotation";
-          } catch (_) {
+        // Determine predicate kind (use cache -> options.predicateKind -> default to annotation)
+        let predicateKindLocal: PredicateKind = "annotation";
+        try {
+          if (predicateKindCache.has(predIri)) {
+            predicateKindLocal = predicateKindCache.get(predIri)!;
+          } else if (options && typeof options.predicateKind === "function") {
+            try {
+              const k = options.predicateKind(String(predIri));
+              predicateKindLocal = k || "annotation";
+            } catch (_) {
+              predicateKindLocal = "annotation";
+            }
+            try { predicateKindCache.set(predIri, predicateKindLocal); } catch (_) { /* ignore */ }
+          } else {
             predicateKindLocal = "annotation";
           }
-          try { predicateKindCache.set(predIri, predicateKindLocal); } catch (_) { /* ignore cache errors */ }
-        } else {
-          // keep default "annotation" when no classifier and not present in availableProperties
+        } catch (_) {
           predicateKindLocal = "annotation";
         }
-      } catch (_) {
-        predicateKindLocal = "annotation";
-      }
 
-      // rdf:type
-      if (predIri === RDF_TYPE) {
-        const val = obj && obj.value ? String(obj.value) : "";
-        if (val) entry.rdfTypes.push(val);
-        continue;
-      }
+        // Handle rdf:type
+        if (predIri === RDF_TYPE) {
+          const val = obj && obj.value ? String(obj.value) : "";
+          if (val) entry.rdfTypes.push(val);
+          continue;
+        }
 
-      // rdfs:label as node label (literal preferred)
-      if (predIri === RDFS_LABEL && isLiteral(obj)) {
-        const labelVal = obj && obj.value ? String(obj.value) : entry.label;
-        entry.label = labelVal;
+        // rdfs:label as node label (literal preferred)
+        if (predIri === RDFS_LABEL && isLiteral(obj)) {
+          const labelVal = obj && obj.value ? String(obj.value) : entry.label;
+          entry.label = labelVal;
+          try {
+            const propPrefixed = toPrefixed(
+              predIri,
+              options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+              options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+              (options as any).registry
+            );
+            const exists = Array.isArray(entry.annotationProperties)
+              ? entry.annotationProperties.some((ap) => {
+                  try { return String(ap.property) === String(propPrefixed) && String(ap.value) === String(labelVal); } catch { return false; }
+                })
+              : false;
+            if (!exists) {
+              entry.annotationProperties.push({
+                property: propPrefixed,
+                value: labelVal,
+              });
+            }
+          } catch (_) { /* ignore */ }
+          continue;
+        }
 
-        // Also preserve the rdfs:label as an annotation property so editors see it
+        // Annotation property classifier
+        if (predicateKindLocal === "annotation") {
+          try {
+            const val = obj && obj.value ? String(obj.value) : "";
+            entry.annotationProperties.push({
+              property: toPrefixed(
+                predIri,
+                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                (options as any).registry
+              ),
+              value: val,
+            });
+          } catch (_) { /* ignore per-annotation */ }
+          continue;
+        }
+
+        // Literals for data quads -> annotationProperties (per policy)
+        if (isLiteral(obj)) {
+          try {
+            const litVal = obj && obj.value ? String(obj.value) : "";
+            entry.annotationProperties.push({
+              property: toPrefixed(
+                predIri,
+                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                (options as any).registry
+              ),
+              value: litVal,
+            });
+          } catch (_) { /* ignore per-literal */ }
+          continue;
+        }
+
+        // Blank node handling for data quads
+        if (obj && (obj.termType === "BlankNode" || (obj.value && String(obj.value).startsWith("_:")))) {
+          const bn = obj.value ? String(obj.value) : "";
+          if (predicateKindLocal === "object" || predicateKindLocal === "unknown" || isBlankNodeReferenced(bn, dataQuads)) {
+            ensureNode(bn);
+            try {
+              const objEntry = nodeMap.get(bn);
+              if (objEntry) objEntry.forceIsTBox = subjectIsTBox;
+            } catch (_) { /* ignore */ }
+
+            const edgeId = String(generateEdgeId(subjectIri, bn, predIri || ""));
+            rfEdges.push({
+              id: edgeId,
+              source: subjectIri,
+              target: bn,
+              type: "floating",
+              data: {
+                key: edgeId,
+                from: subjectIri,
+                to: bn,
+                propertyUri: predIri,
+                propertyPrefixed: toPrefixed(
+                  predIri,
+                  options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                  options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                  (options as any).registry
+                ),
+                propertyType: "",
+                label: toPrefixed(
+                  predIri,
+                  options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                  options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                  (options as any).registry
+                ),
+                namespace: "",
+                rdfType: "",
+              } as LinkData,
+            });
+          } else {
+            try {
+              entry.annotationProperties.push({
+                property: toPrefixed(
+                  predIri,
+                  options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                  options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                  (options as any).registry
+                ),
+                value: bn,
+              });
+            } catch (_) { /* ignore */ }
+          }
+          continue;
+        }
+
+        // object is NamedNode (IRI) for data quads
+        if (obj && (obj.termType === "NamedNode" || (obj.value && /^https?:\/\//i.test(String(obj.value))))) {
+          const objectIri = obj && obj.value ? String(obj.value) : "";
+          if (!objectIri) continue;
+
+          if (predicateKindLocal === "object" || predicateKindLocal === "unknown") {
+            ensureNode(objectIri);
+            try {
+              const objEntry = nodeMap.get(objectIri);
+              if (objEntry) objEntry.forceIsTBox = subjectIsTBox;
+            } catch (_) { /* ignore */ }
+
+            const edgeId = String(generateEdgeId(subjectIri, objectIri, predIri || ""));
+            rfEdges.push({
+              id: edgeId,
+              source: subjectIri,
+              target: objectIri,
+              type: "floating",
+              data: {
+                key: edgeId,
+                from: subjectIri,
+                to: objectIri,
+                propertyUri: predIri,
+                propertyPrefixed: toPrefixed(
+                  predIri,
+                  options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                  options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                  (options as any).registry
+                ),
+                propertyType: "",
+                label: toPrefixed(
+                  predIri,
+                  options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                  options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                  (options as any).registry
+                ),
+                namespace: "",
+                rdfType: "",
+              } as LinkData,
+            });
+          } else {
+            try {
+              entry.annotationProperties.push({
+                property: toPrefixed(
+                  predIri,
+                  options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                  options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                  (options as any).registry
+                ),
+                value: objectIri,
+              });
+            } catch (_) { /* ignore */ }
+          }
+          continue;
+        }
+
+        // fallback -> annotationProperties
         try {
-          const propPrefixed = toPrefixed(
+          entry.annotationProperties.push({
+            property: predIri,
+            value: obj && obj.value ? String(obj.value) : "",
+          });
+        } catch (_) { /* ignore */ }
+      } catch (_) {
+        /* ignore per-quad failures */
+      }
+    }
+  } catch (_) { /* ignore overall */ }
+
+  // Step 4: loop over inferred quads and fold them into existing data nodes' annotationProperties (do not create new nodes)
+  try {
+    for (const q of inferredQuads || []) {
+      try {
+        const subj = q && q.subject ? q.subject : null;
+        const pred = q && q.predicate ? q.predicate : null;
+        const obj = q && q.object ? q.object : null;
+
+        const subjectIri = subj && subj.value ? String(subj.value) : "";
+        const predIri = pred && pred.value ? String(pred.value) : "";
+        if (!subjectIri || !predIri) continue;
+
+        // Only fold into nodes that already exist (i.e., created from data quads)
+        if (!nodeMap.has(subjectIri)) continue;
+        const entry = nodeMap.get(subjectIri)!;
+
+        let prop = predIri;
+        try {
+          prop = toPrefixed(
             predIri,
             options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
             options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
             (options as any).registry
           );
+        } catch (_) {
+          prop = predIri;
+        }
 
-          // Avoid duplicates: only add if no existing annotation property with same property+value exists
+        let val = obj && obj.value ? String(obj.value) : "";
+        if (!isLiteral(obj)) {
+          if (isNamedNode(obj)) {
+            try {
+              val = toPrefixed(
+                String(obj.value),
+                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                (options as any).registry
+              );
+            } catch (_) {
+              val = String(obj.value || "");
+            }
+          } else {
+            val = String(obj && obj.value ? obj.value : "");
+          }
+        }
+
+        // Push into annotationProperties (fold inferred triples into subject annotations)
+        try {
           const exists = Array.isArray(entry.annotationProperties)
             ? entry.annotationProperties.some((ap) => {
-                try { return String(ap.property) === String(propPrefixed) && String(ap.value) === String(labelVal); } catch { return false; }
+                try { return String(ap.property) === String(prop) && String(ap.value) === String(val); } catch { return false; }
               })
             : false;
-
           if (!exists) {
-            entry.annotationProperties.push({
-              property: propPrefixed,
-              value: labelVal,
-            });
+            entry.annotationProperties.push({ property: prop, value: val });
           }
-        } catch (_) {
-          // ignore annotation push failures
-        }
-
-        continue;
-      }
-
-      // If the predicate is classified as an AnnotationProperty treat it as an annotation
-      // regardless of whether the object is a literal or an IRI/blank node.
-      if (predicateKindLocal === "annotation") {
-        try {
-          const val = obj && obj.value ? String(obj.value) : "";
-          entry.annotationProperties.push({
-            property: toPrefixed(
-              predIri,
-              options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-              options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-              (options as any).registry
-            ),
-            value: val,
-          });
-        } catch (_) {
-          // ignore per-annotation failures
-        }
-        continue;
-      }
-
-      // literal -> annotationProperties
-      // Per requested policy, treat predicates pointing to literals as annotation properties
-      // on the subject node rather than as separate literalProperties entries.
-      if (isLiteral(obj)) {
-        try {
-          const litVal = obj && obj.value ? String(obj.value) : "";
-          entry.annotationProperties.push({
-            property: toPrefixed(
-              predIri,
-              options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-              options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-              (options as any).registry
-            ),
-            value: litVal,
-          });
-        } catch (_) {
-          /* ignore per-literal failures */
-        }
-        continue;
-      }
-
-      // Handle blank nodes: create node/edge when blank node is referenced as a subject elsewhere
-      // in the incoming quad batch OR when the predicate is classified as an object/unknown property.
-      if (obj && (obj.termType === "BlankNode" || (obj.value && String(obj.value).startsWith("_:")))) {
-        const bn = obj.value ? String(obj.value) : "";
-        // If the predicate is explicitly an object property or unknown, create node+edge regardless
-        // of whether the blank node is referenced elsewhere.
-        if (predicateKindLocal === "object" || predicateKindLocal === "unknown" || isBlankNodeReferenced(bn)) {
-          ensureNode(bn);
-          // Propagate subject view to the object node when predicate is unknown/object
-          try {
-            const objEntry = nodeMap.get(bn);
-            if (objEntry) objEntry.forceIsTBox = subjectIsTBox;
-          } catch (_) { /* ignore */ }
-
-          const edgeId = String(generateEdgeId(subjectIri, bn, predIri || ""));
-          rfEdges.push({
-            id: edgeId,
-            source: subjectIri,
-            target: bn,
-            type: "floating",
-            markerEnd: { type: "arrow" as any },
-            data: {
-              key: edgeId,
-              from: subjectIri,
-              to: bn,
-              propertyUri: predIri,
-              propertyPrefixed: toPrefixed(
-                predIri,
-                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-                (options as any).registry
-              ),
-              propertyType: "",
-              label: toPrefixed(
-                predIri,
-                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-                (options as any).registry
-              ),
-              namespace: "",
-              rdfType: "",
-            } as LinkData,
-          });
-        } else {
-          // Treat unreferenced blank nodes as annotation metadata
-          try {
-            entry.annotationProperties.push({
-              property: toPrefixed(
-                predIri,
-                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-                (options as any).registry
-              ),
-              value: bn,
-            });
-          } catch (_) { /* ignore */ }
-        }
-        continue;
-      }
-
-      // object is NamedNode (IRI)
-      if (obj && (obj.termType === "NamedNode" || (obj.value && /^https?:\/\//i.test(String(obj.value))))) {
-        const objectIri = obj && obj.value ? String(obj.value) : "";
-        if (!objectIri) continue;
-
-        // Create an edge (and ensure an object node) when predicate is classified as an object
-        // or when it is unknown per fat-map policy. When creating the object node propagate the
-        // subject's view (TBox/ABox) into the object via forceIsTBox.
-        if (predicateKindLocal === "object" || predicateKindLocal === "unknown") {
-          ensureNode(objectIri);
-          try {
-            const objEntry = nodeMap.get(objectIri);
-            if (objEntry) objEntry.forceIsTBox = subjectIsTBox;
-          } catch (_) { /* ignore */ }
-
-          const edgeId = String(generateEdgeId(subjectIri, objectIri, predIri || ""));
-          const labelForEdge = predIri || "";
-          rfEdges.push({
-            id: edgeId,
-            source: subjectIri,
-            target: objectIri,
-            type: "floating",
-            markerEnd: { type: "arrow" as any },
-            data: {
-              key: edgeId,
-              from: subjectIri,
-              to: objectIri,
-              propertyUri: predIri,
-              propertyPrefixed: toPrefixed(
-                predIri,
-                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-                (options as any).registry
-              ),
-              propertyType: "",
-              label: toPrefixed(
-                predIri,
-                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-                (options as any).registry
-              ),
-              namespace: "",
-              rdfType: "",
-            } as LinkData,
-          });
-        } else {
-          // Fold non-object predicates (even with IRI objects) into the subject as annotation metadata.
-          try {
-            entry.annotationProperties.push({
-              property: toPrefixed(
-                predIri,
-                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-                (options as any).registry
-              ),
-              value: objectIri,
-            });
-          } catch (_) { /* ignore */ }
-        }
-        continue;
-      }
-
-      // fallback -> annotationProperties
-      try {
-        entry.annotationProperties.push({
-          property: predIri,
-          value: obj && obj.value ? String(obj.value) : "",
-        });
-      } catch (_) {
-        /* ignore */
-      }
-    } catch (_) {
-      // ignore per-quad failures
+        } catch (_) { /* ignore */ }
+      } catch (_) { /* ignore per-quad */ }
     }
-  }
+  } catch (_) { /* ignore overall */ }
 
+  // Build RF nodes from nodeMap entries
   const allNodeEntries = Array.from(nodeMap.entries()).map(([iri, info]) => {
     // Compute a lightweight classType/displayType from first rdf:type if available.
-    // Preserve the full rdf:type IRI as the primary type.
     let primaryTypeIri: string | undefined = undefined;
     if (Array.isArray(info.rdfTypes) && info.rdfTypes.length > 0) {
       primaryTypeIri = String(info.rdfTypes[0]);
     }
-    // For backward compatibility compute a short classType display from primaryTypeIri.
-    // Special-case: when a node is an ABox instance (has owl:NamedIndividual among rdfTypes),
-    // prefer the next non-NamedIndividual rdf:type as the classType so UI shows the entity's
-    // effective class rather than the generic NamedIndividual marker.
     let classType: string | undefined = undefined;
     const typesArr = Array.isArray(info.rdfTypes) ? info.rdfTypes.map(String) : [];
     if (typesArr.length > 0) {
-      // primaryTypeIri already computed above as the first type (if present)
       try {
         if (typesArr.includes(OWL_NAMED_INDIVIDUAL)) {
-          // find the first type that is not the NamedIndividual marker
           const other = typesArr.find((t: string) => String(t) !== OWL_NAMED_INDIVIDUAL);
           classType = other || primaryTypeIri;
         } else {
@@ -573,19 +595,17 @@ export function mapQuadsToDiagram(
     } else {
       classType = undefined;
     }
-        // Coarse namespace extraction from IRI (prefix before last / or #)
-        let namespace = "";
-        try {
-          const m = String(iri || "").match(/^(.*[/#])/);
-          namespace = m && m[1] ? String(m[1]) : "";
-        } catch (_) {
-          namespace = "";
-        }
-    
-    // Determine TBox/ABox using explicit whitelist + precedence:
-    // - If rdfTypes include owl:NamedIndividual -> ABox (isTBox = false)
-    // - Else if rdfTypes include any whitelist TBox type -> TBox (isTBox = true)
-    // - Else -> ABox (isTBox = false)
+
+    // Coarse namespace extraction from IRI (prefix before last / or #)
+    let namespace = "";
+    try {
+      const m = String(iri || "").match(/^(.*[/#])/);
+      namespace = m && m[1] ? String(m[1]) : "";
+    } catch (_) {
+      namespace = "";
+    }
+
+    // Determine isTBox
     let isTBox = false;
     try {
       const types = Array.isArray(info.rdfTypes) ? info.rdfTypes.map((t: any) => String(t || "")) : [];
@@ -596,38 +616,30 @@ export function mapQuadsToDiagram(
       isTBox = false;
     }
 
-    // Honor explicit override set during mapping (propagate subject view to object nodes for
-    // unknown/object predicates). This allows callers to force object nodes into the same view
-    // as their subjects without synthesizing rdf:type triples.
+    // Honor explicit override set during mapping
     try {
       if (typeof info.forceIsTBox === "boolean") {
         isTBox = !!info.forceIsTBox;
       }
     } catch (_) { /* ignore */ }
 
-      // compute node color using classType (preferred) or the node iri as fallback
-      const nodeColor = getNodeColor(classType);
+    // compute node color using classType (preferred) or the node iri as fallback
+    const nodeColor = getNodeColor(classType);
 
-      const nodeData: NodeData & any = {
+    const nodeData: NodeData & any = {
       key: iri,
       iri,
-      // authoritative full IRI title (same as iri) available to renderers
       titleIri: iri,
-      // primaryTypeIri preserves the full rdf:type IRI so renderers can shorten it later
       primaryTypeIri,
       rdfTypes: Array.isArray(info.rdfTypes) ? info.rdfTypes.map(String) : [],
-      // keep label field for backward compatibility: prefer rdfs:label, otherwise short local name
-      label: iri,
-      // Presentation hints (compute prefixed form / palette color when a registry/palette is provided in options)
+      label: info.label || iri,
       displayPrefixed: toPrefixed(
-            iri,
-            options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-            options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-            (options as any).registry
-          ),
-      // displayShort: short/local name (always available)
+        iri,
+        options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+        options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+        (options as any).registry
+      ),
       displayShort: shortLocalName(iri),
-      // displayClassType: prefixed form for the classType (computed here so UI can use it directly)
       displayclassType: (() => {
         try {
           const pref = toPrefixed(
@@ -666,6 +678,7 @@ export function mapQuadsToDiagram(
       ],
       literalProperties: info.literalProperties || [],
       annotationProperties: info.annotationProperties || [],
+      inferredProperties: info.inferredProperties || [],
       visible: true,
       hasReasoningError: false,
       isTBox: !!isTBox,
@@ -684,15 +697,8 @@ export function mapQuadsToDiagram(
     return { iri, isTBox, rfNode };
   });
 
-  // Include all nodes (ABox + TBox) in the mapper output. UI consumers should
-  // use the node.data.isTBox flag to hide/show TBox entries according to view mode.
   const rfNodes: RFNode<NodeData>[] = allNodeEntries.map((e) => e.rfNode);
 
-  // Build set of node IDs that will be rendered for edge filtering
-  const renderedNodeIds = new Set<string>((rfNodes || []).map((n) => String(n.id)));
-
-  // Keep edges as emitted by the mapper. Visibility decisions (hidden/visible) are handled by the canvas.
-  // Policy: do not drop edges here; KnowledgeCanvas will decide hiding based on node visibility and propertyPrefixed.
   const rfEdgesFiltered = rfEdges || [];
   console.debug("[VG_DEBUG] mapQuadsToDiagram.return", { rfNodes, rfEdgesFiltered });
   return { nodes: rfNodes, edges: rfEdgesFiltered };

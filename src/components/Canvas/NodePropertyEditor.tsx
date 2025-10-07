@@ -418,7 +418,7 @@ export const NodePropertyEditor = ({
                       <Info className="h-4 w-4" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-64" side="top">
+                  <PopoverContent side="top">
                     <div className="text-xs">
                       The selected rdf:type is not present in the loaded fat-map. It will be saved as the displayType but not resolved to a known class.
                     </div>
@@ -460,10 +460,10 @@ export const NodePropertyEditor = ({
                       value={property.key}
                       onValueChange={(value) => handleUpdateProperty(index, "key", value)}
                       placeholder="Select property..."
-                      className={!property.key.trim() ? "border-red-500" : ""}
+                      className={!property.key.trim() ? "border-destructive" : ""}
                     />
                     {!property.key.trim() && (
-                      <p className="text-xs text-red-500 mt-1">Property is required</p>
+                      <p className="text-xs text-destructive mt-1">Property is required</p>
                     )}
                   </div>
 
@@ -501,7 +501,7 @@ export const NodePropertyEditor = ({
               ))}
 
               {properties.length === 0 && (
-                <div className="text-center py-4 text-muted-foreground border-2 border-dashed rounded-lg">
+                <div className="text-center py-4 text-muted-foreground border-2 border-dashed border-border/20 rounded-lg">
                   <p className="text-sm">No annotation properties</p>
                   <p className="text-xs">Click "Add Property" to add annotation properties</p>
                 </div>

@@ -1,16 +1,15 @@
  
 import React, { memo, useEffect, useRef, useMemo } from "react";
 import {
-  Handle,
+  Handle, 
   Position,
   NodeProps,
   useConnection,
 } from "@xyflow/react";
 import { cn } from "../../lib/utils";
-import { Edit3, AlertTriangle, Info } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { shortLocalName, toPrefixed } from "../../utils/termUtils";
 import { NodeData } from "../../types/canvas";
+import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip";
 
 
 function CustomOntologyNodeImpl(props: NodeProps) {
@@ -86,19 +85,50 @@ function CustomOntologyNodeImpl(props: NodeProps) {
   ]);
 
   
-  const nodeColor = nodeData.color;
+  // Simple helpers to choose readable badge foreground for a given hex color.
+  function hexToRgb(hex?: string) {
+    if (!hex) return null;
+    const c = hex.replace("#", "");
+    const full = c.length === 3 ? c.split("").map((s) => s + s).join("") : c;
+    const num = parseInt(full, 16);
+    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+  }
 
-  const themeBg = useMemo(() => {
-    if (typeof document === "undefined") return "#ffffff";
-    try {
-      const v = (getComputedStyle(document.documentElement).getPropertyValue("--node-bg") || "").trim();
-      return v || "#ffffff";
-    } catch (_) {
-      return "#ffffff";
-    }
-  }, []);
+  // function relativeLuminance({ r, g, b }: { r: number; g: number; b: number }) {
+  //   const srgb = [r, g, b].map((v) => {
+  //     const s = v / 255;
+  //     return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  //   });
+  //   return 0.2126 * srgb[0] + 0.7152 * srgb[1] + 0.0722 * srgb[2];
+  // }
+
+  // function pickBadgeForeground(hex?: string) {
+  //   const rgb = hexToRgb(hex || "");
+  //   // const L = relativeLuminance(rgb);
+  //   // contrast with white = (1.05)/(L+0.05), contrast with black = (L+0.05)/0.05
+  //   const contrastWhite = (1.05) / (L + 0.05);
+  //   const contrastBlack = (L + 0.05) / 0.05;
+  //   // prefer white if it has higher contrast, otherwise dark gray
+  //   return contrastWhite >= contrastBlack ? "#ffffff" : "#111827";
+  // }
+
+  const nodeColor = nodeData.color;
+  
+  
   const hasErrors =
     Array.isArray(nodeData.errors) && nodeData.errors.length > 0;
+
+  const hasReasoningError =
+    Array.isArray((nodeData as any).reasoningErrors) && (nodeData as any).reasoningErrors.length > 0;
+  const hasReasoningWarning =
+    Array.isArray((nodeData as any).reasoningWarnings) && (nodeData as any).reasoningWarnings.length > 0;
+
+  const reasoningClass = hasReasoningError
+    ? "border-2 border-destructive ring-4 ring-destructive/20"
+    : hasReasoningWarning
+      ? "border-2 border-amber-500 ring-4 ring-amber-300"
+      : "";
+
 
   const annotations: Array<{ term: string; value: string }> = [];
   if (Array.isArray(nodeData.properties) && nodeData.properties.length > 0) {
@@ -136,29 +166,6 @@ function CustomOntologyNodeImpl(props: NodeProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   // const lastMeasuredRef = useRef<{ w: number; h: number } | null>(null);
 
-  // Apply the colored left border to the parent element of this node container.
-  // Some renderers wrap the node element, so the visual left stripe must be applied
-  // one level higher than the node's root div. We update the parent element's
-  // inline style here and clean up on unmount/change.
-  useEffect(() => {
-    try {
-      const el = rootRef.current;
-      const parent = el && (el.parentElement as HTMLElement | null);
-      if (parent) {
-        if (nodeColor) parent.style.borderLeft = `4px solid ${nodeColor}`;
-        else parent.style.borderLeft = "";
-      }
-      return () => {
-        try {
-          if (parent) parent.style.borderLeft = "";
-        } catch (_) {
-          /* ignore cleanup errors */
-        }
-      };
-    } catch (_) {
-      /* ignore runtime errors */
-    }
-  }, [nodeColor]);
 
   // Size reporting removed — component is now pure/read-only and does not observe element size.
   // Any measurement responsibilities belong to parent/layout code if needed.
@@ -202,95 +209,141 @@ function CustomOntologyNodeImpl(props: NodeProps) {
   return (
     <div
       ref={rootRef}
+      style={{
+        ['--node-color' as any]: nodeColor || 'transparent',
+      }}
       className={cn(
-        "inline-flex overflow-hidden",
+        "flex items-stretch overflow-hidden rounded-md shadow-sm box-border border-solid",
         selected ? "ring-2 ring-primary" : "",
+        reasoningClass
       )}
     >
+      {/* Left namespace color bar — explicit element so Tailwind can style layout; color is dynamic */}
       <div
-        className="px-4 py-3 min-w-0 flex-1 w-auto"
-        style={{ background: themeBg }}
-      >
-        <div className="flex items-center gap-3 mb-2">
-          <div
-            className="text-sm font-bold text-foreground truncate"
-            title={headerDisplay}
-          >
-            {headerDisplay}
-          </div>
+        aria-hidden="true"
+        className="w-2 flex-none"
+        style={{ background: nodeColor || "transparent" }}
+      />
 
-          <div
-            className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold text-black flex items-center gap-1"
-            style={{
-              background: nodeColor,
-              border: nodeColor ? `1px solid ${darken(nodeColor, 0.12)}` : undefined,
-            }}
-          >
-            <span className="truncate">
-              {badgeText || nodeData.classType}
-            </span>
-          </div>
+      <Tooltip delayDuration={250}>
+        <TooltipTrigger asChild>
+          <div className="px-4 py-3 min-w-0 flex-1 w-auto node-bg">
+            <div className="flex items-center gap-3 mb-2">
+              <div
+                className="text-sm font-bold text-foreground truncate"
+                title={headerDisplay}
+              >
+                {headerDisplay}
+              </div>
 
-          {hasErrors && (
-            <div className="ml-auto">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button
-                    className="h-6 w-6 p-0 text-destructive flex items-center justify-center"
-                    aria-label="Errors"
-                  >
-                    <AlertTriangle className="h-4 w-4" />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64">
-                  <div className="space-y-2 text-sm">
-                    <div className="font-medium">Validation Errors</div>
-                    <ul className="text-xs text-muted-foreground space-y-1">
-                      {nodeData.errors?.map((e, idx) => (
-                        <li key={idx}>{String(e)}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </PopoverContent>
-              </Popover>
+              <div
+                className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 node-badge"
+                style={{
+                  ['--node-color' as any]: nodeColor || 'transparent',
+                }}
+                aria-hidden="true"
+              >
+                <span className="truncate text-foreground-dark">
+                  {badgeText || nodeData.classType}
+                </span>
+              </div>
+
+              {hasErrors}
             </div>
-          )}
-        </div>
 
-        <div className="text-sm text-muted-foreground mb-3">
-          <div className="text-xs text-muted-foreground mt-1 truncate">
-            {subtitleText}
-          </div>
-        </div>
+            <div className="text-sm text-muted-foreground mb-3">
+              <div className="text-xs text-muted-foreground mt-1 truncate">
+                {subtitleText}
+              </div>
+            </div>
 
-        <div className="pt-2 border-t border-gray-100">
-          {annotations.length === 0 ? (
-            <div className="text-xs text-muted-foreground">No annotations</div>
-          ) : (
-            <div className="space-y-2">
-              {annotations.map((a, idx) => (
-                <div
-                  key={idx}
-                  className="grid grid-cols-[110px_1fr] gap-2 text-sm"
-                >
-                  <div className="font-medium text-xs text-muted-foreground truncate">
-                    {a.term}
-                  </div>
-                  <div className="text-xs text-foreground truncate">
-                    {a.value}
-                  </div>
+            <div className="pt-2 border-t border-border">
+              {annotations.length === 0 ? (
+                <div className="text-xs text-muted-foreground">No annotations</div>
+              ) : (
+                <div className="space-y-2">
+                  {annotations.map((a, idx) => (
+                    <div
+                      key={idx}
+                      className="grid grid-cols-[110px_1fr] gap-2 text-sm"
+                    >
+                      <div className="font-medium text-xs text-muted-foreground truncate">
+                        {a.term}
+                      </div>
+                      <div className="text-xs text-foreground truncate">
+                        {a.value}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
 
-        {typePresentButNotLoaded && (
-          <div className="mt-2 text-xs text-muted-foreground">
-            Type present but ontology not loaded
+            {typePresentButNotLoaded && (
+              <div className="mt-2 text-xs text-muted-foreground">
+                Type present but ontology not loaded
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </TooltipTrigger>
+
+        <TooltipContent side="top">
+          <div className="text-left text-sm space-y-2 max-w-[32rem]">
+            <div className="font-semibold break-words whitespace-pre-wrap">{headerDisplay}</div>
+            <div className="text-xs text-muted-foreground">{badgeText || nodeData.classType}</div>
+            {subtitleText && <div className="text-xs text-muted-foreground break-words whitespace-pre-wrap">{subtitleText}</div>}
+
+            <div className="mt-2">
+              <div className="font-medium text-xs text-muted-foreground mb-1">Annotations</div>
+              {annotations.length === 0 ? (
+                <div className="text-xs text-muted-foreground">No annotations</div>
+              ) : (
+                <ul className="text-sm space-y-1">
+                  {annotations.map((a, i) => (
+                    <li key={i} className="flex gap-2">
+                      <div className="w-28 text-xs text-muted-foreground truncate">{a.term}</div>
+                      <div className="text-xs text-foreground truncate">{a.value}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {Array.isArray(typesList) && typesList.length > 0 && (
+              <div className="mt-2">
+                <div className="text-xs text-muted-foreground font-medium">Types</div>
+                <ul className="text-xs space-y-0.5">
+                  {typesList.map((t, idx) => <li key={idx} className="break-words whitespace-pre-wrap">{String(t)}</li>)}
+                </ul>
+              </div>
+            )}
+
+            {Array.isArray((nodeData as any).reasoningErrors) && (nodeData as any).reasoningErrors.length > 0 && (
+              <div>
+                <div className="text-xs font-medium text-destructive mb-1">Reasoning errors</div>
+                <ul className="text-xs text-destructive space-y-0.5">
+                  {(nodeData as any).reasoningErrors.map((m: any, i: number) => (
+                    <li key={i} className="break-words whitespace-pre-wrap">{String(m)}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {Array.isArray((nodeData as any).reasoningWarnings) && (nodeData as any).reasoningWarnings.length > 0 && (
+              <div>
+                <div className="text-xs font-medium text-amber-600 mb-1">Reasoning warnings</div>
+                <ul className="text-xs text-amber-700 space-y-0.5">
+                  {(nodeData as any).reasoningWarnings.map((m: any, i: number) => (
+                    <li key={i} className="break-words whitespace-pre-wrap">{String(m)}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {nodeData.iri && <div className="text-xs text-muted-foreground mt-1 break-words whitespace-pre-wrap">{String(nodeData.iri)}</div>}
+          </div>
+        </TooltipContent>
+      </Tooltip>
       {/* In this case we don't need to use useUpdateNodeInternals, since !isConnecting is true at the beginning and all handles are rendered initially. */}
       {showHandles && (
         <Handle
@@ -325,32 +378,6 @@ function CustomOntologyNodeImpl(props: NodeProps) {
   );
 }
 
-/**
- * Small color utility to darken a hex color by a factor (0-1).
- */
-function darken(hex: string, amount: number) {
-  try {
-    const c = hex.replace("#", "");
-    const num = parseInt(
-      c.length === 3
-        ? c
-            .split("")
-            .map((s) => s + s)
-            .join("")
-        : c,
-      16,
-    );
-    let r = (num >> 16) & 0xff;
-    let g = (num >> 8) & 0xff;
-    let b = num & 0xff;
-    r = Math.max(0, Math.min(255, Math.round(r * (1 - amount))));
-    g = Math.max(0, Math.min(255, Math.round(g * (1 - amount))));
-    b = Math.max(0, Math.min(255, Math.round(b * (1 - amount))));
-    return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
-  } catch (_) {
-    return hex;
-  }
-}
 
 export const CustomOntologyNode = memo(CustomOntologyNodeImpl);
 CustomOntologyNode.displayName = "CustomOntologyNode";

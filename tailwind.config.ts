@@ -8,6 +8,7 @@
 
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: [
     './index.html',
     './src/**/*.{js,ts,jsx,tsx}',
@@ -16,45 +17,45 @@ export default {
     extend: {
       colors: {
         // Core
-        'background': 'hsl(var(--background) / <alpha-value>)',
-        'foreground': 'hsl(var(--foreground) / <alpha-value>)',
+        'background': 'var(--background)',
+        'foreground': 'var(--foreground)',
 
         // Surface
-        'card': 'hsl(var(--card) / <alpha-value>)',
-        'card-foreground': 'hsl(var(--card-foreground) / <alpha-value>)',
-        'popover': 'hsl(var(--popover) / <alpha-value>)',
-        'popover-foreground': 'hsl(var(--popover-foreground) / <alpha-value>)',
+        'card': 'var(--card)',
+        'card-foreground': 'var(--card-foreground)',
+        'popover': 'var(--popover)',
+        'popover-foreground': 'var(--popover-foreground)',
 
         // Brand
-        'primary': 'hsl(var(--primary) / <alpha-value>)',
-        'primary-foreground': 'hsl(var(--primary-foreground) / <alpha-value>)',
-        'primary-hover': 'hsl(var(--primary-hover) / <alpha-value>)',
+        'primary': 'var(--primary)',
+        'primary-foreground': 'var(--primary-foreground)',
+        'primary-hover': 'var(--primary-hover)',
 
-        'secondary': 'hsl(var(--secondary) / <alpha-value>)',
-        'secondary-foreground': 'hsl(var(--secondary-foreground) / <alpha-value>)',
-        'secondary-hover': 'hsl(var(--secondary-hover) / <alpha-value>)',
+        'secondary': 'var(--secondary)',
+        'secondary-foreground': 'var(--secondary-foreground)',
+        'secondary-hover': 'var(--secondary-hover)',
 
-        'accent': 'hsl(var(--accent) / <alpha-value>)',
-        'accent-foreground': 'hsl(var(--accent-foreground) / <alpha-value>)',
-        'accent-hover': 'hsl(var(--accent-hover) / <alpha-value>)',
+        'accent': 'var(--accent)',
+        'accent-foreground': 'var(--accent-foreground)',
+        'accent-hover': 'var(--accent-hover)',
 
         // Muted / Destructive / Inputs
-        'muted': 'hsl(var(--muted) / <alpha-value>)',
-        'muted-foreground': 'hsl(var(--muted-foreground) / <alpha-value>)',
-        'destructive': 'hsl(var(--destructive) / <alpha-value>)',
-        'destructive-foreground': 'hsl(var(--destructive-foreground) / <alpha-value>)',
+        'muted': 'var(--muted)',
+        'muted-foreground': 'var(--muted-foreground)',
+        'destructive': 'var(--destructive)',
+        'destructive-foreground': 'var(--destructive-foreground)',
 
         // Borders / Inputs / Rings
-        'border': 'hsl(var(--border) / <alpha-value>)',
-        'input': 'hsl(var(--input) / <alpha-value>)',
-        'ring': 'hsl(var(--ring) / <alpha-value>)',
+        'border': 'var(--border)',
+        'input': 'var(--input)',
+        'ring': 'var(--ring)',
 
         // Canvas / card helper
-        'canvas-bg': 'hsl(var(--canvas-bg) / <alpha-value>)',
-        'canvas-grid': 'hsl(var(--canvas-grid) / <alpha-value>)',
+        'canvas-bg': 'var(--canvas-bg)',
+        'canvas-grid': 'var(--canvas-grid)',
 
         // Additional tokens that appear in code
-        'sidebar-border': 'hsl(var(--glass-border) / <alpha-value>)',
+        'sidebar-border': 'var(--glass-border)',
       },
     },
   },

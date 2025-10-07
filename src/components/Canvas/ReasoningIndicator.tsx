@@ -12,12 +12,19 @@ interface ReasoningIndicatorProps {
 export const ReasoningIndicator = memo(({ onOpenReport, onRunReason }: ReasoningIndicatorProps) => {
   const { currentReasoning, isReasoning } = useReasoningStore();
 
+  const STATUS_COLOR_MAP: Record<string, string> = {
+    warning: 'bg-warning text-warning-foreground',
+    destructive: 'bg-destructive text-destructive-foreground',
+    muted: 'bg-muted text-muted-foreground',
+    success: 'bg-success text-success-foreground',
+  };
+
   const getStatusInfo = () => {
     if (isReasoning) {
       return {
         icon: <Loader2 className="w-4 h-4 animate-spin" />,
         label: 'Reasoning...',
-        color: 'bg-warning text-warning-foreground',
+        colorKey: 'warning',
         pulse: true
       };
     }
@@ -26,7 +33,7 @@ export const ReasoningIndicator = memo(({ onOpenReport, onRunReason }: Reasoning
       return {
         icon: <Brain className="w-4 h-4" />,
         label: 'Ready',
-        color: 'bg-muted text-muted-foreground',
+        colorKey: 'muted',
         pulse: false
       };
     }
@@ -37,7 +44,7 @@ export const ReasoningIndicator = memo(({ onOpenReport, onRunReason }: Reasoning
       return {
         icon: <XCircle className="w-4 h-4" />,
         label: 'Error',
-        color: 'bg-destructive text-destructive-foreground',
+        colorKey: 'destructive',
         pulse: false
       };
     }
@@ -46,7 +53,7 @@ export const ReasoningIndicator = memo(({ onOpenReport, onRunReason }: Reasoning
       return {
         icon: <AlertTriangle className="w-4 h-4" />,
         label: `${errors.length} Error${errors.length !== 1 ? 's' : ''}`,
-        color: 'bg-destructive text-destructive-foreground',
+        colorKey: 'destructive',
         pulse: false
       };
     }
@@ -55,7 +62,7 @@ export const ReasoningIndicator = memo(({ onOpenReport, onRunReason }: Reasoning
       return {
         icon: <AlertTriangle className="w-4 h-4" />,
         label: `${warnings.length} Warning${warnings.length !== 1 ? 's' : ''}`,
-        color: 'bg-warning text-warning-foreground',
+        colorKey: 'warning',
         pulse: false
       };
     }
@@ -63,7 +70,7 @@ export const ReasoningIndicator = memo(({ onOpenReport, onRunReason }: Reasoning
     return {
       icon: <CheckCircle className="w-4 h-4" />,
       label: 'Valid',
-      color: 'bg-success text-success-foreground',
+      colorKey: 'success',
       pulse: false
     };
   };
@@ -71,18 +78,19 @@ export const ReasoningIndicator = memo(({ onOpenReport, onRunReason }: Reasoning
   const statusInfo = getStatusInfo();
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2">
+    <div className={["flex items-center gap-2", (typeof ({} as any).className === "string" ? "" : "")].filter(Boolean).join(" ")}>
       <Button
         variant="outline"
         size="sm"
         onClick={onOpenReport}
-        className={`
-          ${statusInfo.color} 
-          border-2 backdrop-blur-sm shadow-lg
-          ${statusInfo.pulse ? 'animate-pulse' : ''}
-          hover:scale-105 transition-all duration-200
-        `}
+        className={[
+          typeof statusInfo.colorKey === 'string' ? STATUS_COLOR_MAP[statusInfo.colorKey] : '',
+          'border-2 backdrop-blur-sm shadow-lg',
+          statusInfo.pulse ? 'animate-pulse' : '',
+          'hover:scale-105 transition-all duration-200',
+        ].filter(Boolean).join(' ')}
       >
+        {/* ensure classes from STATUS_COLOR_MAP are present in the source for Tailwind scanning */}
         {statusInfo.icon}
         <span className="ml-2 font-medium">{statusInfo.label}</span>
         {currentReasoning?.duration && (
@@ -105,7 +113,7 @@ export const ReasoningIndicator = memo(({ onOpenReport, onRunReason }: Reasoning
             console.warn('Failed to invoke run reasoning', e);
           }
         }}
-        className="bg-card/80 hover:bg-accent/5 border border-border px-2"
+        className="bg-card/80 hover:bg-accent/5 border border-border px-2 text-foreground"
         aria-label="Run reasoning"
       >
         <Play className="w-4 h-4" />

@@ -296,7 +296,7 @@ export const LinkPropertyEditor = ({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="bg-muted/50 p-3 rounded-lg">
+          <div className="bg-muted/50 p-3 rounded-lg border border-border">
             <div className="text-sm font-medium">
               {(() => {
                 // Prefer the canvas-provided nodes for display. Avoid any RDF store lookups.

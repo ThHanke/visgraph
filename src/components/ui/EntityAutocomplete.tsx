@@ -88,10 +88,9 @@ export const EntityAutocomplete = ({
         </Button>
       </PopoverTrigger>
       <PopoverContent 
-        className="w-full p-0 bg-card border border-border" 
+        className="w-full p-0 bg-card border border-border z-[9999]" 
         align="start" 
         sideOffset={4}
-        style={{ zIndex: 9999 }}
       >
         <Command>
           <CommandInput 

@@ -1,18 +1,39 @@
-import { create } from 'zustand';
-import { DataFactory } from 'n3';
-const { namedNode, literal, quad } = DataFactory;
-import { WELL_KNOWN } from '../utils/wellKnownOntologies';
-import { fallback } from '../utils/startupDebug';
-import { shortLocalName } from '../utils/termUtils';
+import { create } from "zustand";
+import { DataFactory } from "n3";
+const { namedNode } = DataFactory;
+import { WELL_KNOWN } from "../utils/wellKnownOntologies";
+import { useAppConfigStore } from "./appConfigStore";
 
-// Helper used by inline debug wrappers to safely stringify arguments that may be
-// strings or objects with a .message property.
-const __vg_safe = (a: any) => (a && (a as any).message) ? (a as any).message : String(a);
+/**
+ * Reasoning store
+ *
+ * Changes:
+ * - Removed the previous "mock" heuristics that constructed errors/warnings from
+ *   application-level graph structure.
+ * - Start reasoning now prefers to invoke the real N3 reasoner (when available).
+ *   The implementation:
+ *     1. Snapshots store quads (before)
+ *     2. Attempts to dynamically import 'n3' and instantiate Reasoner exactly as
+ *        provided by the package.
+ *     3. Parses rules from public/reasoning-rules/default-rules.n3 (if present) into
+ *        a rules Store and calls reasoner.reason(rulesStore).
+ *     4. Snapshots store quads (after) and derives "inferences" from the delta.
+ *     5. Constructs a ReasoningResult using the real reasoner output (inferred quads).
+ * - If the N3 reasoner is not available or invocation fails, falls back to a
+ *   small, conservative RDFS-style inference pass (transitive subClassOf / domain/range)
+ *   to produce inferences; errors/warnings arrays are left empty unless we can
+ *   deterministically derive something actionable.
+ *
+ * The calling UI (KnowledgeCanvas) is responsible for mapping reasoning results
+ * into node/edge messages (the canvas already reacts to currentReasoning).
+ */
+
+const __vg_safe = (a: any) => (a && (a as any).message) ? (a as any).message : String(a || "");
 
 interface ReasoningResult {
   id: string;
   timestamp: number;
-  status: 'running' | 'completed' | 'error';
+  status: "running" | "completed" | "error";
   duration?: number;
   errors: ReasoningError[];
   warnings: ReasoningWarning[];
@@ -24,7 +45,7 @@ interface ReasoningError {
   edgeId?: string;
   message: string;
   rule: string;
-  severity: 'critical' | 'error';
+  severity: "critical" | "error";
 }
 
 interface ReasoningWarning {
@@ -32,10 +53,11 @@ interface ReasoningWarning {
   edgeId?: string;
   message: string;
   rule: string;
+  severity?: "critical" | "warning" | "info";
 }
 
 interface Inference {
-  type: 'property' | 'class' | 'relationship';
+  type: "property" | "class" | "relationship";
   subject: string;
   predicate: string;
   object: string;
@@ -52,329 +74,387 @@ interface ReasoningStore {
   getLastResult: () => ReasoningResult | null;
 }
 
+function quadKey(q: any) {
+  try {
+    const g = q.graph && q.graph.value ? String(q.graph.value) : "";
+    return `${String(q.subject && q.subject.value)}|${String(q.predicate && q.predicate.value)}|${String(q.object && q.object.value)}|${g}`;
+  } catch (_) {
+    return Math.random().toString(36).slice(2);
+  }
+}
+
+function expandPredicate(prefixed: string) {
+  try {
+    if (!prefixed || typeof prefixed !== "string") return prefixed;
+    const prefixes = (WELL_KNOWN && (WELL_KNOWN as any).prefixes) || {};
+    const match = Object.keys(prefixes).find((p) => prefixed.startsWith(p + ":"));
+    if (match) {
+      return prefixed.replace(new RegExp(`^${match}:`), prefixes[match]);
+    }
+    return prefixed;
+  } catch (_) {
+    return prefixed;
+  }
+}
+
 export const useReasoningStore = create<ReasoningStore>((set, get) => ({
   currentReasoning: null,
   reasoningHistory: [],
   isReasoning: false,
 
   startReasoning: async (nodes, edges, rdfStore) => {
-    const reasoningId = `reasoning-${Date.now()}`;
-    const startTime = Date.now();
+    const id = `reasoning-${Date.now()}`;
+    const start = Date.now();
 
     set({ isReasoning: true });
 
-    const reasoning: ReasoningResult = {
-      id: reasoningId,
-      timestamp: startTime,
-      status: 'running',
+    const baseResult: ReasoningResult = {
+      id,
+      timestamp: start,
+      status: "running",
       errors: [],
       warnings: [],
-      inferences: []
+      inferences: [],
     };
 
-    set({ currentReasoning: reasoning });
+    set({ currentReasoning: baseResult });
 
     try {
-      // If RDF store is provided, it will be used in the reasoning steps below.
-      // Simulate reasoning process
-      await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+      // Snapshot "before" quads if a store is available
+      const beforeQuads = Array.isArray(rdfStore?.getQuads ? rdfStore.getQuads(null, null, null, null) : []) ? rdfStore.getQuads(null, null, null, null) : [];
 
-      // Mock reasoning results based on RDF store if available
-      const errors: ReasoningError[] = [];
-      const warnings: ReasoningWarning[] = [];
-      const inferences: Inference[] = [];
+      // Try to use the real N3 Reasoner if available
+      let usedReasoner = false;
+      try {
+        const n3mod: any = await import("n3");
+        // Resolve canonical exports
+        const ParserCls = n3mod.Parser || (n3mod.default && n3mod.default.Parser);
+        const StoreCls = n3mod.Store || (n3mod.default && n3mod.default.Store);
+        const ReasonerCls = n3mod.Reasoner || (n3mod.default && n3mod.default.Reasoner) || n3mod.N3Reasoner || (n3mod.default && n3mod.default.N3Reasoner) || null;
 
-      // Helper: robustly resolve edge/source/target keys and display labels
-      function resolveEdgeKey(edge: any) {
-        const fromKey = edge.from || edge.source || edge.sourceId || edge.sourceKey || edge.id || edge.key || '';
-        const toKey = edge.to || edge.target || edge.targetId || edge.targetKey || edge.id || edge.key || '';
-        const edgeId = edge.key || edge.id || `${fromKey}-${toKey}`;
-        return { fromKey, toKey, edgeId };
-      }
-
-      function findNodeByKey(nodesArr: any[], key: string) {
-        if (!key) return undefined;
-        return nodesArr.find((n: any) => {
+        if (ParserCls && StoreCls && ReasonerCls && typeof fetch === "function") {
+          // Attempt to load the selected rulesets from public assets (can be multiple)
           try {
-            return (
-              n.key === key ||
-              n.id === key ||
-              n.iri === key ||
-              (n.data && (n.data.key === key || n.data.iri === key)) ||
-              (n.data && (n.data.iri === key))
-            );
-          } catch (_) {
-            return false;
-          }
-        });
-      }
+            const selected = (useAppConfigStore.getState().config && Array.isArray(useAppConfigStore.getState().config.reasoningRulesets))
+              ? useAppConfigStore.getState().config.reasoningRulesets
+              : [];
+            let combinedParsed: any[] = [];
 
-      function displayLabelForNode(n: any, fallbackKey: string) {
-        try {
-          if (!n && fallbackKey) return shortLocalName(String(fallbackKey));
-          const indiv = n && (n.individualName || (n.data && n.data.individualName));
-          const lab = n && (n.label || (n.data && n.data.label));
-          const uri = n && (n.iri || (n.data && n.data.iri) || (n.data && n.data.iri)) || fallbackKey;
-          if (typeof indiv === 'string' && indiv.trim()) return String(indiv);
-          if (typeof lab === 'string' && lab.trim()) return String(lab);
-          if (typeof uri === 'string' && uri.trim()) return shortLocalName(String(uri));
-          return String(fallbackKey || 'unknown');
-        } catch (_) {
-          return String(fallbackKey || 'unknown');
-        }
-      }
-
-      // Check for domain/range violations and missing labels
-      edges.forEach(edge => {
-        const { fromKey, toKey, edgeId } = resolveEdgeKey(edge);
-        const sourceNode = findNodeByKey(nodes, fromKey);
-        const targetNode = findNodeByKey(nodes, toKey);
-
-        // Example domain/range check for foaf:memberOf kept from original logic
-        if (edge.propertyType === 'foaf:memberOf') {
-          if (sourceNode?.classType !== 'Person') {
-            errors.push({
-              edgeId,
-              message: `Property foaf:memberOf requires domain of type Person, but found ${sourceNode?.classType || 'Unknown'}. Solution: Change source node to Person type or use different property.`,
-              rule: 'domain-restriction',
-              severity: 'error'
-            });
-          }
-
-          if (targetNode?.classType !== 'Organization') {
-            errors.push({
-              edgeId,
-              message: `Property foaf:memberOf requires range of type Organization, but found ${targetNode?.classType || 'Unknown'}. Solution: Change target node to Organization type or use different property.`,
-              rule: 'range-restriction',
-              severity: 'error'
-            });
-          }
-        }
-
-        // Check for missing property labels
-        if (!edge.label || (typeof edge.label === 'string' && edge.label.trim() === '')) {
-          const srcLabel = displayLabelForNode(sourceNode, fromKey);
-          const tgtLabel = displayLabelForNode(targetNode, toKey);
-          warnings.push({
-            edgeId,
-            message: `Edge between ${srcLabel} and ${tgtLabel} is missing a property label. Solution: Double-click the edge to add a label.`,
-            rule: 'missing-property-label'
-          });
-        }
-      });
-
-      // Check for missing properties
-      nodes.forEach(node => {
-        // Helper to get a friendly display label for node (individualName, label, shortened URI, key)
-        const nodeDisplayLabel = displayLabelForNode(node, node && (node.key || node.id || node.iri));
-
-        if (node.classType === 'Person') {
-          const hasName = node.literalProperties?.some(prop => prop.key && String(prop.key).includes('name'));
-          if (!hasName) {
-            warnings.push({
-              nodeId: node.key || node.id,
-              message: `Person instance "${nodeDisplayLabel}" should have a name property. Solution: Double-click the node to add foaf:name property.`,
-              rule: 'recommended-property'
-            });
-          }
-        }
-
-        // Check for nodes without proper individual names
-        const indivName = (node && (node.individualName || (node.data && node.data.individualName))) || '';
-        if (!indivName || (typeof indivName === 'string' && indivName.trim() === '')) {
-          warnings.push({
-            nodeId: node.key || node.id,
-            message: `Node of type ${node.classType || 'Unknown'} (${nodeDisplayLabel}) is missing an individual name. Solution: Double-click the node to set an individual name.`,
-            rule: 'missing-individual-name'
-          });
-        }
-      });
-
-      // Generate inferences from RDF store if available
-      if (rdfStore) {
-        // Gather quads excluding any already-written inferences (urn:vg:inferred)
-        const allQuads = rdfStore.getQuads(null, null, null, null);
-        const quads = Array.isArray(allQuads) ? allQuads.filter(q => {
-          try { return !(q.graph && (q.graph.value === 'urn:vg:inferred')); } catch (_) { return true; }
-        }) : [];
-
-        // Extract actual inferences from RDF store (excluding previously inferred quads)
-        const inferredQuads = [];
-        
-        // Apply RDFS inference rules
-        quads.forEach(quad => {
-          // Rule: rdfs:subClassOf transitivity
-          if (quad.predicate && quad.predicate.value === 'http://www.w3.org/2000/01/rdf-schema#subClassOf') {
-            // Find transitive subclass relationships within the filtered quads
-            const subClasses = quads.filter(q => 
-              q.predicate && q.predicate.value === 'http://www.w3.org/2000/01/rdf-schema#subClassOf' && 
-              q.subject && q.subject.value === quad.object.value
-            );
-            subClasses.forEach(subClass => {
-              inferredQuads.push({
-                type: 'class',
-                subject: quad.subject.value,
-                predicate: 'rdfs:subClassOf',
-                object: subClass.object.value,
-                confidence: 0.9
-              });
-            });
-          }
-          
-          // Rule: rdfs:domain inference
-          if (quad.predicate && quad.predicate.value === 'http://www.w3.org/2000/01/rdf-schema#domain') {
-            const propertyInstances = quads.filter(q => q.predicate && q.predicate.value === quad.subject.value);
-            propertyInstances.forEach(instance => {
-              inferredQuads.push({
-                type: 'class',
-                subject: instance.subject.value,
-                predicate: 'rdf:type',
-                object: quad.object.value,
-                confidence: 0.85
-              });
-            });
-          }
-          
-          // Rule: rdfs:range inference
-          if (quad.predicate && quad.predicate.value === 'http://www.w3.org/2000/01/rdf-schema#range') {
-            const propertyInstances = quads.filter(q => q.predicate && q.predicate.value === quad.subject.value);
-            propertyInstances.forEach(instance => {
-              if (instance.object && instance.object.termType === 'NamedNode') {
-                inferredQuads.push({
-                  type: 'class',
-                  subject: instance.object.value,
-                  predicate: 'rdf:type',
-                  object: quad.object.value,
-                  confidence: 0.85
-                });
-              }
-            });
-          }
-        });
-        
-        // Add unique inferences to results
-        const uniqueInferences = new Map();
-        inferredQuads.forEach(inf => {
-          const key = `${inf.subject}|${inf.predicate}|${inf.object}`;
-          if (!uniqueInferences.has(key)) {
-            uniqueInferences.set(key, inf);
-          }
-        });
-        
-        inferences.push(...Array.from(uniqueInferences.values()));
-        
-        // Apply inferences back to RDF store (robust handling for N3.Store or RDFManager.getStore())
-        if (inferences.length > 0 && rdfStore) {
-          try {
-            const isN3Store = typeof rdfStore.getQuads === 'function' && typeof rdfStore.addQuad === 'function';
-            const g = namedNode('urn:vg:inferred');
-
-            for (const inf of inferences) {
-              try {
-                const predRaw = inf.predicate && inf.predicate.includes(':') ? expandPredicate(inf.predicate) : inf.predicate;
-                const subjTerm = namedNode(String(inf.subject));
-                const predTerm = namedNode(String(predRaw));
-                const objTerm = (typeof inf.object === 'string' && (/^https?:\/\//i.test(inf.object) || inf.object.includes(':')))
-                  ? namedNode(String(inf.object))
-                  : literal(String(inf.object));
-
-                const exists = isN3Store
-                  ? ((rdfStore.getQuads(subjTerm, predTerm, objTerm, g) || []).length > 0)
-                  : ((typeof (rdfStore as any).getQuads === 'function') ? ((rdfStore as any).getQuads(subjTerm, predTerm, objTerm, g) || []).length > 0 : false);
-
-                if (!exists) {
-                  if (isN3Store) {
-                    rdfStore.addQuad(quad(subjTerm, predTerm, objTerm, g));
-                  } else if (typeof (rdfStore as any).addQuad === 'function') {
-                    (rdfStore as any).addQuad(quad(subjTerm, predTerm, objTerm, g));
-                  } else if (typeof (rdfStore as any).add === 'function' && typeof (rdfStore as any).quad === 'function') {
-                    (rdfStore as any).add((rdfStore as any).quad(subjTerm, predTerm, objTerm, g));
-                  } else {
-                    console.warn('Cannot persist inferred triple, unsupported rdfStore API:', inf);
+            if (Array.isArray(selected) && selected.length > 0) {
+              const parser = new ParserCls({ format: "text/n3" });
+              for (const name of selected) {
+                try {
+                  const resp = await fetch(`/reasoning-rules/${name}`);
+                  const text = resp && resp.ok ? await resp.text() : "";
+                  if (text && text.trim().length > 0) {
+                    try {
+                      const parsed = parser.parse(text);
+                      if (Array.isArray(parsed)) combinedParsed = combinedParsed.concat(parsed);
+                    } catch (pe) {
+                      console.debug("[VG_DEBUG] parsing ruleset failed", name, __vg_safe(pe));
+                    }
                   }
+                } catch (fe) {
+                  console.debug("[VG_DEBUG] fetching ruleset failed", name, __vg_safe(fe));
+                }
+              }
+            } else {
+              // Backward-compatible: try the old default file if nothing configured
+              try {
+                const resp = await fetch("/reasoning-rules/best-practice.n3");
+                const rulesText = resp && resp.ok ? await resp.text() : "";
+                if (rulesText && rulesText.trim().length > 0) {
+                  const parser = new ParserCls({ format: "text/n3" });
+                  combinedParsed = parser.parse(rulesText);
                 }
               } catch (e) {
-                console.warn('Failed to process inferred item:', inf, e);
+                /* ignore */
+              }
+            }
+
+            if (combinedParsed.length > 0) {
+              const rulesStore = new StoreCls(combinedParsed);
+
+              // Resolve constructor shape
+              let ReasonerImpl: any = ReasonerCls;
+              if (typeof ReasonerImpl !== "function" && ReasonerImpl && typeof ReasonerImpl.default === "function") {
+                ReasonerImpl = ReasonerImpl.default;
+              }
+
+              if (typeof ReasonerImpl === "function") {
+                try {
+                  const reasoner = new ReasonerImpl(rdfStore);
+                  if (typeof reasoner.reason === "function") {
+                    reasoner.reason(rulesStore);
+                    usedReasoner = true;
+                  }
+                } catch (instErr) {
+                  // Construction failed; try fallback shapes (best-effort)
+                  try {
+                    if (ReasonerCls && typeof ReasonerCls === "object" && typeof ReasonerCls.default === "function") {
+                      const reasoner = new ReasonerCls.default(rdfStore);
+                      if (typeof (reasoner as any).reason === 'function') {
+                        (reasoner as any).reason(rulesStore);
+                        usedReasoner = true;
+                      }
+                    }
+                  } catch (e) {
+                    console.warn("[VG_DEBUG] Reasoner instantiation failed:", __vg_safe(instErr), __vg_safe(e));
+                  }
+                }
               }
             }
           } catch (e) {
-            console.warn('Failed to apply inferences to RDF store:', e);
+            console.debug("[VG_DEBUG] Failed to load/run rules with N3 Reasoner", __vg_safe(e));
           }
+        }
+      } catch (e) {
+        // dynamic import failed or not present; we'll fallback below
+        console.debug("[VG_DEBUG] dynamic import of n3 failed or not available:", __vg_safe(e));
+      }
+
+
+      // Snapshot "after" quads if a store is available and compute delta
+      const afterQuads = Array.isArray(rdfStore?.getQuads ? rdfStore.getQuads(null, null, null, null) : []) ? rdfStore.getQuads(null, null, null, null) : [];
+      const beforeMap = new Map<string, any>();
+      for (const q of beforeQuads || []) beforeMap.set(quadKey(q), q);
+      const added: any[] = [];
+      for (const q of afterQuads || []) {
+        const k = quadKey(q);
+        if (!beforeMap.has(k)) {
+          // Exclude any quads that use the internal inferred graph marker (if any)
+          if (q.graph && q.graph.value === "urn:vg:inferred") {
+            added.push(q);
+          } else {
+            // Also include added quads in default graph (some reasoners add there)
+            added.push(q);
+          }
+        }
+      }
+
+      // Persist added quads into a single authoritative graph so subsequent runs
+      // report a stable inferred-triple set (urn:vg:inferred).
+      try {
+        const inferredGraph = namedNode("urn:vg:inferred");
+        const isN3Store = rdfStore && typeof rdfStore.getQuads === "function" && typeof rdfStore.addQuad === "function";
+        for (const aq of added) {
+          try {
+            const subj = aq.subject;
+            const pred = aq.predicate;
+            const obj = aq.object;
+            // Skip if already present in inferred graph
+            const exists = isN3Store
+              ? ((rdfStore.getQuads(subj, pred, obj, inferredGraph) || []).length > 0)
+              : false;
+            if (!exists) {
+              if (isN3Store) {
+                rdfStore.addQuad(DataFactory.quad(subj, pred, obj, inferredGraph));
+              } else if (rdfStore && typeof rdfStore.addQuad === "function") {
+                rdfStore.addQuad(DataFactory.quad(subj, pred, obj, inferredGraph));
+              }
+            }
+          } catch (_) { /* per-item */ }
+        }
+      } catch (e) {
+        console.debug("[VG_DEBUG] persisting inferred quads failed", __vg_safe(e));
+      }
+
+      // Build warnings/errors from SHACL-style ValidationResult triples in urn:vg:inferred
+      const generatedWarnings: ReasoningWarning[] = [];
+      try {
+        const inferredGraph = namedNode("urn:vg:inferred");
+        const shValidation = "http://www.w3.org/ns/shacl#ValidationResult";
+        const shFocus = "http://www.w3.org/ns/shacl#focusNode";
+        const shMessage = "http://www.w3.org/ns/shacl#resultMessage";
+        const shSeverity = "http://www.w3.org/ns/shacl#resultSeverity";
+
+        if (rdfStore && typeof rdfStore.getQuads === "function") {
+          const resQuads = rdfStore.getQuads(null, namedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"), namedNode(shValidation), inferredGraph) || [];
+          for (const rq of resQuads) {
+            try {
+              const resNode = rq.subject;
+              const focusQ = rdfStore.getQuads(resNode, namedNode(shFocus), null, inferredGraph) || [];
+              const msgQ = rdfStore.getQuads(resNode, namedNode(shMessage), null, inferredGraph) || [];
+              const sevQ = rdfStore.getQuads(resNode, namedNode(shSeverity), null, inferredGraph) || [];
+
+              const focusVal = (focusQ[0] && focusQ[0].object && focusQ[0].object.value) ? focusQ[0].object.value : "";
+              const message = (msgQ[0] && msgQ[0].object && msgQ[0].object.value) ? String(msgQ[0].object.value) : "Validation issue";
+              const severityUri = (sevQ[0] && sevQ[0].object && sevQ[0].object.value) ? String(sevQ[0].object.value) : "http://www.w3.org/ns/shacl#Warning";
+              const severity = severityUri.includes("Violation") ? "critical" : "warning";
+
+              generatedWarnings.push({
+                nodeId: focusVal,
+                message,
+                rule: "sh:ValidationResult",
+                severity,
+              });
+            } catch (_) { /* per-item */ }
+          }
+        }
+      } catch (e) {
+        console.debug("[VG_DEBUG] extracting SHACL validation results failed", __vg_safe(e));
+      }
+
+      // If N3 reasoner didn't run, attempt a minimal RDFS-style inference pass to produce inferences.
+      const inferences: Inference[] = [];
+      if (!usedReasoner) {
+        // Build a small index from available quads (combine before+after so we reason over the current graph)
+        const allQuads = afterQuads || [];
+        try {
+          // transitive rdfs:subClassOf inference
+          const subClassOf = "http://www.w3.org/2000/01/rdf-schema#subClassOf";
+          const rdfType = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+          const bySubject = new Map<string, any[]>();
+          for (const q of allQuads) {
+            const s = q.subject && q.subject.value ? q.subject.value : "";
+            if (!bySubject.has(s)) bySubject.set(s, []);
+            bySubject.get(s)!.push(q);
+          }
+          // transitive closure (naive)
+          for (const q of allQuads) {
+            if (q.predicate && q.predicate.value === subClassOf) {
+              // find any classes that are subclass of the object
+              const obj = q.object && q.object.value ? q.object.value : "";
+              for (const q2 of allQuads) {
+                if (q2.predicate && q2.predicate.value === subClassOf && q2.subject && q2.subject.value === obj) {
+                  inferences.push({
+                    type: "class",
+                    subject: q.subject.value,
+                    predicate: "rdfs:subClassOf",
+                    object: q2.object.value,
+                    confidence: 0.8,
+                  });
+                }
+              }
+            }
+            // domain/range simple derivation
+            if (q.predicate && q.predicate.value === "http://www.w3.org/2000/01/rdf-schema#domain") {
+              const prop = q.subject && q.subject.value ? q.subject.value : "";
+              for (const inst of allQuads) {
+                if (inst.predicate && inst.predicate.value === prop) {
+                  inferences.push({
+                    type: "class",
+                    subject: inst.subject && inst.subject.value ? inst.subject.value : "",
+                    predicate: "rdf:type",
+                    object: q.object && q.object.value ? q.object.value : "",
+                    confidence: 0.7,
+                  });
+                }
+              }
+            }
+            if (q.predicate && q.predicate.value === "http://www.w3.org/2000/01/rdf-schema#range") {
+              const prop = q.subject && q.subject.value ? q.subject.value : "";
+              for (const inst of allQuads) {
+                if (inst.predicate && inst.predicate.value === prop && inst.object && inst.object.termType === "NamedNode") {
+                  inferences.push({
+                    type: "class",
+                    subject: inst.object.value,
+                    predicate: "rdf:type",
+                    object: q.object && q.object.value ? q.object.value : "",
+                    confidence: 0.7,
+                  });
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.debug("[VG_DEBUG] fallback RDFS inference failed:", __vg_safe(e));
         }
       } else {
-        // Fallback to basic graph analysis when no RDF store is available
-        if (nodes.length > 1) {
-          // Only add meaningful inferences based on actual graph structure
-          nodes.forEach(node => {
-            if (node.classType && node.individualName) {
-              inferences.push({
-                type: 'class',
-                subject: node.iri || node.key,
-                predicate: 'rdf:type',
-                object: node.classType,
-                confidence: 1.0
-              });
-            }
-          });
-        }
-      }
-      
-      // Helper function to expand prefixed names using the centralized well-known prefixes.
-      // Falls back to the original value if no matching prefix is found.
-      function expandPredicate(prefixed: string) {
+        // Construct inferences array from the persistent inferred graph (urn:vg:inferred).
         try {
-          if (!prefixed || typeof prefixed !== 'string') return prefixed;
-          // WELL_KNOWN.prefixes has shape { rdf: 'http://...#', rdfs: 'http://...#', ... }
-          const prefixes = (WELL_KNOWN && (WELL_KNOWN as any).prefixes) || {};
-          // Find matching prefix + colon (e.g. 'rdf:')
-          const match = Object.keys(prefixes).find((p) => prefixed.startsWith(p + ':'));
-          if (match) {
-            return prefixed.replace(new RegExp(`^${match}:`), prefixes[match]);
+          const inferredGraph = namedNode("urn:vg:inferred");
+          const inferredQuads = (rdfStore && typeof rdfStore.getQuads === "function")
+            ? (rdfStore.getQuads(null, null, null, inferredGraph) || [])
+            : (added || []);
+
+          // Deduplicate quads (some reasoners or earlier logic may result in duplicates)
+          const unique = new Map<string, any>();
+          for (const q of inferredQuads) {
+            try {
+              const k = quadKey(q);
+              if (!unique.has(k)) unique.set(k, q);
+            } catch (_) { /* ignore per-item */ }
           }
-          // No known prefix found — return original
-          return prefixed;
-        } catch (_) {
-          return prefixed;
+          // Also include any newly added quads that may not yet be persisted in the inferred graph
+          for (const q of (added || [])) {
+            try {
+              const k = quadKey(q);
+              if (!unique.has(k)) unique.set(k, q);
+            } catch (_) { /* ignore per-item */ }
+          }
+
+          for (const q of unique.values()) {
+            try {
+              const pred = q.predicate && q.predicate.value ? String(q.predicate.value) : "";
+              const subj = q.subject && q.subject.value ? String(q.subject.value) : "";
+              const obj = q.object && q.object.value ? String(q.object.value) : "";
+              if (!pred || !subj) continue;
+              if (pred === "http://www.w3.org/1999/02/22-rdf-syntax-ns#type") {
+                inferences.push({ type: "class", subject: subj, predicate: "rdf:type", object: obj, confidence: 0.95 });
+              } else {
+                inferences.push({ type: "relationship", subject: subj, predicate: pred, object: obj, confidence: 0.9 });
+              }
+            } catch (_) { /* per-item */ }
+          }
+        } catch (e) {
+          console.debug("[VG_DEBUG] extracting inferred quads failed", __vg_safe(e));
         }
       }
 
-      const completedReasoning: ReasoningResult = {
-        ...reasoning,
-        status: 'completed',
-        duration: Date.now() - startTime,
-        errors,
-        warnings,
-        inferences
+      const completed: ReasoningResult = {
+        id,
+        timestamp: start,
+        status: "completed",
+        duration: Date.now() - start,
+        errors: (generatedWarnings || []).filter((w) => String((w as any).severity) === "critical").map((w) => ({
+          nodeId: w.nodeId,
+          edgeId: w.edgeId,
+          message: w.message,
+          rule: w.rule,
+          severity: "critical" as const,
+        })) as ReasoningError[],
+        warnings: (generatedWarnings || []).filter((w) => String((w as any).severity) !== "critical").map((w) => ({
+          nodeId: w.nodeId,
+          edgeId: w.edgeId,
+          message: w.message,
+          rule: w.rule,
+          severity: (w as any).severity || "warning",
+        })) as ReasoningWarning[],
+        inferences,
       };
 
       set((state) => ({
-        currentReasoning: completedReasoning,
+        currentReasoning: completed,
         isReasoning: false,
-        reasoningHistory: [completedReasoning, ...state.reasoningHistory.slice(0, 9)]
+        reasoningHistory: [completed, ...state.reasoningHistory.slice(0, 9)],
       }));
 
-      return completedReasoning;
-    } catch (error) {
-      const errorReasoning: ReasoningResult = {
-        ...reasoning,
-        status: 'error',
-        duration: Date.now() - startTime,
-        errors: [{
-          message: 'Reasoning process failed',
-          rule: 'system-error',
-          severity: 'critical'
-        }],
+      return completed;
+    } catch (err) {
+      const errorResult: ReasoningResult = {
+        id,
+        timestamp: start,
+        status: "error",
+        duration: Date.now() - start,
+        errors: [
+          {
+            message: "Reasoning process failed",
+            rule: "system-error",
+            severity: "critical",
+          },
+        ],
         warnings: [],
-        inferences: []
+        inferences: [],
       };
 
       set((state) => ({
-        currentReasoning: errorReasoning,
+        currentReasoning: errorResult,
         isReasoning: false,
-        reasoningHistory: [errorReasoning, ...state.reasoningHistory.slice(0, 9)]
+        reasoningHistory: [errorResult, ...state.reasoningHistory.slice(0, 9)],
       }));
 
-      return errorReasoning;
+      return errorResult;
     }
   },
 
@@ -389,5 +469,5 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
   getLastResult: () => {
     const { reasoningHistory } = get();
     return reasoningHistory[0] || null;
-  }
+  },
 }));

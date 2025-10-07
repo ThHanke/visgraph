@@ -9,7 +9,9 @@ import {
   Background,
   applyNodeChanges,
   applyEdgeChanges,
+  MiniMap,
 } from "@xyflow/react";
+// import '../../tailwind-config.js';
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { DataFactory } from "n3";
 import { useReasoningStore } from "../../stores/reasoningStore";
@@ -27,6 +29,7 @@ import mapQuadsToDiagram from "./core/mappingHelpers";
 import { CustomOntologyNode as OntologyNode } from "./CustomOntologyNode";
 import FloatingEdge from "./FloatingEdge";
 import FloatingConnectionLine from "./FloatingConnectionLine";
+import createEdge from "./core/createEdge";
 import { generateEdgeId } from "./core/edgeHelpers";
 import { usePaletteFromRdfManager } from "./core/namespacePalette";
 import { useCanvasState } from "../../hooks/useCanvasState";
@@ -697,7 +700,7 @@ const KnowledgeCanvas: React.FC = () => {
       // directly using React Flow's applyNodeChanges/applyEdgeChanges helper.
       const diagram = await translateQuadsToDiagram(dataQuads);
       const mappedNodes: RFNode<NodeData>[] = (diagram && diagram.nodes);
-      const mappedEdges: RFEdge<LinkData>[] = (diagram && diagram.edges);
+      const mappedEdges: RFEdge<LinkData>[] = ((diagram && diagram.edges) || []).map((e: any) => createEdge(e));
 
       // Build deterministic add/replace change objects so:
       // - mapper-provided positions are applied only for new nodes
@@ -1076,7 +1079,7 @@ const KnowledgeCanvas: React.FC = () => {
             try {
               const diagram = mapQuadsToDiagram(all, eagerOpts);
               const mappedNodes: RFNode<NodeData>[] = (diagram && diagram.nodes) || [];
-              const mappedEdges: RFEdge<LinkData>[] = (diagram && diagram.edges) || [];
+              const mappedEdges: RFEdge<LinkData>[] = ((diagram && diagram.edges) || []).map((e: any) => createEdge(e));
 
               // Merge into React Flow state without removing existing runtime metadata.
               try {
@@ -1335,27 +1338,101 @@ const KnowledgeCanvas: React.FC = () => {
       const edgesPayload = (es || []).map((e) => ({ id: e.id, source: e.source, target: e.target }));
       const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
       const result = await startReasoning(nodesPayload as any, edgesPayload as any, mgr && mgr.getStore && mgr.getStore());
+
+      const errors = Array.isArray(result?.errors) ? result.errors : [];
+      const warnings = Array.isArray(result?.warnings) ? result.warnings : [];
+
+      const nodeErrMap = new Map<string, string[]>();
+      const nodeWarnMap = new Map<string, string[]>();
+      const edgeErrMap = new Map<string, string[]>();
+      const edgeWarnMap = new Map<string, string[]>();
+
+      try {
+        for (const er of errors) {
+          try {
+            if (er && er.nodeId) {
+              const a = nodeErrMap.get(String(er.nodeId)) || [];
+              a.push(String(er.message || er));
+              nodeErrMap.set(String(er.nodeId), a);
+            }
+            if (er && er.edgeId) {
+              const a = edgeErrMap.get(String(er.edgeId)) || [];
+              a.push(String(er.message || er));
+              edgeErrMap.set(String(er.edgeId), a);
+            }
+          } catch (_) { /* per-item */ }
+        }
+      } catch (_) { /* ignore */ }
+
+      try {
+        for (const w of warnings) {
+          try {
+            if (w && w.nodeId) {
+              const a = nodeWarnMap.get(String(w.nodeId)) || [];
+              a.push(String(w.message || w));
+              nodeWarnMap.set(String(w.nodeId), a);
+            }
+            if (w && w.edgeId) {
+              const a = edgeWarnMap.get(String(w.edgeId)) || [];
+              a.push(String(w.message || w));
+              edgeWarnMap.set(String(w.edgeId), a);
+            }
+          } catch (_) { /* per-item */ }
+        }
+      } catch (_) { /* ignore */ }
+
+      // Merge targeted node updates (only nodes referenced in the reasoning result)
       setNodes((nds) =>
         (nds || []).map((n) => {
           try {
-            const hasNodeErr = !!(
-              Array.isArray(result?.errors) &&
-              result.errors.find((er: any) => er.nodeId === n.id)
-            );
-            return { ...(n as RFNode<NodeData>), data: { ...(n.data as NodeData), hasReasoningError: hasNodeErr } } as RFNode<NodeData>;
+            const id = String(n.id);
+            const errs = nodeErrMap.get(id) || [];
+            const warns = nodeWarnMap.get(id) || [];
+            const prevErrs = (n.data && (n.data as any).reasoningErrors) || [];
+            const prevWarns = (n.data && (n.data as any).reasoningWarnings) || [];
+            const changed =
+              JSON.stringify(prevErrs) !== JSON.stringify(errs) ||
+              JSON.stringify(prevWarns) !== JSON.stringify(warns);
+            if (!changed) return n;
+            return {
+              ...(n as RFNode<NodeData>),
+              data: {
+                ...(n.data as NodeData),
+                reasoningErrors: errs,
+                reasoningWarnings: warns,
+                hasReasoningError: errs.length > 0,
+                hasReasoningWarning: warns.length > 0,
+              },
+            } as RFNode<NodeData>;
           } catch (_) {
             return n;
           }
         }),
       );
+
+      // Merge targeted edge updates (only edges referenced in the reasoning result)
       setEdges((eds) =>
         (eds || []).map((e) => {
           try {
-            const hasEdgeErr = !!(
-              Array.isArray(result?.errors) &&
-              result.errors.find((er: any) => er.edgeId === e.id)
-            );
-            return { ...(e as RFEdge<LinkData>), data: { ...(e.data as LinkData), hasReasoningError: hasEdgeErr } } as RFEdge<LinkData>;
+            const id = String(e.id);
+            const errs = edgeErrMap.get(id) || [];
+            const warns = edgeWarnMap.get(id) || [];
+            const prevErrs = (e.data && (e.data as any).reasoningErrors) || [];
+            const prevWarns = (e.data && (e.data as any).reasoningWarnings) || [];
+            const changed =
+              JSON.stringify(prevErrs) !== JSON.stringify(errs) ||
+              JSON.stringify(prevWarns) !== JSON.stringify(warns);
+            if (!changed) return e;
+            return {
+              ...(e as RFEdge<LinkData>),
+              data: {
+                ...(e.data as LinkData),
+                reasoningErrors: errs,
+                reasoningWarnings: warns,
+                hasReasoningError: errs.length > 0,
+                hasReasoningWarning: warns.length > 0,
+              },
+            } as RFEdge<LinkData>;
           } catch (_) {
             return e;
           }
@@ -1364,6 +1441,144 @@ const KnowledgeCanvas: React.FC = () => {
     },
     [setNodes, setEdges, startReasoning, settings],
   );
+
+  // Sync reasoning results from the global reasoning store into node/edge data so
+  // the UI components (CustomOntologyNode / FloatingEdge) can render borders and
+  // tooltip messages. This effect listens for updates to the current reasoning
+  // result and applies targeted updates only to referenced nodes/edges.
+  const currentReasoning = useReasoningStore((s) => s.currentReasoning);
+  useEffect(() => {
+    if (!currentReasoning) return;
+
+    const result = currentReasoning;
+    const errors = Array.isArray(result?.errors) ? result.errors : [];
+    const warnings = Array.isArray(result?.warnings) ? result.warnings : [];
+
+    const nodeErrMap = new Map<string, string[]>();
+    const nodeWarnMap = new Map<string, string[]>();
+    const edgeErrMap = new Map<string, string[]>();
+    const edgeWarnMap = new Map<string, string[]>();
+
+    try {
+      for (const er of errors) {
+        try {
+          if (er && er.nodeId) {
+            const a = nodeErrMap.get(String(er.nodeId)) || [];
+            a.push(String(er.message || er));
+            nodeErrMap.set(String(er.nodeId), a);
+          }
+          if (er && er.edgeId) {
+            const a = edgeErrMap.get(String(er.edgeId)) || [];
+            a.push(String(er.message || er));
+            edgeErrMap.set(String(er.edgeId), a);
+          }
+        } catch (_) { /* per-item */ }
+      }
+    } catch (_) { /* ignore */ }
+
+    try {
+      for (const w of warnings) {
+        try {
+          if (w && w.nodeId) {
+            const a = nodeWarnMap.get(String(w.nodeId)) || [];
+            a.push(String(w.message || w));
+            nodeWarnMap.set(String(w.nodeId), a);
+          }
+          if (w && w.edgeId) {
+            const a = edgeWarnMap.get(String(w.edgeId)) || [];
+            a.push(String(w.message || w));
+            edgeWarnMap.set(String(w.edgeId), a);
+          }
+        } catch (_) { /* per-item */ }
+      }
+    } catch (_) { /* ignore */ }
+
+    // Merge targeted node updates (only nodes referenced in the reasoning result)
+    setNodes((nds) =>
+      (nds || []).map((n) => {
+        try {
+          const id = String(n.id);
+          const errs = nodeErrMap.get(id) || [];
+          const warns = nodeWarnMap.get(id) || [];
+          const prevErrs = (n.data && (n.data as any).reasoningErrors) || [];
+          const prevWarns = (n.data && (n.data as any).reasoningWarnings) || [];
+          const changed =
+            JSON.stringify(prevErrs) !== JSON.stringify(errs) ||
+            JSON.stringify(prevWarns) !== JSON.stringify(warns);
+          if (!changed) return n;
+          return {
+            ...(n as RFNode<NodeData>),
+            data: {
+              ...(n.data as NodeData),
+              reasoningErrors: errs,
+              reasoningWarnings: warns,
+              hasReasoningError: errs.length > 0,
+              hasReasoningWarning: warns.length > 0,
+            },
+          } as RFNode<NodeData>;
+        } catch (_) {
+          return n;
+        }
+      }),
+    );
+
+    // Merge targeted edge updates (only edges referenced in the reasoning result)
+    setEdges((eds) =>
+      (eds || []).map((e) => {
+        try {
+          const id = String(e.id);
+          const errs = edgeErrMap.get(id) || [];
+          const warns = edgeWarnMap.get(id) || [];
+          const prevErrs = (e.data && (e.data as any).reasoningErrors) || [];
+          const prevWarns = (e.data && (e.data as any).reasoningWarnings) || [];
+          const changed =
+            JSON.stringify(prevErrs) !== JSON.stringify(errs) ||
+            JSON.stringify(prevWarns) !== JSON.stringify(warns);
+          if (!changed) return e;
+          return {
+            ...(e as RFEdge<LinkData>),
+            data: {
+              ...(e.data as LinkData),
+              reasoningErrors: errs,
+              reasoningWarnings: warns,
+              hasReasoningError: errs.length > 0,
+              hasReasoningWarning: warns.length > 0,
+            },
+          } as RFEdge<LinkData>;
+        } catch (_) {
+          return e;
+        }
+      }),
+    );
+
+    // After applying reasoning-specific updates, trigger a subject-level emission
+    // for all known nodes so consumers (mapper/canvas) receive authoritative quads
+    // even if the reasoner wrote inferred triples directly into the raw store.
+    try {
+      const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
+      if (mgr && typeof (mgr as any).triggerSubjectUpdate === "function") {
+        try {
+          const allNodeIris = (nodes || []).map((n) =>
+            (n && n.data && (n.data as any).iri) ? String((n.data as any).iri) : String(n.id),
+          );
+          // Only trigger the subject update when the canvas has fully initialized.
+          // This prevents premature emissions during test renders before providers
+          // (e.g. TooltipProvider) are mounted, which would cause provider-required
+          // components to throw.
+          if (typeof window !== "undefined" && (window as any).__VG_KNOWLEDGE_CANVAS_READY) {
+            // Fire-and-forget but catch errors to avoid blocking UI
+            (mgr as any).triggerSubjectUpdate(allNodeIris).catch((err: any) => {
+              try { console.debug("[VG_DEBUG] triggerSubjectUpdate failed", err); } catch (_) { /* ignore */ }
+            });
+          } else {
+            try { console.debug("[VG_DEBUG] skipping triggerSubjectUpdate: canvas not ready"); } catch (_) { /* ignore */ }
+          }
+        } catch (err) {
+          try { console.debug("[VG_DEBUG] triggerSubjectUpdate invocation failed", err); } catch (_) { /* ignore */ }
+        }
+      }
+    } catch (_) { /* ignore */ }
+  }, [currentReasoning, setNodes, setEdges]);
 
   const onNodeDoubleClickStrict = useCallback((event: any, node: any) => {
     try { event?.stopPropagation && event.stopPropagation(); } catch (_) { void 0; }
@@ -1503,6 +1718,47 @@ const KnowledgeCanvas: React.FC = () => {
       } catch (_) { void 0; }
     }
   }, [nodes, availableProperties, loadedOntologies, setEdges]);
+
+  const onEdgeClickStrict = useCallback((event: any, edge: any) => {
+    try { event?.stopPropagation && event.stopPropagation(); } catch (_) { void 0; }
+    try { suppressSelectionRef.current = true; setTimeout(() => { suppressSelectionRef.current = false; }, 0); } catch (_) { void 0; }
+    const srcId = edge.source || edge.from || (edge.data && edge.data.from) || '';
+    const tgtId = edge.target || edge.to || (edge.data && edge.data.to) || '';
+
+    const findNode = (id: string) =>
+      nodes.find((n) => {
+        try {
+          return (
+            String(n.id) === String(id) ||
+            String((n as any).key) === String(id) ||
+            (n.data && (String(n.data.iri) === String(id) || String(n.data.key) === String(id)))
+          );
+        } catch {
+          return false;
+        }
+      });
+
+    const sourceNode = findNode(srcId);
+    const targetNode = findNode(tgtId);
+
+    linkSourceRef.current = sourceNode ? (sourceNode.data as any) : null;
+    linkTargetRef.current = targetNode ? (targetNode.data as any) : null;
+
+    const selectedLinkPayload = {
+      id: edge.id || edge.key || `${srcId}-${tgtId}`,
+      key: edge.id || edge.key || `${srcId}-${tgtId}`,
+      source: srcId,
+      target: tgtId,
+      data: {
+        propertyType: edge.data?.propertyType || edge.propertyType || '',
+        propertyUri: edge.data?.propertyUri || edge.propertyUri || '',
+        label: edge.data?.label || '',
+      },
+    };
+
+    setSelectedLinkPayload(selectedLinkPayload || edge || null);
+    setLinkEditorOpen(true);
+  }, [nodes]);
 
   const onConnectStrict = useCallback((params: any) => {
     if (!params || !params.source || !params.target) return;
@@ -1731,7 +1987,7 @@ const KnowledgeCanvas: React.FC = () => {
 
   
   return (
-    <div className="w-full h-screen bg-canvas-bg relative">
+    <div className="h-lvh h-lvw h-screen bg-canvas-bg relative">
       <CanvasToolbar
         onAddNode={(payload: any) => {
           let normalizedUri = String(payload && (payload.iri || payload) ? (payload.iri || payload) : "");
@@ -1795,7 +2051,7 @@ const KnowledgeCanvas: React.FC = () => {
       )}
 
       <div className="w-full h-full">
-          <ReactFlow
+        <ReactFlow
             nodes={safeNodes}
             edges={memoEdges}
             onNodesChange={onNodesChange}
@@ -1805,7 +2061,7 @@ const KnowledgeCanvas: React.FC = () => {
             onNodeDragStart={onNodeDragStart}
             onNodeDrag={onNodeDrag}
             onNodeDragStop={onNodeDragStop}
-            onEdgeDoubleClick={onEdgeDoubleClickStrict}
+            onEdgeClick={onEdgeClickStrict}
             onConnect={onConnectStrict}
             onSelectionChange={onSelectionChange}
             nodeTypes={memoNodeTypes}
@@ -1815,23 +2071,28 @@ const KnowledgeCanvas: React.FC = () => {
             minZoom={0.1}
             className="knowledge-graph-canvas bg-canvas-bg"
           >
-          <Controls position="bottom-left" showInteractive={true} showZoom={true} showFitView={true} />
+          <Controls position="bottom-left" showInteractive={true} showZoom={true} showFitView={true} className="bg-muted/50" />
+          <MiniMap nodeStrokeWidth={3} pannable={true}/>
           <Background gap={16} color="var(--grid-color, rgba(0,0,0,0.03))" />
         </ReactFlow>
+
       </div>
 
-      <ReasoningIndicator
-        onOpenReport={() => canvasActions.toggleReasoningReport(true)}
-        onRunReason={() => {
-            void triggerReasoningStrict(nodes, edges, true);
-        }}
-      />
+      <div className="fixed bottom-4 left-0 right-0 z-50 pointer-events-none">
+        <div className="flex items-center justify-end gap-6 pointer-events-auto w-full px-4">
+          <ReasoningIndicator
+            onOpenReport={() => canvasActions.toggleReasoningReport(true)}
+            onRunReason={() => {
+              void triggerReasoningStrict(nodes, edges, true);
+            }}
+          />
+        </div>
+      </div>
 
       <ReasoningReportModal
         open={canvasState.showReasoningReport}
         onOpenChange={canvasActions.toggleReasoningReport}
       />
-
       <NodePropertyEditor
         open={nodeEditorOpen}
         onOpenChange={(open) => {

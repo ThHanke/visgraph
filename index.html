@@ -4,6 +4,37 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VisGraph - Knowledge Graph Builder</title>
+
+    <!-- Inline theme preloader: apply persisted theme (light/dark/system) before React mounts to avoid FOUC.
+         Also supports forcing theme via the "theme" URL query parameter (e.g. ?theme=dark) for dev/testing. -->
+    <script>
+      try {
+        (function() {
+          var key = 'visgraph-theme';
+          var raw = null;
+          try { raw = localStorage.getItem(key); } catch(e) { raw = null; }
+          // Allow overriding via ?theme=dark or ?theme=light in the URL for testing
+          var urlTheme = null;
+          try {
+            var params = new URLSearchParams(window.location.search);
+            var t = params.get('theme');
+            if (t === 'dark' || t === 'light' || t === 'system') urlTheme = t;
+          } catch (_) { urlTheme = null; }
+
+          var prefersDark = false;
+          try { prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches; } catch(e) { prefersDark = false; }
+
+          var theme = (urlTheme !== null) ? urlTheme : (raw === 'light' || raw === 'dark' || raw === 'system' ? raw : null);
+          var isDark = theme === 'dark' || (theme === 'system' && prefersDark) || (!theme && prefersDark);
+
+          try {
+            if (isDark) document.documentElement.classList.add('dark');
+            else document.documentElement.classList.remove('dark');
+            document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+          } catch (e) { /* ignore */ }
+        })();
+      } catch (e) { /* ignore */ }
+    </script>
     <meta name="description" content="Build beautiful knowledge graphs with ontologies - A modern, lightweight web application for semantic data visualization" />
     <meta name="author" content="VisGraph" />
 
