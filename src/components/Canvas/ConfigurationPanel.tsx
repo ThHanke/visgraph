@@ -34,121 +34,7 @@ import { WELL_KNOWN } from '../../utils/wellKnownOntologies';
 import { fallback } from '../../utils/startupDebug';
 import { toast } from 'sonner';
 
-/**
- * RecentOntologiesDisplay
- * - Shows recent ontologies (from config) and ontologies currently loaded into the RDF/ontology store
- * - Allows quickly adding a discovered/loaded ontology to the auto-load list (additionalOntologies)
- * - Shows badges indicating whether an ontology is currently loaded and whether it is configured for auto-load
- */
-const RecentOntologiesDisplay = () => {
-  const { config, addAdditionalOntology, removeAdditionalOntology } = useAppConfigStore();
-  const { loadedOntologies, getRdfManager } = useOntologyStore();
 
-  // Obtain any namespaces discovered in the RDF manager as additional potential sources
-  const rdfMgr = getRdfManager && typeof getRdfManager === 'function' ? getRdfManager() : undefined;
-  const rdfNamespaces = (rdfMgr && typeof rdfMgr.getNamespaces === 'function') ? rdfMgr.getNamespaces() : {};
-
-  // Build a combined, ordered list: prefer loaded ontologies, then recent config entries, then rdfManager namespaces
-  const loadedUrls = (loadedOntologies || []).map(o => o.url);
-  const recentUrls = (config && config.recentOntologies) ? config.recentOntologies : [];
-  const nsUrls = Object.values(rdfNamespaces || {});
-
-  const combined = Array.from(new Set<string>([
-    ...loadedUrls,
-    ...recentUrls,
-    ...nsUrls
-  ]));
-
-  if (combined.length === 0) {
-    return <div className="text-xs text-muted-foreground">No recent or loaded ontologies</div>;
-  }
-
-  return (
-    <div className="space-y-1 max-h-40 overflow-y-auto">
-      {combined.map((uri) => {
-        const short = (() => {
-          try {
-            return new URL(uri).hostname + (new URL(uri).pathname ? new URL(uri).pathname.split('/').pop() || '' : '');
-          } catch {
-            return uri;
-          }
-        })();
-
-        // Canonicalize comparison to handle http/https and trailing-slash/canonicalization
-        const canonical = (u?: string | null) => {
-          try {
-            if (!u) return String(u || "");
-            let s = String(u).trim();
-            if (!s) return s;
-            // Prefer https canonicalization for loose matching
-            if (s.toLowerCase().startsWith("http://")) s = s.replace(/^http:\/\//i, "https://");
-            try {
-              return new URL(s).toString();
-            } catch {
-              // Fallback: remove trailing slashes
-              return s.replace(/\/+$/, "");
-            }
-          } catch (_) {
-            return String(u || "");
-          }
-        };
-
-        const isLoaded = (loadedUrls || []).some((l) => canonical(l) === canonical(uri));
-        const isAuto = (config && Array.isArray(config.additionalOntologies))
-          ? (config.additionalOntologies || []).some((a) => canonical(a) === canonical(uri))
-          : false;
-
-        return (
-          <div key={uri} className="flex items-center justify-between gap-2 p-2 bg-muted/5 rounded text-xs">
-            <div className="flex-1 min-w-0">
-              <div className="truncate" title={uri}>{short || uri}</div>
-              <div className="text-xs text-muted-foreground truncate" title={uri}>{uri}</div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {isLoaded && <Badge variant="default" className="text-xs">Loaded</Badge>}
-              {isAuto ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs"
-                  onClick={() => {
-                    try {
-                      removeAdditionalOntology(uri);
-                      toast.success('Removed from auto-load list');
-                    } catch (e) {
-                      ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})('removeAdditionalOntology failed', e);
-                      toast.error('Failed to remove ontology from auto-load list');
-                    }
-                  }}
-                >
-                  Auto (Remove)
-                </Button>
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-xs"
-                  onClick={() => {
-                    try {
-                      addAdditionalOntology(uri);
-                      toast.success('Added to auto-load list');
-                    } catch (e) {
-                      ((...__vg_args)=>{try{fallback('console.warn',{args:__vg_args.map(a=> (a && a.message)? a.message : String(a))},{level:'warn'})}catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { try { if (typeof fallback === "function") { fallback("emptyCatch", { error: String(_) }); } } catch (_) { /* empty */ } } } console.warn(...__vg_args);})('addAdditionalOntology failed', e);
-                      toast.error('Failed to add ontology to auto-load list');
-                    }
-                  }}
-                >
-                  Add Auto
-                </Button>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
 
 export interface ConfigurationPanelProps {
   triggerVariant?: 'default' | 'none' | 'fixed-icon' | 'inline-icon';
@@ -160,7 +46,7 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
 
   // Blacklist UI local state (decoupled from persisted config until applied)
   const [blacklistEnabledLocal, setBlacklistEnabledLocal] = useState<boolean>(() => {
-    try { return Boolean(useAppConfigStore.getState().config.blacklistEnabled); } catch { return true; }
+    try { return !!useAppConfigStore.getState().config.blacklistEnabled; } catch { return true; }
   });
   const [prefixesText, setPrefixesText] = useState<string>(() => {
     try { return (useAppConfigStore.getState().config.blacklistedPrefixes || []).join(', '); } catch { return 'owl, rdf, rdfs, xml, xsd'; }
@@ -169,10 +55,10 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
     try { return (useAppConfigStore.getState().config.blacklistedUris || []).join(', '); } catch { return 'http://www.w3.org/2002/07/owl, http://www.w3.org/1999/02/22-rdf-syntax-ns#'; }
   });
 
-  useEffect(() => {
+      useEffect(() => {
     try {
       const cfg = useAppConfigStore.getState().config;
-      setBlacklistEnabledLocal(Boolean(cfg.blacklistEnabled));
+      setBlacklistEnabledLocal(!!cfg.blacklistEnabled);
       setPrefixesText((cfg.blacklistedPrefixes || []).join(', '));
       setUrisText((cfg.blacklistedUris || []).join(', '));
     } catch (_) {
@@ -188,6 +74,8 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
     setCanvasTheme,
     setAutoReasoning,
     setMaxVisibleNodes,
+    // Reasoning rulesets setter
+    setReasoningRulesets,
     resetToDefaults,
     exportConfig,
     importConfig,
@@ -270,10 +158,11 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
         </DialogHeader>
 
         <Tabs defaultValue="layout" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="layout">Layout</TabsTrigger>
             <TabsTrigger value="ui">Interface</TabsTrigger>
             <TabsTrigger value="performance">Performance</TabsTrigger>
+            <TabsTrigger value="reasoning">Reasoning</TabsTrigger>
             <TabsTrigger value="advanced">Advanced</TabsTrigger>
           </TabsList>
 
@@ -324,7 +213,7 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
                   </div>
                 </div>
               </CardContent>
-            </Card>
+              </Card>
           </TabsContent>
 
           {/* UI Settings */}
@@ -364,11 +253,11 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
                 <div className="flex items-center justify-between">
                   <Label>Auto-load configured ontologies on startup</Label>
                   <Switch
-                    checked={!!config.persistedAutoload}
+                    checked={config.persistedAutoload}
                     onCheckedChange={(val) => {
                       try {
                         // Persist the new setting immediately
-                        setPersistedAutoload(Boolean(val));
+                        setPersistedAutoload(val);
                         toast.success(`Persisted autoload ${val ? "enabled" : "disabled"}`);
                       } catch (e) {
                         try { console.debug("[VG_DEBUG] setPersistedAutoload failed", e); } catch (_) { void 0; }
@@ -389,15 +278,6 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
                 <CardDescription>Optimize performance for large graphs</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="reasoning">Auto Reasoning</Label>
-                  <Switch
-                    id="reasoning"
-                    checked={config.autoReasoning}
-                    onCheckedChange={setAutoReasoning}
-                  />
-                </div>
-
                 <div className="space-y-2">
                   <Label>Max Visible Nodes: {config.maxVisibleNodes}</Label>
                   <Slider
@@ -410,11 +290,68 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
                   />
                 </div>
 
+                
+              </CardContent>
+            </Card>
+          </TabsContent>
+  
+          <TabsContent value="reasoning" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Reasoning</CardTitle>
+                <CardDescription>Configure automatic reasoning and rulesets</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="reasoning">Auto Reasoning</Label>
+                  <Switch
+                    id="reasoning"
+                    checked={config.autoReasoning}
+                    onCheckedChange={setAutoReasoning}
+                  />
+                </div>
+
                 <div className="space-y-2">
-                  <Label>Recent Ontologies</Label>
-                  {/* Combine recent entries from config with any loaded ontologies for convenience.
-                      Allow quick adding of an ontology to the auto-load list. */}
-                  <RecentOntologiesDisplay />
+                  <Label>Reasoning Rulesets</Label>
+                  <div className="space-y-2 text-xs">
+                    <div className="text-xs text-muted-foreground">
+                      The selected rulesets will be fetched from the app's public assets and combined to drive the N3 reasoner.
+                    </div>
+
+                    {(() => {
+                      try {
+                        const available = ['best-practice.n3', 'owl-e.n3', 'owl-p.n3', 'owl-rl.n3'];
+                        const selected = Array.isArray(config.reasoningRulesets) ? config.reasoningRulesets : [];
+
+                        return available.map((name) => {
+                          const checked = selected.includes(name);
+                          return (
+                            <div key={name} className="flex items-center gap-2">
+                              <input
+                                id={`rr-${name}`}
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => {
+                                  try {
+                                    const cur = Array.isArray(config.reasoningRulesets) ? config.reasoningRulesets.slice() : [];
+                                    const next = cur.includes(name) ? cur.filter((n) => n !== name) : [...cur, name];
+                                    setReasoningRulesets(next);
+                                    toast.success('Updated reasoning rulesets');
+                                  } catch (e) {
+                                    try { console.debug("[VG_DEBUG] setReasoningRulesets failed", e); } catch (_) { void 0; }
+                                    toast.error('Failed to update reasoning rulesets');
+                                  }
+                                }}
+                              />
+                              <label htmlFor={`rr-${name}`} className="truncate">{name}</label>
+                            </div>
+                          );
+                        });
+                      } catch (_) {
+                        return <div className="text-xs text-muted-foreground">n/a</div>;
+                      }
+                    })()}
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -453,6 +390,23 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
                     </div>
                   )}
                 </div>
+
+                <div className="flex items-center justify-between">
+                  <Label>Auto-load configured ontologies on startup</Label>
+                  <Switch
+                    checked={config.persistedAutoload}
+                    onCheckedChange={(val) => {
+                      try {
+                        // Persist the new setting immediately
+                        setPersistedAutoload(val);
+                        toast.success(`Persisted autoload ${val ? "enabled" : "disabled"}`);
+                      } catch (e) {
+                        try { console.debug("[VG_DEBUG] setPersistedAutoload failed", e); } catch (_) { void 0; }
+                        toast.error("Failed to update autoload setting");
+                      }
+                    }}
+                  />
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -465,22 +419,7 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
                 <CardDescription>Developer debug helpers</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label>Enable debug helpers (VG_* logs & metrics)</Label>
-                  <Switch
-                    id="debugAll"
-                    checked={!!config.debugAll}
-                    onCheckedChange={(val) => {
-                      try {
-                        setDebugAll(Boolean(val));
-                        toast.success(Boolean(val) ? 'Debug enabled' : 'Debug disabled');
-                      } catch (e) {
-                        try { console.debug("[VG_DEBUG] setDebugAll failed", e); } catch (_) { void 0; }
-                        toast.error('Failed to update debug setting');
-                      }
-                    }}
-                  />
-                </div>
+                
                 <div className="text-xs text-muted-foreground">
                   When enabled, diagnostic logs prefixed with <code>[VG_]</code> and in-canvas metrics become visible.
                 </div>
@@ -498,8 +437,8 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
                     checked={blacklistEnabledLocal}
                     onCheckedChange={(val) => {
                       try {
-                        setBlacklistEnabledLocal(Boolean(val));
-                        setBlacklistEnabled(Boolean(val));
+                        setBlacklistEnabledLocal(val);
+                        setBlacklistEnabled(val);
                         try {
                           const mgr = useOntologyStore.getState().getRdfManager();
                           const prefixes = (prefixesText || "").split(",").map(s=>s.trim()).filter(Boolean);

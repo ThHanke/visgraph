@@ -22,6 +22,8 @@ export interface AppConfig {
   // Performance settings
   autoReasoning: boolean;
   maxVisibleNodes: number;
+  // Which reasoning ruleset files to load (filenames under public/reasoning-rules)
+  reasoningRulesets: string[];
 
   // Debug / developer toggles
   // When true RDFManager will emit a console.log reporting how many triples were added
@@ -69,6 +71,7 @@ interface AppConfigStore {
   // Performance actions
   setAutoReasoning: (enabled: boolean) => void;
   setMaxVisibleNodes: (max: number) => void;
+  setReasoningRulesets: (reasoningRulesets: string[]) => void;
 
   // Debugging action to toggle RDFManager logging
   setDebugRdfLogging: (enabled: boolean) => void;
@@ -111,6 +114,7 @@ const defaultConfig: AppConfig = {
   // Master debug switch disabled by default
   debugAll: false,
   maxVisibleNodes: 1000,
+  reasoningRulesets: ['best-practice.n3','owl-rl.n3'],
   recentOntologies: [],
   recentLayouts: ['horizontal'],
   additionalOntologies: [
@@ -220,6 +224,16 @@ export const useAppConfigStore = create<AppConfigStore>()(
           config: {
             ...state.config,
             maxVisibleNodes: Math.max(100, Math.min(5000, max)) // Clamp between 100-5000
+          }
+        }));
+      },
+
+      // Configure reasoning rulesets (filenames under public/reasoning-rules)
+      setReasoningRulesets: (reasoningRulesets: string[]) => {
+        set((state) => ({
+          config: {
+            ...state.config,
+            reasoningRulesets: Array.isArray(reasoningRulesets) ? reasoningRulesets.slice() : []
           }
         }));
       },

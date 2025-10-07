@@ -1,0 +1,536 @@
+@prefix list: <http://www.w3.org/2000/10/swap/list#>.
+@prefix log: <http://www.w3.org/2000/10/swap/log#>.
+@prefix owl: <http://www.w3.org/2002/07/owl#>.
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>.
+@prefix e: <http://eulersharp.sourceforge.net/2003/03swap/log-rules#>.
+
+#eq-ref
+{ 
+  ?S ?P ?O.
+}
+=>
+{
+  ?S owl:sameAs ?S.
+  ?P owl:sameAs ?P.
+  ?O owl:sameAs ?O.
+}.
+
+#eq-sym
+{?A owl:sameAs ?B} => {?B owl:sameAs ?A}.
+
+#eq-trans
+{?A owl:sameAs ?B. ?B owl:sameAs ?C} => {?A owl:sameAs ?C}.
+
+#eq-rep-s
+{?A owl:sameAs ?B. ?A ?P ?O} => {?B ?P ?O}.
+
+#eq-rep-p
+{?A owl:sameAs ?B. ?S ?A ?O} => {?S ?B ?O}.
+
+#eq-rep-q
+{?A owl:sameAs ?B. ?S ?P ?A} => {?S ?P ?B}.
+
+#eq-diff1
+{?A owl:sameAs ?B. ?A owl:differentFrom ?B } => false.
+
+#eq-diff2
+{
+    ?A a owl:AllDifferent.
+    ?A owl:members ?B.
+    ?C list:in ?B.
+    ?D list:in ?B.
+    ?C log:notEqualTo ?D.
+    ?C owl:sameAs ?D.
+} => false.
+
+#eq-diff3
+{
+    ?A a owl:AllDifferent.
+    ?A owl:distinctMembers ?B.
+    ?C list:in ?B.
+    ?D list:in ?B.
+    ?C log:notEqualTo ?D.
+    ?C owl:sameAs ?D.
+} => false.
+
+#prp-domain
+{?A rdfs:domain ?B. ?X ?A ?Y} => {?X a ?B}.
+
+#prp-dom
+{?A rdfs:range ?B. ?X ?A ?Y} => {?Y a ?B}.
+    
+#prp-fp
+{?A a owl:FunctionalProperty. ?X ?A ?Y. ?X ?A ?Z} => {?Y owl:sameAs ?Z}.
+
+#prp-ifp
+{?A a owl:InverseFunctionalProperty. ?X ?A ?Z. ?Y ?A ?Z} => {?X owl:sameAs ?Y}.
+
+#prp-irp
+{?A a owl:IrreflexiveProperty. ?X ?A ?X} => false.
+
+#prp-symp
+{?A a owl:SymmetricProperty. ?X ?A ?Y} => {?Y ?A ?X}.
+
+#prp-asyp
+{?A a owl:AsymmetricProperty. ?X ?A ?Y. ?Y ?A ?X} => false.
+
+#prp-trp
+{?A a owl:TransitiveProperty. ?X ?A ?Y. ?Y ?A ?Z} => {?X ?A ?Z}.
+
+#prp-spo1
+{?A rdfs:subPropertyOf ?B. ?X ?A ?Y} => {?X ?B ?Y}.
+
+#prp-spo2 (requires specialized eye builtin)
+{?P owl:propertyChainAxiom ?L. ?L e:propertyChainExtension (?S ?O)} => {?S ?P ?O}.
+
+#prp-eqp1
+{?A owl:equivalentProperty ?B. ?X ?A ?Y} => {?X ?B ?Y}.
+
+#prp-eqp2
+{?A owl:equivalentProperty ?B. ?X ?B ?Y} => {?X ?A ?Y}.
+
+#prp-pdw
+{?A  owl:propertyDisjointWith ?B. ?X ?A ?Y. ?X ?B ?Y} => false.
+
+#prp-adp
+{
+    ?A a owl:AllDisjointProperties.
+    ?A owl:members ?B.
+    ?C list:in ?B.
+    ?D list:in ?B.
+    ?C log:notEqualTo ?D.
+    ?X ?C ?Y.
+    ?X ?D ?Y.
+} => false.
+
+#prp-inv1
+{?A owl:inverseOf ?B. ?X ?A ?Y} => {?Y ?B ?X}.
+
+#prp-inv2
+{?A owl:inverseOf ?B. ?X ?B ?Y} => {?Y ?A ?X}.
+
+#prp-key
+{
+    ?A owl:hasKey ?B.
+    ?C a ?A.
+    ?D a ?A.
+    ?C log:notEqualTo ?D.
+    (?P {
+        ?P list:in ?B.
+        ?C ?P ?O.
+        ?D ?P ?O.
+    } ?L) log:collectAllIn ?SCOPE.
+    ?L list:setEqualTo ?B.
+} => {
+    ?C owl:sameAs ?D.
+}.
+
+#prp-npa1
+{
+    ?A owl:sourceIndividual ?S.
+    ?A owl:assertionProperty ?P.
+    ?A owl:targetIndividual ?O.
+    ?S ?P ?O
+} => false.
+
+#prp-npa2
+{
+    ?A owl:sourceIndividual ?S.
+    ?A owl:assertionProperty ?P.
+    ?A owl:targetValue ?O.
+    ?S ?P ?O
+} => false.
+
+#cls-thing
+owl:Thing a owl:Class.
+
+#cls-nothing1
+owl:Nothing a owl:Class.
+
+#cls-nothing2
+{?A a owl:Nothing} => false.
+
+#cls-int1 (requires specialized eye builtin)
+{
+    ?A owl:intersectionOf ?B.
+    ?B rdf:first ?C.
+    ?X a ?C.
+    ?B rdf:rest ?D.
+    ?SCOPE e:findall (?Y {
+        ?Y list:in ?D.
+        ?X a ?Y.
+    } ?D).
+} => {
+    ?X a ?A.
+}.
+
+#cls-int2
+{
+    ?C owl:intersectionOf ?X.
+    ?Y a ?C.
+    ?CN list:in ?X.
+} => {
+    ?Y a ?CN.
+}.
+
+#cls-uni
+{ 
+    ?A owl:unionOf ?B.
+    ?C list:in ?B.
+    ?D a ?C.
+} => {
+    ?D a ?A.
+}.
+
+#cls-com
+{
+    ?A owl:complementOf ?B.
+    ?X a ?A.
+    ?X a ?B.
+} => false.
+
+#cls-svf1
+{
+    ?A owl:someValuesFrom ?B.
+    ?A owl:onProperty ?C.
+    ?X ?C ?Y.
+    ?Y a ?B. 
+} => {
+    ?X a ?A.
+}.
+
+#cls-svf2
+{
+    ?A owl:someValuesFrom ?B.
+    ?A owl:onProperty ?C.
+    ?X ?C ?Y.
+} => {
+    ?X a ?A.
+}.
+
+#cls-avf
+{
+    ?A owl:allValuesFrom ?B.
+    ?A owl:onProperty ?C.
+    ?X a ?A.
+    ?X ?C ?Y.
+} => {
+    ?Y a ?B.
+}.
+
+#cls-hv1
+{
+    ?A owl:hasValue ?B.
+    ?A owl:onProperty ?C.
+    ?X a ?A.
+} => {
+    ?X ?C ?B.
+}.
+
+#cls-hv2
+{
+    ?A owl:hasValue ?B.
+    ?A owl:onProperty ?C.
+    ?X ?C ?B.
+} => {
+    ?X a ?A.
+}.
+
+#cls-maxc1
+{
+    ?A owl:maxCardinality 0.
+    ?A owl:onProperty ?B.
+    ?X a ?A.
+    ?X ?B ?Y.
+} => false.
+
+#cls-maxc2
+{
+    ?A owl:maxCardinality 0.
+    ?A owl:onProperty ?B.
+    ?X a ?A.
+    ?X ?B ?Y1.
+    ?X ?B ?Y2.
+} => {
+    ?Y1 owl:sameAs ?Y2.
+}.
+
+#cls-maxqc1
+{
+    ?A owl:maxQualifiedCardinality 0.
+    ?A owl:onProperty ?B.
+    ?A owl:onClass ?C.
+    ?X a ?A.
+    ?X ?B ?Y.
+    ?Y a ?C.
+} => false.
+
+#cls-maxqc2
+{
+    ?A owl:maxQualifiedCardinality 0.
+    ?A owl:onProperty ?B.
+    ?A owl:onClass owl:Thing.
+    ?X a ?A.
+    ?X ?B ?Y.
+} => false.
+
+#cls-maxqc3
+{
+    ?A owl:maxQualifiedCardinality 1.
+    ?A owl:onProperty ?B.
+    ?A owl:onClass ?C.
+    ?X a ?A.
+    ?X ?B ?Y1.
+    ?Y1 a ?C.
+    ?X ?B ?Y2.
+    ?Y2 a ?C.
+} => {
+    ?Y1 owl:sameAs ?Y2.
+}.
+
+#cls-maxqc4
+{
+    ?A owl:maxQualifiedCardinality 1.
+    ?A owl:onProperty ?B.
+    ?A owl:onClass owl:Thing.
+    ?X a ?A.
+    ?X ?B ?Y1.
+    ?X ?B ?Y2.
+} => {
+    ?Y1 owl:sameAs ?Y2.
+}.
+
+#cls-oo
+{
+    ?A owl:oneOf ?B.
+    ?X list:in ?B.
+} => {
+    ?X a ?A.
+}.
+
+#cax-sco
+{?A rdfs:subClassOf ?B. ?X a ?A} => {?X a ?B}.
+
+#cax-eqc1
+{?A owl:equivalentClass ?B. ?X a ?A} => {?X a ?B}.
+
+#cax-eqc2                                              
+{?A owl:equivalentClass ?B. ?X a ?B} => {?X a ?A}.
+
+#cax-dw
+{?A owl:disjointWith ?B. ?X a ?A. ?X a ?B} => false. 
+
+#cax-adc
+{
+    ?A a owl:AllDisjointClasses.
+    ?A owl:members ?B.
+    ?C list:in ?B.
+    ?D list:in ?B.
+    ?C log:notEqualTo ?D.
+    ?X a ?C.
+    ?X a ?D.
+} => false.
+
+#scm-cls
+{
+    ?C rdf:type owl:Class.
+} 
+=> 
+{
+    ?C rdfs:subClassOf ?C. 
+    ?C rdfs:subClassOf owl:Thing. 
+    ?C owl:equivalentClass ?C. 
+    owl:Nothing rdfs:subClassOf ?C.
+}.
+
+#scm-sco
+{
+    ?C rdfs:subClassOf ?D .
+    ?D rdfs:subClassOf ?E.
+}
+=>
+{
+    ?C rdfs:subClassOf ?E.
+}.
+
+#scm-eqc1
+{
+    ?A owl:equivalentClass ?B. 
+} 
+=> 
+{
+    ?A rdfs:subClassOf ?B. 
+    ?B rdfs:subClassOf ?A.
+} .
+
+#scm-eqc2
+{   
+    ?A rdfs:subClassOf ?B. 
+    ?B rdfs:subClassOf ?A.
+} 
+=> 
+{
+    ?A owl:equivalentClass ?B.
+}.
+
+#scm-op
+{
+    ?P rdf:type owl:ObjectProperty.
+}
+=>
+{
+    ?P rdfs:subPropertyOf ?P. 
+    ?P owl:equivalentProperty ?P
+}.
+
+#scm-dp
+{
+    ?P rdf:type owl:DatatypeProperty.
+} 
+=> 
+{
+    ?P rdfs:subPropertyOf ?P. 
+    ?P owl:equivalentProperty ?P 
+}.
+
+#scm-spo
+{
+    ?P rdfs:subPropertyOf ?R. 
+    ?R rdfs:subPropertyOf ?P.
+} 
+=> 
+{
+    ?P owl:subPropertyOf ?R.
+}.
+
+#scm-eqp1
+{
+    ?P owl:equivalentProperty ?R.
+} 
+=> 
+{
+    ?P rdfs:subPropertyOf ?R. 
+    ?R rdfs:subPropertyOf ?P.
+}.
+
+#scm-eqp2
+{
+    ?P rdfs:subPropertyOf ?R. 
+    ?R rdfs:subPropertyOf ?P.
+} 
+=> 
+{
+    ?P owl:equivalentProperty ?R.
+}.
+
+#scm-dom1
+{
+    ?P rdfs:domain ?C1.
+    ?C1 rdfs:subClassOf ?C2.
+}
+=>
+{
+    ?P rdfs:domain ?C2.
+}.
+
+#scm-dom2
+{
+    ?P2 rdfs:domain ?C.
+    ?P1 rdfs:subPropertyOf ?P2.
+}
+=>
+{
+    ?P1 rdfs:domain ?C.
+}.
+
+#scm-rng1
+{
+    ?P rdfs:range ?C1.
+    ?C1 rdfs:subClassOf ?C2.
+}
+=>
+{
+    ?P rdfs:range ?C2.
+}.
+
+#scm-rng2
+{
+    ?P2 rdfs:range ?C.
+    ?P1 rdfs:subPropertyOf ?P2.
+}
+=>
+{
+    ?P1 rdfs:range ?C.
+}.
+
+#scm-hv
+{
+    ?C1 owl:hasValue ?I.
+    ?C1 owl:onProperty ?P1.
+    ?C2 owl:hasValue ?I.
+    ?C2 owl:onProperty ?P2.
+    ?P1 rdfs:subPropertyOf ?P2.
+} => {
+    ?C1 rdfs:subClassOf ?C2.
+}.
+
+#scm-svf1
+{
+    ?C1 owl:someValuesFrom ?Y1.
+    ?C1 owl:onProperty ?P.
+    ?C2 owl:someValuesFrom ?Y2.
+    ?C2 owl:onProperty ?P.
+    ?Y1 rdfs:subClassOf ?Y2.
+} => {
+    ?C1 rdfs:subClassOf ?C2.
+}.
+
+#scm-svf2
+{
+    ?C1 owl:someValuesFrom ?Y.
+    ?C1 owl:onProperty ?P1.
+    ?C2 owl:someValuesFrom ?Y.
+    ?C2 owl:onProperty ?P2.
+    ?P1 rdfs:subPropertyOf ?P2.
+} => {
+    ?C1 rdfs:subClassOf ?C2.
+}.
+
+#scm-avf1
+{
+    ?C1 owl:allValuesFrom ?Y1.
+    ?C1 owl:onProperty ?P.
+    ?C2 owl:allValuesFrom ?Y2.
+    ?C2 owl:onProperty ?P.
+    ?Y1 rdfs:subClassOf ?Y2.
+} => {
+    ?C1 rdfs:subClassOf ?C2.
+}.
+
+#scm-avf2
+{
+    ?C1 owl:allValuesFrom ?Y.
+    ?C1 owl:onProperty ?P1.
+    ?C2 owl:allValuesFrom ?Y.
+    ?C2 owl:onProperty ?P2.
+    ?P1 rdfs:subPropertyOf ?P2.
+} => {
+    ?C1 rdfs:subClassOf ?C2.
+}.
+
+#scm-int
+{
+    ?A owl:intersectionOf ?B.
+    ?C list:in ?B.
+} => {
+    ?A rdfs:subClassOf ?C.
+}.
+
+#scm-uni
+{
+    ?C owl:unionOf ?X.
+    ?CN list:in ?X.
+} => {
+    ?CN rdfs:subClassOf ?C.
+}.

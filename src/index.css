@@ -83,7 +83,7 @@
   }
 
   body {
-    @reference bg-background text-foreground;
+    /* @reference bg-background text-foreground; */
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
 
@@ -187,17 +187,24 @@
 .react-flow__handle-left {
   opacity: 0;
 } */
-
+.react-flow__panel {
+  border-radius: var(--radius-md);
+}
 
 .react-flow__controls-button {
 	border: none;
 	color:  oklch(var(--muted-foreground) / var(--tw-text-opacity, 1));
   border: 1px solid var(--border);
-  border-bottom: 1px solid var(--background) !important;
   --tw-bg-opacity: 1;
   background-color: oklch(var(--muted) / var(--tw-bg-opacity, 1)) !important;
   }
 
+.react-flow__controls-button svg {
+    width: 100%;
+    max-width: 18px;
+    max-height: 18px;
+    fill: var(--foreground)
+  }
 .react-flow__minimap {
   border: 1px solid var(--border);
 
@@ -232,7 +239,7 @@
   position: absolute;
   top: 0;
   left: 0;
-  border-radius: 0;
+  border-radius: var(--radius-md);
   transform: none;
   border: none;
   opacity: 0;
@@ -240,7 +247,7 @@
 
 /* Slightly enlarge and highlight handle on node hover to make it discoverable */
 .knowledge-graph-canvas .react-flow__node:hover .react-flow__handle {
-  transform: scale(1.2);
+  transform: scale(1.05);
   background: rgba(34,34,34,0.08);
   opacity: 1 !important;
 }
