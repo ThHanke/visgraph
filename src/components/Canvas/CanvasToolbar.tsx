@@ -60,6 +60,9 @@ interface CanvasToolbarProps {
   onToggleLegend: () => void;
   showLegend: boolean;
   onExport: (format: 'turtle' | 'owl-xml' | 'json-ld') => void;
+  // New optional callbacks for image/svg export (full-only)
+  onExportSvg?: () => void;
+  onExportPng?: (scale?: number) => void;
   onLoadFile?: (file: File) => void;
   viewMode: 'abox' | 'tbox';
   onViewModeChange: (mode: 'abox' | 'tbox') => void;
@@ -81,7 +84,7 @@ interface CanvasToolbarProps {
   }>;
 }
 
-export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onLoadFile, viewMode, onViewModeChange, onLayoutChange, currentLayout = 'horizontal', layoutEnabled = false, onToggleLayoutEnabled, availableEntities }: CanvasToolbarProps) => {
+export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onExportSvg, onExportPng, onLoadFile, viewMode, onViewModeChange, onLayoutChange, currentLayout = 'horizontal', layoutEnabled = false, onToggleLayoutEnabled, availableEntities }: CanvasToolbarProps) => {
   const [isAddNodeOpen, setIsAddNodeOpen] = useState(false);
   const [isLoadOntologyOpen, setIsLoadOntologyOpen] = useState(false);
   const [isLoadFileOpen, setIsLoadFileOpen] = useState(false);
@@ -906,6 +909,13 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
+          <DropdownMenuItem data-testid="export-svg-full" onClick={() => onExportSvg?.()}>
+            Export SVG — Full
+          </DropdownMenuItem>
+          <DropdownMenuItem data-testid="export-png-full" onClick={() => onExportPng?.(2)}>
+            Export PNG — Full
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => onExport('turtle')}>
             Turtle (.ttl)
           </DropdownMenuItem>

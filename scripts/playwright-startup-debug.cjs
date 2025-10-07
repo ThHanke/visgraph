@@ -89,16 +89,31 @@ async function run() {
   const defaultUrl = `http://localhost:${portFromCfg}/`;
   const urlRaw = maybeUrl || defaultUrl;
 
-  // Ensure vg_debug=1 is present when running the startup debug runner so the app
-  // auto-enables gated debug output. Do not override an explicit vg_debug param
-  // if the caller already provided one.
+  // When running the startup debug runner with no explicit URL provided, default
+  // to loading a representative fixture so the canvas populates deterministically.
+  // Do not override an explicit URL (maybeUrl) supplied by the caller.
+  const defaultFixture = 'https://raw.githubusercontent.com/Mat-O-Lab/IOFMaterialsTutorial/refs/heads/main/LengthMeasurement.ttl';
   let url = urlRaw;
   try {
-    if (typeof url === 'string' && !url.includes('vg_debug=')) {
+    if (!maybeUrl && typeof url === 'string' && !url.includes('rdfUrl=')) {
       try {
         const u = new URL(url, 'http://localhost');
         const hasQuery = u.search && u.search.length > 0;
-        url = url + (hasQuery ? '&vg_debug=1' : '?vg_debug=1');
+        url = url + (hasQuery ? '&rdfUrl=' + encodeURIComponent(defaultFixture) : '?rdfUrl=' + encodeURIComponent(defaultFixture));
+      } catch (_) {
+        // fallback if URL parsing fails
+        url = url + (url.includes('?') ? '&rdfUrl=' + encodeURIComponent(defaultFixture) : '?rdfUrl=' + encodeURIComponent(defaultFixture));
+      }
+    }
+
+    // Ensure vg_debug=1 is present when running the startup debug runner so the app
+    // auto-enables gated debug output. Do not override an explicit vg_debug param
+    // if the caller already provided one.
+    if (typeof url === 'string' && !url.includes('vg_debug=')) {
+      try {
+        const u2 = new URL(url, 'http://localhost');
+        const hasQuery2 = u2.search && u2.search.length > 0;
+        url = url + (hasQuery2 ? '&vg_debug=1' : '?vg_debug=1');
       } catch (_) {
         // If URL parsing fails (malformed URL), fallback to simple append heuristic
         url = url + (url.includes('?') ? '&vg_debug=1' : '?vg_debug=1');
@@ -137,7 +152,8 @@ async function run() {
   }
 
   const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext();
+  // Ensure downloads are accepted so programmatic anchor-click downloads are captured by Playwright.
+  const context = await browser.newContext({ acceptDownloads: true });
 
   // If a layout was requested for the test, inject it into localStorage before the page loads
   // so the app boots with a deterministic layout/view-mode for testing.
@@ -164,6 +180,47 @@ async function run() {
   }
 
   const page = await context.newPage();
+
+  // If we defaulted to using the built-in fixture (when no explicit URL passed),
+  // pre-fetch the fixture content so we can load it via the app's file-input
+  // handler (simulates a user uploading a file with the fixture content). This
+  // ensures the app receives the raw RDF text rather than relying on cross-origin
+  // requests from the browser which may be blocked or proxied differently in CI.
+  let startupFixtureContent = null;
+  try {
+    if (!maybeUrl && typeof defaultFixture === 'string' && defaultFixture.length > 0) {
+      // Helper to GET text content (uses http/https similar to httpGetStatus).
+      const fetchText = (u, timeoutMs = 15000) => new Promise((resolve, reject) => {
+        try {
+          const parsed = new URL(u);
+          const lib = parsed.protocol === 'https:' ? https : http;
+          const req = lib.request(parsed, { method: 'GET', timeout: timeoutMs }, (res) => {
+            let data = '';
+            res.setEncoding('utf8');
+            res.on('data', (chunk) => data += chunk);
+            res.on('end', () => resolve(data));
+          });
+          req.on('error', (err) => reject(err));
+          req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+          req.end();
+        } catch (err) { reject(err); }
+      });
+
+      try {
+        startupFixtureContent = await fetchText(defaultFixture).catch(() => null);
+        if (startupFixtureContent) {
+          console.log('Pre-fetched startup fixture content (length=' + String(startupFixtureContent.length) + ')');
+        } else {
+          console.warn('Failed to pre-fetch startup fixture content; will rely on browser fetch via rdfUrl param');
+        }
+      } catch (err) {
+        console.warn('Error fetching startup fixture:', err && err.message ? err.message : err);
+        startupFixtureContent = null;
+      }
+    }
+  } catch (e) {
+    startupFixtureContent = null;
+  }
 
   const consoleEntries = [];
   const requests = [];
@@ -233,6 +290,42 @@ async function run() {
   } catch (e) {
     noteEvent('navigation.error', { message: String(e && e.message ? e.message : e) });
   }
+
+  // If we pre-fetched the startup fixture content, inject it into the app via
+  // the "Load Ontology" dialog's Paste RDF workflow so the app processes the
+  // raw RDF string exactly as a user would paste-and-load it.
+  try {
+    if (startupFixtureContent && typeof startupFixtureContent === 'string' && startupFixtureContent.length > 0) {
+      try {
+        // Open the Load Ontology dialog (button text "Load Ontology")
+        try {
+          const loadBtn = await page.locator('button:has-text("Load Ontology")').first();
+          await loadBtn.waitFor({ state: 'visible', timeout: 5000 });
+          await loadBtn.click();
+        } catch (_) {
+          // Fallback: click any element that contains the text
+          try { await page.click('text="Load Ontology"', { timeout: 5000 }); } catch (_) { /* ignore */ }
+        }
+
+        // Wait for the paste textarea to appear and set its value
+        try {
+          await page.waitForSelector('#rdfPaste', { timeout: 5000 });
+          await page.fill('#rdfPaste', startupFixtureContent);
+          // Click the "Load RDF" button inside the dialog
+          const loadRdfBtn = await page.locator('button:has-text("Load RDF")').first();
+          await loadRdfBtn.waitFor({ state: 'visible', timeout: 5000 });
+          await loadRdfBtn.click();
+          console.log('Injected startup fixture via paste-load workflow');
+          noteEvent('console', { type: 'info', text: 'startup.fixture.injected_via_paste' });
+        } catch (errInner) {
+          console.warn('Failed to inject fixture via paste workflow:', errInner && errInner.message ? errInner.message : errInner);
+          noteEvent('console', { type: 'warning', text: 'startup.fixture.inject_failed' });
+        }
+      } catch (err) {
+        console.warn('Error while attempting to paste startup fixture:', err && err.message ? err.message : err);
+      }
+    }
+  } catch (_) { /* ignore */ }
 
   // Ensure the requested layout is applied via UI interaction.
   const startupHasRdfUrl = String(url || '').includes('rdfUrl=');
@@ -465,6 +558,16 @@ async function run() {
     vgSummary = null;
   }
 
+  // Capture any html-to-image error recorded by the page's export helper so we can diagnose failures.
+  let htmlToImageErr = null;
+  try {
+    htmlToImageErr = await page.evaluate(() => {
+      try { return (window && (window).__VG_HTMLTOIMAGE_LAST_ERROR) ? (window).__VG_HTMLTOIMAGE_LAST_ERROR : null; } catch (e) { return null; }
+    });
+  } catch (e) {
+    htmlToImageErr = null;
+  }
+
   const result = {
     url,
     startTime: new Date(startTs).toISOString(),
@@ -499,6 +602,89 @@ async function run() {
     console.warn('Failed to capture screenshot:', e && e.message ? e.message : e);
   }
 
+  // Attempt programmatic exports (SVG then PNG) via the page's export hooks.
+  // Capture downloads if the app emits download events; save into playwright-reports/.
+  try {
+    const nowId = new Date().toISOString().replace(/[:.]/g, '-');
+    let svgExportPath = null;
+    let pngExportPath = null;
+
+    // Prefer the app signalling readiness; wait a short while for the export hook(s) to attach.
+    try {
+      await page.waitForFunction(() => {
+        try {
+          // Access window in the page context
+          // eslint-disable-next-line no-undef
+          return (typeof window !== 'undefined') && !!window.__VG_KNOWLEDGE_CANVAS_READY && (typeof window.__VG_EXPORT_SVG_FULL === 'function' || typeof window.__VG_EXPORT_PNG_FULL === 'function');
+        } catch (e) { return false; }
+      }, { timeout: 10000 }).catch(() => null);
+    } catch (_) { /* ignore wait failures - we'll still attempt the exports */ }
+
+    // SVG export via programmatic hook only (minimal). Invoke and save the returned SVG string.
+    try {
+      const invokeSvgResult = await page.evaluate(async () => {
+        try {
+          if (typeof window.__VG_EXPORT_SVG_FULL === 'function') {
+            return await window.__VG_EXPORT_SVG_FULL();
+          }
+          return null;
+        } catch (e) {
+          // return null to indicate failure
+          return null;
+        }
+      });
+
+      if (typeof invokeSvgResult === 'string' && invokeSvgResult.length > 0) {
+        const suggested = `visgraph-full-${nowId}.svg`;
+        svgExportPath = path.join(outDir, `export-svg-${nowId}-${suggested}`);
+        fs.writeFileSync(svgExportPath, invokeSvgResult, 'utf8');
+        console.log('Saved SVG export from programmatic return to', svgExportPath);
+      } else {
+        // Minimal behavior: no fallback — record absence and continue
+        console.warn('Programmatic SVG export did not return a string.');
+      }
+    } catch (err) {
+      console.warn('SVG export attempt failed:', err && err.message ? err.message : err);
+    }
+
+    // PNG export via programmatic hook (expects data URL: data:image/png;base64,...)
+    try {
+      const invokePngResult = await page.evaluate(async () => {
+        try {
+          if (typeof window.__VG_EXPORT_PNG_FULL === 'function') {
+            return await window.__VG_EXPORT_PNG_FULL();
+          }
+          return null;
+        } catch (e) {
+          return null;
+        }
+      });
+
+      if (typeof invokePngResult === 'string' && invokePngResult.startsWith('data:image/png')) {
+        const base64 = invokePngResult.split(',')[1] || '';
+        const buf = Buffer.from(base64, 'base64');
+        const suggested = `visgraph-full-${nowId}.png`;
+        pngExportPath = path.join(outDir, `export-png-${nowId}-${suggested}`);
+        fs.writeFileSync(pngExportPath, buf);
+        console.log('Saved PNG export from programmatic return to', pngExportPath);
+      } else {
+        console.warn('Programmatic PNG export did not return a data URL.');
+      }
+    } catch (err) {
+      console.warn('PNG export attempt failed:', err && err.message ? err.message : err);
+    }
+
+    // Annotate the startup JSON with export paths if any
+    try {
+      const updated = JSON.parse(fs.readFileSync(outPath, 'utf8'));
+      if (svgExportPath) updated.svgExportPath = svgExportPath;
+      if (pngExportPath) updated.pngExportPath = pngExportPath;
+      fs.writeFileSync(outPath, JSON.stringify(updated, null, 2), 'utf8');
+    } catch (err) {
+      console.warn('Failed to update startup JSON with export paths:', err && err.message ? err.message : err);
+    }
+  } catch (_) { /* swallow export errors */ }
+
   // Enforce layout application if the caller requested a layout.
   if (layoutKey) {
     if (!layoutAppliedFlag) {
@@ -511,7 +697,6 @@ async function run() {
       } catch (_) { /* ignore */ }
       console.error(`Requested layout "${layoutKey}" was not observed as applied (layoutAppliedFlag=false). Failing run.`);
       // Close browser then exit non-zero to signal test failure.
-      try { await browser.close(); } catch (_) { /* ignore */ }
       process.exit(3);
     } else {
       // Mark success in the JSON
@@ -524,8 +709,7 @@ async function run() {
     }
   }
 
-  await browser.close();
-
+  
   // If we started the server ourselves, wait a short grace period then attempt to stop it.
   if (serverPid) {
     // Allow caller to configure shutdown delay via env var PLAYWRIGHT_SERVER_SHUTDOWN_MS (ms). Default 10000 ms.

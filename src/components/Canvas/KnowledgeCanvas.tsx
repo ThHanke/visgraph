@@ -32,6 +32,8 @@ import FloatingConnectionLine from "./FloatingConnectionLine";
 import createEdge from "./core/createEdge";
 import { generateEdgeId } from "./core/edgeHelpers";
 import { usePaletteFromRdfManager } from "./core/namespacePalette";
+import { exportSvgFull, exportPngFull } from "./core/downloadHelpers";
+import { exportViewportSvgMinimal, exportViewportPngMinimal } from "./core/exportHelpers";
 import { useCanvasState } from "../../hooks/useCanvasState";
 import { toast } from "sonner";
 import { LayoutManager } from "./LayoutManager";
@@ -396,8 +398,10 @@ const KnowledgeCanvas: React.FC = () => {
       if (!force && lastLayoutFingerprintRef.current === fingerprint) return;
 
       layoutInProgressRef.current = true;
+      let appliedLayoutType: string | undefined = undefined;
       try {
         const layoutType = layoutTypeOverride || (config && (config.currentLayout)) || lm.suggestOptimalLayout();
+        appliedLayoutType = layoutType;
 
         // Ask the layout manager to compute node change objects for the provided nodes/edges.
         const nodeChanges = await lm.applyLayout(layoutType as any, { nodeSpacing: (config && (config.layoutSpacing as any)) || undefined }, {
@@ -445,6 +449,25 @@ const KnowledgeCanvas: React.FC = () => {
         // allow errors to surface in tests
         throw err;
       } finally {
+        // Ensure the React/ReactFlow render has flushed so callers awaiting doLayout
+        // observe the updated positions. Await two animation frames as a deterministic
+        // post-update hook (fallback to setTimeout if RAF unavailable).
+        try {
+          const raf = () =>
+            new Promise((resolve) => {
+              try {
+                requestAnimationFrame(resolve);
+              } catch (_) {
+                setTimeout(resolve, 16);
+              }
+            });
+          // Await two frames to allow React and ReactFlow to apply changes.
+          // eslint-disable-next-line no-await-in-loop
+          await raf();
+          // eslint-disable-next-line no-await-in-loop
+          await raf();
+        } catch (_) { /* ignore RAF failures */ }
+        try { console.debug('canvas.layout.apply.completed', appliedLayoutType); } catch (_) { void 0; }
         lastLayoutFingerprintRef.current = fingerprint;
         layoutInProgressRef.current = false;
       }
@@ -528,6 +551,32 @@ const KnowledgeCanvas: React.FC = () => {
     },
     [exportGraph],
   );
+
+  const exportSvg = useCallback(async () => {
+    try {
+      try { canvasActions.setLoading(true, 10, 'Preparing SVG export...'); } catch (_) { /* ignore */ }
+      await exportSvgFull({ reactFlowContainerSelector: '.knowledge-graph-canvas' });
+      toast.success('SVG exported (full)');
+    } catch (err) {
+      console.error(err);
+      toast.error('SVG export failed');
+    } finally {
+      try { canvasActions.setLoading(false, 0, ''); } catch (_) { /* ignore */ }
+    }
+  }, [canvasActions]);
+
+  const exportPng = useCallback(async (scale = 2) => {
+    try {
+      try { canvasActions.setLoading(true, 10, 'Preparing PNG export...'); } catch (_) { /* ignore */ }
+      await exportPngFull({ reactFlowContainerSelector: '.knowledge-graph-canvas', scale });
+      toast.success('PNG exported (full)');
+    } catch (err) {
+      console.error(err);
+      toast.error('PNG export failed');
+    } finally {
+      try { canvasActions.setLoading(false, 0, ''); } catch (_) { /* ignore */ }
+    }
+  }, [canvasActions]);
 
   const onLoadFile = useCallback(
     async (file: File | any) => {
@@ -719,7 +768,7 @@ const KnowledgeCanvas: React.FC = () => {
               const id = String(m.id);
               const existing = prevById.get(id);
               if (existing) {
-                // Existing node: preserve runtime metadata (position, selected, __rf, etc.)
+                // Existing node: preserve runtime metadata (position, __rf, etc.)
                 // Do NOT overwrite position from the mapper for existing nodes.
                 const item = {
                   ...existing,
@@ -727,6 +776,8 @@ const KnowledgeCanvas: React.FC = () => {
                   position: existing.position || (m && m.position) || { x: 0, y: 0 },
                   data: (m && m.data) ? { ...(m.data) } : { ...(existing.data || {}) },
                 } as any;
+                // Explicitly ensure selection is NOT preserved from existing runtime metadata.
+                try { delete (item as any).selected; } catch (_) { void 0; }
                 changes.push({ id, type: "replace", item });
               } else {
                 // New node: allow mapper-provided position (node position is only passed to new nodes)
@@ -734,6 +785,8 @@ const KnowledgeCanvas: React.FC = () => {
                   ...(m as any),
                   position: (m && m.position) ? m.position : { x: 0, y: 0 },
                 } as any;
+                // New nodes should not start selected.
+                try { delete (item as any).selected; } catch (_) { void 0; }
                 changes.push({ type: "add", item });
               }
             } catch (_) {
@@ -781,6 +834,7 @@ const KnowledgeCanvas: React.FC = () => {
 
       // Signal mapping completion for tests
       try { if (typeof window !== "undefined") (window as any).__VG_LAST_MAPPING_RUN = Date.now(); } catch (_) { void 0; }
+      try { console.debug('canvas.rebuild.end'); } catch (_) { void 0; }
 
       // Schedule layout and queued-apply processing on next tick (ensures state flushed)
       try {
@@ -894,12 +948,16 @@ const KnowledgeCanvas: React.FC = () => {
                       position: existing.position || (m && m.position) || { x: 0, y: 0 },
                       data: (m && m.data) ? { ...(m.data) } : { ...(existing.data || {}) },
                     } as any;
+                    // Ensure selection is not preserved on merges of incoming nodes.
+                    try { delete (item as any).selected; } catch (_) { void 0; }
                     changes.push({ id, type: "replace", item });
                   } else {
                     const item = {
                       ...(m as any),
                       position: (m && m.position) ? m.position : { x: 0, y: 0 },
                     } as any;
+                    // New nodes should not be selected by default.
+                    try { delete (item as any).selected; } catch (_) { void 0; }
                     changes.push({ type: "add", item });
                   }
                 } catch (_) {
@@ -995,6 +1053,7 @@ const KnowledgeCanvas: React.FC = () => {
 
           // Signal mapping completion for tests
           try { if (typeof window !== "undefined") (window as any).__VG_LAST_MAPPING_RUN = Date.now(); } catch (_) { void 0; }
+          try { console.debug('canvas.rebuild.end'); } catch (_) { void 0; }
 
           // Schedule layout against the merged mapper output (next tick so state flushes).
           try {
@@ -1132,7 +1191,7 @@ const KnowledgeCanvas: React.FC = () => {
       if (typeof mgr.offSubjectsChange === "function" && subjectsCallback) {
         mgr.offSubjectsChange(subjectsCallback as any);
       }
-      
+
     };
   }, [getRdfManager, setNodes, setEdges, availableProperties, availableClasses]);
 
@@ -1171,9 +1230,36 @@ const KnowledgeCanvas: React.FC = () => {
       }
     };
 
+    // Programmatic export hooks for automated tests
+    try {
+      (window as any).__VG_EXPORT_SVG_FULL = async () => {
+        try {
+          const svgString = await exportViewportSvgMinimal();
+          return svgString;
+        } catch (e) {
+          try { console.debug('[VG_DEBUG] __VG_EXPORT_SVG_FULL failed', e); } catch (_) { void 0; }
+          throw e;
+        }
+      };
+    } catch (_) { void 0; }
+
+    try {
+      (window as any).__VG_EXPORT_PNG_FULL = async (scale?: number) => {
+        try {
+          const dataUrl = await exportViewportPngMinimal(scale || 2);
+          return dataUrl;
+        } catch (e) {
+          try { console.debug('[VG_DEBUG] __VG_EXPORT_PNG_FULL failed', e); } catch (_) { void 0; }
+          throw e;
+        }
+      };
+    } catch (_) { void 0; }
+
     return () => {
       try { delete (window as any).__VG_KNOWLEDGE_CANVAS_READY; } catch (_) { void 0; }
       try { delete (window as any).__VG_APPLY_LAYOUT; } catch (_) { void 0; }
+      try { delete (window as any).__VG_EXPORT_SVG_FULL; } catch (_) { void 0; }
+      try { delete (window as any).__VG_EXPORT_PNG_FULL; } catch (_) { void 0; }
     };
   }, []);
 
@@ -1985,10 +2071,10 @@ const KnowledgeCanvas: React.FC = () => {
     [setEdges],
   );
 
-  
+
   return (
     <div className="h-lvh h-lvw h-screen bg-canvas-bg relative">
-      <CanvasToolbar
+        <CanvasToolbar
         onAddNode={(payload: any) => {
           let normalizedUri = String(payload && (payload.iri || payload) ? (payload.iri || payload) : "");
           if (!/^https?:\/\//i.test(normalizedUri)) {
@@ -2026,6 +2112,8 @@ const KnowledgeCanvas: React.FC = () => {
         onToggleLegend={handleToggleLegend}
         showLegend={showLegend}
         onExport={handleExport}
+        onExportSvg={exportSvg}
+        onExportPng={exportPng}
         onLoadFile={onLoadFile}
         viewMode={viewMode}
         onViewModeChange={handleViewModeChange}
