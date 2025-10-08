@@ -37,6 +37,17 @@ export class LayoutManager {
     this.diagram = diagram ?? null;
   }
 
+  // Allow wiring a runtime diagram/instance (e.g. a React Flow instance) after construction.
+  // Callers can provide the instance so the LayoutManager can query runtime measurements
+  // (for example React Flow's getNodes/getEdges) before computing layout.
+  public setDiagram(diagram: any) {
+    try {
+      this.diagram = diagram ?? null;
+    } catch {
+      this.diagram = diagram ?? null;
+    }
+  }
+
   // Return a conservative set of supported layouts for the UI
   getAvailableLayouts(): LayoutConfig[] {
     // Reduced set: provide two explicit dagre-driven layouts exposed to the UI.
@@ -115,8 +126,104 @@ export class LayoutManager {
   ): Promise<Array<any>> {
     try {
       // Prefer context-provided nodes/edges, fall back to internal diagram when present.
-      const diagramNodes = (context && Array.isArray(context.nodes) ? context.nodes : (this.diagram && Array.isArray(this.diagram.nodes) ? this.diagram.nodes : [])) || [];
-      const diagramEdges = (context && Array.isArray(context.edges) ? context.edges : (this.diagram && Array.isArray(this.diagram.edges) ? this.diagram.edges : [])) || [];
+      // If a runtime diagram instance is available (for example a React Flow instance),
+      // prefer to query it for nodes/edges so we can read runtime measurement metadata
+      // (e.g. __rf.width/__rf.height). If measurements are not yet present we will await
+      // a short readiness period so layouts use the actual node sizes.
+      let diagramNodes: any[] = [];
+      let diagramEdges: any[] = [];
+
+      if (context && Array.isArray(context.nodes)) {
+        diagramNodes = context.nodes;
+      } else if (this.diagram && typeof (this.diagram as any).getNodes === 'function') {
+        // Attempt to obtain measured nodes from diagram instance.
+        try {
+          diagramNodes = (this.diagram as any).getNodes() || [];
+          // If nodes lack measurement metadata, allow a short wait for measurements to appear.
+          const needsMeasurement = Array.isArray(diagramNodes) && diagramNodes.some((n: any) => {
+            const meta = (n && (n as any).__rf) || {};
+            return typeof meta.width !== 'number' || typeof meta.height !== 'number';
+          });
+          if (needsMeasurement) {
+            // Wait up to a short timeout for measurements to appear, checking every RAF.
+            // Increase timeout slightly and keep it conservative; if measurements still
+            // missing we will attempt a DOM-measurement fallback so layout can use real sizes.
+            const waitForMeasurements = async (timeoutMs = 2000) => {
+              const start = Date.now();
+              const rafWait = () =>
+                new Promise((res) => {
+                  try {
+                    requestAnimationFrame(res);
+                  } catch (_) {
+                    setTimeout(res, 16);
+                  }
+                });
+              while (Date.now() - start < timeoutMs) {
+                // eslint-disable-next-line no-await-in-loop
+                await rafWait();
+                const rechecked = (this.diagram as any).getNodes() || [];
+                const stillMissing = Array.isArray(rechecked) && rechecked.some((n: any) => {
+                  const meta = (n && (n as any).__rf) || {};
+                  return typeof meta.width !== 'number' || typeof meta.height !== 'number';
+                });
+                diagramNodes = rechecked;
+                if (!stillMissing) break;
+              }
+            };
+            // eslint-disable-next-line no-await-in-loop
+            await waitForMeasurements();
+
+            // If measurements are still missing, attempt a best-effort DOM fallback.
+            // This queries the document for node elements using common React Flow data attributes
+            // and patches width/height into the node objects so dagre can use real sizes.
+            try {
+              if (typeof document !== 'undefined' && Array.isArray(diagramNodes)) {
+                const patched = (diagramNodes || []).map((n: any) => {
+                  try {
+                    const meta = (n && (n as any).__rf) || {};
+                    if (typeof meta.width === 'number' && typeof meta.height === 'number') return n;
+                    const id = String(n && n.id);
+                    let el: Element | null = null;
+                    // Try several likely selectors to find the node element in the DOM.
+                    try { el = document.querySelector(`[data-nodeid="${id}"]`) || document.querySelector(`[data-id="${id}"]`) || document.querySelector(`.react-flow__node[data-id="${id}"]`); } catch (_) { el = null; }
+                    if (el && typeof (el as any).getBoundingClientRect === 'function') {
+                      const rect = (el as any).getBoundingClientRect();
+                      const w = (rect && typeof rect.width === 'number') ? Math.round(rect.width) : undefined;
+                      const h = (rect && typeof rect.height === 'number') ? Math.round(rect.height) : undefined;
+                      if (typeof w === 'number' && typeof h === 'number') {
+                        const copy = { ...(n || {}) };
+                        try {
+                          (copy as any).__rf = Object.assign({}, (copy as any).__rf || {}, { width: w, height: h });
+                        } catch (_) { /* ignore */ }
+                        return copy;
+                      }
+                    }
+                  } catch (_) { /* ignore per-node fallback errors */ }
+                  return n;
+                });
+                diagramNodes = patched;
+              }
+            } catch (_) { /* swallow DOM fallback errors */ }
+          }
+        } catch {
+          // fallback to other sources below
+          diagramNodes = [];
+        }
+      } else if (this.diagram && Array.isArray(this.diagram.nodes)) {
+        diagramNodes = this.diagram.nodes;
+      }
+
+      if (context && Array.isArray(context.edges)) {
+        diagramEdges = context.edges;
+      } else if (this.diagram && typeof (this.diagram as any).getEdges === 'function') {
+        try {
+          diagramEdges = (this.diagram as any).getEdges() || [];
+        } catch {
+          diagramEdges = [];
+        }
+      } else if (this.diagram && Array.isArray(this.diagram.edges)) {
+        diagramEdges = this.diagram.edges;
+      }
 
       // Capture current positions (for undo/restore) using either context or diagram snapshot.
       try {

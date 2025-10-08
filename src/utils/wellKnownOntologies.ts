@@ -39,7 +39,7 @@ export const WELL_KNOWN_PREFIXES = [
   { prefix: "foaf", url: "http://xmlns.com/foaf/0.1/", name: "FOAF" },
   {
     prefix: "org",
-    url: "https://www.w3.org/TR/vocab-org/",
+    url: "http://www.w3.org/ns/org#",
     name: "Organization",
   },
   {

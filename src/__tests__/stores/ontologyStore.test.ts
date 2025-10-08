@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useOntologyStore } from "../../stores/ontologyStore";
 import validateGraph from "../../utils/graphValidation";
+import { WELL_KNOWN } from "../../utils/wellKnownOntologies";
+
+// Canonical well-known URLs used by tests
+const foafUrl = (WELL_KNOWN && WELL_KNOWN.prefixes && WELL_KNOWN.prefixes.foaf) || "http://xmlns.com/foaf/0.1/";
+const orgUrl = (WELL_KNOWN && WELL_KNOWN.prefixes && WELL_KNOWN.prefixes.org) || "http://www.w3.org/ns/org#";
 
 describe("Ontology Store", () => {
   beforeEach(() => {
@@ -11,7 +16,7 @@ describe("Ontology Store", () => {
     it("should load mock FOAF ontology", async () => {
       const store = useOntologyStore.getState();
 
-      await store.loadOntology("http://xmlns.com/foaf/0.1/");
+      await store.loadOntology(foafUrl);
 
       // Read fresh state after async load to avoid snapshot issues
       const state = useOntologyStore.getState();
@@ -25,8 +30,8 @@ describe("Ontology Store", () => {
     it("should accumulate multiple ontologies", async () => {
       const store = useOntologyStore.getState();
 
-      await store.loadOntology("http://xmlns.com/foaf/0.1/");
-      await store.loadOntology("https://www.w3.org/TR/vocab-org/");
+      await store.loadOntology(foafUrl);
+      await store.loadOntology(orgUrl);
 
       // Read fresh state after async loads
       const state = useOntologyStore.getState();
@@ -45,7 +50,7 @@ describe("Ontology Store", () => {
   describe("validateGraph", () => {
     it("should validate nodes against loaded classes", async () => {
       const store = useOntologyStore.getState();
-      await store.loadOntology("http://xmlns.com/foaf/0.1/");
+      await store.loadOntology(foafUrl);
 
       const nodes = [
         { id: "node1", data: { classType: "Person", namespace: "foaf" } },
@@ -65,7 +70,7 @@ describe("Ontology Store", () => {
 
     it("should validate property domain and range", async () => {
       const store = useOntologyStore.getState();
-      await store.loadOntology("http://xmlns.com/foaf/0.1/");
+      await store.loadOntology(foafUrl);
 
       const nodes = [
         { id: "node1", data: { classType: "Person", namespace: "foaf" } },
@@ -91,7 +96,7 @@ describe("Ontology Store", () => {
   describe("getCompatibleProperties", () => {
     it("should return compatible properties for class pair", async () => {
       const store = useOntologyStore.getState();
-      await store.loadOntology("http://xmlns.com/foaf/0.1/");
+      await store.loadOntology(foafUrl);
 
       const properties = store.getCompatibleProperties(
         "foaf:Person",
@@ -104,7 +109,7 @@ describe("Ontology Store", () => {
 
     it("should handle empty restrictions", async () => {
       const store = useOntologyStore.getState();
-      await store.loadOntology("http://xmlns.com/foaf/0.1/");
+      await store.loadOntology(foafUrl);
 
       const properties = store.getCompatibleProperties(
         "unknown:Class1",

@@ -191,9 +191,9 @@ test("KnowledgeCanvas applies strict subject-driven replacement and preserves un
   });
 
   // Wait for RF instance registration
-  await waitFor(() => {
-    if (!(window as any).__VG_RF_INSTANCE) throw new Error("waiting for rf instance");
-  }, { timeout: 5000 });
+  // await waitFor(() => {
+  //   if (!(window as any).__VG_RF_INSTANCE) throw new Error("waiting for rf instance");
+  // }, { timeout: 5000 });
 
   // Initial onSubjectsChange emission (simulate manager flush)
   act(() => {

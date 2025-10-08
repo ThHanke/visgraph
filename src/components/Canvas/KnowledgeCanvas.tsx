@@ -382,6 +382,13 @@ const KnowledgeCanvas: React.FC = () => {
 
       const lm = layoutManagerRef.current;
       if (!lm) return;
+      // If we have a live React Flow instance, wire it into the LayoutManager so
+      // the manager can read runtime measurement metadata (e.g. __rf.width/height).
+      try {
+        if (reactFlowInstance && reactFlowInstance.current && typeof lm.setDiagram === 'function') {
+          try { lm.setDiagram(reactFlowInstance.current); } catch (_) { /* ignore */ }
+        }
+      } catch (_) { /* ignore */ }
 
       const fingerprintParts: string[] = [];
       for (const n of candidateNodes || []) {
@@ -633,6 +640,14 @@ const KnowledgeCanvas: React.FC = () => {
 
   const onInit = useCallback((instance: ReactFlowInstance) => {
     reactFlowInstance.current = instance;
+    // Ensure the LayoutManager has access to the React Flow instance so it can
+    // obtain DOM-measured node sizes before computing layouts.
+    try {
+      const lm = layoutManagerRef.current;
+      if (lm && typeof (lm as any).setDiagram === 'function') {
+        try { (lm as any).setDiagram(instance); } catch (_) { /* ignore */ }
+      }
+    } catch (_) { /* ignore */ }
     if (typeof window !== "undefined") (window as any).__VG_RF_INSTANCE = instance;
   }, []);
 
@@ -767,14 +782,14 @@ const KnowledgeCanvas: React.FC = () => {
             try {
               const id = String(m.id);
               const existing = prevById.get(id);
-              if (existing) {
+                if (existing) {
                 // Existing node: preserve runtime metadata (position, __rf, etc.)
                 // Do NOT overwrite position from the mapper for existing nodes.
                 const item = {
                   ...existing,
                   type: m.type || existing.type,
                   position: existing.position || (m && m.position) || { x: 0, y: 0 },
-                  data: (m && m.data) ? { ...(m.data) } : { ...(existing.data || {}) },
+                  data: { ...(existing.data || {}), ...(m && m.data ? m.data : {}) },
                 } as any;
                 // Explicitly ensure selection is NOT preserved from existing runtime metadata.
                 try { delete (item as any).selected; } catch (_) { void 0; }
@@ -946,7 +961,7 @@ const KnowledgeCanvas: React.FC = () => {
                       ...existing,
                       type: m.type || existing.type,
                       position: existing.position || (m && m.position) || { x: 0, y: 0 },
-                      data: (m && m.data) ? { ...(m.data) } : { ...(existing.data || {}) },
+                      data: { ...(existing.data || {}), ...(m && m.data ? m.data : {}) },
                     } as any;
                     // Ensure selection is not preserved on merges of incoming nodes.
                     try { delete (item as any).selected; } catch (_) { void 0; }
@@ -969,6 +984,33 @@ const KnowledgeCanvas: React.FC = () => {
               return applyNodeChanges(changes as any, prevArr);
             });
           } catch (_) { /* ignore node update failures */ }
+
+          // Post-merge defensive update:
+          // Ensure mapper-provided data fields (e.g. label) are propagated into
+          // the React Flow state instance. Some environments (test harnesses)
+          // can observe the RF instance directly — merge mapped node data into
+          // the existing RF nodes asynchronously so tests and runtime consumers
+          // see updated data like rdfs:label.
+          try {
+            setTimeout(() => {
+              try {
+                setNodes((prev = []) => {
+                  const prevArr = prev || [];
+                  return prevArr.map((n: any) => {
+                    const m = mappedById.get(String(n.id));
+                    if (m && m.data) {
+                      try {
+                        return { ...(n || {}), data: { ...(n.data || {}), ...(m.data || {}) } };
+                      } catch (_) {
+                        return n;
+                      }
+                    }
+                    return n;
+                  });
+                });
+              } catch (_) { /* ignore */ }
+            }, 0);
+          } catch (_) { /* ignore */ }
 
           // Do not remove edges here — the mapper merge below will update/add edges.
           // Removing edges that reference changed subjects can drop edges when the mapper
@@ -1275,6 +1317,11 @@ const KnowledgeCanvas: React.FC = () => {
           (useAppConfigStore as any).getState
             ? (useAppConfigStore as any).getState().config
             : config;
+        // Debug: log persisted config snapshot so test runs can verify whether
+        // persistedAutoload/additionalOntologies were read by the canvas at init time.
+        try {
+          try { console.debug('[VG_DEBUG] __VG_INIT_APP.config_snapshot', { persistedAutoload: !!cfg?.persistedAutoload, additionalOntologies: cfg?.additionalOntologies }); } catch (_) { void 0; }
+        } catch (_) { /* swallow debug failures */ }
         const additional = Array.isArray(cfg?.additionalOntologies)
           ? cfg.additionalOntologies.filter(Boolean)
           : [];
