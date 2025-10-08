@@ -646,6 +646,16 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     logCallGraph?.("loadKnowledgeGraph:start", source);
     const timeout = options?.timeout || 30000;
 
+    // If a consumer (e.g. the canvas) has exposed the global helper to request that
+    // the next mapping run performs layout, invoke it now at the start of the load.
+    // This ensures layout is requested exactly when a knowledge-graph load begins,
+    // and that the mapping scheduler will run layout after mapper output is merged.
+    try {
+      if (typeof window !== "undefined" && typeof (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING === "function") {
+        try { (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING(); } catch (_) { /* ignore */ }
+      }
+    } catch (_) { /* ignore global helper invocation failures */ }
+
     try {
       // If source is a URL, delegate fetching/parsing to rdfManager and then run a single authoritative fat-map rebuild.
       if (source.startsWith("http://") || source.startsWith("https://")) {
