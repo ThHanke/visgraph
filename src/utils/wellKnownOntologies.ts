@@ -43,6 +43,16 @@ export const WELL_KNOWN_PREFIXES = [
     name: "Organization",
   },
   {
+    prefix: "pmdco",
+    url: "https://w3id.org/pmd/co/",
+    name: "PMD Core",
+  },
+  {
+    prefix: "tto",
+    url: "https://w3id.org/pmd/ao/tto/",
+    name: "PMD Tensile Test",
+  },
+  {
     prefix: "iof-core",
     url: "https://spec.industrialontologies.org/ontology/core/Core/",
     name: "IOF Core",
