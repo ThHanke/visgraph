@@ -5,6 +5,7 @@ import react from "@vitejs/plugin-react-swc";
 import tailwind from "@tailwindcss/vite";
 import path from "path";
 import fs from "fs";
+import { nodePolyfills } from 'vite-plugin-node-polyfills'
 
 // Vite dev server proxy helper:
 // We expose a small dev-only endpoint at /__external?url=<encoded-url>
@@ -44,7 +45,8 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [
     react(),
-    tailwind()
+    tailwind(),
+    nodePolyfills(),
   ],
   resolve: {
     alias: {

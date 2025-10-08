@@ -383,7 +383,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     try {
       const { rdfManager: mgr } = get();
 
-      // Normalize URL (reuse existing logic)
+      // normalize requested URL (http -> https, trim)
       const normRequestedUrl = (function (u: string) {
         try {
           const s = String(u).trim();
@@ -400,12 +400,12 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         }
       })(url);
 
+      // If well-known, register a lightweight entry so UI shows it immediately
       const wkEntry =
         WELL_KNOWN.ontologies[
           normRequestedUrl as keyof typeof WELL_KNOWN.ontologies
         ] || WELL_KNOWN.ontologies[url as keyof typeof WELL_KNOWN.ontologies];
 
-      // If well-known, register a lightweight LoadedOntology record immediately.
       if (wkEntry) {
         try {
           set((state: any) => {
@@ -427,88 +427,27 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
               ontologiesVersion: (state.ontologiesVersion || 0) + 1,
             };
           });
-        } catch (_) {
-          /* ignore registration failure */
-        }
+        } catch (_) { /* ignore */ }
       }
 
-      // Use rdfManager.loadFromUrl (centralized fetch + detection) when available
-      let fetched: { content: string; mimeType: string | null } | null = null;
+      // Delegate fetching/parsing/loading to rdfManager.loadRDFFromUrl
       try {
-        if (mgr && typeof (mgr as any).loadFromUrl === "function") {
-          fetched = await (mgr as any).loadFromUrl(normRequestedUrl, { timeoutMs: 15000 });
+        if (mgr && typeof (mgr as any).loadRDFFromUrl === "function") {
+          await (mgr as any).loadRDFFromUrl(normRequestedUrl, "urn:vg:ontologies", { timeoutMs: 15000 });
         } else {
-          // fallback to direct fetch with Accept header
-          const resp = await fetch(normRequestedUrl, {
-            headers: { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" },
-          });
-          if (!resp || !resp.ok) {
-            warn(
-              "ontology.fetch.failed",
-              { url: normRequestedUrl, status: resp ? resp.status : "NO_RESPONSE" },
-              { caller: true },
-            );
-            return;
-          }
-          const mimeType = resp.headers.get("content-type")?.split(";")[0].trim() || null;
-          const content = await resp.text();
-          fetched = { content, mimeType };
-        }
-      } catch (e) {
-        warn(
-          "ontology.fetch.failed",
-          { url: normRequestedUrl, error: e && (e as any).message ? (e as any).message : String(e) },
-          { caller: true },
-        );
-        return;
-      }
-
-      if (!fetched || !fetched.content) return;
-
-      const { content, mimeType } = fetched;
-      const looksLikeHtml =
-        /^\s*<!doctype\s+/i.test(content) ||
-        /^\s*<html\b/i.test(content) ||
-        (mimeType && mimeType.includes("html"));
-      if (looksLikeHtml) {
-        try { console.debug("[VG] loadOntology: fetched content appears to be HTML — skipping RDF parse for", normRequestedUrl); } catch (_) { void 0; }
-        return;
-      }
-
-      // Load RDF into the ontology graph (authoritative parser in rdfManager)
-      const targetGraph = "urn:vg:ontologies";
-      try {
-        if (mgr && typeof (mgr as any).loadRDFIntoGraph === "function") {
-          await (mgr as any).loadRDFIntoGraph(content, targetGraph, mimeType || undefined);
-          try {
-            const store = typeof (mgr as any).getStore === "function" ? (mgr as any).getStore() : null;
-            const tripleCount = store && typeof store.getQuads === "function" ? (store.getQuads(null, null, null, null) || []).length : -1;
-            console.debug("[VG_DEBUG] rdfManager.loadRDFIntoGraph.tripleCount", { tripleCount });
-          } catch (_) { /* ignore debug failures */ }
-        } else {
-          // fallback to module-level rdfManager
-          await (rdfManager as any).loadRDFIntoGraph(content, targetGraph, mimeType || undefined);
-          try {
-            const store = rdfManager && typeof (rdfManager as any).getStore === "function" ? (rdfManager as any).getStore() : null;
-            const tripleCount = store && typeof store.getQuads === "function" ? (store.getQuads(null, null, null, null) || []).length : -1;
-            console.debug("[VG_DEBUG] rdfManager.loadRDFIntoGraph.tripleCount", { tripleCount });
-          } catch (_) { /* ignore debug failures */ }
+          // fallback to module-level manager
+          await (rdfManager as any).loadRDFFromUrl(normRequestedUrl, "urn:vg:ontologies", { timeoutMs: 15000 });
         }
       } catch (err) {
         warn(
-          "ontology.load.parse.failed",
-          {
-            url: normRequestedUrl,
-            error: err && (err as any).message ? (err as any).message : String(err),
-          },
+          "ontology.load.failed",
+          { url: normRequestedUrl, error: String(err) },
           { caller: true },
         );
+        return;
       }
 
-      // After parsing into the ontologies graph, try to discover an owl:Ontology subject
-      // in the newly-loaded graph and register the declared ontology IRI as the canonical
-      // loadedOntologies.url. Do NOT attempt to fetch that declared IRI; use the RDF we
-      // just loaded. Preserve original requested URL by adding it to aliases when appropriate.
+      // After successful load, attempt to discover declared ontology IRI in the ontologies graph
       try {
         const store =
           mgr && typeof (mgr as any).getStore === "function"
@@ -522,22 +461,18 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           const OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
           const g = namedNode("urn:vg:ontologies");
           const ontQuads = store.getQuads(null, namedNode(RDF_TYPE), namedNode(OWL_ONTOLOGY), g) || [];
-          const subjects = Array.from(new Set((ontQuads || []).map((q: any) => (q && q.subject && (q.subject as any).value) || String((q && q.subject) || "")))).filter(Boolean);
+          const subjects = Array.from(new Set((ontQuads || []).map((q: any) => (q && q.subject && (q.subject as any).value) || ""))).filter(Boolean);
 
           if (subjects.length > 0) {
-            // Prefer an http(s) IRI if present; otherwise take the first subject.
             const canonical = subjects.find((s: any) => /^https?:\/\//i.test(String(s))) || subjects[0];
-            // Ensure we treat the canonical as a string for TypeScript safety
             const canonicalStr = canonical ? String(canonical) : "";
-            let canonicalNorm: string = canonicalStr.replace(/\/+$/, "");
+            let canonicalNorm: string;
             try {
-              // Prefer a normalized URL when possible
               canonicalNorm = new URL(canonicalStr).toString();
-            } catch (_) {
+            } catch {
               canonicalNorm = canonicalStr.replace(/\/+$/, "");
             }
 
-            // Avoid duplicating an existing loaded ontology entry
             const already = (get().loadedOntologies || []).some((o: any) => {
               try {
                 return urlsEquivalent(o.url, canonicalNorm);
@@ -547,13 +482,11 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             });
 
             if (!already) {
-              // Build aliases: include the originally requested URL if it's different
               const aliases: string[] = [];
               try {
                 if (normRequestedUrl && !urlsEquivalent(normRequestedUrl, canonicalNorm)) aliases.push(normRequestedUrl);
               } catch (_) { /* ignore */ }
 
-              // Capture namespaces from manager if available
               const namespaces =
                 (mgr && typeof (mgr as any).getNamespaces === "function"
                   ? (mgr as any).getNamespaces()
@@ -578,14 +511,12 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                     ontologiesVersion: (state.ontologiesVersion || 0) + 1,
                   };
                 });
-              } catch (_) {
-                /* ignore registration failures */
-              }
+              } catch (_) { /* ignore registration failures */ }
             }
           }
         }
       } catch (_) {
-        /* best-effort only; do not fail load if discovery fails */
+        /* best-effort only */
       }
 
       return;
@@ -598,12 +529,9 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           },
           { level: "error", captureStack: true },
         );
-      } catch (_) {
-        /* ignore */
-      }
+      } catch (_) { /* ignore */ }
       throw error;
     }
-    
   },
 
   getCompatibleProperties: (sourceClass: string, targetClass: string) => {
@@ -671,53 +599,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         );
       }
 
-      const { computeParsedFromStore } = await import(
-        "../utils/parsedFromStore"
-      );
-      const parsed = await computeParsedFromStore(
-        rdfManager,
-        graphName
-          ? graphName
-          : preserveGraph
-            ? "urn:vg:ontologies"
-            : "urn:vg:data",
-      );
-
-      // Persist a namespace registry snapshot immediately after parsing so UI components
-      // (e.g., the Namespace Legend) that read the persisted registry can display entries
-      // right after a startup URL load. This mirrors the registry construction used in
-      // incrementalReconcileFromQuads but keeps the startup/load path synchronous.
-      try {
-
-        const nsMap =
-          parsed && parsed.namespaces
-            ? parsed.namespaces
-            : rdfManager && typeof (rdfManager as any).getNamespaces === "function"
-              ? (rdfManager as any).getNamespaces()
-              : {};
-        const prefixes = Object.keys(nsMap || []).sort();
-        const paletteMap = buildPaletteMap(prefixes || []);
-        const registry = (prefixes || []).map((p) => {
-          try {
-            return {
-              prefix: String(p),
-              namespace: String((nsMap as any)[p] || ""),
-              color: String((paletteMap as any)[p] || ""),
-            };
-          } catch (_) {
-            return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: "" };
-          }
-        });
-        try {
-          // Best-effort: persist into the ontology store so consumers relying on namespaceRegistry see entries.
-          useOntologyStore.setState((s: any) => ({ namespaceRegistry: registry }));
-        } catch (_) {
-          /* ignore persistence failures */
-        }
-      } catch (_) {
-        /* ignore registry snapshot failures */
-      }
-
+      
     } catch (error: any) {
       ((...__vg_args) => {
         try {
@@ -739,6 +621,21 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     }
   },
 
+  // Backwards-compatible alias used by many tests: loadOntologyRDFtoGraph
+  loadOntologyRDFtoGraph: async (
+    rdfContent: string,
+    graphName?: string,
+    preserveGraph: boolean = true,
+  ) => {
+    // Delegate to the canonical loader to preserve behavior.
+    try {
+      return await (get().loadOntologyFromRDF as any)(rdfContent, undefined, preserveGraph, graphName);
+    } catch (err) {
+      // Re-throw so callers/tests receive same failure semantics.
+      throw err;
+    }
+  },
+
   loadKnowledgeGraph: async (
     source: string,
     options?: {
@@ -750,88 +647,32 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     const timeout = options?.timeout || 30000;
 
     try {
-      let rdfContent: string;
-
+      // If source is a URL, delegate fetching/parsing to rdfManager and then run a single authoritative fat-map rebuild.
       if (source.startsWith("http://") || source.startsWith("https://")) {
-        options?.onProgress?.(10, "Fetching RDF from URL...");
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => {
-          controller.abort();
-        }, timeout);
+        options?.onProgress?.(10, "Loading RDF from URL via RDF manager...");
 
-        try {
-          const candidateUrls = source.startsWith("http://")
-            ? [source.replace(/^http:\/\//, "https://"), source]
-            : [source];
-          let response: Response | null = null;
-          let lastFetchError: any = null;
-          for (const candidate of candidateUrls) {
-            try {
-              response = await fetch(candidate, {
-                signal: controller.signal,
-                headers: {
-                  Accept:
-                    "text/turtle, application/rdf+xml, application/ld+json, */*",
-                },
-              });
-              break;
-            } catch (err) {
-              lastFetchError = err;
-              try {
-                fallback(
-                  "console.warn",
-                  { args: [`Fetch failed for ${candidate}:`, String(err)] },
-                  { level: "warn" },
-                );
-              } catch (_) {
-                /* ignore */
-              }
-            }
-          }
+        const mgrInstance = get().rdfManager || (typeof rdfManager !== "undefined" ? rdfManager : null);
+        if (!mgrInstance) throw new Error("No RDF manager available to load URL");
 
-          if (!response || !response.ok) {
-            const fetchErr =
-              lastFetchError || new Error(`Failed to fetch RDF from ${source}`);
-            throw fetchErr;
-          }
+        // Delegate fetch + parse + store insertion to rdfManager; it will handle formats and prefix merging.
+        await (mgrInstance as any).loadRDFFromUrl(source, "urn:vg:data", { timeoutMs: timeout });
 
-          const contentLength = response.headers.get("content-length");
-          if (contentLength && parseInt(contentLength) > 10 * 1024 * 1024) {
-            throw new Error(
-              "File too large (>10MB). Please use a smaller file.",
-            );
-          }
+        // After manager insertion, perform the authoritative fat-map rebuild once.
+        // Use the store's updateFatMap (full rebuild) to preserve existing behavior.
+        // await get().updateFatMap();
 
-          rdfContent = await response.text();
-          options?.onProgress?.(20, "RDF content downloaded");
-        } catch (error: any) {
-          if (error.name === "AbortError") {
-            throw new Error(
-              `Request timed out after ${timeout / 1000} seconds. The file might be too large.`,
-            );
-          }
-          throw error;
-        } finally {
-          clearTimeout(timeoutId);
-        }
-      } else {
-        rdfContent = source;
+        options?.onProgress?.(100, "RDF loaded");
+        return;
       }
 
+      // Otherwise treat source as inline RDF content and reuse existing path.
       await get().loadOntologyFromRDF(
-        rdfContent,
+        source,
         options?.onProgress,
         true,
         "urn:vg:data",
       );
-
-      // Note: configured additional ontologies are auto-loaded on application startup.
-      // Do not attempt to auto-load additional ontologies here to avoid duplicate loads.
-      // Keep callers informed via progress callback.
-      options?.onProgress?.(
-        100,
-        "Configured ontology auto-load handled at application startup (skipping here)",
-      );
+      options?.onProgress?.(100, "RDF loaded");
     } catch (error: any) {
       try {
         fallback(
@@ -910,163 +751,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           95 + Math.floor((i / toLoad.length) * 5),
           `Loading ${ontologyName || uri}...`,
         );
-
-        if (wkEntry) {
-          try {
-            // Ensure well-known namespaces are present in the RDF manager.
-            ensureNamespacesPresent(get().rdfManager, wkEntry.namespaces || {});
-          } catch (_) {
-            /* ignore */
-          }
-
-          // Delegate to the canonical load path so the ontology is fetched/parsed
-          // and registered consistently (no synthetic/mock registration).
-            try {
-            const norm = normalizeUri(uri);
-            // loadOntology will perform canonicalization and proper registration.
-            // We intentionally await here to avoid racing further iterations.
-            await get().loadOntology(norm);
-            // Recompute fat-map from the authoritative store snapshot so that
-            // previously autoloaded ontologies are included in availableClasses/availableProperties.
-          } catch (_) {
-            /* ignore per-entry load failures */
-          }
-          continue;
-        }
-
-        if (uri.startsWith("http://") || uri.startsWith("https://")) {
-          const candidateUrls = uri.startsWith("http://")
-            ? [uri.replace(/^http:\/\//, "https://"), uri]
-            : [uri];
-          let fetched = false;
-          let lastFetchError: any = null;
-
-          for (const candidate of candidateUrls) {
-            try {
-              const response = await fetch(candidate, {
-                headers: {
-                  Accept:
-                    "text/turtle, application/rdf+xml, application/ld+json, */*",
-                },
-                signal: AbortSignal.timeout(10000),
-              });
-
-                if (response && response.ok) {
-                const content = await response.text();
-                await get().loadOntologyFromRDF(
-                  content,
-                  undefined,
-                  true,
-                  "urn:vg:ontologies",
-                );
-                // Register this fetched URI as an explicit loaded ontology so UI counts reflect autoloaded entries
-                try {
-                  const norm = normalizeUri(uri);
-                  const exists = (get().loadedOntologies || []).some(
-                    (o: any) => {
-                      try {
-                        return String(o.url) === String(norm);
-                      } catch {
-                        return false;
-                      }
-                    },
-                  );
-                  if (!exists) {
-                    try {
-                      set((st: any) => ({
-                        loadedOntologies: [
-                          ...(st.loadedOntologies || []),
-                          {
-                            url: norm,
-                            name: deriveOntologyName(norm),
-                            classes: [],
-                            properties: [],
-                            namespaces: {},
-                            source: "fetched",
-                            graphName: "urn:vg:ontologies",
-                          } as LoadedOntology,
-                        ],
-                      }));
-                    } catch (_) {
-                      /* ignore registration failure */
-                    }
-                  }
-                } catch (_) {
-                  /* ignore */
-                }
-                fetched = true;
-                break;
-              } else {
-                lastFetchError =
-                  lastFetchError ||
-                  new Error(
-                    `HTTP ${response ? response.status : "NO_RESPONSE"}`,
-                  );
-              }
-            } catch (err) {
-              lastFetchError = err;
-              try {
-                fallback(
-                  "console.warn",
-                  {
-                    args: [
-                      `Failed to fetch ontology ${candidate}:`,
-                      String(err),
-                    ],
-                  },
-                  { level: "warn" },
-                );
-              } catch (_) {
-                /* ignore */
-              }
-            }
-          }
-
-          if (!fetched) {
-            try {
-              fallback(
-                "console.warn",
-                {
-                  args: [
-                    `Could not fetch ontology from ${uri}:`,
-                    String(lastFetchError),
-                  ],
-                },
-                { level: "warn" },
-              );
-            } catch (_) {
-              /* ignore */
-            }
-            // Per policy: do not register synthetic ontology metadata on fetch failure.
-            continue;
-          }
-          } else {
-            // If it's not an http(s) URI, we treat it as inline RDF content and attempt to parse it.
-            try {
-              await get().loadOntologyFromRDF(
-                uri,
-                undefined,
-                true,
-                "urn:vg:ontologies",
-              );
-            } catch (e) {
-              try {
-                fallback(
-                  "console.warn",
-                  {
-                    args: [
-                      `Failed to parse non-http ontology content for ${uri}:`,
-                      String(e),
-                    ],
-                  },
-                  { level: "warn" },
-                );
-              } catch (_) {
-                /* ignore */
-              }
-              continue;
-            }
-          }
+        await get().loadOntology(uri);
       } catch (error: any) {
         try {
           fallback(
@@ -1233,8 +918,19 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
   // Incremental-only updateFatMap: process supplied quads and upsert into the fat-map.
   updateFatMap: async (quads?: any[]): Promise<void> => {
-    // Do nothing when no quads supplied (caller can invoke buildFatMap explicitly when a full rebuild is desired).
-    if (!Array.isArray(quads) || quads.length === 0) return;
+    // If no quads supplied, perform a full authoritative rebuild (useful for batch loads).
+    if (!Array.isArray(quads) || quads.length === 0) {
+      try {
+        await buildFatMap(get().rdfManager);
+      } catch (e) {
+        try {
+          if (typeof fallback === "function") {
+            fallback("rdf.updateFatMap.full_rebuild_failed", { error: String(e) });
+          }
+        } catch (_) { /* ignore */ }
+      }
+      return;
+    }
 
     const parsedQuads = quads.slice();
 

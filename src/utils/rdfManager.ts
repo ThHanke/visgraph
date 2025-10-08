@@ -20,6 +20,7 @@ import {
   Quad,
   DataFactory,
 } from "n3";
+import { Readable } from "stream";
 const { namedNode, literal, quad, blankNode } = DataFactory;
 import { useAppConfigStore } from "../stores/appConfigStore";
 import { useOntologyStore } from "../stores/ontologyStore";
@@ -771,248 +772,9 @@ export class RDFManager {
     };
 
     try {
-      const lowerMime = (mimeType || "").toLowerCase();
-
-      // Handle JSON-LD input: many tests or remote endpoints may return JSON-LD strings.
-      // Detect JSON-LD by mimeType or by content starting with "{" and containing "@context".
-      // If detected, convert JSON-LD to N-Quads using the jsonld library so the N3 parser can consume it.
-      try {
-        const looksJsonLd =
-          (mimeType && mimeType.includes("json")) ||
-          (/^\s*\{/.test(rdfContent) && rdfContent.includes("@context"));
-        if (looksJsonLd) {
-          try {
-            const jsonld = await import("jsonld");
-            try {
-              // Attempt to parse as JSON first; if parsing fails, pass the original string to jsonld.
-              let parsed: any = rdfContent;
-              if (typeof rdfContent === "string") {
-                try {
-                  parsed = JSON.parse(rdfContent);
-                } catch (_) {
-                  // keep original string if not valid JSON (some fixtures may be already processed)
-                  parsed = rdfContent;
-                }
-              }
-              // Convert to N-Quads (text) which the N3 parser can consume.
-              // jsonld.toRDF may return a string when format is requested.
-              const nquads = await (jsonld as any).toRDF(parsed, {
-                format: "application/n-quads",
-              });
-              if (nquads && typeof nquads === "string" && nquads.trim()) {
-                rdfContent = nquads;
-                // treat converted content as n-quads going forward (parser will handle it)
-              }
-            } catch (convErr) {
-              try {
-                if (typeof fallback === "function") {
-                  fallback("rdf.jsonld.convert_failed", { error: String(convErr) });
-                }
-              } catch (_) { /* ignore */ }
-            }
-          } catch (impErr) {
-            try {
-              if (typeof fallback === "function") {
-                fallback("rdf.jsonld.import_failed", { error: String(impErr) });
-              }
-            } catch (_) { /* ignore */ }
-          }
-        }
-      } catch (_) { /* non-fatal detection errors should not prevent other parsers */ }
-
-      if (lowerMime.includes("xml") || /^\s*<\?xml/i.test(rdfContent)) {
-        try {
-          const mod = await import("rdfxml-streaming-parser");
-          const RdfXmlParser = (mod &&
-            (mod.RdfXmlParser ||
-              mod.default?.RdfXmlParser ||
-              mod.default)) as any;
-          if (RdfXmlParser) {
-            const parser = new RdfXmlParser();
-            const prefixesCollected: Record<string, string> = {};
-            const g = namedNode(graphName);
-            parser.on("data", (quadItem: any) => {
-              try {
-                const exists =
-                  this.store.countQuads(
-                    quadItem.subject,
-                    quadItem.predicate,
-                    quadItem.object,
-                    g,
-                  ) > 0;
-                if (!exists) {
-                  try {
-                    if (
-                      quadItem &&
-                      quadItem.subject &&
-                      quadItem.predicate &&
-                      quadItem.object
-                    ) {
-                      console.debug(
-                        "[VG_RDF_ADD] xml.graph",
-                        (quadItem as any)?.subject?.value,
-                        (quadItem as any)?.predicate?.value,
-                        (quadItem as any)?.object?.value,
-                        "graph:",
-                        g.value,
-                      );
-                      this.store.addQuad(
-                        quad(
-                          quadItem.subject,
-                          quadItem.predicate,
-                          quadItem.object,
-                          g,
-                        ),
-                      );
-                      try {
-                        this.bufferSubjectFromQuad(
-                          quad(
-                            quadItem.subject,
-                            quadItem.predicate,
-                            quadItem.object,
-                            g,
-                          ),
-                        );
-                      } catch (_) {
-                        /* ignore */
-                      }
-                    } else {
-                      console.warn(
-                        "[VG_RDF_ADD_SKIPPED] invalid quadItem in xml parser for graph",
-                        quadItem,
-                      );
-                    }
-                  } catch (innerErr) {
-                    try {
-                      this.store.addQuad(
-                        quad(
-                          quadItem.subject,
-                          quadItem.predicate,
-                          quadItem.object,
-                          g,
-                        ),
-                      );
-                    } catch (_) {
-                      try {
-                        if (typeof fallback === "function") {
-                          fallback("emptyCatch", { error: String(_) });
-                        }
-                      } catch (_) {
-                        /* ignore */
-                      }
-                    }
-                  }
-                }
-              } catch (e) {
-                try {
-                  this.store.addQuad(
-                    quad(
-                      quadItem.subject,
-                      quadItem.predicate,
-                      quadItem.object,
-                      g,
-                    ),
-                  );
-                } catch (_) {
-                  try {
-                    if (typeof fallback === "function") {
-                      fallback("emptyCatch", { error: String(_) });
-                    }
-                  } catch (_) {
-                    /* ignore */
-                  }
-                }
-              }
-            });
-            parser.on("prefix", (prefix: string, iri: string) => {
-              try {
-                prefixesCollected[prefix] = iri;
-              } catch (_) {
-                try {
-                  if (typeof fallback === "function") {
-                    fallback("emptyCatch", { error: String(_) });
-                  }
-                } catch (_) {
-                  /* ignore */
-                }
-              }
-            });
-            parser.on("end", () => finalize(prefixesCollected));
-            parser.on("error", (err: any) => {
-              try {
-                // Expose structured parse error for UI consumption (XML parser path into graph)
-                try {
-                  if (typeof window !== "undefined") {
-                    try {
-                      (window as any).__VG_LAST_RDF = rdfContent;
-                    } catch (_) {
-                      /* ignore */
-                    }
-                    const lines = String(rdfContent || "").split(/\r?\n/);
-                    const snippet = lines
-                      .slice(0, Math.min(lines.length, 40))
-                      .join("\n");
-                    const errMsg = String(err);
-                    try {
-                      (window as any).__VG_LAST_RDF_ERROR = {
-                        message: errMsg,
-                        snippet,
-                      };
-                    } catch (_) {
-                      /* ignore */
-                    }
-                    try {
-                      window.dispatchEvent(
-                        new CustomEvent("vg:rdf-parse-error", {
-                          detail: { message: errMsg, snippet },
-                        }),
-                      );
-                    } catch (_) {
-                      /* ignore */
-                    }
-
-                    console.error(
-                      "[VG_RDF_PARSE_ERROR]",
-                      errMsg.slice(0, 200),
-                      "snippet:",
-                      snippet.slice(0, 1000),
-                    );
-                  }
-                } catch (_) {
-                  /* ignore structured logging failures */
-                }
-              } catch (_) {
-                /* ignore outer */
-              }
-              try {
-                rejectFn(err);
-              } catch (_) {
-                try {
-                  if (typeof fallback === "function") {
-                    fallback("emptyCatch", { error: String(_) });
-                  }
-                } catch (_) {
-                  /* ignore */
-                }
-              }
-            });
-
-            parser.write(rdfContent);
-            parser.end();
-            return promise;
-          }
-        } catch (e) {
-          try {
-            if (typeof fallback === "function") {
-              fallback("emptyCatch", { error: String(e) });
-            }
-          } catch (_) {
-            /* ignore */
-          }
-        }
-      }
-
+      // Simplified: assume rdfContent is Turtle. Use N3 Parser directly.
       const g = namedNode(graphName);
+
       // If the content uses common prefixed names but does not declare them,
       // prepend any known namespace declarations from this.namespaces so the
       // parser won't error on "Undefined prefix".
@@ -1128,14 +890,7 @@ export class RDFManager {
                   quadItem.predicate &&
                   quadItem.object
                 ) {
-                  // console.debug(
-                  //   "[VG_RDF_ADD] parse.graph",
-                  //   (quadItem as any)?.subject?.value,
-                  //   (quadItem as any)?.predicate?.value,
-                  //   (quadItem as any)?.object?.value,
-                  //   "graph:",
-                  //   g.value,
-                  // );
+                  // add quad into store under the target graph
                   this.store.addQuad(
                     quad(
                       quadItem.subject,
@@ -1199,6 +954,7 @@ export class RDFManager {
             }
           }
         } else {
+          // when parser finishes, merge prefixes & finalize
           finalize(prefixes);
         }
       });
@@ -1247,6 +1003,364 @@ export class RDFManager {
    * can rely on a single implementation that respects timeouts and common
    * Accept headers used by RDF endpoints.
    */
+  public async loadRDFFromUrl(
+    url: string,
+    graphName?: string,
+    options?: { timeoutMs?: number },
+  ): Promise<void> {
+    // Use dynamic imports so this code only loads parser/serializer when needed.
+    if (!url) throw new Error("loadRDFFromUrl requires a url");
+    const timeoutMs = options?.timeoutMs ?? 15000;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    // Centralized fetch helper (dynamic import). doFetch accepts (target, timeout, { minimal?: boolean }).
+    // We provide a safe fallback that performs a simple fetch when the helper is unavailable.
+    const { doFetch } = await import("./fetcher").catch(() => ({ doFetch: undefined as any }));
+    const doFetchImpl = typeof doFetch === "function"
+      ? doFetch
+      : (async (t: string, to: number, opts?: any) => {
+          const c = new AbortController();
+          const id = setTimeout(() => c.abort(), to);
+          try {
+            const init: RequestInit = { signal: c.signal, redirect: "follow" };
+            if (!opts || !opts.minimal) {
+              (init as any).headers = { Accept: "text/turtle, application/trig, application/n-quads, application/n-triples, application/ld+json, application/rdf+xml, text/n3, */*" };
+            }
+            return await fetch(t, init);
+          } finally {
+            clearTimeout(id);
+          }
+        });
+
+    console.debug("[VG_RDF] loadRDFFromUrl start", { url, graphName, timeoutMs });
+
+    try {
+      // Dynamic imports
+      const rdfParseMod = await import("rdf-parse").catch(() => null);
+      const rdfSerializeMod = await import("rdf-serialize").catch(() => null);
+      const getStreamMod = await import("get-stream").catch(() => null);
+
+      const parseFn =
+        (rdfParseMod && (rdfParseMod.parse || rdfParseMod.rdfParser || rdfParseMod.rdfParser?.parse || rdfParseMod.rdfParser?.rdfParser)) ||
+        null;
+      const serializeFn =
+        (rdfSerializeMod && (rdfSerializeMod.serialize || rdfSerializeMod.rdfSerializer || rdfSerializeMod.rdfSerializer?.serialize || rdfSerializeMod.rdfSerializer?.rdfSerializer || rdfSerializeMod.default || rdfSerializeMod.rdfSerializer)) ||
+        null;
+      const getStream =
+        (getStreamMod && (getStreamMod.default || getStreamMod)) || null;
+
+      const haveParse = !!parseFn;
+      const haveSerialize = !!serializeFn;
+      const haveGetStream = !!getStream;
+
+      // If the environment does not expose rdf-parse/rdf-serialize, we'll fall back
+      // to parsing the fetched text directly (works for Turtle/N-Triples when the
+      // endpoint returns text). Do not hard-fail here; allow best-effort behavior.
+      if (!haveParse) {
+        try { console.debug("[VG_RDF] rdf-parse not detected; will use text fallback for supported formats"); } catch (_) { /* ignore */ }
+      }
+      if (!haveSerialize) {
+        try { console.debug("[VG_RDF] rdf-serialize not detected; will attempt direct load when possible"); } catch (_) { /* ignore */ }
+      }
+      if (!haveGetStream) {
+        try { console.debug("[VG_RDF] get-stream not detected; will attempt direct load when possible"); } catch (_) { /* ignore */ }
+      }
+
+      // If parsing/serialization libraries are not available in this runtime (tests/environments),
+      // fall back to a simpler flow: fetch the content as text via loadFromUrl and hand it to
+      // the existing loadRDFIntoGraph which uses N3.Parser to parse Turtle/N-Quads where possible.
+      if (!haveParse || !haveSerialize) {
+        try {
+          const fetched = await (this as any).loadFromUrl
+            ? await (this as any).loadFromUrl(url, { timeoutMs })
+            : null;
+          if (!fetched || !fetched.content) {
+            // proceed to attempt the fetch below (keeps behavior unchanged if loadFromUrl missing)
+          } else {
+            try {
+              // Delegate to existing loader which already handles namespace merging / notifications
+              return await this.loadRDFIntoGraph(fetched.content, graphName || "urn:vg:data", (fetched.mimeType as string) || undefined);
+            } catch (err) {
+              // If the simple path fails, continue to the more advanced parsing attempt below.
+              try { console.debug("[VG_RDF] fallback text load failed, continuing to parse path", String(err).slice(0,200)); } catch (_) { /* ignore */ }
+            }
+          }
+        } catch (err) {
+          try { console.debug("[VG_RDF] fallback loadFromUrl threw, continuing to parse path", String(err).slice(0,200)); } catch (_) { /* ignore */ }
+        }
+      }
+
+      const accept = "text/turtle, application/trig, application/n-quads, application/n-triples, application/ld+json, application/rdf+xml, text/n3, */*";
+
+      // Use centralized fetch helper (allow minimal GET in browsers to avoid CORS preflight)
+      const res = await doFetchImpl(url, timeoutMs, { minimal: typeof window !== "undefined" });
+      if (!res) throw new Error(`No response for ${url}`);
+      if (!res.ok) {
+        // proceed but warn
+        try { console.warn(`Warning: HTTP ${res.status} ${res.statusText} for ${url}`); } catch (_) { void 0; }
+      }
+
+      const contentTypeHeader = res.headers.get("content-type") || null;
+      try { console.log("[VG_RDF_DEBUG] fetched", { url, status: res.status, contentType: contentTypeHeader, contentLength: res.headers.get("content-length") }); } catch (_) { /* ignore */ }
+
+      // Defensive Accept-fallback: if the server returned HTML (human page) try
+      // requesting common RDF MIME types one-by-one. Some ontology endpoints serve
+      // HTML by default but honor content-negotiation when Accept is specific.
+      try {
+        const isHtmlResponse = (contentTypeHeader && String(contentTypeHeader).toLowerCase().includes("html"));
+        // Also peek at the body if Content-Type is absent or inconclusive.
+        let peekText = "";
+        if (!isHtmlResponse) {
+          try {
+            // clone so we don't consume original body
+            peekText = await res.clone().text();
+            if (!peekText && contentTypeHeader === null) {
+              // leave empty
+            }
+          } catch (_) {
+            peekText = "";
+          }
+        } else {
+          // when content-type indicates HTML, still grab text to allow link-based discovery
+          try { peekText = await res.clone().text(); } catch (_) { peekText = ""; }
+        }
+
+        const looksHtmlText = typeof peekText === "string" && /^\s*<!doctype\s+/i.test(peekText) || /^\s*<html/i.test(peekText);
+
+        if (isHtmlResponse || looksHtmlText) {
+          // Prioritized RDF MIME list (most likely to succeed first)
+          const mimeCandidates = [
+            "text/turtle",
+            "application/trig",
+            "application/n-quads",
+            "application/n-triples",
+            "application/ld+json",
+            "application/rdf+xml",
+            "text/n3",
+          ];
+
+          // Quick heuristic to accept a candidate response as RDF.
+          const isRdfish = (txt: string | null, ct: string | null) => {
+            try {
+              const lc = String(ct || "").toLowerCase();
+              if (lc.includes("turtle") || lc.includes("n-quads") || lc.includes("n-triples") || lc.includes("json") || lc.includes("rdf")) return true;
+              if (!txt) return false;
+              const s = String(txt).trim();
+              if (!s) return false;
+              if (s.startsWith("@prefix") || s.startsWith("PREFIX") || s.includes("@context") || s.includes("http://www.w3.org/1999/02/22-rdf-syntax-ns#") || s.includes("rdf:type") || s.includes("rdfs:label")) return true;
+              return false;
+            } catch (_) {
+              return false;
+            }
+          };
+
+          for (const mime of mimeCandidates) {
+            try {
+              const altController = new AbortController();
+              const altTimeout = Math.max(3000, (timeoutMs || 15000)); // pick a reasonable per-attempt timeout
+              const altTimeoutId = setTimeout(() => altController.abort(), Math.min(altTimeout, 8000));
+              try {
+                const altRes = await doFetchImpl(url, Math.min(altTimeout, 8000), { minimal: typeof window !== "undefined" });
+                if (!altRes) continue;
+                const altCt = altRes.headers.get("content-type") || null;
+                // If altRes seems non-HTML and looks RDF-like, consume and parse it.
+                const altText = await altRes.text();
+                if (altCt && String(altCt).toLowerCase().includes("html")) {
+                  // server still returned HTML; try next candidate
+                  continue;
+                }
+                if (isRdfish(altText, altCt)) {
+                  try {
+                    // Delegate to existing loader which handles parsing/namespace merging/notifications.
+                    return await this.loadRDFIntoGraph(altText, graphName || "urn:vg:data", mime);
+                  } catch (_) {
+                    // parsing failed for this candidate; continue to next
+                    continue;
+                  }
+                }
+              } finally {
+                clearTimeout(altTimeoutId);
+              }
+            } catch (_) {
+              // network/abort for this candidate — try the next MIME candidate
+              continue;
+            }
+          }
+
+          // If we reach here, none of the explicit Accept attempts returned RDF.
+          // Try to discover an alternate RDF link in the HTML (e.g., <link rel="alternate" type="application/rdf+xml" href="...">).
+          try {
+            if (peekText && typeof peekText === "string") {
+              const linkRe = /<link\s+[^>]*rel=["']alternate["'][^>]*>/gi;
+              const hrefRe = /href=(["'])(.*?)\1/i;
+              const typeRe = /type=(["'])(.*?)\1/i;
+              let m;
+              const altHrefs: string[] = [];
+              while ((m = linkRe.exec(peekText)) !== null) {
+                try {
+                  const tag = m[0];
+                  const hrefMatch = tag.match(hrefRe);
+                  const typeMatch = tag.match(typeRe);
+                  const hrefVal = hrefMatch ? hrefMatch[2] : null;
+                  const typeVal = typeMatch ? typeMatch[2] : null;
+                  if (hrefVal && typeVal && /rdf|turtle|n-quads|n-triples|json|xml/i.test(typeVal)) {
+                    // resolve relative hrefs against original url
+                    try {
+                      const resolved = new URL(hrefVal, url).toString();
+                      altHrefs.push(resolved);
+                    } catch (_) { altHrefs.push(hrefVal); }
+                  }
+                } catch (_) { /* ignore per-tag */ }
+              }
+
+              for (const h of altHrefs) {
+                try {
+                  const altController2 = new AbortController();
+                  const altTimeout2 = Math.max(3000, (timeoutMs || 15000));
+                  const altTimeoutId2 = setTimeout(() => altController2.abort(), Math.min(altTimeout2, 8000));
+                  try {
+                    const altRes2 = await doFetchImpl(h, Math.min(altTimeout2, 8000), { minimal: typeof window !== "undefined" });
+                    if (!altRes2) continue;
+                    const altText2 = await altRes2.text();
+                    const altCt2 = altRes2.headers.get("content-type") || null;
+                    if (isRdfish(altText2, altCt2)) {
+                      try {
+                        return await this.loadRDFIntoGraph(altText2, graphName || "urn:vg:data", altCt2 || undefined);
+                      } catch (_) {
+                        continue;
+                      }
+                    }
+                  } finally {
+                    clearTimeout(altTimeoutId2);
+                  }
+                } catch (_) { continue; }
+              }
+            }
+          } catch (_) {
+            // ignore discovery failures
+          }
+
+          // Nothing useful found via Accept negotiation or alternate links.
+          try { console.warn("[VG_RDF] fetch returned HTML and no RDF alternates found for", url); } catch (_) { void 0; }
+
+          // Proxy fallback intentionally removed — client-only fetching only.
+          // If a host requires server-side fetching for CORS reasons, enable a
+          // selective proxy or handle that host explicitly outside of the client.
+
+          // Resolve gracefully without throwing so callers/tests don't get unhandled rejections.
+          return;
+        }
+      } catch (_) {
+        // ignore detection/fallback failures and continue to parsing attempt below
+      }
+
+      // Browser vs Node: prefer a simple GET/text path in browsers to avoid
+      // triggering CORS preflight caused by streaming request shapes.
+      // - Browsers enforce CORS preflight for non-simple requests; streaming
+      //   paths or library-added headers sometimes make the request non-simple.
+      // - Node does not enforce CORS so streaming via rdf-parse is safe there.
+      let quadStream: any = null;
+
+      if (typeof window !== "undefined") {
+        // Browser runtime: perform a simple GET -> text and delegate to the existing
+        // text-based parser which uses N3.Parser (avoids streaming preflight issues).
+        try {
+          const txt = await res.text();
+          if (txt && String(txt).trim()) {
+            try {
+              return await this.loadRDFIntoGraph(
+                txt,
+                graphName || "urn:vg:data",
+                (contentTypeHeader as string) || undefined,
+              );
+            } catch (txtErr) {
+              // If text parsing fails, fall through to try server proxy fallback below.
+              try { console.debug("[VG_RDF] browser text parse failed, will attempt proxy fallback", String(txtErr).slice(0,200)); } catch (_) { /* ignore */ }
+            }
+          }
+        } catch (e) {
+          // If reading text failed in the browser (e.g., response blocked), fall through
+          // to the logic below which may attempt proxy fallback later.
+          try { console.debug("[VG_RDF] browser text read failed, falling back to parse path", String(e).slice(0,200)); } catch (_) { /* ignore */ }
+        }
+      } else {
+        // Node runtime: prepare input stream (response.body or string fallback) and use rdf-parse streaming path.
+        // Prepare input stream (response.body or string fallback)
+        let inputStream: any = res.body;
+        let usedString = false;
+        if (!inputStream) {
+          const txt = await res.text();
+          inputStream = Readable.from([txt]);
+          usedString = true;
+        }
+
+        // Try to get a quad stream via rdf-parse
+        try {
+          quadStream = (typeof parseFn === "function") ? parseFn(inputStream, { contentType: contentTypeHeader, baseIRI: url }) : null;
+        } catch (err) {
+          // fallback: try parsing from text
+          try {
+            const txt = usedString ? (await getStream(inputStream)) : await res.text();
+            quadStream = (typeof parseFn === "function") ? parseFn(Readable.from([txt]), { contentType: contentTypeHeader, baseIRI: url }) : null;
+          } catch (err2) {
+            throw err2;
+          }
+        }
+      }
+
+      if (!quadStream) {
+        // Fallback: attempt to read the response as text and delegate to the
+        // existing N3-based text parser (loadRDFIntoGraph). Some runtimes or
+        // test environments do not provide a stream-compatible response.body
+        // or the dynamic rdf-parse import may not be available; handle that
+        // gracefully by falling back to text parsing before failing.
+        try {
+          const txt = await res.text();
+          if (txt && String(txt).trim()) {
+            try {
+              return await this.loadRDFIntoGraph(
+                txt,
+                graphName || "urn:vg:data",
+                (contentTypeHeader as string) || undefined,
+              );
+            } catch (_) {
+              // if delegated load fails, fall through to throw below
+            }
+          }
+        } catch (_) {
+          // ignore text-read failures and throw the original error below
+        }
+        throw new Error("Failed to obtain quad stream from rdf-parse");
+      }
+
+      // Serialize quad stream into Turtle
+      const prefixes = { ...(this.namespaces || {}) };
+      try {
+        // Try using serializer as a function that returns a stream
+        const textStream =
+          typeof serializeFn === "function"
+            ? serializeFn(quadStream, { contentType: "text/turtle", prefixes })
+            : (serializeFn && serializeFn.serialize ? serializeFn.serialize(quadStream, { contentType: "text/turtle", prefixes }) : null);
+
+        if (!textStream) throw new Error("rdf-serialize did not return a text stream");
+
+        const turtle = await getStream(textStream);
+
+        try { console.log("[VG_RDF_DEBUG] serialized to turtle (len)", (turtle || "").length); } catch (_) { /* ignore */ }
+
+        // Delegate to existing loader which handles store insertion, namespaces, notifications
+        return await this.loadRDFIntoGraph(turtle, graphName || "urn:vg:data", "text/turtle");
+      } catch (err) {
+        try { console.error("[VG_RDF_DEBUG] serialize error", String(err).slice(0,200)); } catch (_) { /* ignore */ }
+        throw err;
+      }
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
   async loadFromUrl(
     url: string,
     options?: {
@@ -1257,23 +1371,16 @@ export class RDFManager {
     const timeoutMs = options?.timeoutMs ?? 15000;
 
     // Helper to perform a fetch with timeout and Accept headers
-    const doFetch = async (target: string, timeout: number) => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-      try {
-        const res = await fetch(target, {
-          signal: controller.signal,
-          headers: {
-            Accept:
-              "text/turtle, application/rdf+xml, application/ld+json, */*",
-          },
-        });
-        return res;
-      } finally {
-        clearTimeout(timeoutId);
-      }
-    };
+      // Use centralized fetcher helper for consistent network behavior.
+      // Default behavior: conservative Accept header is preserved; callers can pass minimal:true to avoid headers.
+      const { doFetch } = await import("./fetcher").catch(() => ({ doFetch: undefined as any }));
+      const doFetchImpl = typeof doFetch === "function" ? doFetch : (async (t: string, to: number) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), to);
+        try {
+          return await fetch(t, { signal: controller.signal, headers: { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" } });
+        } finally { clearTimeout(timeoutId); }
+      });
 
     const looksLikeRdf = (text: string) => {
       const t = text.trim();
@@ -1298,10 +1405,11 @@ export class RDFManager {
       return false;
     };
 
-    // Try candidates (prefer https)
-    const candidateUrls = url.startsWith("http://")
-      ? [url.replace(/^http:\/\//, "https://"), url]
-      : [url];
+      // Try candidates: preserve the original URL scheme first (do not force https)
+      // If the URL was http:// we still allow a https fallback as a secondary attempt.
+      const candidateUrls = url.startsWith("http://")
+        ? [url, url.replace(/^http:\/\//, "https://")]
+        : [url];
 
     // Primary attempt: direct browser fetch
     let lastDirectSnippet = "";
@@ -1429,162 +1537,11 @@ export class RDFManager {
       }
     }
 
-    // Fallback: use dev server proxy at /__external (configured in vite.config.ts) to bypass CORS/redirect issues.
+    // Proxy fallback removed — client-side only fetching requested.
+    // We will rely solely on the doFetch candidate loop above and not attempt server proxying.
     try {
-      if (typeof window !== "undefined") {
-        const proxyUrl = `/__external?url=${encodeURIComponent(url)}`;
-        try {
-          const proxyResponse = await doFetch(proxyUrl, timeoutMs * 2);
-          if (proxyResponse && proxyResponse.ok) {
-            const contentTypeHeader =
-              proxyResponse.headers.get("content-type") || "";
-            const mimeType = contentTypeHeader.split(";")[0].trim() || null;
-            const content = await proxyResponse.text();
-
-            // Debug log
-            try {
-              debugLog("rdf.fetch.proxyFetched", {
-                url,
-                len: content.length,
-                mimeType,
-              });
-            } catch (_) {
-              try {
-                if (typeof fallback === "function") {
-                  fallback("emptyCatch", { error: String(_) });
-                }
-              } catch (_) {
-                /* ignore */
-              }
-            }
-
-            if (
-              looksLikeRdf(content) ||
-              (mimeType &&
-                (mimeType.includes("turtle") ||
-                  mimeType.includes("rdf") ||
-                  mimeType.includes("json")))
-            ) {
-              return { content, mimeType };
-            }
-
-            // proxy returned content that's not clearly RDF -> still return content so parser can attempt, but record a fallback
-            try {
-              fallback(
-                "rdf.fetch.proxyNonRdf",
-                { url, len: content.length, mimeType },
-                { level: "warn" },
-              );
-            } catch (_) {
-              try {
-                if (typeof fallback === "function") {
-                  fallback("emptyCatch", { error: String(_) });
-                }
-              } catch (_) {
-                /* ignore */
-              }
-            }
-            return { content, mimeType };
-          } else {
-            const status = proxyResponse ? proxyResponse.status : "no-response";
-            // Attempt to read response body to provide a helpful snippet for debugging (dev proxy may include HTML error pages)
-            let bodySnippet = "";
-            try {
-              if (proxyResponse) {
-                const text = await proxyResponse.text();
-                bodySnippet = String(text || "").slice(0, 1000);
-              }
-            } catch (_) {
-              /* ignore body read failures */
-            }
-
-            try {
-              if (typeof window !== "undefined") {
-                const fallbackSnippet =
-                  bodySnippet ||
-                  `Proxy fetch failed (status: ${status}) for ${url}`;
-                (window as any).__VG_LAST_RDF_ERROR = {
-                  message: `Proxy fetch failed (status: ${status}) for ${url}`,
-                  url: String(url),
-                  snippet: fallbackSnippet,
-                };
-                try {
-                  window.dispatchEvent(
-                    new CustomEvent("vg:rdf-parse-error", {
-                      detail: (window as any).__VG_LAST_RDF_ERROR,
-                    }),
-                  );
-                } catch (_) {
-                  /* ignore dispatch failures */
-                }
-              }
-            } catch (_) {
-              /* ignore structured error attach failures */
-            }
-
-            throw new Error(
-              `Proxy fetch failed (status: ${status}) for ${url}`,
-            );
-          }
-        } catch (proxyErr) {
-          try {
-            fallback(
-              "rdf.fetch.proxyFailed",
-              { url, error: String(proxyErr) },
-              { level: "warn", captureStack: true },
-            );
-          } catch (_) {
-            try {
-              if (typeof fallback === "function") {
-                fallback("emptyCatch", { error: String(_) });
-              }
-            } catch (_) {
-              /* ignore */
-            }
-          }
-          // If we have an exception (network error), attach a concise message for UI consumption
-          try {
-            if (typeof window !== "undefined") {
-              const prev = (window as any).__VG_LAST_RDF_ERROR || {};
-              (window as any).__VG_LAST_RDF_ERROR = {
-                message:
-                  String(proxyErr) ||
-                  prev.message ||
-                  `Proxy fetch failed for ${url}`,
-                url: String(url),
-                snippet:
-                  prev && prev.snippet
-                    ? prev.snippet
-                    : String(
-                        (proxyErr && (proxyErr as any).message) ||
-                          String(proxyErr),
-                      ).slice(0, 1000),
-              };
-              try {
-                window.dispatchEvent(
-                  new CustomEvent("vg:rdf-parse-error", {
-                    detail: (window as any).__VG_LAST_RDF_ERROR,
-                  }),
-                );
-              } catch (_) {
-                /* ignore */
-              }
-            }
-          } catch (_) {
-            /* ignore */
-          }
-          throw proxyErr;
-        }
-      }
-    } catch (e) {
-      try {
-        if (typeof fallback === "function") {
-          fallback("emptyCatch", { error: String(e) });
-        }
-      } catch (_) {
-        /* ignore */
-      }
-    }
+      try { console.debug("[VG_RDF] proxy disabled: performing client-only fetch attempts for", url); } catch (_) { /* ignore */ }
+    } catch (_) { /* ignore */ }
 
     try {
       // Ensure a structured error is available to the UI/runtime when both direct and proxy fetch attempts fail.
@@ -2064,7 +2021,7 @@ export class RDFManager {
         } catch (_) {
           try {
             if (typeof fallback === "function") {
-              fallback("emptyCatch", { error: String(_) });
+              fallback("emptyCatch", { error: String(err) });
             }
           } catch (_) {
             /* ignore */

@@ -767,14 +767,14 @@ const KnowledgeCanvas: React.FC = () => {
             try {
               const id = String(m.id);
               const existing = prevById.get(id);
-              if (existing) {
+                if (existing) {
                 // Existing node: preserve runtime metadata (position, __rf, etc.)
                 // Do NOT overwrite position from the mapper for existing nodes.
                 const item = {
                   ...existing,
                   type: m.type || existing.type,
                   position: existing.position || (m && m.position) || { x: 0, y: 0 },
-                  data: (m && m.data) ? { ...(m.data) } : { ...(existing.data || {}) },
+                  data: { ...(existing.data || {}), ...(m && m.data ? m.data : {}) },
                 } as any;
                 // Explicitly ensure selection is NOT preserved from existing runtime metadata.
                 try { delete (item as any).selected; } catch (_) { void 0; }
@@ -946,7 +946,7 @@ const KnowledgeCanvas: React.FC = () => {
                       ...existing,
                       type: m.type || existing.type,
                       position: existing.position || (m && m.position) || { x: 0, y: 0 },
-                      data: (m && m.data) ? { ...(m.data) } : { ...(existing.data || {}) },
+                      data: { ...(existing.data || {}), ...(m && m.data ? m.data : {}) },
                     } as any;
                     // Ensure selection is not preserved on merges of incoming nodes.
                     try { delete (item as any).selected; } catch (_) { void 0; }

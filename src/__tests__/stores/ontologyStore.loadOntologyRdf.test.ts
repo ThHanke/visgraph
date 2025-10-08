@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import fs from "fs/promises";
+import path from "path";
 import { useOntologyStore } from "../../stores/ontologyStore";
 
 describe("OntologyStore RDF persistence when loading ontologies", () => {
@@ -19,7 +21,21 @@ describe("OntologyStore RDF persistence when loading ontologies", () => {
 
     // Load a public OWL ontology from the web (canonical W3C OWL URL)
     // This test intentionally fetches a remote OWL ontology to verify substantial triples are added.
-    await store.loadOntology("http://www.w3.org/2002/07/owl");
+    // Use a local fixture to avoid network flakiness while exercising the same public API.
+    // We stub rdfManager.loadRDFFromUrl on the store's manager so store.loadOntology(url)
+    // still drives the same call-path but uses deterministic fixture content.
+    const fixturePath = path.join(__dirname, "../fixtures/owl.ttl");
+    const fixture = await fs.readFile(fixturePath, "utf8");
+    const origLoad = (mgr as any).loadRDFFromUrl;
+    (mgr as any).loadRDFFromUrl = async (u: any, g?: any, opts?: any) => {
+      // Delegate to existing text loader so namespaces/notifications are preserved.
+      return await (mgr as any).loadRDFIntoGraph(fixture, g || "urn:vg:ontologies", "text/turtle");
+    };
+    try {
+      await store.loadOntology("https://www.w3.org/2002/07/owl");
+    } finally {
+      try { (mgr as any).loadRDFFromUrl = origLoad; } catch (_) { /* ignore restore failures */ }
+    }
 
     // Count triples after load
     const after = (rdfStore.getQuads && Array.isArray(rdfStore.getQuads(null, null, null, null))
@@ -36,5 +52,5 @@ describe("OntologyStore RDF persistence when loading ontologies", () => {
 
     // Clean up
     store.clearOntologies();
-  });
+  }, { timeout: 45000 });
 });

@@ -97,7 +97,9 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   const [rdfBody, setRdfBody] = useState('');
   
   // Select functions from the store as stable callbacks; subscribe separately to the loadedOntologies array
-  const { loadOntology, availableClasses, loadKnowledgeGraph, loadOntologyFromRDF, getRdfManager } = useOntologyStore();
+  const { loadOntology, availableClasses, loadKnowledgeGraph, getRdfManager } = useOntologyStore();
+  // Backwards-compatible selector: tests may set either loadOntologyFromRDF or loadOntologyRDFtoGraph on the store.
+  const loadOntologyFromRDFFn = useOntologyStore((s: any) => (typeof s.loadOntologyFromRDF === "function" ? s.loadOntologyFromRDF : s.loadOntologyRDFtoGraph));
   const loadedOntologies = useOntologyStore((s) => s.loadedOntologies);
   // registeredCount excludes core vocabularies; configuredCount shows user-configured autoload list size
   // Count all loaded ontologies except explicit core vocabularies.
@@ -496,35 +498,35 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                   className="w-full min-h-24 p-2 bg-input border border-border rounded"
                 />
                 <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      if (!rdfBody.trim()) return;
-                      try {
-                        // Ensure pasted RDF is treated as an ontology by persisting into the ontology graph
-                        await loadOntologyFromRDF?.(rdfBody, undefined, true, "urn:vg:ontologies");
-                        setRdfBody('');
-                        setIsLoadOntologyOpen(false);
-                        toast.success('RDF content applied as ontology (prefixes registered)');
-                      } catch (err) {
-                        try {
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          if (!rdfBody.trim()) return;
                           try {
-                            if (typeof fallback === "function") {
+                            // Ensure pasted RDF is treated as an ontology by persisting into the ontology graph
+                            await loadOntologyFromRDFFn?.(rdfBody, undefined, true, "urn:vg:ontologies");
+                            setRdfBody('');
+                            setIsLoadOntologyOpen(false);
+                            toast.success('RDF content applied as ontology (prefixes registered)');
+                          } catch (err) {
+                            try {
                               try {
-                                fallback('console.error', { args: [(err && err.message) ? err.message : String(err)] }, { level: 'error', captureStack: true });
+                                if (typeof fallback === "function") {
+                                  try {
+                                    fallback('console.error', { args: [(err && err.message) ? err.message : String(err)] }, { level: 'error', captureStack: true });
+                                  } catch (_) { void 0; }
+                                }
                               } catch (_) { void 0; }
-                            }
-                          } catch (_) { void 0; }
-                          console.error('Failed to load RDF content as ontology:', err);
-                        } catch (_) { void 0; }
-                        toast.error('Failed to load RDF content');
-                      }
-                    }}
-                    disabled={!rdfBody.trim()}
-                  >
-                    Load RDF
-                  </Button>
+                              console.error('Failed to load RDF content as ontology:', err);
+                            } catch (_) { void 0; }
+                            toast.error('Failed to load RDF content');
+                          }
+                        }}
+                        disabled={!rdfBody.trim()}
+                      >
+                        Load RDF
+                      </Button>
 
                   <Button
                     variant="ghost"

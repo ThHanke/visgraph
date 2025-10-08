@@ -1,5 +1,6 @@
 import { it } from "vitest";
 import { useOntologyStore } from "../../stores/ontologyStore";
+import { WELL_KNOWN } from "../../utils/wellKnownOntologies";
 
 // This demo test loads two well-known ontology URLs via the store.loadOntology
 // path and prints the resulting loadedOntologies so you can inspect count/urls.
@@ -10,12 +11,15 @@ it("demo: load multiple ontologies and print loadedOntologies", async () => {
   // clear prior state
   store.clearOntologies();
 
-  // Load FOAF and ORG well-known entries (matches test fixtures)
-  await store.loadOntology("http://xmlns.com/foaf/0.1/");
-  await store.loadOntology("https://www.w3.org/TR/vocab-org/");
+  // Load FOAF and ORG well-known entries (use canonical values from WELL_KNOWN)
+  const foafUrl = (WELL_KNOWN && WELL_KNOWN.prefixes && WELL_KNOWN.prefixes.foaf) || "http://xmlns.com/foaf/0.1/";
+  const orgUrl = (WELL_KNOWN && WELL_KNOWN.prefixes && WELL_KNOWN.prefixes.org) || "http://www.w3.org/ns/org#";
 
-  // Also load the FOAF URL again (different variant) to see deduplication behavior
-  await store.loadOntology("https://xmlns.com/foaf/0.1/"); // variant to test normalization
+  await store.loadOntology(foafUrl);
+  await store.loadOntology(orgUrl);
+
+  // Also load the FOAF URL again to see deduplication behavior (use canonical value)
+  await store.loadOntology(foafUrl);
 
   const state = useOntologyStore.getState();
   // Print a concise summary
