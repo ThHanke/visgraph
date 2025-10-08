@@ -379,7 +379,7 @@ export const NodePropertyEditor = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange} modal>
       <DialogContent
-        className="sm:max-w-2xl max-h-[90vh] max-w-[min(90vw,48rem)] overflow-y-auto"
+        className="sm:max-w-2xl max-h-[90vh] max-w-[min(90vw,48rem)] overflow-y-auto text-foreground"
         onInteractOutside={(e) => {
           // Prevent closing when clicking on popover content
           const target = e.target as Element;
@@ -406,7 +406,7 @@ export const NodePropertyEditor = ({
               <EntityAutocomplete
                 entities={classEntities}
                 value={nodeType}
-                onValueChange={setNodeType}
+                onValueChange={(value: string) => { setNodeType(value); setRdfTypesState(value ? [value] : []); }}
                 placeholder="Type to search for classes..."
                 emptyMessage="No OWL classes found. Load an ontology first."
                 className="w-full"

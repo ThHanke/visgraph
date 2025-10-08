@@ -1095,7 +1095,7 @@ export class RDFManager {
       const accept = "text/turtle, application/trig, application/n-quads, application/n-triples, application/ld+json, application/rdf+xml, text/n3, */*";
 
       // Use centralized fetch helper (allow minimal GET in browsers to avoid CORS preflight)
-      const res = await doFetchImpl(url, timeoutMs, { minimal: typeof window !== "undefined" });
+      const res = await doFetchImpl(url, timeoutMs, { minimal: false });
       if (!res) throw new Error(`No response for ${url}`);
       if (!res.ok) {
         // proceed but warn
@@ -1162,7 +1162,7 @@ export class RDFManager {
               const altTimeout = Math.max(3000, (timeoutMs || 15000)); // pick a reasonable per-attempt timeout
               const altTimeoutId = setTimeout(() => altController.abort(), Math.min(altTimeout, 8000));
               try {
-                const altRes = await doFetchImpl(url, Math.min(altTimeout, 8000), { minimal: typeof window !== "undefined" });
+                const altRes = await doFetchImpl(url, Math.min(altTimeout, 8000), { minimal: false });
                 if (!altRes) continue;
                 const altCt = altRes.headers.get("content-type") || null;
                 // If altRes seems non-HTML and looks RDF-like, consume and parse it.
@@ -1221,7 +1221,7 @@ export class RDFManager {
                   const altTimeout2 = Math.max(3000, (timeoutMs || 15000));
                   const altTimeoutId2 = setTimeout(() => altController2.abort(), Math.min(altTimeout2, 8000));
                   try {
-                    const altRes2 = await doFetchImpl(h, Math.min(altTimeout2, 8000), { minimal: typeof window !== "undefined" });
+                    const altRes2 = await doFetchImpl(h, Math.min(altTimeout2, 8000), { minimal: false });
                     if (!altRes2) continue;
                     const altText2 = await altRes2.text();
                     const altCt2 = altRes2.headers.get("content-type") || null;

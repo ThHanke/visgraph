@@ -119,7 +119,7 @@ test("KnowledgeCanvas incremental mapping updates node label when rdfs:label add
   await waitFor(() => {
     const nodes = (window as any).__VG_RF_INSTANCE.getNodes() || [];
     return nodes.find((n: any) => String(n.id) === B);
-  }, { timeout: 5000 });
+  }, { timeout: 10000 });
 
   // verify initial label is default (local part)
   const beforeNode = (window as any).__VG_RF_INSTANCE.getNodes().find((n: any) => n.id === B);

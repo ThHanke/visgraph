@@ -289,7 +289,7 @@ export const LinkPropertyEditor = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md text-foreground">
         <DialogHeader>
           <DialogTitle>{linkData?.operation === 'create' ? 'Create Connection' : 'Edit Connection Property'}</DialogTitle>
           <DialogDescription>Select the relationship type between these nodes</DialogDescription>
