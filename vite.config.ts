@@ -33,7 +33,7 @@ export default defineConfig(({ mode }) => ({
             key: fs.readFileSync(keyPath),
           };
         }
-      } catch (_) { /* ignore and fall back to http */ }
+      } catch (e) { void e; /* ignore and fall back to http */ }
       return undefined;
     })(),
     fs: {
@@ -46,11 +46,15 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     tailwind(),
-    nodePolyfills(),
+    nodePolyfills({
+      include: ['process'],
+      globals: { global: true, process: true },
+    }),
   ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      process: 'process/browser',
     },
   },
   base: process.env.NODE_ENV === 'production' ? '/visgraph/' : '/',
@@ -122,15 +126,35 @@ export default defineConfig(({ mode }) => ({
         const fetchRes = await fetch(target, { headers });
         res.statusCode = fetchRes.status;
 
+        // Try to infer a better Content-Type for RDF files based on the URL extension,
+        // because some servers (GitHub raw URLs etc.) return text/plain which breaks rdf parsers.
+        const inferredType = (() => {
+          try {
+            const u2 = new URL(target);
+            const pathname = u2.pathname || '';
+            if (/\.(ttl|turtle)$/i.test(pathname)) return 'text/turtle';
+            if (/\.(n3)$/i.test(pathname)) return 'text/n3';
+            if (/\.(nt)$/i.test(pathname)) return 'application/n-triples';
+            if (/\.(rdf|xml)$/i.test(pathname)) return 'application/rdf+xml';
+            if (/\.(jsonld|json)$/i.test(pathname)) return 'application/ld+json';
+          } catch (_) {}
+          return null;
+        })();
+
         // Copy response headers, but avoid hop-by-hop headers that Node will set
         fetchRes.headers.forEach((value: string, key: string) => {
           const k = key.toLowerCase();
           if (['transfer-encoding', 'content-encoding', 'content-length'].includes(k)) return;
+          // If remote content-type is generic text/plain but we inferred a more specific type, override it.
+          if (k === 'content-type' && inferredType && /^text\/plain/i.test(value)) {
+            res.setHeader('Content-Type', inferredType);
+            return;
+          }
           res.setHeader(key, value);
         });
 
         const buf = Buffer.from(await fetchRes.arrayBuffer());
-        res.setHeader('Content-Length', String(buf.length));
+        if (!res.getHeader('Content-Length')) res.setHeader('Content-Length', String(buf.length));
         res.end(buf);
         return;
       } catch (err: unknown) {

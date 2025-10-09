@@ -1,3 +1,5 @@
+/* process polyfill is provided via vite-plugin-node-polyfills now (configured in vite.config.ts) */
+
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
