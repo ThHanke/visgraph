@@ -1310,42 +1310,28 @@ function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
       rdfMgr && typeof rdfMgr.getNamespaces === "function"
         ? rdfMgr.getNamespaces()
         : {};
-    Object.entries(nsMap).forEach(([p, ns]) => {
+    // Ensure each declared prefix is registered via the RDF manager's addNamespace API only.
+    for (const [p, ns] of Object.entries(nsMap)) {
       try {
-        if (!existing[p] && !Object.values(existing).includes(ns)) {
-          try {
-            // Prefer writing a minimal RDF snippet into the store so namespaces are
-            // discovered by recomputeNamespacesFromStore rather than by ad-hoc registration.
+        if (!existing[p] && typeof ns === "string" && ns) {
+          if (rdfMgr && typeof rdfMgr.addNamespace === "function") {
             try {
-              rdfMgr
-                .loadRDFIntoGraph(
-                  `@prefix ${String(p)}: <${String(ns)}> . ${String(p)}:__vg_dummy a ${String(p)}:__Dummy .`,
-                  "urn:vg:ontologies",
-                )
-                .catch(() => {});
+              rdfMgr.addNamespace(p, ns);
             } catch (_) {
-              /* ignore */
+              // best-effort: ignore per-entry failures
             }
-          } catch (e) {
-            try {
-              if (typeof fallback === "function") {
-                fallback(
-                  "rdf.addNamespace.failed",
-                  { prefix: p, namespace: ns, error: String(e) },
-                  { level: "warn" },
-                );
-              }
-            } catch (_) { }
           }
         }
-      } catch (_) { }
-    });
+      } catch (_) {
+        // ignore per-entry failures
+      }
+    }
   } catch (e) {
     try {
       if (typeof fallback === "function") {
         fallback("rdf.ensureNamespaces.failed", { error: String(e) });
       }
-    } catch (_) { }
+    } catch (_) { /* ignore */ }
   }
 }
 

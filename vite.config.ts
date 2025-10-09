@@ -47,14 +47,18 @@ export default defineConfig(({ mode }) => ({
     react(),
     tailwind(),
     nodePolyfills({
-      include: ['process'],
-      globals: { global: true, process: true },
+      include: ['process', 'stream', 'buffer'],
+      globals: { global: true, process: true, Buffer: true },
     }),
   ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
       process: 'process/browser',
+      // Ensure stream and buffer polyfills resolve to browser-compatible packages so
+      // client code can access stream.Readable and Buffer at runtime (not externalized).
+      stream: 'stream-browserify',
+      buffer: 'buffer',
     },
   },
   base: process.env.NODE_ENV === 'production' ? '/visgraph/' : '/',

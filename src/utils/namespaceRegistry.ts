@@ -12,7 +12,7 @@
 import { buildPaletteMap } from "../components/Canvas/core/namespacePalette";
 import { useOntologyStore } from "../stores/ontologyStore";
 
-export type RegistryEntry = { prefix: string; namespace: string; shortiri?: string, color?: string };
+export type RegistryEntry = { prefix: string; namespace: string; color?: string };
 
 /**
  * Build a palette (prefix -> color) using the project's palette builder.
@@ -37,6 +37,39 @@ function getShortIri(fullIri: string, namespace: string): string {
 }
 
 /**
+ * Small helper: sanitize an input namespace map into a plain prefix->string map.
+ *
+ * Accepts:
+ *  - values that are already strings
+ *  - RDFJS NamedNode-like objects with a `.value` string property
+ *
+ * Ignores entries that cannot be safely converted to a non-empty string to
+ * avoid exposing "[object Object]" into UI components.
+ */
+export function sanitizeNamespaces(input: any): Record<string, string> {
+  const out: Record<string, string> = {};
+  try {
+    if (!input || typeof input !== "object") return out;
+    for (const [k, v] of Object.entries(input || {})) {
+      try {
+        if (typeof v === "string" && v) {
+          out[String(k)] = v;
+        } else if (v && typeof (v as any).value === "string" && (v as any).value) {
+          out[String(k)] = String((v as any).value);
+        } else {
+          // skip unknown shapes to avoid returning "[object Object]"
+        }
+      } catch (_) {
+        // ignore per-entry failures
+      }
+    }
+  } catch (_) {
+    // ignore
+  }
+  return out;
+}
+
+/**
  * Build a canonical namespace registry from an RDF manager object.
  * - mgr: object that may implement getNamespaces() -> { prefix: namespace }
  * - paletteBuilder: optional function to create prefix -> color mapping
@@ -46,20 +79,20 @@ function getShortIri(fullIri: string, namespace: string): string {
 export function buildRegistryFromManager(mgr?: any, paletteBuilder: PaletteBuilder = defaultPaletteBuilder): RegistryEntry[] {
   try {
     if (!mgr || typeof (mgr as any).getNamespaces !== "function") return [];
-    const nsMap: Record<string, string> = (mgr as any).getNamespaces() || {};
+    const nsMap: Record<string, string> = sanitizeNamespaces((mgr as any).getNamespaces() || {});
     if (!nsMap || typeof nsMap !== "object") return [];
 
     const prefixes = Object.keys(nsMap || {}).sort();
     const palette = paletteBuilder(prefixes || []);
     const registry: RegistryEntry[] = (prefixes || []).map((p) => {
       try {
-        const ns = String((nsMap as any)[p] || "");
+        const nsStr = String((nsMap as any)[p] || "");
         const color = palette && typeof palette === "object" ? (palette[p] || palette[p.toLowerCase()] || "") : "";
-        return { prefix: String(p), namespace: String(ns), shortiri: String(ns || ""), color: String(color || "") };
+        return { prefix: String(p), namespace: String(nsStr || ""), color: String(color || "") };
       } catch (_) {
-        return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), shortiri: String((nsMap as any)[p] || ""), color: "" };
+        return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: "" };
       }
-    });
+    }).filter((e) => e.namespace !== "");
     return registry;
   } catch (_) {
     return [];

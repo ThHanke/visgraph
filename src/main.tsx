@@ -1,5 +1,5 @@
-/* process polyfill is provided via vite-plugin-node-polyfills now (configured in vite.config.ts) */
-
+// Rely on vite-plugin-node-polyfills for process/stream/buffer in the bundle.
+// No runtime shims here — remove local polyfills to rely on configured Vite polyfills.
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'

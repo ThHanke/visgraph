@@ -26,6 +26,49 @@ import getStream from "get-stream";
 
 
 const { namedNode, literal, quad, blankNode } = DataFactory;
+
+/**
+ * Helper: create a Node-style Readable from fetched content (string, ArrayBuffer or Uint8Array).
+ *
+ * Uses dynamic imports for "stream" and "buffer" so we avoid bundling Node-only modules
+ * into the browser build. Returns a Node Readable when possible, otherwise returns undefined.
+ * Callers should fall back to WHATWG Response.body when this returns undefined.
+ */
+async function createNodeReadableFromText(content: string | ArrayBuffer | Uint8Array): Promise<any | undefined> {
+  try {
+    const _streamMod = await import("stream").catch(() => ({ Readable: undefined } as any));
+    const Readable = (_streamMod && _streamMod.Readable) ? _streamMod.Readable : undefined;
+    const _bufMod = await import("buffer").catch(() => ({ Buffer: (globalThis as any).Buffer } as any));
+    const BufferImpl = (_bufMod && _bufMod.Buffer) ? _bufMod.Buffer : (globalThis as any).Buffer;
+
+    // Prefer Readable.from when available
+    if (Readable && typeof (Readable as any).from === "function" && typeof BufferImpl !== "undefined") {
+      try {
+        const chunk = typeof content === "string" ? BufferImpl.from(content) : (content as any);
+        return (Readable as any).from([chunk]);
+      } catch (_) {
+        // fall through to manual construction
+      }
+    }
+
+    // Manual construction: create a Readable, push the content, then push EOF.
+    if (Readable && typeof Readable === "function" && typeof BufferImpl !== "undefined") {
+      try {
+        const rs = new Readable();
+        rs.push(typeof content === "string" ? BufferImpl.from(content) : (content as any));
+        rs.push(null);
+        return rs as any;
+      } catch (_) {
+        // fall through to undefined
+      }
+    }
+
+    // Not available in this environment
+    return undefined;
+  } catch (_) {
+    return undefined;
+  }
+}
 import { useAppConfigStore } from "../stores/appConfigStore";
 import { useOntologyStore } from "../stores/ontologyStore";
 import { WELL_KNOWN } from "../utils/wellKnownOntologies";
@@ -35,7 +78,7 @@ import {
   fallback,
   incr,
 } from "../utils/startupDebug";
-import { buildRegistryFromManager, persistRegistryToStore } from "../utils/namespaceRegistry";
+import { buildRegistryFromManager, persistRegistryToStore, sanitizeNamespaces } from "../utils/namespaceRegistry";
 
 /**
  * Manages RDF data with proper store operations
@@ -674,6 +717,71 @@ export class RDFManager {
     }
   }
 
+  // Helper: add a quad to the store with buffering and track addedQuads
+  private addQuadToStore(toAdd: Quad, g: any, addedQuads: Quad[]): void {
+    try {
+      const exists = this.store.countQuads(toAdd.subject, toAdd.predicate, toAdd.object, g) > 0;
+      if (!exists) {
+        this.store.addQuad(toAdd);
+        try { this.bufferSubjectFromQuad(toAdd); } catch (_) { /* ignore */ }
+        if (Array.isArray(addedQuads)) addedQuads.push(toAdd);
+      }
+    } catch (_) {
+      try {
+        // best-effort add
+        this.store.addQuad(toAdd);
+        if (Array.isArray(addedQuads)) addedQuads.push(toAdd);
+      } catch (_) { /* ignore */ }
+    }
+  }
+
+  // Helper: finalize a load - apply prefixes, run reconciliation, notify and schedule subject flush
+  private async finalizeLoad(addedQuads: Quad[], prefixes?: Record<string, string>, loadId?: string): Promise<void> {
+    try {
+      // Merge parsed prefixes and persist namespace registry immediately (UI needs prefixes ASAP)
+      if (prefixes && Object.keys(prefixes).length > 0) {
+        try {
+          this.applyParsedNamespaces(prefixes);
+        } catch (_) { /* ignore */ }
+      }
+
+      // Run reconciliation with the quads we added so consumers get authoritative snapshot
+      try {
+        if (Array.isArray(addedQuads) && addedQuads.length > 0) {
+          await (this as any).runReconcile(addedQuads);
+        } else {
+          try { this.notifyChange(); } catch (_) { /* ignore */ }
+        }
+      } catch (e) {
+        try { fallback("rdf.finalizeLoad.reconcile_failed", { error: String(e) }); } catch (_) { /* ignore */ }
+      }
+
+      // Schedule subject-level flush immediately (only if window is available)
+      try {
+        if (typeof window !== "undefined") {
+          this.scheduleSubjectFlush(0);
+        }
+      } catch (_) { /* ignore */ }
+
+      // Developer debug: report per-graph triple counts after a batch load
+      try {
+        const allQuads = this.store.getQuads(null, null, null, null) || [];
+        const graphCounts: Record<string, number> = {};
+        for (const qq of allQuads) {
+          try {
+            const g = (qq && qq.graph && (qq.graph as any).value) ? (qq.graph as any).value : "default";
+            graphCounts[g] = (graphCounts[g] || 0) + 1;
+          } catch (_) { /* ignore per-quad counting failures */ }
+        }
+        try { debugLog("rdf.load.batchCounts", { id: loadId || "unknown", graphCounts }); } catch (_) { void 0; }
+        try { console.debug("[VG_DEBUG] rdf.load.batchCounts", { id: loadId || "unknown", graphCounts }); } catch (_) { void 0; }
+      } catch (_) { /* ignore */ }
+
+    } catch (err) {
+      try { if (typeof fallback === "function") fallback("rdf.finalizeLoad.failed", { error: String(err) }); } catch (_) { /* ignore */ }
+    }
+  }
+
   async loadRDFIntoGraph(
     rdfContent: string,
     graphName?: string,
@@ -730,16 +838,42 @@ export class RDFManager {
       // 1) Merge parsed prefixes and persist namespace registry immediately (UI needs prefixes ASAP)
       if (prefixes) {
         try {
-          this.namespaces = { ...this.namespaces, ...prefixes };
+          // Use the manager's normalization path so all namespace values are coerced to strings.
+          try { this.applyParsedNamespaces(prefixes); } catch (_) { /* ignore */ }
+
           try {
             console.info("[VG_NAMESPACES_MERGED] mergedPrefixes:", prefixes, "namespaces:", this.namespaces);
           } catch (_) { /* ignore console failures */ }
-          try { debug("rdf.namespaces.updated", { namespaces: { ...(this.namespaces || {}) } }); } catch (_) { /* ignore */ }
-          try { debugLog("rdf.namespaces.merged", { mergedPrefixes: prefixes, namespaces: { ...(this.namespaces || {}) } }); } catch (_) { /* ignore */ }
+
           try { persistRegistryToStore(buildRegistryFromManager(this)); } catch (_) { /* ignore persist failures */ }
+
           try {
             if (typeof window !== "undefined") {
-              (window as any).__VG_NAMESPACES = { ...(window as any).__VG_NAMESPACES || {}, ...(this.namespaces || {}) };
+              try {
+                // Sanitize namespace map before exposing to window so consumers never see object values.
+                const existing = (window as any).__VG_NAMESPACES || {};
+                const safeMap: Record<string, string> = {};
+                try {
+                  const src = (this.namespaces || {}) as Record<string, any>;
+                  for (const [kk, vv] of Object.entries(src || {})) {
+                    try {
+                      if (typeof vv === "string") {
+                        safeMap[kk] = vv;
+                      } else if (vv && typeof (vv as any).value === "string") {
+                        safeMap[kk] = String((vv as any).value);
+                      } else {
+                        const s = String(vv);
+                        safeMap[kk] = s === "[object Object]" ? "" : s;
+                      }
+                    } catch (_) {
+                      try { safeMap[kk] = String(vv); } catch (_) { safeMap[kk] = ""; }
+                    }
+                  }
+                } catch (_) { /* ignore */ }
+                (window as any).__VG_NAMESPACES = { ...(existing || {}), ...(safeMap || {}) };
+              } catch (_) {
+                /* ignore window exposure failures */
+              }
             }
           } catch (_) { /* ignore */ }
         } catch (_) {
@@ -778,6 +912,7 @@ export class RDFManager {
     try {
       // Simplified: assume rdfContent is Turtle. Use N3 Parser directly.
       const g = namedNode(graphName);
+      const addedQuads: Quad[] = [];
 
       // NOTE: removed automatic prefix-prepend logic.
       // We must not mutate server-provided RDF content (e.g. JSON-LD) by injecting
@@ -852,74 +987,27 @@ export class RDFManager {
 
         if (quadItem) {
           try {
-            const exists =
-              this.store.countQuads(
-                quadItem.subject,
-                quadItem.predicate,
-                quadItem.object,
-                g,
-              ) > 0;
-            if (!exists) {
+            // Build a quad under the target graph and delegate adding to the helper so
+            // we keep consistent add/buffer behavior and track addedQuads for reconciliation.
+            if (quadItem && quadItem.subject && quadItem.predicate && quadItem.object) {
               try {
-                if (
-                  quadItem &&
-                  quadItem.subject &&
-                  quadItem.predicate &&
-                  quadItem.object
-                ) {
-                  // add quad into store under the target graph
-                  this.store.addQuad(
-                    quad(
-                      quadItem.subject,
-                      quadItem.predicate,
-                      quadItem.object,
-                      g,
-                    ),
-                  );
-                  try {
-                    this.bufferSubjectFromQuad(
-                      quad(
-                        quadItem.subject,
-                        quadItem.predicate,
-                        quadItem.object,
-                        g,
-                      ),
-                    );
-                  } catch (_) {
-                    /* ignore */
-                  }
-                } else {
-                  console.warn(
-                    "[VG_RDF_ADD_SKIPPED] invalid quadItem from parser for graph",
-                    quadItem,
-                  );
-                }
-              } catch (inner) {
+                const toAdd = quad(quadItem.subject, quadItem.predicate, quadItem.object, g);
                 try {
-                  this.store.addQuad(
-                    quad(
-                      quadItem.subject,
-                      quadItem.predicate,
-                      quadItem.object,
-                      g,
-                    ),
-                  );
+                  this.addQuadToStore(toAdd, g, addedQuads);
                 } catch (_) {
-                  try {
-                    if (typeof fallback === "function") {
-                      fallback("emptyCatch", { error: String(_) });
-                    }
-                  } catch (_) {
-                    /* ignore */
-                  }
+                  // best-effort fallback: direct add
+                  try { this.store.addQuad(toAdd); if (Array.isArray(addedQuads)) addedQuads.push(toAdd); } catch (_) { /* ignore */ }
                 }
+              } catch (_) {
+                console.warn("[VG_RDF_ADD_SKIPPED] invalid quadItem from parser for graph", quadItem);
               }
+            } else {
+              // ignore invalid quadItem shapes
             }
           } catch (e) {
             try {
-              this.store.addQuad(
-                quad(quadItem.subject, quadItem.predicate, quadItem.object, g),
-              );
+              // best-effort direct add if helper failed
+              this.store.addQuad(quad(quadItem.subject, quadItem.predicate, quadItem.object, g));
             } catch (_) {
               try {
                 if (typeof fallback === "function") {
@@ -931,8 +1019,17 @@ export class RDFManager {
             }
           }
         } else {
-          // when parser finishes, merge prefixes & finalize
-          finalize(prefixes);
+          // when parser finishes, merge prefixes & finalize via shared finalizeLoad helper
+          try { this.parsingInProgress = false; } catch (_) { /* ignore */ }
+          (async () => {
+            try {
+              await (this as any).finalizeLoad(addedQuads, prefixes, _vg_loadId);
+            } catch (e) {
+              try { rejectFn(e); } catch (_) { /* ignore */ }
+              return;
+            }
+            try { resolveFn(); } catch (_) { /* ignore */ }
+          })();
         }
       });
     } catch (err) {
@@ -1059,9 +1156,8 @@ export class RDFManager {
       }
     }
 
-        // Create a Readable-like inputStream for rdf-parse if we need the stream-based path.
-        // Use WHATWG ReadableStream from Response so rdf-parse receives a browser-compatible stream.
-        const inputStream = (new Response(txt).body as any);
+        // Prefer a Node-style Readable created by the shared helper; fall back to WHATWG stream when unavailable.
+        const inputStream = (await createNodeReadableFromText(txt)) || (new Response(txt).body as any);
 
 
     // Attempt 1: prefer parsing by HTTP content-type (mimetype). If this fails
@@ -1069,179 +1165,22 @@ export class RDFManager {
     console.info("[VG_RDF] parse-by-mimetype:start", { contentType: contentTypeHeader, url });
     try {
       const quadStream = rdfParser.parse(inputStream, { contentType: contentTypeHeader || undefined, baseIRI: url });
-      console.info("[VG_RDF] invoking rdf-serialize to Turtle (mimetype path)");
-      console.debug("[VG_RDF] process info before serialize (loadRDFFromUrl:mimetype)", { typeof_process: typeof (globalThis as any).process, nextTickType: typeof (globalThis as any).process?.nextTick, nextTick_preview: (globalThis as any).process?.nextTick ? String((globalThis as any).process?.nextTick).slice(0,200) : null });
-      const textStream = rdfSerializer.serialize(quadStream, { contentType: "text/turtle" });
-      const turtle = await getStream(textStream);
-      console.info("[VG_RDF] rdf-serialize -> turtle length (mimetype path)", (turtle || "").length);
-
-      // successful parse/serialize using mimetype — delegate
-      const preview = (turtle || "").slice(0, 200).replace(/\n/g, "\\n");
-      console.info("[VG_RDF] delegating to loadRDFIntoGraph (mimetype)", { url, graphName, length: (turtle || "").length, preview });
-      return await this.loadRDFIntoGraph(turtle, graphName || "urn:vg:data", "text/turtle");
+      return await this.loadQuadsToDiagram(quadStream, graphName || "urn:vg:data");
     } catch (err) {
       // parse/serialize via mimetype failed — retry using filename/baseIRI heuristics
       console.info("[VG_RDF] parse-by-mimetype:failed, retrying by filename", { url, error: String(err).slice(0, 500) });
 
-      // Re-create a fresh stream from the fetched text (streams are single-use)
-      const inputStream2 = (new Response(txt).body as any);
+      // Re-create a fresh Node-style Readable for retry (streams are single-use)
+      const inputStream2 = (await createNodeReadableFromText(txt)) || (new Response(txt).body as any);
       console.info("[VG_RDF] parse-by-filename:start", { path: url, baseIRI: url });
       const quadStream2 = rdfParser.parse(inputStream2, { path: url, baseIRI: url });
-      console.info("[VG_RDF] invoking rdf-serialize to Turtle (filename fallback)");
-      console.debug("[VG_RDF] process info before serialize (loadRDFFromUrl:filename)", { typeof_process: typeof (globalThis as any).process, nextTickType: typeof (globalThis as any).process?.nextTick, nextTick_preview: (globalThis as any).process?.nextTick ? String((globalThis as any).process?.nextTick).slice(0,200) : null });
-      const textStream2 = rdfSerializer.serialize(quadStream2, { contentType: "text/turtle" });
-      const turtle2 = await getStream(textStream2);
-      console.info("[VG_RDF] rdf-serialize -> turtle length (filename fallback)", (turtle2 || "").length);
-
-      const preview2 = (turtle2 || "").slice(0, 200).replace(/\n/g, "\\n");
-      console.info("[VG_RDF] delegating to loadRDFIntoGraph (filename fallback)", { url, graphName, length: (turtle2 || "").length, preview: preview2 });
-
       // Delegate to existing loader which handles store insertion, namespaces, notifications
-      return await this.loadRDFIntoGraph(turtle2, graphName || "urn:vg:data", "text/turtle");
+      return await this.loadQuadsToDiagram(quadStream2, graphName || "urn:vg:data");
     }
 
   }
 
-  async loadFromUrl(
-    url: string,
-    options?: {
-      timeoutMs?: number;
-      onProgress?: (progress: number, message: string) => void;
-    },
-  ): Promise<{ content: string; mimeType: string | null }> {
-    if (!url) throw new Error("loadFromUrl requires a url");
-    const timeoutMs = options?.timeoutMs ?? 15000;
-
-    // Build doFetchImpl that prefers Accept: text/turtle
-    const { doFetch } = await import("./fetcher").catch(() => ({ doFetch: undefined as any }));
-    const doFetchImpl = typeof doFetch === "function"
-      ? doFetch
-      : (async (t: string, to: number) => {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), to);
-          try {
-            return await fetch(t, { signal: controller.signal, headers: { Accept: "text/turtle" } });
-          } finally {
-            clearTimeout(timeoutId);
-          }
-        });
-
-    // Helper: determine mime from heuristic content or url extension
-    const heurMime = (text: string, u?: string): string | null => {
-      const t = String(text || "").trim();
-      if (!t) return null;
-      // Quick content heuristics
-      if (t.startsWith("@prefix") || t.startsWith("PREFIX") || t.includes("owl:") || t.includes("rdf:type") || t.includes("rdfs:label") || t.includes("http://www.w3.org/1999/02/22-rdf-syntax-ns#")) {
-        return "text/turtle";
-      }
-      if ((t.startsWith("{") || t.includes('"@context"') || t.includes("'@context'")) && (t.includes("@context") || t.includes("\"@graph\"") || t.includes("\"@id\""))) {
-        return "application/ld+json";
-      }
-      if (t.indexOf("<?xml") === 0 || t.includes("<rdf:RDF") || (t.startsWith("<") && t.includes("rdf:"))) {
-        return "application/rdf+xml";
-      }
-      // Fallback to file extension
-      try {
-        if (u && typeof u === "string") {
-          const m = u.split("?")[0].split("#")[0].toLowerCase();
-          if (m.endsWith(".ttl") || m.endsWith(".turtle")) return "text/turtle";
-          if (m.endsWith(".n3")) return "text/n3";
-          if (m.endsWith(".jsonld") || m.endsWith(".json")) return "application/ld+json";
-          if (m.endsWith(".rdf") || m.endsWith(".xml")) return "application/rdf+xml";
-        }
-      } catch (_) {
-        /* ignore */
-      }
-      return null;
-    };
-
-    // Single fetch attempt (no multiple candidates). Use doFetchImpl
-    const res = await doFetchImpl(url, timeoutMs);
-    if (!res) throw new Error(`No response for ${url}`);
-    if (!res.ok) {
-      console.warn(`[VG_RDF] HTTP ${res.status} ${res.statusText} for ${url}`);
-    }
-
-    const contentTypeHeader = (res.headers && typeof res.headers.get === "function") ? (res.headers.get("content-type") || "") : "";
-    const reportedMime = contentTypeHeader ? contentTypeHeader.split(";")[0].trim() : null;
-
-    const text = await res.text();
-
-    // Fast path: if the server explicitly reports text/turtle or text/n3, parse directly with N3 (loadRDFIntoGraph)
-    if (reportedMime === "text/turtle" || reportedMime === "text/n3") {
-      try {
-        console.info("[VG_RDF] fast-path: content-type indicates Turtle -> using N3 parser directly", { url, mime: reportedMime });
-        await this.loadRDFIntoGraph(text, options && (options as any).graphName ? (options as any).graphName : "urn:vg:data", "text/turtle");
-        return { content: text, mimeType: reportedMime };
-      } catch (err) {
-        // Log and continue to rdf-parse attempts
-        console.warn("[VG_RDF] fast-path N3 parse failed, will attempt rdf-parse fallbacks", { url, mime: reportedMime, error: String(err).slice(0, 400) });
-      }
-    }
-
-    // Helper to run rdf-parse with a given parseOptions (contentType or path) and delegate to loadRDFIntoGraph
-    const runRdfParseAndLoad = async (parseOpts: { contentType?: string | undefined; path?: string | undefined; baseIRI?: string | undefined }) => {
-      // streams are single-use: create fresh WHATWG ReadableStream from text
-      const input = (new Response(text).body as any);
-      const quadStream = rdfParser.parse(input as any, { contentType: parseOpts.contentType as any, path: parseOpts.path, baseIRI: parseOpts.baseIRI || url });
-      console.debug("[VG_RDF] process info before serialize (loadFromUrl:runRdfParseAndLoad)", { typeof_process: typeof (globalThis as any).process, nextTickType: typeof (globalThis as any).process?.nextTick, nextTick_preview: (globalThis as any).process?.nextTick ? String((globalThis as any).process?.nextTick).slice(0,200) : null });
-      const turtleStream = rdfSerializer.serialize(quadStream, { contentType: "text/turtle" });
-      const turtle = await getStream(turtleStream);
-      await this.loadRDFIntoGraph(turtle, options && (options as any).graphName ? (options as any).graphName : "urn:vg:data", "text/turtle");
-      return turtle;
-    };
-    console.info("[VG_RDF] fetched wth return mime:", { url, reportedMime });
-    // Attempt 1: parse using reported Content-Type via rdf-parse
-    if (reportedMime) {
-      try {
-        console.info("[VG_RDF] attempt: rdf-parse using reported Content-Type", { url, reportedMime });
-        await runRdfParseAndLoad({ contentType: reportedMime, baseIRI: url });
-        return { content: text, mimeType: reportedMime };
-      } catch (err) {
-        console.info("[VG_RDF] rdf-parse (reported Content-Type) failed, will try filename/path based parse", { url, reportedMime, error: String(err).slice(0, 400) });
-      }
-    }
-
-    // Attempt 2: parse using filename/path (let rdf-parse infer from extension)
-    try {
-      console.info("[VG_RDF] attempt: rdf-parse using path (filename) inference", { url });
-      await runRdfParseAndLoad({ path: url, baseIRI: url });
-      // When successful, prefer reportedMime if present, otherwise let heuristics determine returned mime (unknown here)
-      return { content: text, mimeType: reportedMime || null };
-    } catch (err) {
-      console.info("[VG_RDF] rdf-parse (path) failed, will try content heuristics", { url, error: String(err).slice(0, 400) });
-    }
-
-    // Attempt 3: heuristics-based decision
-    const heur = heurMime(text, url);
-    if (heur === "text/turtle") {
-      try {
-        console.info("[VG_RDF] heuristics indicate Turtle -> parsing directly with N3 parser", { url });
-        await this.loadRDFIntoGraph(text, options && (options as any).graphName ? (options as any).graphName : "urn:vg:data", "text/turtle");
-        return { content: text, mimeType: "text/turtle" };
-      } catch (err) {
-        console.info("[VG_RDF] heuristics direct N3 parse failed, will attempt rdf-parse with heuristic mime", { url, error: String(err).slice(0, 400) });
-      }
-    }
-
-    if (heur) {
-      try {
-        console.info("[VG_RDF] attempt: rdf-parse using heuristic mimeType", { url, heur });
-        await runRdfParseAndLoad({ contentType: heur, baseIRI: url });
-        return { content: text, mimeType: heur };
-      } catch (err) {
-        console.info("[VG_RDF] rdf-parse (heuristic mime) failed", { url, heur, error: String(err).slice(0, 400) });
-      }
-    }
-
-    // All attempts exhausted: emit clear error and throw
-    try {
-      const snippet = String(text || "").slice(0, 400).replace(/\n/g, "\\n");
-      console.error("[VG_RDF] All parsing attempts failed for URL", url, { reportedMime, heuristic: heur, snippet });
-    } catch (_) { /* ignore logging errors */ }
-
-    throw new Error(`Failed to parse RDF from ${url}. Attempts: direct N3 (for Turtle), rdf-parse by reported Content-Type, rdf-parse by filename, heuristics-based parse.`);
-  }
+  
 
   exportToTurtle(): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -1357,104 +1296,60 @@ export class RDFManager {
   }
 
   /**
-   * Get all namespaces/prefixes
+   * Get all namespaces/prefixes (sanitized).
+   *
+   * Always return a plain prefix -> string map. This prevents UI consumers
+   * from seeing object-shaped values (e.g. RDFJS NamedNode or other runtime objects).
    */
   getNamespaces(): Record<string, string> {
-    return this.namespaces;
+    try {
+      return sanitizeNamespaces(this.namespaces || {});
+    } catch (_) {
+      try {
+        // best-effort fallback: shallow copy coerced to strings
+        const out: Record<string, string> = {};
+        const src = this.namespaces || {};
+        for (const [k, v] of Object.entries(src || {})) {
+          try {
+            if (typeof v === "string") out[k] = v;
+            else if (v && typeof (v as any).value === "string") out[k] = String((v as any).value);
+          } catch (_) { /* ignore per-entry */ }
+        }
+        return out;
+      } catch (_) {
+        return {};
+      }
+    }
   }
 
   /**
    * Add a new namespace
    *
-   * When a new prefix is registered at runtime we asynchronously show a UI toast
-   * so users get immediate feedback that a namespace/prefix was added. Use a
-   * dynamic import so this utility code does not create a hard dependency cycle
-   * with UI modules at load time.
+   * Only accept well-formed namespace URIs. Accept either:
+   * - a string URI, or
+   * - an object with a string `.value` property (RDFJS NamedNode)
+   *
+   * If the incoming value cannot be converted to a non-empty string, the prefix is ignored.
    */
-  addNamespace(prefix: string, uri: string): void {
-    try {
-      // Determine whether the mapping is newly added or actually changed.
-      const prev = Object.prototype.hasOwnProperty.call(this.namespaces, prefix)
-        ? this.namespaces[prefix]
-        : undefined;
-      const changed = prev === undefined || String(prev) !== String(uri);
+  addNamespace(prefix: string, uri: any): void {
+    // allow empty-string prefix (default namespace). Only skip truly missing keys.
+    if (prefix === null || typeof prefix === "undefined") return;
+    // coerce incoming uri to a string only for supported shapes
+    let uriStr = "";
+    if (typeof uri === "string") uriStr = uri;
+    else if (uri && typeof (uri as any).value === "string") uriStr = String((uri as any).value);
+    if (!uriStr) return;
 
-      // Always set/overwrite the mapping so callers can update URIs for a prefix.
-      this.namespaces[prefix] = uri;
+    const prev = Object.prototype.hasOwnProperty.call(this.namespaces, prefix) ? this.namespaces[prefix] : undefined;
+    const changed = prev === undefined || String(prev) !== uriStr;
 
-      // Developer-facing logs: always emit a console.debug so developers see namespace
-      // activity when loading RDF (including autoload via URL param at startup).
-      try {
-        console.info("[VG_NAMESPACE_ADDED]", { prefix, uri, namespaces: { ...(this.namespaces || {}) } });
-      } catch (_) { /* ignore console failures */ }
+    // Update internal map
+    this.namespaces[prefix] = uriStr;
 
-      // Attempt to send structured debug events through existing helpers where available.
-      try { debug("rdf.namespaces.updated", { prefix, uri, namespaces: { ...(this.namespaces || {}) } }); } catch (_) { void 0; }
-      try { debugLog("rdf.namespaces.updated", { prefix, uri, namespaces: { ...(this.namespaces || {}) } }); } catch (_) { void 0; }
-
-      // Also expose to window for quick inspection in dev tooling
-      try {
-        if (typeof window !== "undefined") {
-          (window as any).__VG_NAMESPACES = { ...(window as any).__VG_NAMESPACES || {}, ...(this.namespaces || {}) };
-        }
-      } catch (_) { /* ignore */ }
-      // Persist registry so consumers relying on the ontology store receive updates immediately.
-      try {
-        persistRegistryToStore(buildRegistryFromManager(this));
-      } catch (_) { /* ignore persist failures */ }
-
-      if (changed) {
-        // Dynamic import so we don't create a hard runtime dependency on the UI layer.
-        // Fire-and-forget the toast; failures to import or show the toast should not
-        // break RDF processing.
-        try {
-          import("../components/ui/use-toast")
-            .then((mod) => {
-              try {
-                if (mod && typeof mod.toast === "function") {
-                  mod.toast({
-                    title: `Prefix added: ${prefix}`,
-                    description: String(uri),
-                    // keep the toast short-lived but visible
-                    duration: 4000,
-                  } as any);
-                }
-              } catch (_) {
-                /* ignore toast failures */
-              }
-            })
-            .catch(() => {
-              /* ignore dynamic import errors */
-            });
-        } catch (_) {
-          try {
-            if (typeof fallback === "function") {
-              fallback("emptyCatch", { error: String(_) });
-            }
-          } catch (__) {
-            /* ignore fallback errors */
-          }
-        }
-
-        // Notify subscribers that namespaces changed so UI can rebuild palette / displays
-        try {
-          this.notifyChange({ kind: "namespaces", prefixes: [prefix] });
-        } catch (_) {
-          /* ignore notification failures */
-        }
-      }
-    } catch (e) {
-      try {
-        if (typeof fallback === "function") {
-          fallback("rdf.addNamespace.failed", {
-            prefix,
-            namespace: uri,
-            error: String(e),
-          });
-        }
-      } catch (_) {
-        /* ignore */
-      }
+    // Persist registry (best-effort) and notify subscribers
+    try { persistRegistryToStore(buildRegistryFromManager(this)); } catch (_) { /* ignore */ }
+    if (changed) {
+      try { this.notifyChange({ kind: "namespaces", prefixes: [prefix] }); } catch (_) { /* ignore */ }
     }
   }
 
@@ -2173,40 +2068,15 @@ export class RDFManager {
     namespaces: Record<string, string> | undefined | null,
   ): void {
     if (!namespaces || typeof namespaces !== "object") return;
-    try {
-      // Use addNamespace for each entry so we get consistent behavior and UI notification
-      // for newly added prefixes (addNamespace will handle idempotency and toast notification).
-      Object.entries(namespaces).forEach(([p, ns]) => {
-        try {
-          if (p && ns) {
-            this.addNamespace(String(p), String(ns));
-          }
-        } catch (_) {
-          /* ignore per-entry failures */
-        }
-      });
-    } catch (e) {
-      try {
-        try {
-          if (typeof fallback === "function") {
-            try {
-              fallback(
-                "console.warn",
-                { args: [ (e && (e as any).message) ? (e as any).message : String(e) ] },
-                { level: "warn" },
-              );
-            } catch (_) { void 0; }
-          }
-        } catch (_) { void 0; }
-        console.warn("applyParsedNamespaces failed:", e);
-      } catch (_) {
-        try {
-          if (typeof fallback === "function") {
-            fallback("emptyCatch", { error: String(e) });
-          }
-        } catch (_) {
-          /* ignore */
-        }
+    for (const [p, ns] of Object.entries(namespaces)) {
+      // Accept empty-string prefix (default) — only skip truly missing keys.
+      if (p === null || typeof p === "undefined") continue;
+      if (typeof ns === "string") {
+        this.addNamespace(p, ns);
+      } else if (ns && typeof (ns as any).value === "string") {
+        this.addNamespace(p, (ns as any).value);
+      } else {
+        // ignore unexpected shapes
       }
     }
   }
@@ -2241,14 +2111,10 @@ export class RDFManager {
           if (!subj || !pred || !obj) return;
           const toAdd = quad(subj, pred, obj, g);
           try {
-            const exists = this.store.countQuads(toAdd.subject, toAdd.predicate, toAdd.object, g) > 0;
-            if (!exists) {
-              this.store.addQuad(toAdd);
-              try { this.bufferSubjectFromQuad(toAdd); } catch (_) { /* ignore */ }
-              addedQuads.push(toAdd);
-            }
+            // Delegate to helper to keep add/buffer behavior consistent with string parser path
+            this.addQuadToStore(toAdd, g, addedQuads);
           } catch (_) {
-            // Best-effort add
+            // Best-effort add when helper fails
             try { this.store.addQuad(toAdd); addedQuads.push(toAdd); } catch (_) { /* ignore */ }
           }
         } catch (err) {
@@ -2283,20 +2149,12 @@ export class RDFManager {
           // Merge any discovered prefixes
           try { if (Object.keys(prefixes).length > 0) this.applyParsedNamespaces(prefixes); } catch (_) { /* ignore */ }
 
-          // Run reconcile with the quads we added so consumers get authoritative snapshot
+          // Finalize via shared helper (applies prefixes, runs reconcile, notifies, schedules flush)
           try {
-            if (Array.isArray(addedQuads) && addedQuads.length > 0) {
-              await (this as any).runReconcile(addedQuads);
-            } else {
-              // no per-quad reconcile; still notify change so consumers can react
-              try { this.notifyChange(); } catch (_) { /* ignore */ }
-            }
+            await (this as any).finalizeLoad(addedQuads, prefixes);
           } catch (e) {
             try { fallback("rdf.loadQuadsToDiagram.reconcile_failed", { error: String(e) }); } catch (_) { /* ignore */ }
           }
-
-          // Schedule subject-level flush immediately
-          try { this.scheduleSubjectFlush(0); } catch (_) { /* ignore */ }
 
           resolve();
         } catch (err) {
