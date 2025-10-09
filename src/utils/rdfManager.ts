@@ -25,7 +25,7 @@ import type * as RDF from "@rdfjs/types";
 
 
 
-const { namedNode, literal, quad, blankNode } = DataFactory;
+const { namedNode, literal, quad, blankNode, defaultGraph } = DataFactory;
 
 /**
  * Helper: create a Node-style Readable from fetched content (string, ArrayBuffer or Uint8Array).
@@ -1152,32 +1152,6 @@ export class RDFManager {
     // prefer the in-memory N3 parser path which accepts a string and does not require Node Readable streams.
     const mimeType = contentTypeHeader ? (contentTypeHeader.split(";")[0].trim() || null) : null;
 
-    // Local, in-scope heuristic (duplicate of the later helper) so we can decide before it's declared later.
-    const looksLikeRdfLocal = (text: string) => {
-      try {
-        const t = String(text || "").trim();
-        if (!t) return false;
-        if (
-          t.startsWith("@prefix") ||
-          t.startsWith("PREFIX") ||
-          t.includes("http://www.w3.org/1999/02/22-rdf-syntax-ns#") ||
-          t.includes("@id") ||
-          t.includes("@context")
-        )
-          return true;
-        if (t.startsWith("<") && t.includes("rdf:")) return true;
-        if (t.startsWith("{") && t.includes("@context")) return true;
-        if (
-          t.includes("owl:") ||
-          t.includes("rdf:type") ||
-          t.includes("rdfs:label")
-        )
-          return true;
-        return false;
-      } catch (_) {
-        return false;
-      }
-    };
 
     // const prefersTurtle = mimeType === "text/turtle" || mimeType === "text/n3" || looksLikeRdfLocal(txt);
     const prefersTurtle = mimeType === "text/turtle" || mimeType === "text/n3";
@@ -1226,7 +1200,10 @@ export class RDFManager {
         format: "text/turtle",
       });
 
-      let quads = this.store.getQuads(null, null, null, null) || [];
+      // Export only triples from the authoritative data graph (urn:vg:data)
+      const dataGraph = namedNode("urn:vg:data");
+      let quads = this.store.getQuads(null, null, null, dataGraph) || [];
+
       // Defensive filter: ensure only well-formed quads with N3 Terms reach the writer.
       quads = quads.filter((q: any) => {
         try {
@@ -1244,7 +1221,18 @@ export class RDFManager {
           return false;
         }
       });
-      writer.addQuads(quads);
+
+      // Convert named-graph quads into plain triples (no graph) so the writer emits
+      // standard triple statements rather than named-graph blocks.
+      const triples = (quads || []).map((q: any) => {
+        try {
+          return quad((q as any).subject, (q as any).predicate, (q as any).object, defaultGraph());
+        } catch (_) {
+          return q;
+        }
+      });
+
+      writer.addQuads(triples);
 
       writer.end((error, result) => {
         if (error) {
@@ -1266,7 +1254,9 @@ export class RDFManager {
         format: "application/ld+json",
       });
 
-      let quads = this.store.getQuads(null, null, null, null) || [];
+      // Export only triples from the authoritative data graph (urn:vg:data)
+      const dataGraph = namedNode("urn:vg:data");
+      let quads = this.store.getQuads(null, null, null, dataGraph) || [];
       quads = quads.filter((q: any) => {
         try {
           return (
@@ -1282,13 +1272,25 @@ export class RDFManager {
           return false;
         }
       });
-      writer.addQuads(quads);
+
+      // Convert to triples (drop graph) so JSON-LD writer doesn't emit named graph wrappers.
+      const triplesForJsonLd = (quads || []).map((q: any) => {
+        try { return quad((q as any).subject, (q as any).predicate, (q as any).object, defaultGraph()); } catch (_) { return q; }
+      });
+      writer.addQuads(triplesForJsonLd);
 
       writer.end((error, result) => {
         if (error) {
           reject(error);
         } else {
-          resolve(result);
+          try {
+            // Unwrap any named-graph wrapper for the data graph so JSON-LD writer receives plain triples.
+            // For JSON-LD we prefer to return the writer's result unchanged except when a named-graph
+            // wrapper is present in Turtle form - handle conservatively by returning the result as-is.
+            resolve(result);
+          } catch (e) {
+            resolve(result);
+          }
         }
       });
     });
@@ -1304,7 +1306,9 @@ export class RDFManager {
         format: "application/rdf+xml",
       });
 
-      let quads = this.store.getQuads(null, null, null, null) || [];
+      // Export only triples from the authoritative data graph (urn:vg:data)
+      const dataGraph = namedNode("urn:vg:data");
+      let quads = this.store.getQuads(null, null, null, dataGraph) || [];
       quads = quads.filter((q: any) => {
         try {
           return (
@@ -1320,13 +1324,24 @@ export class RDFManager {
           return false;
         }
       });
-      writer.addQuads(quads);
+
+      // Convert to triples (drop graph) so RDF/XML writer emits triples rather than named-graph constructs.
+      const triplesForXml = (quads || []).map((q: any) => {
+        try { return quad((q as any).subject, (q as any).predicate, (q as any).object, defaultGraph()); } catch (_) { return q; }
+      });
+      writer.addQuads(triplesForXml);
 
       writer.end((error, result) => {
         if (error) {
           reject(error);
         } else {
-          resolve(result);
+          try {
+            // For RDF/XML ensure we return the writer output; named-graph wrappers are unlikely here,
+            // but keep a defensive passthrough.
+            resolve(result);
+          } catch (e) {
+            resolve(result);
+          }
         }
       });
     });
@@ -2058,10 +2073,10 @@ export class RDFManager {
     this.store = new Store();
     // Restore core RDF prefixes only.
     this.namespaces = {
-      rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
-      rdfs: "http://www.w3.org/2000/01/rdf-schema#",
-      owl: "http://www.w3.org/2002/07/owl#",
-      xsd: "http://www.w3.org/2001/XMLSchema#",
+      // rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+      // rdfs: "http://www.w3.org/2000/01/rdf-schema#",
+      // owl: "http://www.w3.org/2002/07/owl#",
+      // xsd: "http://www.w3.org/2001/XMLSchema#",
     };
     // Notify subscribers that RDF cleared
     try {

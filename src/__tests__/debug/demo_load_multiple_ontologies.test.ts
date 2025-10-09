@@ -63,4 +63,4 @@ it("demo: load multiple ontologies and print loadedOntologies", async () => {
   state.loadedOntologies.forEach((o, i) => {
     console.log(`--- ontology[${i}] ${o.url} namespaces keys:`, Object.keys(o.namespaces || {}));
   });
-});
+}, 60000);

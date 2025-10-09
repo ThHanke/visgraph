@@ -151,6 +151,9 @@ export function mapQuadsToDiagram(
     "http://www.w3.org/2002/07/owl#SymmetricProperty",
     "http://www.w3.org/2002/07/owl#Ontology"
   ]);
+  const ABOX_TYPE_IRIS = new Set<string>([
+    "http://www.w3.org/2002/07/owl#NamedIndividual",
+  ]);
 
   // small local cache for classifier results to avoid repeated work per-predicate
   const predicateKindCache = new Map<string, PredicateKind>();
@@ -185,21 +188,7 @@ export function mapQuadsToDiagram(
     /* ignore init errors */
   }
 
-  // Heuristic: syntactic check whether an IRI looks like an ontology / vocabulary identifier.
-  // Deterministic, heuristic-based (no store lookups). Matches hosts/namespaces commonly used
-  // for ontologies and vocabulary IRIs, URN ontologies, and path patterns like '/ontology/' or trailing '#'.
-  const isOntologyLikeIri = (iri?: string | null) => {
-    try {
-      if (!iri) return false;
-      const s = String(iri).trim();
-      if (!s) return false;
-      if (s.includes("urn:vg:ontologies")) return true;
-      return false;
-    } catch (_) {
-      return false;
-    }
-  };
-
+  
   // Blank node referenced checker (in the provided quad batch)
   const isBlankNodeReferenced = (bn?: string | null, quadsToCheck?: QuadLike[]) => {
     try {
@@ -286,21 +275,18 @@ export function mapQuadsToDiagram(
         const entry = nodeMap.get(subjectIri)!;
 
         // Determine subjectIsTBox using pre-scanned types (prefer deterministic)
-        let subjectIsTBox = false;
-        try {
-          const subjTypesArr = typesBySubject.has(subjectIri)
-            ? Array.from(typesBySubject.get(subjectIri)!).map(String)
-            : Array.isArray(entry.rdfTypes)
-            ? entry.rdfTypes.map(String)
-            : [];
+        let subjectIsTBox = true;
+        const subjTypesArr = typesBySubject.has(subjectIri)
+          ? Array.from(typesBySubject.get(subjectIri)!).map(String)
+          : Array.isArray(entry.rdfTypes)
+          ? entry.rdfTypes.map(String)
+          : [];
 
-          const hasIndividual = subjTypesArr.includes(OWL_NAMED_INDIVIDUAL);
-          const hasTboxType = subjTypesArr.some((t) => TBOX_TYPE_IRIS.has(String(t)));
-          subjectIsTBox = !hasIndividual && hasTboxType;
-        } catch (_) {
-          subjectIsTBox = false;
-        }
-
+        // // const hasIndividual = subjTypesArr.includes(OWL_NAMED_INDIVIDUAL);
+        // // const hasTboxType = subjTypesArr.some((t) => TBOX_TYPE_IRIS.has(String(t)));
+        const hasAboxType = subjTypesArr.length === 0 || subjTypesArr.some((t) => ABOX_TYPE_IRIS.has(String(t)));
+        subjectIsTBox = !hasAboxType;
+        entry.forceIsTBox=subjectIsTBox
         // Determine predicate kind (use cache -> options.predicateKind -> default to annotation)
         let predicateKindLocal: PredicateKind = "annotation";
         try {
@@ -606,15 +592,18 @@ export function mapQuadsToDiagram(
     }
 
     // Determine isTBox
-    let isTBox = false;
-    try {
-      const types = Array.isArray(info.rdfTypes) ? info.rdfTypes.map((t: any) => String(t || "")) : [];
-      const hasIndividual = types.includes(OWL_NAMED_INDIVIDUAL);
-      const hasTboxType = types.some((t) => TBOX_TYPE_IRIS.has(String(t)));
-      isTBox = !hasIndividual && hasTboxType;
-    } catch (_) {
-      isTBox = false;
-    }
+    let isTBox;
+    // try {
+    //   const types = Array.isArray(info.rdfTypes) ? info.rdfTypes.map((t: any) => String(t || "")) : [];
+    //   const hasIndividual = types.includes(OWL_NAMED_INDIVIDUAL);
+    //   const hasTboxType = types.some((t) => TBOX_TYPE_IRIS.has(String(t)));
+    //   isTBox = !hasIndividual && hasTboxType;
+    // } catch (_) {
+    //   isTBox = false;
+    // }
+    const types = Array.isArray(info.rdfTypes) ? info.rdfTypes.map((t: any) => String(t || "")) : [];
+    isTBox = true;
+
 
     // Honor explicit override set during mapping
     try {
