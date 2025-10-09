@@ -11,17 +11,10 @@ import { RDFManager, rdfManager } from "../utils/rdfManager";
 import { useAppConfigStore } from "./appConfigStore";
 import { debug, info, warn, error, fallback } from "../utils/startupDebug";
 import { WELL_KNOWN } from "../utils/wellKnownOntologies";
-import { computeTermDisplay } from "../utils/termUtils";
-import { generateEdgeId } from "../components/Canvas/core/edgeHelpers";
 import { DataFactory, Quad } from "n3";
 import { buildPaletteMap } from "../components/Canvas/core/namespacePalette";
 const { namedNode, quad } = DataFactory;
 
-/**
- * Map to track in-flight RDF loads so identical loads return the same Promise.
- * Keyed by the raw RDF content or source identifier.
- */
-const inFlightLoads = new Map<string, Promise<any>>();
 
 /*
   Deferred namespace registration:
@@ -280,6 +273,27 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
   namespaceRegistry: [],
   setNamespaceRegistry: (registry: { prefix: string; namespace: string; color: string }[]) => {
     try {
+      // Capture callsite and values for debugging when tests trigger namespace writes.
+      try {
+        const err = new Error("[VG_DEBUG] setNamespaceRegistry called");
+        const stack = (err && err.stack) || (new Error()).stack || "";
+        const prev = (useOntologyStore as any).getState ? (useOntologyStore as any).getState().namespaceRegistry : undefined;
+        const entry = {
+          kind: "setNamespaceRegistry.call",
+          time: Date.now(),
+          prevCount: Array.isArray(prev) ? prev.length : (prev ? 1 : 0),
+          newCount: Array.isArray(registry) ? registry.length : (registry ? 1 : 0),
+          prevPreview: Array.isArray(prev) ? (prev || []).slice(0,5) : prev,
+          newPreview: Array.isArray(registry) ? (registry || []).slice(0,5) : registry,
+          stack,
+        };
+        try {
+          (window as any).__VG_NAMESPACE_MUTATION_LOG = (window as any).__VG_NAMESPACE_MUTATION_LOG || [];
+          (window as any).__VG_NAMESPACE_MUTATION_LOG.push(entry);
+        } catch (_) { /* ignore logging failure */ }
+        try { console.error("[VG_DEBUG] setNamespaceRegistry", entry); } catch (_) { /* ignore */ }
+      } catch (_) { /* ignore debug */ }
+
       set((st: any) => ({
         namespaceRegistry: Array.isArray(registry) ? registry.slice() : [],
       }));
@@ -413,12 +427,14 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
               urlsEquivalent(o.url, normRequestedUrl),
             );
             if (exists) return {};
-            const meta: LoadedOntology = {
+              const meta: LoadedOntology = {
               url: normRequestedUrl,
               name: wkEntry.name || deriveOntologyName(String(normRequestedUrl || url)),
               classes: [],
               properties: [],
-              namespaces: wkEntry.namespaces || {},
+              // LoadedOntology must not be coupled to the runtime namespace map.
+              // Do not populate namespaces here; namespaceRegistry is authoritative.
+              namespaces: {},
               source: wkEntry && (wkEntry as any).isCore ? "core" : "requested",
               graphName: "urn:vg:ontologies",
             };
@@ -446,6 +462,27 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         );
         return;
       }
+
+      // After a successful fetch/parse, update any previously-registered lightweight
+      // LoadedOntology entries (e.g. well-known placeholders) with the manager's
+      // current namespace snapshot so consumers see the actual prefixes discovered
+      // during parsing. This operation is idempotent and may be a no-op if no
+      // placeholder was registered earlier.
+          try {
+            try {
+              // Do not write runtime namespace snapshots into loadedOntologies.
+              // loadedOntologies should only track ontology metadata (url, name, aliases, source, graphName).
+              // Leave existing entries unchanged here.
+              set((state: any) => {
+                try {
+                  // No-op update to loadedOntologies regarding namespaces; preserve existing entries.
+                  return {};
+                } catch (_) {
+                  return {};
+                }
+              });
+            } catch (_) { /* ignore snapshot persist failures */ }
+          } catch (_) { /* ignore */ }
 
       // After successful load, attempt to discover declared ontology IRI in the ontologies graph
       try {
@@ -487,31 +524,27 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                 if (normRequestedUrl && !urlsEquivalent(normRequestedUrl, canonicalNorm)) aliases.push(normRequestedUrl);
               } catch (_) { /* ignore */ }
 
-              const namespaces =
-                (mgr && typeof (mgr as any).getNamespaces === "function"
-                  ? (mgr as any).getNamespaces()
-                  : rdfManager && typeof (rdfManager as any).getNamespaces === "function"
-                    ? (rdfManager as any).getNamespaces()
-                    : {}) || {};
+              const namespaces = {};
 
-              try {
-                set((state: any) => {
-                  const meta: LoadedOntology = {
-                    url: canonicalNorm,
-                    name: deriveOntologyName(String(canonicalNorm || "")),
-                    classes: [],
-                    properties: [],
-                    namespaces: namespaces || {},
-                    aliases: aliases.length ? aliases : undefined,
-                    source: "discovered",
-                    graphName: "urn:vg:ontologies",
-                  };
-                  return {
-                    loadedOntologies: [...(state.loadedOntologies || []), meta],
-                    ontologiesVersion: (state.ontologiesVersion || 0) + 1,
-                  };
-                });
-              } catch (_) { /* ignore registration failures */ }
+                try {
+                  set((state: any) => {
+                    const meta: LoadedOntology = {
+                      url: canonicalNorm,
+                      name: deriveOntologyName(String(canonicalNorm || "")),
+                      classes: [],
+                      properties: [],
+                      // Do not couple loaded ontology entries to runtime namespace snapshots.
+                      namespaces: {},
+                      aliases: aliases.length ? aliases : undefined,
+                      source: "discovered",
+                      graphName: "urn:vg:ontologies",
+                    };
+                    return {
+                      loadedOntologies: [...(state.loadedOntologies || []), meta],
+                      ontologiesVersion: (state.ontologiesVersion || 0) + 1,
+                    };
+                  });
+                } catch (_) { /* ignore registration failures */ }
             }
           }
         }
@@ -850,13 +883,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         } catch (_) {
           /* ignore */
         }
-        Object.entries(o.namespaces || {}).forEach(([p, ns]) => {
-          try {
-            rdfManager.removeNamespaceAndQuads(ns);
-          } catch (_) {
-            /* ignore */
-          }
-        });
       });
 
       try {
@@ -1055,16 +1081,35 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     }));
 
     // Debug: report incremental update results (counts + samples)
-    try {
-      const classesArr = Object.values(classByIri);
-      const propsArr = Object.values(propByIri);
-      console.debug("[VG_DEBUG] updateFatMap.result", {
-        classesCount: classesArr.length,
-        propertiesCount: propsArr.length,
-        sampleClasses: (classesArr || []).slice(0, 5).map((c: any) => (c && c.iri) || c),
-        sampleProperties: (propsArr || []).slice(0, 5).map((p: any) => (p && p.iri) || p),
-      });
-    } catch (_) { /* ignore debug failures */ }
+      try {
+        const classesArr = Object.values(classByIri);
+        const propsArr = Object.values(propByIri);
+        console.debug("[VG_DEBUG] updateFatMap.result", {
+          classesCount: classesArr.length,
+          propertiesCount: propsArr.length,
+          sampleClasses: (classesArr || []).slice(0, 5).map((c: any) => (c && c.iri) || c),
+          sampleProperties: (propsArr || []).slice(0, 5).map((p: any) => (p && p.iri) || p),
+        });
+      } catch (_) { /* ignore debug failures */ }
+
+      // Also persist the namespace registry as part of incremental reconciles so
+      // consumers observing namespaceRegistry (the legend) receive colors immediately.
+      try {
+        try {
+          const mgr = get().rdfManager;
+          const nsMap = mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
+          const prefixes = Object.keys(nsMap || []).sort();
+          const paletteMap = buildPaletteMap(prefixes || []);
+          const registry = (prefixes || []).map((p) => {
+            try {
+              return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: String((paletteMap as any)[p] || "") };
+            } catch (_) {
+              return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: "" };
+            }
+          });
+          useOntologyStore.setState((s: any) => ({ namespaceRegistry: registry }));
+        } catch (_) { /* ignore incremental registry persist failures */ }
+      } catch (_) { /* ignore outer */ }
   },
 
   getRdfManager: () => {
@@ -1300,109 +1345,121 @@ function deriveOntologyName(url: string): string {
   }
 }
 
-/**
- * Ensure the supplied namespaces are present in the RDF manager. Idempotent.
- */
-function ensureNamespacesPresent(rdfMgr: any, nsMap?: Record<string, string>) {
-  if (!nsMap || typeof nsMap !== "object") return;
-  try {
-    const existing =
-      rdfMgr && typeof rdfMgr.getNamespaces === "function"
-        ? rdfMgr.getNamespaces()
-        : {};
-    // Ensure each declared prefix is registered via the RDF manager's addNamespace API only.
-    for (const [p, ns] of Object.entries(nsMap)) {
-      try {
-        if (!existing[p] && typeof ns === "string" && ns) {
-          if (rdfMgr && typeof rdfMgr.addNamespace === "function") {
-            try {
-              rdfMgr.addNamespace(p, ns);
-            } catch (_) {
-              // best-effort: ignore per-entry failures
-            }
-          }
-        }
-      } catch (_) {
-        // ignore per-entry failures
-      }
-    }
-  } catch (e) {
-    try {
-      if (typeof fallback === "function") {
-        fallback("rdf.ensureNamespaces.failed", { error: String(e) });
-      }
-    } catch (_) { /* ignore */ }
-  }
-}
-
-// TEMPORARY GUARD: capture destructive writes to the fat-map (availableProperties / availableClasses).
-// This instrumentation is temporary and only intended to collect stack traces so we can identify
-// the runtime callsite that clears or replaces the fat-map unexpectedly. It records events on
-// window.__VG_FATMAP_MUTATION_LOG for offline inspection.
-try {
-  const storeAny: any = (useOntologyStore as any);
-  if (storeAny && typeof storeAny.setState === "function" && typeof storeAny.getState === "function") {
-    const origSetState = storeAny.setState.bind(storeAny);
-    storeAny.setState = function (patch: any, replace?: boolean) {
-      try {
-        // Compute tentative new partial state to inspect potential fat-map writes.
-        let newPartial: any = {};
-        try {
-          if (typeof patch === "function") {
-            try {
-              const prev = storeAny.getState ? storeAny.getState() : {};
-              newPartial = patch(prev) || {};
-            } catch (_) {
-              newPartial = {};
-            }
-          } else {
-            newPartial = patch || {};
-          }
-        } catch (_) {
-          newPartial = patch || {};
-        }
-
-        try {
-          const prevState = storeAny.getState ? storeAny.getState() : {};
-          const keysToCheck = ["availableProperties", "availableClasses"];
-          for (const k of keysToCheck) {
-            try {
-              const oldVal = prevState && prevState[k];
-              const newVal = Object.prototype.hasOwnProperty.call(newPartial, k) ? newPartial[k] : oldVal;
-              const oldLen = Array.isArray(oldVal) ? oldVal.length : (oldVal ? 1 : 0);
-              const newLen = Array.isArray(newVal) ? newVal.length : (newVal ? 1 : 0);
-              // Flag destructive clear or major shrink (non-empty -> empty or large reduction)
-              if (oldLen > 0 && (newLen === 0 || newLen < Math.max(1, Math.floor(oldLen / 3)))) {
-                try {
-                  const sampleOld = Array.isArray(oldVal) ? (oldVal || []).slice(0, 5).map((x: any) => x && (x.iri || x.key || x)) : oldVal;
-                  const sampleNew = Array.isArray(newVal) ? (newVal || []).slice(0, 5).map((x: any) => x && (x.iri || x.key || x)) : newVal;
-                  const err = new Error(`[VG_ALERT] destructive fat-map write detected for '${k}': ${oldLen} -> ${newLen}`);
-                  const stack = (err && err.stack) || (new Error()).stack || "";
-                  try {
-                    (window as any).__VG_FATMAP_MUTATION_LOG = (window as any).__VG_FATMAP_MUTATION_LOG || [];
-                    (window as any).__VG_FATMAP_MUTATION_LOG.push({
-                      key: k,
-                      oldLen,
-                      newLen,
-                      sampleOld,
-                      sampleNew,
-                      stack,
-                      time: Date.now(),
-                    });
-                  } catch (_) {
-                    /* ignore logging failure */
-                  }
-                  try { console.error("[VG_ALERT] destructive fat-map write", { key: k, oldLen, newLen, sampleOld, sampleNew }); } catch (_) { /* ignore */ }
-                  try { console.error(stack); } catch (_) { /* ignore */ }
-                } catch (_) { /* ignore per-key */ }
-              }
-            } catch (_) { /* ignore per-key */ }
-          }
-        } catch (_) { /* ignore inspection errors */ }
-      } catch (_) { /* ignore outer */ }
-      return origSetState(patch, replace);
-    };
-  }
-} catch (_) {
-  /* ignore instrumentation install failures */
-}
+ // TEMPORARY GUARD: capture destructive writes to the fat-map (availableProperties / availableClasses).
+ // This instrumentation is temporary and only intended to collect stack traces so we can identify
+ // the runtime callsite that clears or replaces the fat-map unexpectedly. It records events on
+ // window.__VG_FATMAP_MUTATION_LOG for offline inspection.
+ try {
+   const storeAny: any = (useOntologyStore as any);
+   if (storeAny && typeof storeAny.setState === "function" && typeof storeAny.getState === "function") {
+     const origSetState = storeAny.setState.bind(storeAny);
+     storeAny.setState = function (patch: any, replace?: boolean) {
+       try {
+         // Compute tentative new partial state to inspect potential fat-map writes.
+         let newPartial: any = {};
+         try {
+           if (typeof patch === "function") {
+             try {
+               const prev = storeAny.getState ? storeAny.getState() : {};
+               newPartial = patch(prev) || {};
+             } catch (_) {
+               newPartial = {};
+             }
+           } else {
+             newPartial = patch || {};
+           }
+         } catch (_) {
+           newPartial = patch || {};
+         }
+ 
+         try {
+           const prevState = storeAny.getState ? storeAny.getState() : {};
+ 
+           // Keys we already monitored for destructive writes
+           const keysToCheck = ["availableProperties", "availableClasses"];
+           for (const k of keysToCheck) {
+             try {
+               const oldVal = prevState && prevState[k];
+               const newVal = Object.prototype.hasOwnProperty.call(newPartial, k) ? newPartial[k] : oldVal;
+               const oldLen = Array.isArray(oldVal) ? oldVal.length : (oldVal ? 1 : 0);
+               const newLen = Array.isArray(newVal) ? newVal.length : (newVal ? 1 : 0);
+               // Flag destructive clear or major shrink (non-empty -> empty or large reduction)
+               if (oldLen > 0 && (newLen === 0 || newLen < Math.max(1, Math.floor(oldLen / 3)))) {
+                 try {
+                   const sampleOld = Array.isArray(oldVal) ? (oldVal || []).slice(0, 5).map((x: any) => x && (x.iri || x.key || x)) : oldVal;
+                   const sampleNew = Array.isArray(newVal) ? (newVal || []).slice(0, 5).map((x: any) => x && (x.iri || x.key || x)) : newVal;
+                   const err = new Error(`[VG_ALERT] destructive fat-map write detected for '${k}': ${oldLen} -> ${newLen}`);
+                   const stack = (err && err.stack) || (new Error()).stack || "";
+                   try {
+                     (window as any).__VG_FATMAP_MUTATION_LOG = (window as any).__VG_FATMAP_MUTATION_LOG || [];
+                     (window as any).__VG_FATMAP_MUTATION_LOG.push({
+                       key: k,
+                       oldLen,
+                       newLen,
+                       sampleOld,
+                       sampleNew,
+                       stack,
+                       time: Date.now(),
+                     });
+                   } catch (_) {
+                     /* ignore logging failure */
+                   }
+                   try { console.error("[VG_ALERT] destructive fat-map write", { key: k, oldLen, newLen, sampleOld, sampleNew }); } catch (_) { /* ignore */ }
+                   try { console.error(stack); } catch (_) { /* ignore */ }
+                 } catch (_) { /* ignore per-key */ }
+               }
+             } catch (_) { /* ignore per-key */ }
+           }
+ 
+           // NEW: Monitor writes to namespaceRegistry and capture the callsite and values.
+           try {
+             if (Object.prototype.hasOwnProperty.call(newPartial, "namespaceRegistry")) {
+               try {
+                 const prevReg = prevState && Array.isArray(prevState.namespaceRegistry) ? (prevState.namespaceRegistry || []).slice(0, 20) : (prevState && prevState.namespaceRegistry ? prevState.namespaceRegistry : []);
+                 const newReg = Array.isArray(newPartial.namespaceRegistry) ? (newPartial.namespaceRegistry || []).slice(0, 20) : newPartial.namespaceRegistry;
+                 const err = new Error("[VG_ALERT] namespaceRegistry write detected");
+                 const stack = (err && err.stack) || (new Error()).stack || "";
+                 const entry = {
+                   kind: "namespaceRegistry.write",
+                   time: Date.now(),
+                   prevCount: Array.isArray(prevReg) ? prevReg.length : (prevReg ? 1 : 0),
+                   newCount: Array.isArray(newReg) ? newReg.length : (newReg ? 1 : 0),
+                   prevPreview: Array.isArray(prevReg) ? prevReg : String(prevReg),
+                   newPreview: Array.isArray(newReg) ? newReg : String(newReg),
+                   stack,
+                 };
+                 try {
+                   (window as any).__VG_NAMESPACE_MUTATION_LOG = (window as any).__VG_NAMESPACE_MUTATION_LOG || [];
+                   (window as any).__VG_NAMESPACE_MUTATION_LOG.push(entry);
+                 } catch (_) { /* ignore logging failure */ }
+                 try { console.error("[VG_ALERT] namespaceRegistry.write", entry); } catch (_) { /* ignore */ }
+               } catch (_) { /* ignore per-write logging failure */ }
+             }
+           } catch (_) { /* ignore namespaceRegistry inspection errors */ }
+ 
+         } catch (_) { /* ignore inspection errors */ }
+       } catch (_) { /* ignore outer */ }
+       return origSetState(patch, replace);
+     };
+ 
+     // Expose a small runtime helper for quick inspection (dev-only)
+     try {
+       if (typeof window !== "undefined") {
+         try {
+           (window as any).__VG_DUMP_NAMESPACES = function() {
+             try {
+               const mgr = (useOntologyStore.getState && useOntologyStore.getState().rdfManager) || rdfManager;
+               const mgrNs = mgr && typeof mgr.getNamespaces === "function" ? mgr.getNamespaces() : {};
+               const reg = (useOntologyStore.getState && useOntologyStore.getState().namespaceRegistry) || [];
+               return { manager: mgrNs, registry: reg };
+             } catch (e) {
+               return { error: String(e) };
+             }
+           };
+         } catch (_) { /* ignore */ }
+       }
+     } catch (_) { /* ignore helper install failure */ }
+   }
+ } catch (_) {
+   /* ignore instrumentation install failures */
+ }

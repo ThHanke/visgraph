@@ -21,7 +21,6 @@ import {
 } from "n3";
 import { rdfParser } from "rdf-parse";
 import { rdfSerializer } from "rdf-serialize";
-import getStream from "get-stream";
 
 
 
@@ -78,7 +77,6 @@ import {
   fallback,
   incr,
 } from "../utils/startupDebug";
-import { buildRegistryFromManager, persistRegistryToStore, sanitizeNamespaces } from "../utils/namespaceRegistry";
 
 /**
  * Manages RDF data with proper store operations
@@ -738,13 +736,6 @@ export class RDFManager {
   // Helper: finalize a load - apply prefixes, run reconciliation, notify and schedule subject flush
   private async finalizeLoad(addedQuads: Quad[], prefixes?: Record<string, string>, loadId?: string): Promise<void> {
     try {
-      // Merge parsed prefixes and persist namespace registry immediately (UI needs prefixes ASAP)
-      if (prefixes && Object.keys(prefixes).length > 0) {
-        try {
-          this.applyParsedNamespaces(prefixes);
-        } catch (_) { /* ignore */ }
-      }
-
       // Run reconciliation with the quads we added so consumers get authoritative snapshot
       try {
         if (Array.isArray(addedQuads) && addedQuads.length > 0) {
@@ -835,52 +826,7 @@ export class RDFManager {
     try { this.parsingInProgress = true; } catch (_) { void 0; }
 
     const finalize = (prefixes?: Record<string, string>) => {
-      // 1) Merge parsed prefixes and persist namespace registry immediately (UI needs prefixes ASAP)
-      if (prefixes) {
-        try {
-          // Use the manager's normalization path so all namespace values are coerced to strings.
-          try { this.applyParsedNamespaces(prefixes); } catch (_) { /* ignore */ }
-
-          try {
-            console.info("[VG_NAMESPACES_MERGED] mergedPrefixes:", prefixes, "namespaces:", this.namespaces);
-          } catch (_) { /* ignore console failures */ }
-
-          try { persistRegistryToStore(buildRegistryFromManager(this)); } catch (_) { /* ignore persist failures */ }
-
-          try {
-            if (typeof window !== "undefined") {
-              try {
-                // Sanitize namespace map before exposing to window so consumers never see object values.
-                const existing = (window as any).__VG_NAMESPACES || {};
-                const safeMap: Record<string, string> = {};
-                try {
-                  const src = (this.namespaces || {}) as Record<string, any>;
-                  for (const [kk, vv] of Object.entries(src || {})) {
-                    try {
-                      if (typeof vv === "string") {
-                        safeMap[kk] = vv;
-                      } else if (vv && typeof (vv as any).value === "string") {
-                        safeMap[kk] = String((vv as any).value);
-                      } else {
-                        const s = String(vv);
-                        safeMap[kk] = s === "[object Object]" ? "" : s;
-                      }
-                    } catch (_) {
-                      try { safeMap[kk] = String(vv); } catch (_) { safeMap[kk] = ""; }
-                    }
-                  }
-                } catch (_) { /* ignore */ }
-                (window as any).__VG_NAMESPACES = { ...(existing || {}), ...(safeMap || {}) };
-              } catch (_) {
-                /* ignore window exposure failures */
-              }
-            }
-          } catch (_) { /* ignore */ }
-        } catch (_) {
-          /* ignore prefix merge failures */
-        }
-      }
-        // Notify subscribers that RDF changed
+      // Notify subscribers that RDF changed
       this.notifyChange();
       try { this.parsingInProgress = false; } catch (_) { /* ignore */ }
       try { this.scheduleSubjectFlush(0); } catch (_) { /* ignore */ }
@@ -1296,30 +1242,10 @@ export class RDFManager {
   }
 
   /**
-   * Get all namespaces/prefixes (sanitized).
-   *
-   * Always return a plain prefix -> string map. This prevents UI consumers
-   * from seeing object-shaped values (e.g. RDFJS NamedNode or other runtime objects).
+   * Get all namespaces/prefixes
    */
   getNamespaces(): Record<string, string> {
-    try {
-      return sanitizeNamespaces(this.namespaces || {});
-    } catch (_) {
-      try {
-        // best-effort fallback: shallow copy coerced to strings
-        const out: Record<string, string> = {};
-        const src = this.namespaces || {};
-        for (const [k, v] of Object.entries(src || {})) {
-          try {
-            if (typeof v === "string") out[k] = v;
-            else if (v && typeof (v as any).value === "string") out[k] = String((v as any).value);
-          } catch (_) { /* ignore per-entry */ }
-        }
-        return out;
-      } catch (_) {
-        return {};
-      }
-    }
+    return { ...(this.namespaces || {}) };
   }
 
   /**
@@ -1346,8 +1272,7 @@ export class RDFManager {
     // Update internal map
     this.namespaces[prefix] = uriStr;
 
-    // Persist registry (best-effort) and notify subscribers
-    try { persistRegistryToStore(buildRegistryFromManager(this)); } catch (_) { /* ignore */ }
+    // Persisting the registry is handled by the reconcile/fat-map path only.
     if (changed) {
       try { this.notifyChange({ kind: "namespaces", prefixes: [prefix] }); } catch (_) { /* ignore */ }
     }
@@ -2061,27 +1986,7 @@ export class RDFManager {
     }
   }
 
-  /**
-   * Merge parsed namespaces into the manager's namespace map.
-   */
-  applyParsedNamespaces(
-    namespaces: Record<string, string> | undefined | null,
-  ): void {
-    if (!namespaces || typeof namespaces !== "object") return;
-    for (const [p, ns] of Object.entries(namespaces)) {
-      // Accept empty-string prefix (default) — only skip truly missing keys.
-      if (p === null || typeof p === "undefined") continue;
-      if (typeof ns === "string") {
-        this.addNamespace(p, ns);
-      } else if (ns && typeof (ns as any).value === "string") {
-        this.addNamespace(p, (ns as any).value);
-      } else {
-        // ignore unexpected shapes
-      }
-    }
-  }
-
-  /**
+   /**
    * Minimal helper: consume an RDFJS quad stream and load quads into the internal store.
    *
    * This function mirrors the same store/add-buffer/notify path used elsewhere so
@@ -2090,7 +1995,6 @@ export class RDFManager {
    * - Accepts streams that emit 'data', 'error', 'end' and optional 'prefix' events.
    * - Adds quads into the provided graph (default urn:vg:data).
    * - Buffers subjects for subject-level notifications.
-   * - Applies any emitted prefixes via applyParsedNamespaces (best-effort).
    */
   public async loadQuadsToDiagram(quadStream: any, graphName: string = "urn:vg:data"): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -2146,9 +2050,6 @@ export class RDFManager {
       const onEnd = async () => {
         try {
           cleanup();
-          // Merge any discovered prefixes
-          try { if (Object.keys(prefixes).length > 0) this.applyParsedNamespaces(prefixes); } catch (_) { /* ignore */ }
-
           // Finalize via shared helper (applies prefixes, runs reconcile, notifies, schedules flush)
           try {
             await (this as any).finalizeLoad(addedQuads, prefixes);

@@ -26,16 +26,18 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
   // Persisted registry is the single source of truth for legend entries and colors.
   const namespaceRegistry = useOntologyStore((s) => (Array.isArray(s.namespaceRegistry) ? s.namespaceRegistry : []));
   // Build palette map directly from persisted registry (store-only).
+  // No fallbacks: colors must be present in namespaceRegistry (reconcile is responsible).
   const palette = (() => {
     try {
       const m: Record<string, string> = {};
       (namespaceRegistry || []).forEach((entry: any) => {
         try {
-          // Preserve empty-string prefixes ("") as valid keys instead of filtering them out.
           const p = entry && (entry.prefix !== undefined && entry.prefix !== null) ? String(entry.prefix) : "";
-          const c = String(entry?.color || "");
-          m[p] = c || "";
-        } catch (_) { void 0; }
+          const c = entry && (entry.color !== undefined && entry.color !== null) ? String(entry.color) : "";
+          if (p) m[p] = c || "";
+        } catch (_) {
+          /* ignore per-entry */
+        }
       });
       return m;
     } catch (_) {
@@ -44,20 +46,25 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
   })();
 
   // Derive the map we display: prefer explicit prop, otherwise use persisted registry (store-only).
+  // No fallbacks: if the persisted registry is empty the legend will not render entries.
   const displayNamespaces = useMemo(() => {
     try {
       if (namespaces && Object.keys(namespaces).length > 0) return namespaces;
+
       // Build a mapping from the persisted namespaceRegistry array.
-      const map: Record<string, string> = {};
-      (namespaceRegistry || []).forEach((e: any) => {
-        try {
-          // Preserve empty-string prefixes ("") as valid entries.
-          const p = e && (e.prefix !== undefined && e.prefix !== null) ? String(e.prefix) : "";
-          const u = e && (e.namespace !== undefined && e.namespace !== null) ? String(e.namespace) : "";
-          map[p] = u;
-        } catch (_) { /* ignore per-entry */ }
-      });
-      return map;
+      const mapFromRegistry: Record<string, string> = {};
+      try {
+        (namespaceRegistry || []).forEach((e: any) => {
+          try {
+            const p = e && (e.prefix !== undefined && e.prefix !== null) ? String(e.prefix) : "";
+            const u = e && (e.namespace !== undefined && e.namespace !== null) ? String(e.namespace) : "";
+            if (p) mapFromRegistry[p] = u;
+          } catch (_) { /* ignore per-entry */ }
+        });
+      } catch (_) { /* ignore registry read errors */ }
+
+      // Use the persisted registry only (no fallback)
+      return mapFromRegistry;
     } catch (_) {
       return namespaces || {};
     }
@@ -245,9 +252,18 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
                         setError("Namespace must be an absolute http(s) URI");
                         return;
                       }
-                      // Avoid duplicates
-                      const ns = rdfManager && typeof rdfManager.getNamespaces === "function" ? rdfManager.getNamespaces() : {};
-                      if (ns && Object.prototype.hasOwnProperty.call(ns, p)) {
+                      // Avoid duplicates — consult the persisted namespaceRegistry (authoritative) instead of rdfManager directly.
+                      const currentNsMap: Record<string, string> = {};
+                      try {
+                        (namespaceRegistry || []).forEach((entry: any) => {
+                          try {
+                            const key = entry && (entry.prefix !== undefined && entry.prefix !== null) ? String(entry.prefix) : "";
+                            const uri = entry && (entry.namespace !== undefined && entry.namespace !== null) ? String(entry.namespace) : "";
+                            if (key) currentNsMap[key] = uri;
+                          } catch (_) { /* ignore per-entry */ }
+                        });
+                      } catch (_) { /* ignore */ }
+                      if (currentNsMap && Object.prototype.hasOwnProperty.call(currentNsMap, p)) {
                         setError("Prefix already registered");
                         return;
                       }

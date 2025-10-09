@@ -117,7 +117,7 @@ describe("KnowledgeCanvas loadKnowledgeGraph namespace + palette orchestration",
       }),
       _namespaces: namespaces,
       getNamespaces: () => ({ ...namespaces }),
-      applyParsedNamespaces: (ns: Record<string,string>) => { Object.assign(namespaces, ns || {}); },
+      // applyParsedNamespaces: (ns: Record<string,string>) => { Object.assign(namespaces, ns || {}); },
       loadRDFIntoGraph: async (content: string, graphName?: string) => {
         try {
           const lines = String(content || "").split(/\r?\n/);

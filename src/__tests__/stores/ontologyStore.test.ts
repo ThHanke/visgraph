@@ -22,9 +22,9 @@ describe("Ontology Store", () => {
       const state = useOntologyStore.getState();
       expect(state.loadedOntologies).toHaveLength(1);
       expect(state.loadedOntologies[0].name).toBe("FOAF");
-      const ns = state.loadedOntologies[0].namespaces || {};
-      // After removing mock classes we ensure the FOAF namespace is registered instead of synthetic classes
-      expect(ns.foaf || state.rdfManager.getNamespaces().foaf).toBeDefined();
+      const registry = state.namespaceRegistry || [];
+      // After removing mock classes we ensure the FOAF prefix is present in the persisted registry
+      expect(registry.some((r: any) => r && r.prefix === "foaf")).toBe(true);
     });
 
     it("should accumulate multiple ontologies", async () => {
@@ -39,9 +39,7 @@ describe("Ontology Store", () => {
       // (canonicalization, fetched vs requested). Ensure both expected namespaces
       // are present rather than asserting an exact array length.
       expect(state.loadedOntologies.length).toBeGreaterThanOrEqual(2);
-      const nsKeys = state.loadedOntologies.flatMap((o) =>
-        Object.keys(o.namespaces || {}),
-      );
+      const nsKeys = (state.namespaceRegistry || []).map((r) => String(r.prefix || ""));
       expect(nsKeys.includes("foaf")).toBe(true);
       expect(nsKeys.includes("org")).toBe(true);
     });

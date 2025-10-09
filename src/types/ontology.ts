@@ -11,7 +11,9 @@ export interface NamespaceMap {
   /** The namespace prefix (e.g., 'foaf', 'owl') */
   prefix: string;
   /** The full URI of the namespace */
- iri: string;
+  iri: string;
+  /** Optional visualization color assigned by the reconciler/palette builder */
+  color?: string;
 }
 
 /**
@@ -90,8 +92,8 @@ export interface LoadedOntology {
   properties: ObjectProperty[];
   /** All annotation properties defined in this ontology */
   annotationProperties?: AnnotationProperty[];
-  /** Namespace mappings used in this ontology */
-  namespaces: Record<string, string>;
+  /** Namespace mappings used in this ontology (prefix -> NamespaceMap with iri + optional color) */
+  namespaces: Record<string, NamespaceMap>;
   /** Metadata about the ontology */
   metadata?: {
     version?: string;
