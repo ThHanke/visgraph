@@ -1,6 +1,13 @@
-// Rely on vite-plugin-node-polyfills for process/stream/buffer in the bundle.
-// No runtime shims here — remove local polyfills to rely on configured Vite polyfills.
-import { createRoot } from 'react-dom/client'
+ // Rely on vite-plugin-node-polyfills for process/stream/buffer in the bundle.
+ // No runtime shims here — remove local polyfills to rely on configured Vite polyfills.
+ 
+ // Explicit runtime polyfills as a safeguard to ensure process/stream/buffer are bundled
+ // in production builds (the vite plugin + aliases are the primary mechanism).
+ import 'process/browser';
+ import 'stream-browserify';
+ import { Buffer } from 'buffer';
+ 
+ import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
 import '@xyflow/react/dist/style.css';

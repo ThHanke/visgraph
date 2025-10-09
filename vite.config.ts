@@ -55,6 +55,8 @@ export default defineConfig(({ mode }) => ({
     alias: {
       "@": path.resolve(__dirname, "./src"),
       process: 'process/browser',
+      // Force patched readable-stream fork in production builds
+      'readable-stream': 'readable-stream-patched',
       // Ensure stream and buffer polyfills resolve to browser-compatible packages so
       // client code can access stream.Readable and Buffer at runtime (not externalized).
       stream: 'stream-browserify',
