@@ -21,6 +21,7 @@ import {
 } from "n3";
 import { rdfParser } from "rdf-parse";
 import { rdfSerializer } from "rdf-serialize";
+import type * as RDF from "@rdfjs/types";
 
 
 
@@ -734,8 +735,98 @@ export class RDFManager {
   }
 
   // Helper: finalize a load - apply prefixes, run reconciliation, notify and schedule subject flush
-  private async finalizeLoad(addedQuads: Quad[], prefixes?: Record<string, string>, loadId?: string): Promise<void> {
+  private async finalizeLoad(addedQuads: Quad[], prefixes?: Record<string, any>, loadId?: string): Promise<void> {
     try {
+      // Capture raw parsed prefixes for inspection instead of merging them.
+      // Push the raw object into a dev-only collection on window so developers can
+      // inspect exactly what parsers emit before we decide a strict runtime type.
+      try {
+        if (prefixes && typeof prefixes === "object" && Object.keys(prefixes).length > 0) {
+          try {
+            // Lightweight capture (keeps original object)
+            (window as any).__VG_PARSED_PREFIXES = (window as any).__VG_PARSED_PREFIXES || [];
+            (window as any).__VG_PARSED_PREFIXES.push({
+              id: loadId || (`load-${Date.now()}`),
+              kind: "n3-parser",
+              prefixes,
+              time: Date.now(),
+            });
+
+            // Detailed diagnostics per-prefix to reveal runtime shape without mutating values.
+            (window as any).__VG_PARSED_PREFIXES_DETAILED = (window as any).__VG_PARSED_PREFIXES_DETAILED || [];
+            try {
+              const diag: Record<string, any> = {};
+              for (const [k, v] of Object.entries(prefixes || {})) {
+                try {
+                  const hasValueProp = v && typeof (v as any).value === "string";
+                  diag[String(k)] = {
+                    raw: v,
+                    typeof: typeof v,
+                    ctor: v && (v as any).constructor ? (v as any).constructor.name : null,
+                    hasValueProp: Boolean(hasValueProp),
+                    valueProp: hasValueProp ? String((v as any).value) : undefined,
+                    toString: (() => { try { return String(v); } catch (_) { return null; } })(),
+                    keys: (v && typeof v === "object") ? Object.keys(v).slice(0, 20) : undefined,
+                  };
+                } catch (_) {
+                  /* per-value diag failure - ignore */
+                }
+              }
+              (window as any).__VG_PARSED_PREFIXES_DETAILED.push({
+                id: loadId || (`load-${Date.now()}`),
+                kind: "n3-parser",
+                time: Date.now(),
+                count: Object.keys(diag).length,
+                diag,
+              });
+            } catch (_) {
+              /* ignore diag construction failures */
+            }
+
+            // Expose convenience clearers
+            try {
+              (window as any).__VG_CLEAR_PARSED_PREFIXES = () => { (window as any).__VG_PARSED_PREFIXES = []; return true; };
+            } catch (_) { /* ignore */ }
+            try {
+              (window as any).__VG_CLEAR_PARSED_PREFIXES_DETAILED = () => { (window as any).__VG_PARSED_PREFIXES_DETAILED = []; return true; };
+            } catch (_) { /* ignore */ }
+
+            // Print a concise console line for immediate inspection in devtools.
+            try { console.info("[VG_PARSED_PREFIXES_DETAILED] (n3-parser)", { id: loadId || null, count: Object.keys(prefixes || {}).length }); } catch (_) { /* ignore */ }
+          } catch (_) {
+            /* ignore capture failures */
+          }
+        }
+      } catch (_) { /* ignore prefix capture failures */ }
+
+      // Pass only NamedNode-like prefix values to applyParsedNamespaces; do NOT coerce plain strings.
+      try {
+        try {
+          if (typeof (this as any).applyParsedNamespaces === "function") {
+            try {
+              const filtered: Record<string, RDF.NamedNode> = {};
+              try {
+                for (const [k, v] of Object.entries(prefixes || {})) {
+                  try {
+                    if (v && typeof (v as any).value === "string") {
+                      filtered[k] = v as RDF.NamedNode;
+                    } else {
+                      // record that this load contained non-NamedNode prefix values (strings or other shapes)
+                      try {
+                        (window as any).__VG_NAMESPACE_WRITER_LOG = (window as any).__VG_NAMESPACE_WRITER_LOG || [];
+                        (window as any).__VG_NAMESPACE_WRITER_LOG.push({ kind: "finalizeLoad.skipped_non_namednode", prefix: k, raw: v, time: Date.now() });
+                      } catch (_) { /* ignore */ }
+                      try { console.warn("[VG_PREFIX_FINALIZE_SKIPPED]", { prefix: k, raw: v }); } catch (_) { /* ignore */ }
+                    }
+                  } catch (_) { /* ignore per-entry */ }
+                }
+              } catch (_) { /* ignore filtering failures */ }
+              try { this.applyParsedNamespaces(filtered); } catch (_) { /* ignore */ }
+            } catch (_) { /* ignore */ }
+          }
+        } catch (_) { /* ignore apply failures */ }
+      } catch (_) { /* ignore */ }
+
       // Run reconciliation with the quads we added so consumers get authoritative snapshot
       try {
         if (Array.isArray(addedQuads) && addedQuads.length > 0) {
@@ -1975,26 +2066,163 @@ export class RDFManager {
     // Notify subscribers that RDF cleared
     try {
       this.notifyChange();
-    } catch (_) {
+    } catch (err) {
       try {
         if (typeof fallback === "function") {
-          fallback("emptyCatch", { error: String(_) });
+          fallback("rdf.clear.failed", { error: String(err) });
         }
-      } catch (__) {
-        /* ignore fallback errors */
+      } catch (_) {
+        /* ignore */
       }
     }
   }
 
-   /**
-   * Minimal helper: consume an RDFJS quad stream and load quads into the internal store.
+  /**
+   * Type-guard: true only for parser-emitted prefix maps where every value is a non-empty string.
+   * This ensures applyParsedNamespaces only accepts the exact shape produced by rdf-parse / N3 parser.
+   */
+  private isParserPrefixMap(obj: any): obj is Record<string, string> {
+    try {
+      if (!obj || typeof obj !== "object") return false;
+      const entries = Object.entries(obj);
+      if (!Array.isArray(entries) || entries.length === 0) return false;
+      for (const [, v] of entries) {
+        if (typeof v !== "string" || String(v).trim() === "") return false;
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /**
+   * Accept parser-emitted prefix maps that may contain either string URIs or RDFJS NamedNode-like objects.
    *
-   * This function mirrors the same store/add-buffer/notify path used elsewhere so
-   * callers that need to feed a quadStream directly into the manager can do so
-   * without depending on rdf-serialize. It is intentionally minimal and resilient:
-   * - Accepts streams that emit 'data', 'error', 'end' and optional 'prefix' events.
-   * - Adds quads into the provided graph (default urn:vg:data).
-   * - Buffers subjects for subject-level notifications.
+   * We sanitize the input strictly to produce a Record<string,string> where each value is a non-empty URI string.
+   * - Accepted input shapes per value: string or { value: string } (NamedNode-like).
+   * - Values that cannot be coerced to a non-empty string are skipped.
+   *
+   * This preserves parser information while ensuring only string URIs are stored in the manager.
+   */
+  /**
+   * Sanitizer (STRICT): accept only RDF.NamedNode-like values and return a map of NamedNode objects.
+   *
+   * Behavior:
+   * - If an input entry already appears as a NamedNode-like (has .value string) it is kept.
+   * - Plain string values are NOT coerced here; they are recorded in diagnostics and skipped.
+   * - Returns a Record<string, RDF.NamedNode> suitable for applyParsedNamespaces.
+   */
+  private sanitizeParserPrefixes(namespaces: Record<string, any> | undefined | null): Record<string, RDF.NamedNode> {
+    const out: Record<string, RDF.NamedNode> = {};
+    try {
+      if (!namespaces || typeof namespaces !== "object") return out;
+      for (const [p, v] of Object.entries(namespaces || {})) {
+        try {
+          if (!p) continue;
+
+          // Accept only NamedNode-like objects (have a string .value)
+          if (v && typeof (v as any).value === "string") {
+            const s = String((v as any).value).trim();
+            if (s) {
+              // Keep original object shape (trust parser-provided object)
+              out[p] = v as RDF.NamedNode;
+            } else {
+              try {
+                (window as any).__VG_NAMESPACE_WRITER_LOG = (window as any).__VG_NAMESPACE_WRITER_LOG || [];
+                (window as any).__VG_NAMESPACE_WRITER_LOG.push({ kind: "sanitizer.empty_namednode", prefix: p, raw: v, time: Date.now() });
+              } catch (_) { /* ignore */ }
+              try { console.warn("[VG_PREFIX_SKIPPED_EMPTY_NAMEDNODE]", { prefix: p, raw: v }); } catch (_) { /* ignore */ }
+            }
+            continue;
+          }
+
+          // If value is a plain string, record diagnostic and skip (do NOT coerce)
+          if (typeof v === "string") {
+            try {
+              (window as any).__VG_NAMESPACE_WRITER_LOG = (window as any).__VG_NAMESPACE_WRITER_LOG || [];
+              (window as any).__VG_NAMESPACE_WRITER_LOG.push({ kind: "sanitizer.skipped_string_value", prefix: p, raw: v, time: Date.now() });
+            } catch (_) { /* ignore */ }
+            try { console.warn("[VG_PREFIX_SKIPPED_STRING]", { prefix: p, raw: v }); } catch (_) { /* ignore */ }
+            continue;
+          }
+
+          // Skip other shapes and log
+          try {
+            (window as any).__VG_NAMESPACE_WRITER_LOG = (window as any).__VG_NAMESPACE_WRITER_LOG || [];
+            (window as any).__VG_NAMESPACE_WRITER_LOG.push({ kind: "sanitizer.skipped_other_shape", prefix: p, raw: v, time: Date.now() });
+          } catch (_) { /* ignore */ }
+        } catch (_) {
+          /* ignore per-entry errors */
+        }
+      }
+    } catch (_) {
+      /* ignore overall errors */
+    }
+    return out;
+  }
+
+  /**
+   * Merge parsed namespaces into the manager's namespace map.
+   *
+   * Behavior:
+   * - Accepts parser-emitted maps that may contain string or NamedNode-like values.
+   * - Sanitizes input via sanitizeParserPrefixes and merges only sanitized entries.
+   * - Logs merged result and records diagnostics for any skipped entries.
+   */
+  applyParsedNamespaces(namespaces: Record<string, RDF.NamedNode> | undefined | null): void {
+    try {
+      // Reject non-object inputs early
+      if (!namespaces || typeof namespaces !== "object") return;
+
+      const mergedPrefixes: string[] = [];
+      for (const [p, node] of Object.entries(namespaces || {})) {
+        try {
+          if (!p) continue;
+          // Accept only NamedNode-like objects with a non-empty .value
+          if (node && typeof (node as any).value === "string" && String((node as any).value).trim() !== "") {
+            const uriStr = String((node as any).value);
+            const prev = this.namespaces[p];
+            if (String(prev) !== uriStr) {
+              this.namespaces[p] = uriStr;
+              mergedPrefixes.push(String(p));
+            }
+          } else {
+            // Record diagnostic for skipped non-NamedNode entries
+            try {
+              (window as any).__VG_NAMESPACE_WRITER_LOG = (window as any).__VG_NAMESPACE_WRITER_LOG || [];
+              (window as any).__VG_NAMESPACE_WRITER_LOG.push({
+                kind: "applyParsedNamespaces.invalid_value",
+                prefix: p,
+                raw: node,
+                time: Date.now(),
+              });
+            } catch (_) { /* ignore */ }
+            try { console.warn("[VG_PREFIX_SKIPPED_NON_NAMEDNODE]", { prefix: p, raw: node }); } catch (_) { /* ignore */ }
+          }
+        } catch (_) {
+          /* ignore per-entry failures */
+        }
+      }
+
+      if (mergedPrefixes.length > 0) {
+        // Debug: print the new namespaces map for inspection
+        try {
+          console.info("[VG_NAMESPACES_MERGED]", { mergedPrefixes, namespaces: { ...(this.namespaces || {}) } });
+        } catch (_) { /* ignore console failures */ }
+
+        try { debugLog("rdf.namespaces.merged", { mergedPrefixes, namespaces: { ...(this.namespaces || {}) } }); } catch (_) { /* ignore */ }
+
+        // Emit a single notify with namespace-change kind so consumers update once.
+        try { this.notifyChange({ kind: "namespaces", prefixes: mergedPrefixes }); } catch (_) { /* ignore */ }
+      }
+    } catch (err) {
+      try { if (typeof fallback === "function") fallback("rdf.applyParsedNamespaces.failed", { error: String(err) }); } catch (_) { /* ignore */ }
+    }
+  }
+
+  /**
+   * Remove all quads stored in the named graph identified by graphName.
+   * Best-effort and idempotent.
    */
   public async loadQuadsToDiagram(quadStream: any, graphName: string = "urn:vg:data"): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -2003,7 +2231,7 @@ export class RDFManager {
       }
 
       const g = namedNode(String(graphName));
-      const prefixes: Record<string, string> = {};
+      const prefixes: Record<string, any> = {};
       const addedQuads: any[] = [];
 
       const onData = (q: any) => {
@@ -2027,9 +2255,9 @@ export class RDFManager {
         }
       };
 
-      const onPrefix = (prefix: string, iri: string) => {
+      const onPrefix = (prefix: string, iri: any) => {
         try {
-          if (prefix && iri) prefixes[String(prefix)] = String(iri);
+          if (prefix && typeof iri !== "undefined") prefixes[String(prefix)] = iri;
         } catch (_) { /* ignore */ }
       };
 
@@ -2043,6 +2271,22 @@ export class RDFManager {
       };
 
       const onError = (err: any) => {
+        try {
+          // Capture stream-level errors for diagnostic inspection (dev-only surface)
+          try {
+            (window as any).__VG_PARSED_PREFIXES_ERRORS = (window as any).__VG_PARSED_PREFIXES_ERRORS || [];
+            (window as any).__VG_PARSED_PREFIXES_ERRORS.push({
+              id: null,
+              kind: "quad-stream",
+              time: Date.now(),
+              message: err && err.message ? String(err.message) : String(err),
+              stack: err && err.stack ? String(err.stack) : undefined,
+            });
+          } catch (_) { /* ignore capture failures */ }
+
+          try { console.error("[VG_PARSED_PREFIXES_ERROR] (quad-stream)", err); } catch (_) { /* ignore */ }
+        } catch (_) { /* ignore logging failures */ }
+
         try { cleanup(); } catch (_) { /* ignore */ }
         reject(err);
       };
@@ -2067,9 +2311,23 @@ export class RDFManager {
         quadStream.on("data", onData);
         quadStream.on("error", onError);
         quadStream.on("end", onEnd);
-        // some parsers emit prefix events
+        // some parsers emit prefix and context events
         if (typeof quadStream.on === "function") {
           try { quadStream.on("prefix", onPrefix); } catch (_) { /* ignore */ }
+          try {
+            quadStream.on("context", (ctx: any) => {
+              try {
+                (window as any).__VG_PARSED_PREFIXES_DETAILED = (window as any).__VG_PARSED_PREFIXES_DETAILED || [];
+                (window as any).__VG_PARSED_PREFIXES_DETAILED.push({
+                  id: null,
+                  kind: "quad-stream-context",
+                  time: Date.now(),
+                  context: ctx,
+                });
+              } catch (_) { /* ignore */ }
+              try { console.info("[VG_PARSED_CONTEXT] (quad-stream)", { context: ctx }); } catch (_) { /* ignore */ }
+            });
+          } catch (_) { /* ignore */ }
         }
       } catch (err) {
         cleanup();

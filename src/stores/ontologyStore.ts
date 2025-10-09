@@ -1411,31 +1411,7 @@ function deriveOntologyName(url: string): string {
              } catch (_) { /* ignore per-key */ }
            }
  
-           // NEW: Monitor writes to namespaceRegistry and capture the callsite and values.
-           try {
-             if (Object.prototype.hasOwnProperty.call(newPartial, "namespaceRegistry")) {
-               try {
-                 const prevReg = prevState && Array.isArray(prevState.namespaceRegistry) ? (prevState.namespaceRegistry || []).slice(0, 20) : (prevState && prevState.namespaceRegistry ? prevState.namespaceRegistry : []);
-                 const newReg = Array.isArray(newPartial.namespaceRegistry) ? (newPartial.namespaceRegistry || []).slice(0, 20) : newPartial.namespaceRegistry;
-                 const err = new Error("[VG_ALERT] namespaceRegistry write detected");
-                 const stack = (err && err.stack) || (new Error()).stack || "";
-                 const entry = {
-                   kind: "namespaceRegistry.write",
-                   time: Date.now(),
-                   prevCount: Array.isArray(prevReg) ? prevReg.length : (prevReg ? 1 : 0),
-                   newCount: Array.isArray(newReg) ? newReg.length : (newReg ? 1 : 0),
-                   prevPreview: Array.isArray(prevReg) ? prevReg : String(prevReg),
-                   newPreview: Array.isArray(newReg) ? newReg : String(newReg),
-                   stack,
-                 };
-                 try {
-                   (window as any).__VG_NAMESPACE_MUTATION_LOG = (window as any).__VG_NAMESPACE_MUTATION_LOG || [];
-                   (window as any).__VG_NAMESPACE_MUTATION_LOG.push(entry);
-                 } catch (_) { /* ignore logging failure */ }
-                 try { console.error("[VG_ALERT] namespaceRegistry.write", entry); } catch (_) { /* ignore */ }
-               } catch (_) { /* ignore per-write logging failure */ }
-             }
-           } catch (_) { /* ignore namespaceRegistry inspection errors */ }
+           
  
          } catch (_) { /* ignore inspection errors */ }
        } catch (_) { /* ignore outer */ }
