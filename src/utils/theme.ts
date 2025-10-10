@@ -49,10 +49,8 @@ export function applyTheme(theme: Theme) {
  * Persist theme preference and apply it immediately.
  */
 export function setTheme(theme: Theme) {
-  try {
+  {
     localStorage.setItem(STORAGE_KEY, theme);
-  } catch {
-    // ignore storage errors
   }
   applyTheme(theme);
 }

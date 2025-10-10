@@ -141,14 +141,14 @@ describe("KnowledgeCanvas reconcile orchestration (fat-map + namespace registry)
         mockedStore.availableClasses = [{ iri: "http://example.com/Type", label: "Type" }];
         mockedStore.setNamespaceRegistry = vi.fn().mockImplementation((reg: any) => { mockedStore._lastRegistry = reg; });
         // also mirror a simple namespace into the mocked RDF manager so getNamespaces() can reflect it
-        try {
+        {
           if (typeof (mgr as any).getNamespaces === "function") {
             // replace getNamespaces to return the test registry
             (mgr as any).getNamespaces = () => ({ ex: "http://example.com/" });
           } else {
             (mgr as any).getNamespaces = () => ({ ex: "http://example.com/" });
           }
-        } catch (_) { void 0; }
+        }
         // resolve later
         setTimeout(() => { if (reconcileResolve) reconcileResolve(); }, 10);
         return reconcilePromise;

@@ -30,7 +30,7 @@ const { namedNode } = DataFactory;
 describe("KnowledgeCanvas incremental mapping preserves data (reworked)", () => {
   beforeEach(() => {
     // Ensure a fresh RDF manager / store before each test
-    try { rdfManager.clear(); } catch (_) { void 0; }
+    { rdfManager.clear(); }
   });
 
   test("load data then ontology — RDF store keeps data and ontology adds namespaces", async () => {
@@ -102,13 +102,13 @@ describe("KnowledgeCanvas incremental mapping preserves data (reworked)", () => 
 
     // Allow any pending timers/mapping runs to complete and then unmount the component
     await act(async () => {
-      try {
+      {
         // advance timers to flush any debounced mapping work or queued setTimeouts
         vi.advanceTimersByTime(500);
-      } catch (_) { void 0; }
+      }
     });
 
-    try { unmount(); } catch (_) { void 0; }
+    { unmount(); }
 
   }, 30000);
 });

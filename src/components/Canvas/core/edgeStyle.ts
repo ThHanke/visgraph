@@ -57,7 +57,7 @@ export function initializeEdge(raw: any) {
 
 
 export function getMarkerSizeFromCss(defaultPx = 6) {
-  try {
+  {
     if (typeof window !== "undefined" && typeof getComputedStyle === "function") {
       const raw = String(getComputedStyle(document.documentElement).getPropertyValue("--edge-marker-size") || "").trim();
       if (raw) {
@@ -69,8 +69,6 @@ export function getMarkerSizeFromCss(defaultPx = 6) {
         return defaultPx;
       }
     }
-  } catch (_) {
-    // ignore
   }
   return defaultPx;
 }

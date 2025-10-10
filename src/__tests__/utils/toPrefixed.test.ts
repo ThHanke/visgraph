@@ -64,7 +64,7 @@ describe("toPrefixed (integration with RDF store)", () => {
     const availableClasses: any[] = [];
 
     for (const subjIri of subjects) {
-      try {
+      {
         const s = String(subjIri);
         const entry = { iri: s, label: s.split(new RegExp("[/#]")).pop() || s, namespace: (s.match(new RegExp("^(.*[/#])")) || [])[1] || "" };
         if (s.endsWith("/prop") || s.endsWith("#prop")) {
@@ -73,8 +73,6 @@ describe("toPrefixed (integration with RDF store)", () => {
         if (s.endsWith("/Type") || s.endsWith("#Type")) {
           availableClasses.push(entry);
         }
-      } catch (_) {
-        // ignore per-subject classification errors
       }
     }
 

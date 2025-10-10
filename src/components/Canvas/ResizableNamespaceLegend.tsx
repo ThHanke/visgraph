@@ -116,20 +116,20 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
   }, [entries, size]);
 
   const handlePointerDown = (e: React.PointerEvent, type: "drag" | "resize") => {
-    try {
+    {
       e.preventDefault();
       e.stopPropagation();
-    } catch (_) { /* ignore */ }
+    }
 
     // Try to capture the pointer on the container so we continue receiving pointer events
     // even when the pointer leaves the visible element. This avoids using document-level
     // listeners which can interfere with React Flow pointer handling.
-    try {
+    {
       const el = containerRef.current as any;
       if (el && typeof el.setPointerCapture === "function") {
         try { el.setPointerCapture((e as any).pointerId); } catch (_) { /* ignore */ }
       }
-    } catch (_) { /* ignore */ }
+    }
 
     if (type === "drag") {
       setIsDragging(true);
@@ -145,7 +145,7 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
     if (!el) return;
 
     const handlePointerMove = (e: PointerEvent) => {
-      try {
+      {
         if (isDragging) {
           setPosition({ x: Math.max(0, e.clientX - dragStart.x), y: Math.max(0, e.clientY - dragStart.y) });
         } else if (isResizing) {
@@ -153,36 +153,36 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
           const newHeight = Math.max(150, resizeStart.height + (e.clientY - resizeStart.y));
           setSize({ width: newWidth, height: newHeight });
         }
-      } catch (_) { /* ignore per-event errors */ }
+      }
     };
 
     const handlePointerUp = (e: PointerEvent) => {
-      try {
+      {
         // release pointer capture if supported
         try {
           if (el && typeof (el as any).releasePointerCapture === "function") {
             try { (el as any).releasePointerCapture((e as any).pointerId); } catch (_) { /* ignore */ }
           }
         } catch (_) { /* ignore */ }
-      } catch (_) { /* ignore */ }
+      }
       setIsDragging(false);
       setIsResizing(false);
     };
 
     if (isDragging || isResizing) {
-      try {
+      {
         el.addEventListener("pointermove", handlePointerMove);
         el.addEventListener("pointerup", handlePointerUp);
         el.addEventListener("pointercancel", handlePointerUp);
-      } catch (_) { /* ignore attach errors */ }
+      }
     }
 
     return () => {
-      try {
+      {
         el.removeEventListener("pointermove", handlePointerMove);
         el.removeEventListener("pointerup", handlePointerUp);
         el.removeEventListener("pointercancel", handlePointerUp);
-      } catch (_) { /* ignore detach errors */ }
+      }
     };
   }, [isDragging, isResizing, dragStart, resizeStart]);
 

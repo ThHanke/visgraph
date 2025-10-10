@@ -19,7 +19,7 @@ function triggerDownloadUrl(url: string, filename: string) {
   document.body.removeChild(a);
   // Revoke object URLs should be handled by caller when appropriate; revoke after a short delay to allow download
   setTimeout(() => {
-    try { URL.revokeObjectURL(url); } catch (_) { /* ignore */ }
+    { URL.revokeObjectURL(url); }
   }, 3000);
 }
 

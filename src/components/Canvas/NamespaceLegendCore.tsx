@@ -25,7 +25,7 @@ export const NamespaceLegendCore = memo(function NamespaceLegendCore({
   if (!entries || entries.length === 0) return null;
 
   const getColor = (prefix: string) => {
-    try {
+    {
       if (!palette) return undefined;
       const p = String(prefix || "");
       return (
@@ -34,8 +34,6 @@ export const NamespaceLegendCore = memo(function NamespaceLegendCore({
         palette[p.toLowerCase()] ||
         undefined
       );
-    } catch (_) {
-      return undefined;
     }
   };
 

@@ -10,11 +10,11 @@ import { describe, it, expect } from "vitest";
 
 function mergeNodes(existingNodes: any[], mergedNodes: any[]) {
   const nodeById = new Map<string, any>();
-  try {
+  {
     (existingNodes || []).forEach((n) => nodeById.set(String(n.id), n));
-  } catch (_) { void 0; }
+  }
 
-  try {
+  {
     (mergedNodes || []).forEach((n) => {
       try {
         const id = String(n.id);
@@ -29,25 +29,25 @@ function mergeNodes(existingNodes: any[], mergedNodes: any[]) {
         }
       } catch (_) { void 0; }
     });
-  } catch (_) { void 0; }
+  }
 
   return Array.from(nodeById.values()).filter(Boolean);
 }
 
 function mergeEdges(existingEdges: any[], mergedEdges: any[]) {
   const edgeById = new Map<string, any>();
-  try {
+  {
     (existingEdges || []).forEach((e) => edgeById.set(String(e.id), e));
-  } catch (_) { void 0; }
+  }
 
-  try {
+  {
     (mergedEdges || []).forEach((e) => {
       try {
         const id = String(e.id);
         edgeById.set(id, e);
       } catch (_) { void 0; }
     });
-  } catch (_) { void 0; }
+  }
 
   return Array.from(edgeById.values()).filter(Boolean);
 }

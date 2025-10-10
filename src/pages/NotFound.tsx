@@ -6,14 +6,12 @@ const NotFound = () => {
   const location = useLocation();
 
   useEffect(() => {
-    try {
+    {
       fallback(
         "console.error",
         { args: [`404 Error: User attempted to access non-existent route: ${location.pathname}`] },
         { level: "error", captureStack: true }
       );
-    } catch (_) {
-      // best-effort only
     }
     console.error("404 Error: User attempted to access non-existent route:", location.pathname);
   }, [location.pathname]);

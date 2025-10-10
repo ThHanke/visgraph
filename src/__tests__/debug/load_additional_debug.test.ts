@@ -15,12 +15,12 @@ import { FIXTURES } from "../fixtures/rdfFixtures";
 describe("debug: loadAdditionalOntologies runtime snapshot", () => {
   it("runs autoload from app config and logs namespaces + loadedOntologies", async () => {
     // reset stores for a clean run
-    try {
+    {
       (useAppConfigStore.getState().resetToDefaults || (() => {}))();
-    } catch (_) { void 0; }
-    try {
+    }
+    {
       (useOntologyStore.getState().clearOntologies || (() => {}))();
-    } catch (_) { void 0; }
+    }
 
     // Read configured additionalOntologies from app config
     const cfg = useAppConfigStore.getState().config || {};
@@ -42,9 +42,9 @@ describe("debug: loadAdditionalOntologies runtime snapshot", () => {
 
     // Run loadAdditionalOntologies with progress callback
     await useOntologyStore.getState().loadAdditionalOntologies(list, (p, m) => {
-      try {
+      {
         console.debug(`[DEBUG] loadAdditionalOntologies progress ${p}%: ${m}`);
-      } catch (_) { void 0; }
+      }
     });
 
     // After load, capture rdfManager namespaces

@@ -90,10 +90,8 @@ export const LinkPropertyEditor = ({
   const [allObjectPropertiesState, setAllObjectPropertiesState] = useState(computedAllObjectProperties);
 
   useEffect(() => {
-    try {
+    {
       setAllObjectPropertiesState(computedAllObjectProperties);
-    } catch (_) {
-      // ignore
     }
   }, [computedAllObjectProperties]);
 
@@ -122,7 +120,9 @@ export const LinkPropertyEditor = ({
         } catch (_) { /* ignore per-callback */ }
       },
     });
-  } catch (_) { /* ignore hook failures outside provider */ }
+  } catch (_) {
+    /* ignore: React Flow provider not present */
+  }
 
   useEffect(() => {
     const candidate = linkData || selectedEdgeFromRF || {};
@@ -154,20 +154,18 @@ export const LinkPropertyEditor = ({
   // prefill the selector with the first available property so UI tests and users immediately
   // see a sensible default. This also makes the AutoComplete predictable for tests.
   useEffect(() => {
-    try {
+    {
       if ((!selectedProperty || String(selectedProperty).trim() === "") && Array.isArray(allObjectPropertiesState) && allObjectPropertiesState.length > 0) {
         const first = allObjectPropertiesState[0];
         if (first && first.value) {
           setSelectedProperty(String(first.value));
         }
       }
-    } catch (_) {
-      // ignore
     }
   }, [allObjectPropertiesState, selectedProperty, open]);
 
   useEffect(() => {
-    try {
+    {
       if (!linkData) return;
       console.debug('[VG] LinkPropertyEditor.linkData', {
         open,
@@ -179,8 +177,6 @@ export const LinkPropertyEditor = ({
         sourceNode,
         targetNode,
       });
-    } catch (_) {
-      /* ignore logging failures */
     }
   }, [open, linkData, selectedProperty, displayValue, sourceNode, targetNode]);
 
@@ -216,22 +212,22 @@ export const LinkPropertyEditor = ({
       // - If there is an existing predicate and it differs, remove exactly that triple and add the new one.
       // Do NOT perform any removals when creating a link (oldPredIRI is absent) to avoid removing unrelated triples.
       if (!oldPredIRI) {
-        try {
+        {
           if (typeof mgr.addTriple === "function") {
             mgr.addTriple(subjIri, predFull, objIri, g);
           }
-        } catch (_) { /* ignore add failures */ }
+        }
       } else if (String(oldPredIRI) !== String(predFull)) {
-        try {
+        {
           if (typeof mgr.removeTriple === "function") {
             mgr.removeTriple(subjIri, oldPredIRI, objIri, g);
           }
-        } catch (_) { /* ignore remove failures */ }
-        try {
+        }
+        {
           if (typeof mgr.addTriple === "function") {
             mgr.addTriple(subjIri, predFull, objIri, g);
           }
-        } catch (_) { /* ignore add failures */ }
+        }
       }
     }
     // Notify parent; canvas mapping will pick up the change via RDF manager
@@ -262,7 +258,7 @@ export const LinkPropertyEditor = ({
     const objIri = (targetNode && ((targetNode as any).iri));
     const predicateRaw = selectedProperty || displayValue;
     const predFull = mgr && typeof mgr.expandPrefix === 'function' ? String(mgr.expandPrefix(predicateRaw)) : String(predicateRaw);
-    try {
+    {
       if (mgr && typeof mgr.removeTriple === "function") {
         mgr.removeTriple(subjIri, predFull, objIri, g);
       } else if (mgr && typeof mgr.getStore === "function") {
@@ -279,12 +275,10 @@ export const LinkPropertyEditor = ({
           }
         } catch (_) { /* ignore fallback failures */ }
       }
-    } catch (_) {
-      /* ignore delete failures to avoid bubbling into UI tests */
     }
 
     // Close dialog after deletion so UI does not remain open
-    try { if (typeof onOpenChange === 'function') onOpenChange(false); } catch (_) { void 0; }
+    { if (typeof onOpenChange === 'function') onOpenChange(false); }
   };
 
   return (

@@ -204,7 +204,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
 
   // Debug subscription: surface loadedOntologies/loadedCount changes to console so we can trace why the toolbar count may stay at 0.
   React.useEffect(() => {
-    try {
+    {
       if (typeof console !== "undefined" && typeof console.debug === "function") {
         console.debug("[VG_DEBUG] CanvasToolbar.loadedOntologies change", {
           registeredCount,
@@ -212,8 +212,6 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
           sample: Array.isArray(loadedOntologies) ? loadedOntologies.slice(0, 6).map(o => ({ url: o.url, name: o.name, source: (o as any).source })) : loadedOntologies,
         });
       }
-    } catch (_) {
-      /* ignore debug failures */
     }
   }, [registeredCount, loadedOntologies, configuredCount]);
 
@@ -638,9 +636,9 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                 <button
                   key={layout.type}
                   onClick={() => {
-                    try {
+                    {
                       onLayoutChange?.(layout.type, true, { nodeSpacing: config.layoutSpacing });
-                    } catch (_) { /* ignore */ }
+                    }
                   }}
                   className=""
                 >
@@ -662,7 +660,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
             <div
               className="flex items-center gap-2 px-2 py-1 bg-card/80 border border-border rounded-md"
               onPointerUp={() => {
-                try {
+                {
                   setTimeout(() => {
                     try {
                       const v = tempLayoutSpacing;
@@ -671,10 +669,10 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                       toast.success(`Saved spacing: ${v}px`);
                     } catch (_) { /* ignore */ }
                   }, 0);
-                } catch (_) { /* ignore */ }
+                }
               }}
               onTouchEnd={() => {
-                try {
+                {
                   setTimeout(() => {
                     try {
                       const v = tempLayoutSpacing;
@@ -683,10 +681,10 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                       toast.success(`Saved spacing: ${v}px`);
                     } catch (_) { /* ignore */ }
                   }, 0);
-                } catch (_) { /* ignore */ }
+                }
               }}
               onMouseUp={() => {
-                try {
+                {
                   setTimeout(() => {
                     try {
                       const v = tempLayoutSpacing;
@@ -695,7 +693,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                       toast.success(`Saved spacing: ${v}px`);
                     } catch (_) { /* ignore */ }
                   }, 0);
-                } catch (_) { /* ignore */ }
+                }
               }}
             >
               <div className="text-xs text-muted-foreground">Spacing</div>
@@ -703,9 +701,9 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                 <Slider
                   value={[tempLayoutSpacing]}
                   onValueChange={([v]) => {
-                    try { setTempLayoutSpacing(v); } catch (_) { void 0; }
-                    try { useAppConfigStore.getState().setLayoutSpacing(v); } catch (_) { void 0; }
-                    try { onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: v }); } catch (_) { void 0; }
+                    { setTempLayoutSpacing(v); }
+                    { useAppConfigStore.getState().setLayoutSpacing(v); }
+                    { onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: v }); }
                   }}
                   min={50}
                   max={500}
@@ -728,11 +726,11 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                 type="button"
                 className="px-3 py-1 rounded text-sm bg-muted"
                 onClick={() => {
-                  try {
+                  {
                     const v = tempLayoutSpacing;
                     try { useAppConfigStore.getState().setLayoutSpacing(v); } catch (_) { void 0; }
                     onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: v });
-                  } catch (_) { /* ignore */ }
+                  }
                 }}
               >
                 Apply
@@ -742,11 +740,11 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                 type="button"
                 className="px-3 py-1 rounded text-sm bg-muted"
                 onClick={() => {
-                  try {
+                  {
                     useAppConfigStore.getState().setLayoutSpacing(120);
                     onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: 120 });
                     toast.success('Reset spacing to 120px');
-                  } catch (_) { /* ignore */ }
+                  }
                 }}
               >
                 Reset
@@ -756,7 +754,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
               <button
                 type="button"
                 onClick={() => {
-                  try {
+                  {
                     const enabled = !layoutEnabled;
                     if (typeof onToggleLayoutEnabled === 'function') {
                       try {
@@ -764,8 +762,6 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                       } catch (_) { /* ignore */ }
                     }
                     toast.success(enabled ? 'Layout toggled ON' : 'Layout toggled OFF');
-                  } catch (_) {
-                    /* ignore */
                   }
                 }}
                 className={layoutEnabled ? 'px-3 py-1 rounded text-sm border bg-primary text-white' : 'px-3 py-1 rounded text-sm border bg-card'}

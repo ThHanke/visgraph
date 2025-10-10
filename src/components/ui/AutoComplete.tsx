@@ -41,10 +41,8 @@ export const AutoComplete = ({
   // If consumer requests the dropdown to auto-open (e.g. when dialog is open),
   // respect that and keep the popover open while autoOpen is true.
   useEffect(() => {
-    try {
+    {
       setOpen(Boolean(autoOpen));
-    } catch (_) {
-      /* ignore */
     }
   }, [autoOpen]);
 
@@ -55,7 +53,7 @@ export const AutoComplete = ({
   // If empty, fall back to the ontology store (fat-map) to provide sensible defaults
   // for node/link editors that rely on store-driven suggestions.
   const finalOptions = (Array.isArray(options) && options.length > 0) ? options : (() => {
-    try {
+    {
       const st = useOntologyStore.getState();
       // Prefer entityIndex.suggestions when available (stable suggestions produced by mapping).
       const entityIndex = (st as any).entityIndex;
@@ -75,8 +73,6 @@ export const AutoComplete = ({
           description: p.namespace ? `From ${p.namespace}` : undefined,
         }));
       }
-    } catch (_) {
-      /* best-effort only */
     }
     return options;
   })();
@@ -120,14 +116,14 @@ export const AutoComplete = ({
                   if (!iri) return "";
                   const s = String(iri);
                   if (s.startsWith('_:')) return s;
-                  try {
+                  {
                     const nsMap = rdfMgr && typeof (rdfMgr as any).getNamespaces === 'function'
                       ? (rdfMgr as any).getNamespaces()
                       : (rdfMgr && typeof rdfMgr === 'object' ? (rdfMgr as unknown as Record<string,string>) : undefined);
                     if (nsMap && nsMap[''] && s.startsWith(String(nsMap['']))) {
                       return `:${shortLocalName(s)}`.replace(/^(https?:\/\/)?(www\.)?/, '');
                     }
-                  } catch (_) { /* ignore */ }
+                  }
                   return shortLocalName(s).replace(/^(https?:\/\/)?(www\.)?/, '');
                 };
                 if (selectedOption) return format(selectedOption.value);
@@ -162,14 +158,14 @@ export const AutoComplete = ({
                     <span>{(() => {
                       const mgrState = useOntologyStore.getState();
                       const rdfMgr = typeof mgrState.getRdfManager === 'function' ? mgrState.getRdfManager() : mgrState.rdfManager;
-                      try {
+                      {
                         if (rdfMgr) {
                           const td = computeTermDisplay(String(option.value), rdfMgr as any);
                           const pref = (td.prefixed || td.short || '').replace(/^(https?:\/\/)?(www\.)?/, '');
                           // Preserve leading ':' so options for the default namespace appear as ':local'
                           return pref;
                         }
-                      } catch (_) { /* ignore */ }
+                      }
                       return shortLocalName(String(option.value)).replace(/^(https?:\/\/)?(www\.)?/, '');
                     })()}</span>
                     {(option.label || option.description) && (

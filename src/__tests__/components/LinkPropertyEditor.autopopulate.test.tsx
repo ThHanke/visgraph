@@ -12,7 +12,7 @@ import { LinkPropertyEditor } from "../../components/Canvas/LinkPropertyEditor";
 describe("LinkPropertyEditor autocomplete population from fat-map", () => {
   it("shows availableProperties/entityIndex suggestions in the object property AutoComplete", async () => {
     // Seed the ontology store fat-map entries
-    try {
+    {
       useOntologyStore.setState({
         availableProperties: [
           { iri: "http://example.org/test#propOne", label: "prop one", namespace: "http://example.org/test#" },
@@ -23,8 +23,6 @@ describe("LinkPropertyEditor autocomplete population from fat-map", () => {
           ],
         },
       } as any);
-    } catch (_) {
-      // ignore
     }
 
     const noop = () => {};
@@ -46,8 +44,8 @@ describe("LinkPropertyEditor autocomplete population from fat-map", () => {
     });
 
     // Cleanup store
-    try {
+    {
       useOntologyStore.getState().clearOntologies();
-    } catch (_) { void 0; }
+    }
   });
 });

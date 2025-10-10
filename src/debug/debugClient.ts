@@ -10,14 +10,14 @@ import { useEffect } from "react";
 import { useOntologyStore } from "../stores/ontologyStore";
 
 function safeLog(...args: any[]) {
-  try {
+  {
     // Prefer console.debug for consistency with existing logs
     if (typeof console !== "undefined" && typeof console.debug === "function") {
       console.debug(...args);
     } else if (typeof console !== "undefined" && typeof console.log === "function") {
       console.log(...args);
     }
-  } catch (_) { /* ignore logging errors */ }
+  }
 }
 
 function dumpRuntimeState() {
@@ -44,7 +44,7 @@ function dumpRuntimeState() {
 }
 
 // Install a global debug function and run an initial dump shortly after load to allow bootstrapping to complete.
-try {
+{
   (window as any).__VG_DEBUG_DUMP = () => {
     try { dumpRuntimeState(); } catch (_) { /* ignore */ }
   };
@@ -52,8 +52,6 @@ try {
   setTimeout(() => {
     try { dumpRuntimeState(); } catch (_) { /* ignore */ }
   }, 1000);
-} catch (_) {
-  /* ignore */
 }
 
 // Export a no-op to make this file import-friendly in ESM

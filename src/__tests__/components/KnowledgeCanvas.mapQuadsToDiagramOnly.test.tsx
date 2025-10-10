@@ -74,7 +74,7 @@ test("KnowledgeCanvas renders only nodes/edges from mapQuadsToDiagram and ignore
   // Build dataQuads (placed into urn:vg:data)
   const dataQuads: any[] = [];
   for (const q of parsed) {
-    try {
+    {
       const subj = q.subject && q.subject.value ? { value: String(q.subject.value) } : undefined;
       const pred = q.predicate && q.predicate.value ? { value: String(q.predicate.value) } : undefined;
       const objRaw = q.object;
@@ -94,7 +94,7 @@ test("KnowledgeCanvas renders only nodes/edges from mapQuadsToDiagram and ignore
       if (subj && pred && obj) {
         dataQuads.push({ subject: subj, predicate: pred, object: obj, graph: { value: "urn:vg:data" } });
       }
-    } catch (_) { void 0; }
+    }
   }
 
   // Derive fat-map (availableProperties / availableClasses) from parsed quads (same heuristic)
@@ -109,7 +109,7 @@ test("KnowledgeCanvas renders only nodes/edges from mapQuadsToDiagram and ignore
   // Filter out any triples whose subject is an ontology/class/property IRI so the data batch
   // represents only ABox/data-level subjects. This mirrors runtime behavior where ontology
   // declarations live in ontology graphs and should not be treated as data subjects.
-  try {
+  {
     const ontologySubjects = new Set<string>([
       ...(Array.isArray(Array.from(classIris)) ? Array.from(classIris) : []),
       ...(Array.isArray(Array.from(propIris)) ? Array.from(propIris) : []),
@@ -128,10 +128,10 @@ test("KnowledgeCanvas renders only nodes/edges from mapQuadsToDiagram and ignore
     // replace dataQuads with filtered array
     dataQuads.length = 0;
     for (const d of filtered) dataQuads.push(d);
-  } catch (_) { void 0; }
+  }
 
   for (const q of parsed) {
-    try {
+    {
       const pred = q.predicate && q.predicate.value ? String(q.predicate.value) : "";
       const subj = q.subject && q.subject.value ? String(q.subject.value) : "";
       const obj = q.object && q.object.value ? String(q.object.value) : "";
@@ -147,7 +147,7 @@ test("KnowledgeCanvas renders only nodes/edges from mapQuadsToDiagram and ignore
       if (pred === RDFS + "label" && q.object && q.object.value) {
         labels.set(subj, String(q.object.value));
       }
-    } catch (_) { void 0; }
+    }
   }
 
   const availableProperties = Array.from(propIris).map((iri) => {

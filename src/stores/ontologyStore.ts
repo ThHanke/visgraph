@@ -316,7 +316,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
   // Public helper to persist node-level updates. Prefers rdfManager.updateNode when available.
   updateNode: async (entityUri: string, updates: any) => {
-    try {
+    {
       if (!entityUri || !updates) return;
       const mgr = get().rdfManager;
       if (mgr && typeof (mgr as any).updateNode === "function") {
@@ -387,8 +387,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           }
         }
       } catch (_) { /* ignore fallback failures */ }
-    } catch (_) {
-      /* swallow errors to keep tests robust */
     }
   },
 
@@ -683,11 +681,11 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     // the next mapping run performs layout, invoke it now at the start of the load.
     // This ensures layout is requested exactly when a knowledge-graph load begins,
     // and that the mapping scheduler will run layout after mapper output is merged.
-    try {
+    {
       if (typeof window !== "undefined" && typeof (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING === "function") {
         try { (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING(); } catch (_) { /* ignore */ }
       }
-    } catch (_) { /* ignore global helper invocation failures */ }
+    }
 
     try {
       // If source is a URL, delegate fetching/parsing to rdfManager and then run a single authoritative fat-map rebuild.
@@ -815,12 +813,12 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     }
 
     // Debug: report triple count after additional ontologies batch load
-    try {
+    {
       const mgr = get().rdfManager;
       const store = mgr && typeof mgr.getStore === "function" ? mgr.getStore() : null;
       const tripleCount = store && typeof store.getQuads === "function" ? (store.getQuads(null, null, null, null) || []).length : -1;
       console.debug("[VG_DEBUG] loadAdditionalOntologies.batchTripleCount", { tripleCount });
-    } catch (_) { /* ignore */ }
+    }
 
     onProgress?.(100, "Additional ontologies loaded");
   },
@@ -1081,7 +1079,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     }));
 
     // Debug: report incremental update results (counts + samples)
-      try {
+      {
         const classesArr = Object.values(classByIri);
         const propsArr = Object.values(propByIri);
         console.debug("[VG_DEBUG] updateFatMap.result", {
@@ -1090,11 +1088,11 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           sampleClasses: (classesArr || []).slice(0, 5).map((c: any) => (c && c.iri) || c),
           sampleProperties: (propsArr || []).slice(0, 5).map((p: any) => (p && p.iri) || p),
         });
-      } catch (_) { /* ignore debug failures */ }
+      }
 
       // Also persist the namespace registry as part of incremental reconciles so
       // consumers observing namespaceRegistry (the legend) receive colors immediately.
-      try {
+      {
         try {
           const mgr = get().rdfManager;
           const nsMap = mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
@@ -1109,7 +1107,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           });
           useOntologyStore.setState((s: any) => ({ namespaceRegistry: registry }));
         } catch (_) { /* ignore incremental registry persist failures */ }
-      } catch (_) { /* ignore outer */ }
+      }
   },
 
   getRdfManager: () => {
@@ -1192,14 +1190,14 @@ async function buildFatMap(rdfMgr?: any): Promise<void> {
   }));
 
   // Debug: report full rebuild results (counts + samples)
-  try {
+  {
     console.debug("[VG_DEBUG] buildFatMap.result", {
       classesCount: mergedClasses.length,
       propertiesCount: mergedProps.length,
       sampleClasses: (mergedClasses || []).slice(0,5).map((c:any) => (c && c.iri) || c),
       sampleProperties: (mergedProps || []).slice(0,5).map((p:any) => (p && p.iri) || p),
     });
-  } catch (_) { /* ignore debug failures */ }
+  }
 
   // Persist namespace registry
   const nsMap = mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
@@ -1239,7 +1237,7 @@ function extractReferencedOntologies(rdfContent: string): string[] {
     }
   });
 
-  try {
+  {
     const prefixToOntUrls = new Map<string, string[]>();
     const wkPrefixes = WELL_KNOWN.prefixes || {};
     const wkOnt = WELL_KNOWN.ontologies || {};
@@ -1281,8 +1279,6 @@ function extractReferencedOntologies(rdfContent: string): string[] {
         urls.forEach((u) => ontologyUris.add(u));
       }
     }
-  } catch (_) {
-    /* best-effort only */
   }
 
   return Array.from(ontologyUris);
@@ -1292,7 +1288,7 @@ function extractReferencedOntologies(rdfContent: string): string[] {
  * Derive a user-friendly ontology name.
  */
 function deriveOntologyName(url: string): string {
-  try {
+  {
     const wkOnt = (WELL_KNOWN && (WELL_KNOWN as any).ontologies) || {};
     if (wkOnt[url] && wkOnt[url].name) return wkOnt[url].name;
     for (const [ontUrl, meta] of Object.entries(wkOnt)) {
@@ -1310,8 +1306,6 @@ function deriveOntologyName(url: string): string {
         /* ignore */
       }
     }
-  } catch (_) {
-    /* ignore */
   }
 
   try {
@@ -1349,7 +1343,7 @@ function deriveOntologyName(url: string): string {
  // This instrumentation is temporary and only intended to collect stack traces so we can identify
  // the runtime callsite that clears or replaces the fat-map unexpectedly. It records events on
  // window.__VG_FATMAP_MUTATION_LOG for offline inspection.
- try {
+ {
    const storeAny: any = (useOntologyStore as any);
    if (storeAny && typeof storeAny.setState === "function" && typeof storeAny.getState === "function") {
      const origSetState = storeAny.setState.bind(storeAny);
@@ -1436,6 +1430,4 @@ function deriveOntologyName(url: string): string {
        }
      } catch (_) { /* ignore helper install failure */ }
    }
- } catch (_) {
-   /* ignore instrumentation install failures */
  }

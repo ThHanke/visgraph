@@ -35,7 +35,7 @@ const { namedNode, literal, quad, blankNode, defaultGraph } = DataFactory;
  * Callers should fall back to WHATWG Response.body when this returns undefined.
  */
 async function createNodeReadableFromText(content: string | ArrayBuffer | Uint8Array): Promise<any | undefined> {
-  try {
+  {
     const _streamMod = await import("stream").catch(() => ({ Readable: undefined } as any));
     const Readable = (_streamMod && _streamMod.Readable) ? _streamMod.Readable : undefined;
     const _bufMod = await import("buffer").catch(() => ({ Buffer: (globalThis as any).Buffer } as any));
@@ -64,8 +64,6 @@ async function createNodeReadableFromText(content: string | ArrayBuffer | Uint8A
     }
 
     // Not available in this environment
-    return undefined;
-  } catch (_) {
     return undefined;
   }
 }
@@ -209,13 +207,13 @@ export class RDFManager {
       //    - configured blacklistedPrefixes expanded via runtime namespaces or WELL_KNOWN defaults
       const uriCandidates = new Set<string>();
       (this.blacklistedUris || []).forEach((u) => {
-        try {
+        {
           uriCandidates.add(String(u));
-        } catch (_) { void 0; }
+        }
       });
 
       (Array.from(this.blacklistedPrefixes) || []).forEach((p) => {
-        try {
+        {
           // Prefer runtime-registered namespace
           const nsFromMgr = this.namespaces && this.namespaces[p];
           if (nsFromMgr) uriCandidates.add(nsFromMgr);
@@ -239,7 +237,7 @@ export class RDFManager {
               } catch (_) { void 0; }
             }
           } catch (_) { void 0; }
-        } catch (_) { void 0; }
+        }
       });
 
       // Normalize candidates by ensuring common variants are present (with/without trailing #)
@@ -262,20 +260,16 @@ export class RDFManager {
       );
 
       for (const u of normalizedCandidates) {
-        try {
+        {
           if (!u) continue;
           if (s.startsWith(u)) return true;
-        } catch (_) {
-          /* ignore per-candidate failures */
         }
       }
     } catch (_) {
-      try {
+      {
         if (typeof fallback === "function") {
           fallback("emptyCatch", { error: String(_) });
         }
-      } catch (__) {
-        /* ignore fallback errors */
       }
     }
     return false;
@@ -286,7 +280,7 @@ export class RDFManager {
     // Wrap store.getQuads/countQuads to accept flexible string inputs used across tests.
     // Many tests call getQuads using plain strings (subject/predicate/object) — normalize those
     // into N3 terms so the underlying N3 store does not throw when given non-term inputs.
-    try {
+    {
       const origGetQuads = (this.store as any).getQuads.bind(this.store);
       const origCountQuads = (this.store as any).countQuads.bind(this.store);
       const toTerm = (v: any, isObject = false) => {
@@ -327,8 +321,6 @@ export class RDFManager {
           return origCountQuads(s, p, o, g);
         }
       };
-    } catch (_) {
-      // non-fatal: continue without wrappers
     }
 
     this.parser = new Parser();
@@ -914,19 +906,19 @@ export class RDFManager {
 
     this._inFlightLoads.set(key, promise);
     // Mark that parsing is in progress so subject-level notification flushes are deferred
-    try { this.parsingInProgress = true; } catch (_) { void 0; }
+    { this.parsingInProgress = true; }
 
     const finalize = (prefixes?: Record<string, string>) => {
       // Notify subscribers that RDF changed
       this.notifyChange();
-      try { this.parsingInProgress = false; } catch (_) { /* ignore */ }
-      try { this.scheduleSubjectFlush(0); } catch (_) { /* ignore */ }
-      try {
+      { this.parsingInProgress = false; }
+      { this.scheduleSubjectFlush(0); }
+      {
         this.notifyChange();
-      } catch (_) { /* ignore notify failures */ }
+      }
 
       // Developer debug: report per-graph triple counts after a batch load
-      try {
+      {
         const allQuads = this.store.getQuads(null, null, null, null) || [];
         const graphCounts: Record<string, number> = {};
         for (const qq of allQuads) {
@@ -939,8 +931,6 @@ export class RDFManager {
         }
         try { debugLog("rdf.load.batchCounts", { id: _vg_loadId, graphCounts }); } catch (_) { void 0; }
         try { console.debug("[VG_DEBUG] rdf.load.batchCounts", { id: _vg_loadId, graphCounts }); } catch (_) { void 0; }
-      } catch (_) {
-        /* ignore debug failures */
       }
 
       resolveFn();
@@ -1380,7 +1370,7 @@ export class RDFManager {
 
     // Persisting the registry is handled by the reconcile/fat-map path only.
     if (changed) {
-      try { this.notifyChange({ kind: "namespaces", prefixes: [prefix] }); } catch (_) { /* ignore */ }
+      { this.notifyChange({ kind: "namespaces", prefixes: [prefix] }); }
     }
   }
 
@@ -1711,14 +1701,14 @@ export class RDFManager {
     };
 
     // Also consult WELL_KNOWN prefixes as a non-persistent fallback (do not overwrite existing mappings).
-    try {
+    {
       const wk = (WELL_KNOWN && (WELL_KNOWN as any).prefixes) || {};
       Object.entries(wk).forEach(([k, v]) => {
         try {
           if (!wellKnownFallbacks[k] && typeof v === "string") wellKnownFallbacks[k] = v;
         } catch (_) { void 0; }
       });
-    } catch (_) { void 0; }
+    }
 
     if (wellKnownFallbacks[prefix]) {
       // Add fallback to namespaces so exports include the prefix
@@ -1772,7 +1762,7 @@ export class RDFManager {
    * This method is best-effort and will swallow errors to avoid breaking callers/tests.
    */
   public updateNode(entityUri: string, updates: any): void {
-    try {
+    {
       if (!entityUri || !updates) return;
 
       const subjIri = String(entityUri);
@@ -1910,8 +1900,6 @@ export class RDFManager {
       } catch (_) {
         /* ignore apply failures */
       }
-    } catch (_) {
-      /* swallow errors to keep callers/tests robust */
     }
   }
 
@@ -1983,16 +1971,16 @@ export class RDFManager {
       } catch (_) { objs.push(literal(String(object))); }
 
       for (const o of objs) {
-        try {
+        {
           const found = this.store.getQuads(s, p, o as any, g) || [];
           for (const q of found) {
             try { this.bufferSubjectFromQuad(q); } catch (_) { void 0; }
             this.store.removeQuad(q);
           }
-        } catch (_) { /* ignore per-object */ }
+        }
       }
     } catch (e) {
-      try { fallback("rdf.removeTriple.failed", { subject, predicate, object, error: String(e) }); } catch (_) { void 0; }
+      { fallback("rdf.removeTriple.failed", { subject, predicate, object, error: String(e) }); }
     }
   }
 
@@ -2129,7 +2117,7 @@ export class RDFManager {
    */
   private sanitizeParserPrefixes(namespaces: Record<string, any> | undefined | null): Record<string, RDF.NamedNode> {
     const out: Record<string, RDF.NamedNode> = {};
-    try {
+    {
       if (!namespaces || typeof namespaces !== "object") return out;
       for (const [p, v] of Object.entries(namespaces || {})) {
         try {
@@ -2170,8 +2158,6 @@ export class RDFManager {
           /* ignore per-entry errors */
         }
       }
-    } catch (_) {
-      /* ignore overall errors */
     }
     return out;
   }
@@ -2271,22 +2257,22 @@ export class RDFManager {
       };
 
       const onPrefix = (prefix: string, iri: any) => {
-        try {
+        {
           if (prefix && typeof iri !== "undefined") prefixes[String(prefix)] = iri;
-        } catch (_) { /* ignore */ }
+        }
       };
 
       const cleanup = () => {
-        try {
+        {
           quadStream.removeListener("data", onData);
           quadStream.removeListener("error", onError);
           quadStream.removeListener("end", onEnd);
           quadStream.removeListener("prefix", onPrefix);
-        } catch (_) { /* ignore cleanup errors */ }
+        }
       };
 
       const onError = (err: any) => {
-        try {
+        {
           // Capture stream-level errors for diagnostic inspection (dev-only surface)
           try {
             (window as any).__VG_PARSED_PREFIXES_ERRORS = (window as any).__VG_PARSED_PREFIXES_ERRORS || [];
@@ -2300,9 +2286,9 @@ export class RDFManager {
           } catch (_) { /* ignore capture failures */ }
 
           try { console.error("[VG_PARSED_PREFIXES_ERROR] (quad-stream)", err); } catch (_) { /* ignore */ }
-        } catch (_) { /* ignore logging failures */ }
+        }
 
-        try { cleanup(); } catch (_) { /* ignore */ }
+        { cleanup(); }
         reject(err);
       };
 

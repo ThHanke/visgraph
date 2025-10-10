@@ -15,9 +15,9 @@ vi.mock("../../stores/ontologyStore", () => {
     rdfManager: {
       getNamespaces: () => ({}),
       addNamespace: (p: string, u: string) => {
-        try {
+        {
           // test mock: no-op for addNamespace
-        } catch (_) { void 0; }
+        }
       },
     },
     ontologiesVersion: 1,

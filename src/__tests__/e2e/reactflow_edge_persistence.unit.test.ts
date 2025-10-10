@@ -10,20 +10,16 @@ const { namedNode } = DataFactory;
 
 beforeEach(() => {
   // Clear RDF store and ontology store currentGraph so each test runs cleanly.
-  try {
+  {
     rdfManager.clear();
-  } catch (_) {
-    /* ignore */
   }
-  try {
+  {
     useOntologyStore.setState({
       currentGraph: { nodes: [], edges: [] },
       loadedOntologies: [],
       availableClasses: [],
       availableProperties: [],
     } as any);
-  } catch (_) {
-    /* ignore */
   }
 });
 

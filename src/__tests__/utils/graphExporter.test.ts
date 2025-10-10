@@ -9,10 +9,8 @@ describe('Ontology store export (rdfManager-backed)', () => {
   beforeEach(() => {
     // Ensure a clean store between runs
     const s = useOntologyStore.getState();
-    try {
+    {
       s.clearOntologies();
-    } catch (_) {
-      /* ignore */
     }
   });
 

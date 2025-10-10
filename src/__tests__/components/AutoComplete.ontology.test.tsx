@@ -36,10 +36,8 @@ describe("AutoComplete with ontology-loaded options", () => {
     const store = useOntologyStore.getState();
 
     // Ensure clean slate for the store
-    try {
+    {
       if (typeof store.clearOntologies === "function") store.clearOntologies();
-    } catch (_) {
-      // ignore if not present
     }
 
     // Load the test TTL into the ontology store (this populates the RDF manager)
@@ -130,8 +128,8 @@ describe("AutoComplete with ontology-loaded options", () => {
     });
 
     // Cleanup: clear ontologies to avoid leakage into other tests
-    try {
+    {
       if (typeof store.clearOntologies === "function") store.clearOntologies();
-    } catch (_) { /* ignore */ }
+    }
   });
 });

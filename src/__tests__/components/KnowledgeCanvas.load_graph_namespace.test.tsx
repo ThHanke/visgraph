@@ -121,7 +121,7 @@ describe("KnowledgeCanvas loadKnowledgeGraph namespace + palette orchestration",
       getNamespaces: () => ({ ...namespaces }),
       // applyParsedNamespaces: (ns: Record<string,string>) => { Object.assign(namespaces, ns || {}); },
       loadRDFIntoGraph: async (content: string, graphName?: string) => {
-        try {
+        {
           const lines = String(content || "").split(/\r?\n/);
           for (const l of lines) {
             const m = l.match(/@prefix\s+([A-Za-z0-9_-]+):\s+<([^>]+)>/);
@@ -139,16 +139,16 @@ describe("KnowledgeCanvas loadKnowledgeGraph namespace + palette orchestration",
               storeQuads.push({ subject: subj, predicate: pred, object: obj, graph });
             }
           }
-        } catch (_) { void 0; }
+        }
       },
       onSubjectsChange: (cb: any) => { onSubjectsChangeHandlers.push(cb); },
       offSubjectsChange: (_cb: any) => {},
       onChange: (_cb: any) => {},
       expandPrefix: (v: string) => {
-        try {
+        {
           const parts = String(v).split(":");
           if (parts.length === 2 && namespaces[parts[0]]) return namespaces[parts[0]] + parts[1];
-        } catch (_) { void 0; }
+        }
         return v;
       },
     };
@@ -168,7 +168,7 @@ describe("KnowledgeCanvas loadKnowledgeGraph namespace + palette orchestration",
         // emit subject change so component runs mapping/enrichment
         const ontologyQuad = { subject: { value: "http://example.com/prop" }, predicate: { value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" }, object: { value: "http://www.w3.org/2002/07/owl#ObjectProperty" }, graph: { value: "urn:vg:ontologies:1" } };
         const dataQuad = { subject: { value: "http://example.com/node1" }, predicate: { value: "http://example.com/prop" }, object: { value: "http://example.com/node2" }, graph: { value: "urn:vg:data" } };
-        onSubjectsChangeHandlers.forEach((h) => { try { h([], [ontologyQuad, dataQuad]); } catch (_) { void 0; } });
+        onSubjectsChangeHandlers.forEach((h) => { { h([], [ontologyQuad, dataQuad]); } });
       },
       exportGraph: async () => "",
       updateNode: async () => {},

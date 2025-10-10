@@ -72,13 +72,13 @@ describe("RDFManager mutation APIs", () => {
     // annotationProperties -> literal/object adds
     if (Array.isArray(node.annotationProperties)) {
       for (const ap of node.annotationProperties) {
-        try {
+        {
           adds.push({
             subject: String(node.iri),
             predicate: String(ap.property),
             object: String(ap.value),
           });
-        } catch (_) { /* ignore per-item */ }
+        }
       }
     }
 
@@ -86,13 +86,13 @@ describe("RDFManager mutation APIs", () => {
     const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
     if (Array.isArray(node.rdfTypes)) {
       for (const t of node.rdfTypes) {
-        try {
+        {
           adds.push({
             subject: String(node.iri),
             predicate: RDF_TYPE,
             object: String(t),
           });
-        } catch (_) { /* ignore per-type */ }
+        }
       }
     }
 

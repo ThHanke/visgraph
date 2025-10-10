@@ -53,7 +53,7 @@ test("mappingHelpers tbox/annotation property examples - human friendly output",
   console.log("=== mappingHelpers tbox test - human friendly output ===");
   console.log("Nodes produced:", nodes.length);
   for (const n of nodes) {
-    try {
+    {
       const d = n.data || {};
       console.log(`- Node id=${String(n.id)} iri=${String(d.iri || n.id)}`);
       console.log(`    rdfTypes: ${JSON.stringify(d.rdfTypes || [])}`);
@@ -61,14 +61,14 @@ test("mappingHelpers tbox/annotation property examples - human friendly output",
       console.log(`    displayclassType: ${String(d.displayclassType || "")}`);
       console.log(`    isTBox: ${Boolean(d.isTBox)}`);
       console.log(`    label: ${String(d.label || "")}`);
-    } catch (_) { void 0; }
+    }
   }
   console.log("Edges produced:", edges.length);
   for (const e of edges) {
-    try {
+    {
       const dd = e.data || {};
       console.log(`- Edge id=${e.id} ${e.source} -> ${e.target} prop=${String(dd.propertyUri || dd.propertyType || dd.label || "")}`);
-    } catch (_) { void 0; }
+    }
   }
   console.log("=== end ===");
   console.log("");

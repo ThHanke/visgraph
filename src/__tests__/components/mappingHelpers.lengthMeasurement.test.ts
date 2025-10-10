@@ -13,7 +13,7 @@ test("mappingHelpers length measurement fixture (parsed via rdf store/parser) - 
   const parsed = parser.parse(ttl);
   const quads: any[] = [];
   for (const q of parsed) {
-    try {
+    {
       const subj = q.subject && q.subject.value ? { value: String(q.subject.value) } : undefined;
       const pred = q.predicate && q.predicate.value ? { value: String(q.predicate.value) } : undefined;
       const objRaw = q.object;
@@ -34,7 +34,7 @@ test("mappingHelpers length measurement fixture (parsed via rdf store/parser) - 
         // Place everything into urn:vg:data graph to simulate data-graph load per request
         quads.push({ subject: subj, predicate: pred, object: obj, graph: { value: "urn:vg:data" } });
       }
-    } catch (_) { void 0; }
+    }
   }
 
   // Derive fat-map (availableProperties / availableClasses) from the parsed quads so mapper can emit edges.
@@ -48,7 +48,7 @@ test("mappingHelpers length measurement fixture (parsed via rdf store/parser) - 
 
   // Use the raw parsed N3 quads to derive types and labels
   for (const q of parsed) {
-    try {
+    {
       const pred = q.predicate && q.predicate.value ? String(q.predicate.value) : "";
       const subj = q.subject && q.subject.value ? String(q.subject.value) : "";
       const obj = q.object && q.object.value ? String(q.object.value) : "";
@@ -67,7 +67,7 @@ test("mappingHelpers length measurement fixture (parsed via rdf store/parser) - 
       if (pred === RDFS + "label" && q.object && q.object.value) {
         labels.set(subj, String(q.object.value));
       }
-    } catch (_) { void 0; }
+    }
   }
 
     const availableProperties = Array.from(propIris).map((iri) => {
@@ -107,7 +107,7 @@ test("mappingHelpers length measurement fixture (parsed via rdf store/parser) - 
   console.log("Total quads parsed:", quads.length);
   console.log("Nodes produced:", nodes.length);
   for (const n of nodes) {
-    try {
+    {
       const d = (n.data || {}) as any;
       console.log(`- Node id=${String(n.id)} iri=${String(d.iri || n.id)}`);
       console.log(`    rdfTypes: ${JSON.stringify(d.rdfTypes || [])}`);
@@ -115,14 +115,14 @@ test("mappingHelpers length measurement fixture (parsed via rdf store/parser) - 
       console.log(`    displayclassType: ${String(d.displayclassType || "")}`);
       console.log(`    isTBox: ${Boolean(d.isTBox)}`);
       console.log(`    label: ${String(d.label || "")}`);
-    } catch (_) { void 0; }
+    }
   }
   console.log("Edges produced:", edges.length);
     for (const e of edges) {
-    try {
+    {
       const dd = (e.data || {}) as any;
       console.log(`- Edge id=${e.id} ${e.source} -> ${e.target} prop=${String(dd.propertyUri || dd.propertyType || dd.label || "")}`);
-    } catch (_) { void 0; }
+    }
   }
   console.log("=== end ===");
   console.log("");

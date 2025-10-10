@@ -12,9 +12,9 @@ function sleep(ms: number) {
 async function waitForCondition(cond: () => boolean, timeout = 2000, interval = 50) {
   const start = Date.now();
   while (Date.now() - start < timeout) {
-    try {
+    {
       if (cond()) return true;
-    } catch (_) { void 0; }
+    }
     // give background tasks a chance to run
      
     await sleep(interval);
@@ -24,8 +24,8 @@ async function waitForCondition(cond: () => boolean, timeout = 2000, interval = 
 
 test("updateFatMap accepts parsed quads and populates availableProperties/availableClasses", async () => {
   // Reset state
-  try { rdfManager.clear(); } catch (_) { void 0; }
-  try {
+  { rdfManager.clear(); }
+  {
     useOntologyStore.setState({
       availableProperties: [],
       availableClasses: [],
@@ -33,7 +33,7 @@ test("updateFatMap accepts parsed quads and populates availableProperties/availa
       namespaceRegistry: [],
       ontologiesVersion: 0,
     } as any);
-  } catch (_) { void 0; }
+  }
 
   // Build a set of parsed quads (POJO shape) representing ontology TBox in urn:vg:ontologies
   const TTL_NS = "http://example.com/";

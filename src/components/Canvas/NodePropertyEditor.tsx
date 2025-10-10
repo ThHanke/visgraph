@@ -42,12 +42,10 @@ import { useOnSelectionChange } from "@xyflow/react";
 
 // Simple termForIri helper used for constructing N3 terms (handles blank nodes like "_:b0")
 const termForIri = (iri: string) => {
-  try {
+  {
     if (typeof iri === "string" && iri.startsWith("_:")) {
       return DataFactory.blankNode(iri.slice(2));
     }
-  } catch (_) {
-    /* ignore */
   }
   return namedNode(String(iri));
 };
@@ -266,34 +264,34 @@ export const NodePropertyEditor = ({
 
     // Build removes for annotation properties (remove specific literal values)
     for (const p of propsToRemove || []) {
-      try {
+      {
         const predFull = typeof (mgr as any).expandPrefix === "function" ? String((mgr as any).expandPrefix(p.key)) : String(p.key);
         removes.push({ subject: subjIri, predicate: predFull, object: String(p.value || "") });
-      } catch (_) { /* ignore per-item */ }
+      }
     }
 
     // Build removes for rdf:type removals
     for (const t of typesToRemove || []) {
-      try {
+      {
         const typeFull = typeof (mgr as any).expandPrefix === "function" ? String((mgr as any).expandPrefix(String(t))) : String(t);
         removes.push({ subject: subjIri, predicate: rdfTypePred, object: typeFull });
-      } catch (_) { /* ignore per-item */ }
+      }
     }
 
     // Build adds for annotation properties
     for (const p of propsToAdd || []) {
-      try {
+      {
         const predFull = typeof (mgr as any).expandPrefix === "function" ? String((mgr as any).expandPrefix(p.key)) : String(p.key);
         adds.push({ subject: subjIri, predicate: predFull, object: String(p.value || "") });
-      } catch (_) { /* ignore per-item */ }
+      }
     }
 
     // Build adds for rdf:type additions
     for (const t of typesToAdd || []) {
-      try {
+      {
         const typeFull = typeof (mgr as any).expandPrefix === "function" ? String((mgr as any).expandPrefix(String(t))) : String(t);
         adds.push({ subject: subjIri, predicate: rdfTypePred, object: typeFull });
-      } catch (_) { /* ignore per-item */ }
+      }
     }
 
     // Apply batch (manager will notify). Use empty arrays when nothing to do so applyBatch is deterministic.
@@ -311,14 +309,14 @@ export const NodePropertyEditor = ({
       value: p.value,
       type: p.type || "xsd:string",
     }));
-    try { if (typeof onSave === "function") onSave(annotationProperties); } catch (_) { void 0; }
+    { if (typeof onSave === "function") onSave(annotationProperties); }
 
     // Close dialog (manager already emits change notifications)
     onOpenChange(false);
 
     // Update initial snapshots so subsequent edits compute diffs relative to latest saved state
-    try { initialPropertiesRef.current = (properties || []).map(p => ({ ...p })); } catch (_) { void 0; }
-    try { initialRdfTypesRef.current = (currentTypes || []).slice(); } catch (_) { void 0; }
+    { initialPropertiesRef.current = (properties || []).map(p => ({ ...p })); }
+    { initialRdfTypesRef.current = (currentTypes || []).slice(); }
   };
 
   // Delete: remove triples with subject OR object equal to nodeIri from urn:vg:data (writes only).
@@ -354,7 +352,7 @@ export const NodePropertyEditor = ({
     }
 
     // Ask parent to remove the node visually and then close the dialog
-    try { if (typeof onDelete === "function") onDelete(String(nodeIri)); } catch (_) { void 0; }
+    { if (typeof onDelete === "function") onDelete(String(nodeIri)); }
     onOpenChange(false);
   };
 

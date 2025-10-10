@@ -20,7 +20,7 @@ import { useAppConfigStore } from './stores/appConfigStore';
 initTheme();
 
 // Apply persisted blacklist from app config at startup (best-effort)
-try {
+{
   const cfg = (useAppConfigStore as any).getState().config;
   if (cfg) {
     const prefixes = Array.isArray(cfg.blacklistedPrefixes) ? cfg.blacklistedPrefixes : [];
@@ -31,14 +31,12 @@ try {
       rdfManager.setBlacklist(prefixes, uris);
     }
   }
-} catch (_) {
-  /* ignore startup blacklist application failures */
 }
 
  // Initialize global debug gate and lightweight console.* wrapper driven by app config.
  // Messages that start with a "[VG_" prefix are considered diagnostic and will only be
  // emitted when the master config.debugAll flag is enabled. Non-VG console output is left intact.
- try {
+ {
    // Seed window flag from persisted config
    const cfg = (useAppConfigStore as any).getState().config;
    try { (window as any).__VG_DEBUG__ = Boolean(cfg && cfg.debugAll); } catch (_) { void 0; }
@@ -92,6 +90,6 @@ try {
      });
      try { (window as any).__VG_DEBUG_SUBSCRIBE_UNSUB = unsub; } catch (_) { void 0; }
    } catch (_) { /* ignore subscribe failures */ }
- } catch (_) { /* ignore debug init failures */ }
+ }
 
 createRoot(document.getElementById("root")!).render(<App />);

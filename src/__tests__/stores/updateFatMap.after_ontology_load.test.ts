@@ -13,9 +13,9 @@ function sleep(ms: number) {
 async function waitForCondition(cond: () => boolean, timeout = 5000, interval = 50) {
   const start = Date.now();
   while (Date.now() - start < timeout) {
-    try {
+    {
       if (cond()) return true;
-    } catch (_) { void 0; }
+    }
     // give background tasks a chance to run
      
     await sleep(interval);

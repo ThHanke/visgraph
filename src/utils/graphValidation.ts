@@ -27,7 +27,7 @@ export function validateGraph(
   }
 ): ValidationError[] {
   const errors: ValidationError[] = [];
-  try {
+  {
     const classes = Array.isArray(options?.availableClasses) ? options!.availableClasses : [];
     const props = Array.isArray(options?.availableProperties) ? options!.availableProperties : [];
 
@@ -188,8 +188,6 @@ export function validateGraph(
         }
       } catch (_) { /* ignore per-edge */ }
     }
-  } catch (_) {
-    // overall helper errors are swallowed; return any accumulated errors so tests may assert on them
   }
   return errors;
 }

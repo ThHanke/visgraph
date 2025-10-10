@@ -12,9 +12,9 @@ import { useOntologyStore } from "../../stores/ontologyStore";
 describe("namespaceRegistry helpers (adapted)", () => {
   beforeEach(() => {
     // Clear any previously persisted registry
-    try {
+    {
       useOntologyStore.getState().setNamespaceRegistry([]);
-    } catch (_) { void 0; }
+    }
   });
 
   test("builds registry-like array from manager.getNamespaces and palette mapper", () => {

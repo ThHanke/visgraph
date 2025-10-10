@@ -93,9 +93,9 @@ ex:personX a foaf:Person ;
     const loaded = useOntologyStore.getState().loadedOntologies || [];
     // Map URLs to counts: expect no duplicates
     const urlCounts = loaded.reduce<Record<string, number>>((acc, o) => {
-      try {
+      {
         acc[String(o.url || "")] = (acc[String(o.url || "")] || 0) + 1;
-      } catch (_) { void 0; }
+      }
       return acc;
     }, {});
     for (const k of Object.keys(urlCounts)) {

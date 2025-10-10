@@ -56,13 +56,11 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
   });
 
       useEffect(() => {
-    try {
+    {
       const cfg = useAppConfigStore.getState().config;
       setBlacklistEnabledLocal(!!cfg.blacklistEnabled);
       setPrefixesText((cfg.blacklistedPrefixes || []).join(', '));
       setUrisText((cfg.blacklistedUris || []).join(', '));
-    } catch (_) {
-      /* ignore */
     }
   }, []);
 
@@ -510,13 +508,13 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
                     onChange={(e) => {
                       const v = (e.target as HTMLInputElement).value;
                       setPrefixesText(v);
-                      try {
+                      {
                         const prefixes = (v || "").split(",").map(s=>s.trim()).filter(Boolean);
                         setBlacklistedPrefixes(prefixes);
                         const uris = (urisText || "").split(",").map(s=>s.trim()).filter(Boolean);
                         const mgr = useOntologyStore.getState().getRdfManager();
                         mgr.setBlacklist(prefixes, uris);
-                      } catch (_) { /* ignore */ }
+                      }
                     }}
                     className="text-xs"
                     placeholder="e.g. owl, rdf, rdfs, xml, xsd"
@@ -530,13 +528,13 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
                     onChange={(e) => {
                       const v = (e.target as HTMLInputElement).value;
                       setUrisText(v);
-                      try {
+                      {
                         const uris = (v || "").split(",").map(s=>s.trim()).filter(Boolean);
                         setBlacklistedUris(uris);
                         const prefixes = (prefixesText || "").split(",").map(s=>s.trim()).filter(Boolean);
                         const mgr = useOntologyStore.getState().getRdfManager();
                         mgr.setBlacklist(prefixes, uris);
-                      } catch (_) { /* ignore */ }
+                      }
                     }}
                     className="text-xs"
                     placeholder="e.g. http://www.w3.org/1999/02/22-rdf-syntax-ns#"

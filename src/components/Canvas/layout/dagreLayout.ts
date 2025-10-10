@@ -51,7 +51,7 @@ export function applyDagreLayout(
   // Compute maximum node dimensions and adjust spacing so layout is node-size-aware.
   // We add the max lateral size to rank separation and the max cross size to node separation.
   // This is an additive change (no opt-in, no padding/scaling) as requested.
-  try {
+  {
     let maxWidth = 0;
     let maxHeight = 0;
     const allNodeIds = g.nodes() || [];
@@ -85,31 +85,27 @@ export function applyDagreLayout(
       marginx: marginX,
       marginy: marginY,
     });
-  } catch (_) {
-    // If anything goes wrong, fall back to the original settings already applied above.
   }
 
   // Add edges
   for (const e of edges) {
     // dagre expects unique edge ids but we can omit id and provide source/target
-    try {
+    {
       g.setEdge(e.source, e.target);
-    } catch (err) {
-      // ignore malformed edges
     }
   }
 
   // Run layout
   if (typeof debug === 'function') {
-    try {
+    {
       debug('dagre.layout.start', { nodeCount: nodes.length, edgeCount: edges.length, opts });
-    } catch (_) { /* ignore */ }
+    }
   }
 
   dagre.layout(g);
 
   if (typeof debug === 'function') {
-    try {
+    {
       // collect a small sample of computed node positions for debugging
       const sample: any[] = [];
       const allIds = g.nodes() || [];
@@ -118,7 +114,7 @@ export function applyDagreLayout(
         if (v) sample.push({ id: allIds[i], x: Math.round(v.x), y: Math.round(v.y), width: v.width, height: v.height });
       }
       debug('dagre.layout.end', { sample, total: allIds.length });
-    } catch (_) { /* ignore */ }
+    }
   }
 
   // Map computed positions back to nodes

@@ -141,11 +141,9 @@ function recordRecentEvent(fp: string, caller?: string) {
 }
 
 function captureFullStack() {
-  try {
+  {
     const e = new Error();
     return e.stack || undefined;
-  } catch (_) {
-    return undefined;
   }
 }
 
@@ -153,7 +151,7 @@ function safeConsole(
   level: "debug" | "info" | "warn" | "error",
   ...args: any[]
 ) {
-  try {
+  {
     if (typeof console === "undefined") return;
     if (level === "debug") {
       console.debug(...args);
@@ -164,8 +162,6 @@ function safeConsole(
     } else {
       console.error(...args);
     }
-  } catch (_) {
-    // Swallow console errors to avoid recursive logging
   }
 }
 

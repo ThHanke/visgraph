@@ -12,16 +12,12 @@ import { LinkPropertyEditor } from "@/components/Canvas/LinkPropertyEditor";
 describe("Deletion handlers (node & edge)", () => {
   beforeEach(() => {
     // reset RDF store and ontology store between tests
-    try {
+    {
       rdfManager.clear();
-    } catch (_) {
-      /* ignore */
     }
-    try {
+    {
       // reset currentGraph
       (useOntologyStore as any).setState({ currentGraph: { nodes: [], edges: [] } });
-    } catch (_) {
-      /* ignore */
     }
     vi.restoreAllMocks();
   });

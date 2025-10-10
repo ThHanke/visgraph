@@ -231,11 +231,11 @@ export function computeTermDisplay(
 
   // Determine registry entry (use provided registry parameter when present)
   const regParamProvided = typeof registry !== "undefined" && registry !== null;
-  const reg = normalizeRegistry(registry as any) || normalizeRegistry((useOntologyStore && (useOntologyStore as any).getState && (useOntologyStore as any).getState().namespaceRegistry) || undefined);
+  const reg = normalizeRegistry((useOntologyStore && (useOntologyStore as any).getState && (useOntologyStore as any).getState().namespaceRegistry));
   const entry = reg ? findRegistryEntryForIri(targetIri, reg) : undefined;
 
   if (regParamProvided && !entry) {
-    throw new Error(`No registry prefix found for IRI: ${targetIri}`);
+    console.log(Error(`No registry prefix found for IRI: ${targetIri}`));
   }
 
   let rawPrefix = "";

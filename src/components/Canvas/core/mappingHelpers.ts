@@ -159,7 +159,7 @@ export function mapQuadsToDiagram(
   const predicateKindCache = new Map<string, PredicateKind>();
 
   // Initialize cache from provided fat-map snapshot (availableProperties) if present.
-  try {
+  {
     const avail =
       options && Array.isArray((options as any).availableProperties)
         ? (options as any).availableProperties
@@ -184,8 +184,6 @@ export function mapQuadsToDiagram(
         /* ignore per-entry */
       }
     }
-  } catch (_) {
-    /* ignore init errors */
   }
 
   
@@ -209,7 +207,7 @@ export function mapQuadsToDiagram(
   // Step 2: split quads by origin (graph name)
   const dataQuads: QuadLike[] = [];
   const inferredQuads: QuadLike[] = [];
-  try {
+  {
     for (const q of quads || []) {
       try {
         const graphVal =
@@ -234,11 +232,11 @@ export function mapQuadsToDiagram(
         }
       } catch (_) { /* ignore per-quad */ }
     }
-  } catch (_) { /* ignore overall */ }
+  }
 
   // Pre-scan dataQuads for rdf:type declarations so we can make deterministic decisions
   const typesBySubject = new Map<string, Set<string>>();
-  try {
+  {
     for (const q of dataQuads || []) {
       try {
         const s = q && q.subject ? q.subject : null;
@@ -256,7 +254,7 @@ export function mapQuadsToDiagram(
         }
       } catch (_) { /* ignore per-quad */ }
     }
-  } catch (_) { /* ignore overall */ }
+  }
 
   // Step 3: loop over data quads and fill the properties of the already existing nodes
   try {
@@ -318,7 +316,7 @@ export function mapQuadsToDiagram(
         if (predIri === RDFS_LABEL && isLiteral(obj)) {
           const labelVal = obj && obj.value ? String(obj.value) : entry.label;
           entry.label = labelVal;
-          try {
+          {
             const propPrefixed = toPrefixed(
               predIri,
               options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
@@ -336,13 +334,13 @@ export function mapQuadsToDiagram(
                 value: labelVal,
               });
             }
-          } catch (_) { /* ignore */ }
+          }
           continue;
         }
 
         // Annotation property classifier
         if (predicateKindLocal === "annotation") {
-          try {
+          {
             const val = obj && obj.value ? String(obj.value) : "";
             entry.annotationProperties.push({
               property: toPrefixed(
@@ -353,13 +351,13 @@ export function mapQuadsToDiagram(
               ),
               value: val,
             });
-          } catch (_) { /* ignore per-annotation */ }
+          }
           continue;
         }
 
         // Literals for data quads -> annotationProperties (per policy)
         if (isLiteral(obj)) {
-          try {
+          {
             const litVal = obj && obj.value ? String(obj.value) : "";
             entry.annotationProperties.push({
               property: toPrefixed(
@@ -370,7 +368,7 @@ export function mapQuadsToDiagram(
               ),
               value: litVal,
             });
-          } catch (_) { /* ignore per-literal */ }
+          }
           continue;
         }
 
@@ -379,10 +377,10 @@ export function mapQuadsToDiagram(
           const bn = obj.value ? String(obj.value) : "";
           if (predicateKindLocal === "object" || predicateKindLocal === "unknown" || isBlankNodeReferenced(bn, dataQuads)) {
             ensureNode(bn);
-            try {
+            {
               const objEntry = nodeMap.get(bn);
               if (objEntry) objEntry.forceIsTBox = subjectIsTBox;
-            } catch (_) { /* ignore */ }
+            }
 
             const edgeId = String(generateEdgeId(subjectIri, bn, predIri || ""));
             rfEdges.push({
@@ -413,7 +411,7 @@ export function mapQuadsToDiagram(
               } as LinkData,
             });
           } else {
-            try {
+            {
               entry.annotationProperties.push({
                 property: toPrefixed(
                   predIri,
@@ -423,7 +421,7 @@ export function mapQuadsToDiagram(
                 ),
                 value: bn,
               });
-            } catch (_) { /* ignore */ }
+            }
           }
           continue;
         }
@@ -435,10 +433,10 @@ export function mapQuadsToDiagram(
 
           if (predicateKindLocal === "object" || predicateKindLocal === "unknown") {
             ensureNode(objectIri);
-            try {
+            {
               const objEntry = nodeMap.get(objectIri);
               if (objEntry) objEntry.forceIsTBox = subjectIsTBox;
-            } catch (_) { /* ignore */ }
+            }
 
             const edgeId = String(generateEdgeId(subjectIri, objectIri, predIri || ""));
             rfEdges.push({
@@ -469,7 +467,7 @@ export function mapQuadsToDiagram(
               } as LinkData,
             });
           } else {
-            try {
+            {
               entry.annotationProperties.push({
                 property: toPrefixed(
                   predIri,
@@ -479,18 +477,18 @@ export function mapQuadsToDiagram(
                 ),
                 value: objectIri,
               });
-            } catch (_) { /* ignore */ }
+            }
           }
           continue;
         }
 
         // fallback -> annotationProperties
-        try {
+        {
           entry.annotationProperties.push({
             property: predIri,
             value: obj && obj.value ? String(obj.value) : "",
           });
-        } catch (_) { /* ignore */ }
+        }
       } catch (_) {
         /* ignore per-quad failures */
       }
@@ -498,7 +496,7 @@ export function mapQuadsToDiagram(
   } catch (_) { /* ignore overall */ }
 
   // Step 4: loop over inferred quads and fold them into existing data nodes' annotationProperties (do not create new nodes)
-  try {
+  {
     for (const q of inferredQuads || []) {
       try {
         const subj = q && q.subject ? q.subject : null;
@@ -556,7 +554,7 @@ export function mapQuadsToDiagram(
         } catch (_) { /* ignore */ }
       } catch (_) { /* ignore per-quad */ }
     }
-  } catch (_) { /* ignore overall */ }
+  }
 
   // Build RF nodes from nodeMap entries
   const allNodeEntries = Array.from(nodeMap.entries()).map(([iri, info]) => {
@@ -606,11 +604,11 @@ export function mapQuadsToDiagram(
 
 
     // Honor explicit override set during mapping
-    try {
+    {
       if (typeof info.forceIsTBox === "boolean") {
         isTBox = !!info.forceIsTBox;
       }
-    } catch (_) { /* ignore */ }
+    }
 
     // compute node color using classType (preferred) or the node iri as fallback
     const nodeColor = getNodeColor(classType);
@@ -712,7 +710,7 @@ export function mapDiagramToQuads(
   const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
   const XSD_STRING = "http://www.w3.org/2001/XMLSchema#string";
 
-  try {
+  {
     for (const n of nodes || []) {
       try {
         const src = n && n.data ? n.data : n;
@@ -800,8 +798,6 @@ export function mapDiagramToQuads(
         /* ignore per-edge */
       }
     }
-  } catch (_) {
-    /* ignore overall failures */
   }
 
   return quads;

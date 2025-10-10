@@ -76,7 +76,7 @@ export class LayoutManager {
     if (!this.diagram) return;
     const last = this.lastPositions.pop();
     if (!last) return;
-    try {
+    {
       // attempt to set node positions if diagram exposes setNodePosition-like API
       if (typeof this.diagram.setNodePositions === 'function') {
         this.diagram.setNodePositions(last);
@@ -89,20 +89,16 @@ export class LayoutManager {
           return pos ? { ...n, position: pos } : n;
         });
       }
-    } catch {
-      // swallow errors — this manager is intentionally lightweight
     }
   }
 
   resetToOriginal(): void {
     // Clear stored history and, if possible, call a reset on the diagram
     this.lastPositions = [];
-    try {
+    {
       if (this.diagram && typeof this.diagram.resetPositions === 'function') {
         this.diagram.resetPositions();
       }
-    } catch {
-      // ignore
     }
   }
 

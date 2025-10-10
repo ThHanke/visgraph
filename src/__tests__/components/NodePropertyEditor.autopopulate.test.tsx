@@ -13,7 +13,7 @@ import { NodePropertyEditor } from "../../components/Canvas/NodePropertyEditor";
 describe("NodePropertyEditor autocomplete population from fat-map", () => {
   it.skip("shows availableProperties/entityIndex suggestions in the property AutoComplete", async () => {
     // Seed the ontology store fat-map entries
-    try {
+    {
       useOntologyStore.setState({
         availableProperties: [
           { iri: "http://example.org/test#propOne", label: "prop one", namespace: "http://example.org/test#" },
@@ -24,8 +24,6 @@ describe("NodePropertyEditor autocomplete population from fat-map", () => {
           ],
         },
       } as any);
-    } catch (_) {
-      void 0;
     }
 
     const noop = () => {};
@@ -56,8 +54,8 @@ describe("NodePropertyEditor autocomplete population from fat-map", () => {
     });
 
     // Cleanup store
-    try {
+    {
       useOntologyStore.getState().clearOntologies();
-    } catch (_) { void 0; }
+    }
   });
 });

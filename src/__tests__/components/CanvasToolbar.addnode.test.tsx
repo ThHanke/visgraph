@@ -16,10 +16,8 @@ describe("CanvasToolbar Add Node dialog - class type population", () => {
     const store = useOntologyStore.getState();
 
     // Clear any previous state
-    try {
+    {
       if (typeof store.clearOntologies === "function") store.clearOntologies();
-    } catch (_) {
-      void 0;
     }
 
     // Load the fixture RDF into the ontology store (persist as ontology so namespaces/classes are registered)
@@ -70,8 +68,6 @@ describe("CanvasToolbar Add Node dialog - class type population", () => {
     });
 
     // Cleanup
-    try { if (typeof store.clearOntologies === "function") store.clearOntologies(); } catch (_) {
-      void 0;
-    }
+    { if (typeof store.clearOntologies === "function") store.clearOntologies(); }
   });
 });

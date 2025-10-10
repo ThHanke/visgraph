@@ -36,7 +36,7 @@ describe("OntologyStore RDF persistence when loading ontologies", () => {
     try {
       await store.loadOntology("https://www.w3.org/2002/07/owl");
     } finally {
-      try { (mgr as any).loadRDFFromUrl = origLoad; } catch (_) { /* ignore restore failures */ }
+      { (mgr as any).loadRDFFromUrl = origLoad; }
     }
 
     // Count triples after load

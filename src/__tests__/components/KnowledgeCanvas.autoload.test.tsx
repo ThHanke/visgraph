@@ -5,10 +5,8 @@ import KnowledgeCanvas from "../../../src/components/Canvas/KnowledgeCanvas";
 
 describe("KnowledgeCanvas autoload initializer", () => {
   beforeEach(() => {
-    try {
+    {
       delete (window as any).__VG_INIT_APP_RAN;
-    } catch (_) {
-      /* intentionally ignored during test setup */
     }
   });
 

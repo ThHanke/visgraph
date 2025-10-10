@@ -220,7 +220,7 @@ const KnowledgeCanvas: React.FC = () => {
   // Safe getter for the RDF manager: prefer the selector-provided function but fall back to the store's getState accessor.
   // Some test mocks replace the store-level getter, so this helper ensures we find the manager reliably.
   const getRdfManagerSafe = useCallback(() => {
-    try {
+    {
       const maybe =
         typeof getRdfManager === "function" ? getRdfManager() : undefined;
       if (maybe) return maybe;
@@ -228,8 +228,6 @@ const KnowledgeCanvas: React.FC = () => {
         (useOntologyStore as any).getState &&
         (useOntologyStore as any).getState().getRdfManager;
       return typeof gs === "function" ? gs() : undefined;
-    } catch (_) {
-      return undefined;
     }
   }, [getRdfManager]);
 
@@ -630,10 +628,8 @@ const KnowledgeCanvas: React.FC = () => {
         await raf();
         // eslint-disable-next-line no-await-in-loop
         await raf();
-        try {
+        {
           console.debug("canvas.layout.apply.completed", appliedLayoutType);
-        } catch (_) {
-          void 0;
         }
         lastLayoutFingerprintRef.current = fingerprint;
         layoutInProgressRef.current = false;
@@ -732,10 +728,8 @@ const KnowledgeCanvas: React.FC = () => {
   );
 
   const exportSvg = useCallback(async () => {
-    try {
+    {
       canvasActions.setLoading(true, 10, "Preparing SVG export...");
-    } catch (_) {
-      // ignore
     }
     try {
       await exportSvgFull({
@@ -746,20 +740,16 @@ const KnowledgeCanvas: React.FC = () => {
       console.error(err);
       toast.error("SVG export failed");
     } finally {
-      try {
+      {
         canvasActions.setLoading(false, 0, "");
-      } catch (_) {
-        // ignore
       }
     }
   }, [canvasActions]);
 
   const exportPng = useCallback(
     async (scale = 2) => {
-      try {
+      {
         canvasActions.setLoading(true, 10, "Preparing PNG export...");
-      } catch (_) {
-        // ignore
       }
       try {
         await exportPngFull({
@@ -771,10 +761,8 @@ const KnowledgeCanvas: React.FC = () => {
         console.error(err);
         toast.error("PNG export failed");
       } finally {
-        try {
+        {
           canvasActions.setLoading(false, 0, "");
-        } catch (_) {
-          // ignore
         }
       }
     },
@@ -982,7 +970,7 @@ const KnowledgeCanvas: React.FC = () => {
       mappingInProgressRef.current = true;
 
       // Update nodes using a functional updater so we compare against the latest snapshot.
-      try {
+      {
         setNodes((prev = []) => {
           const prevArr = prev || [];
           const prevById = new Map(
@@ -1028,12 +1016,10 @@ const KnowledgeCanvas: React.FC = () => {
           if (changes.length === 0) return prevArr;
           return applyNodeChanges(changes as any, prevArr);
         });
-      } catch {
-        // ignore node update failures
       }
 
       // Update edges using a functional updater so we compare against the latest snapshot.
-      try {
+      {
         setEdges((prev = []) => {
           const prevArr = prev || [];
           const prevById = new Map(prevArr.map((e: any) => [String(e.id), e]));
@@ -1066,8 +1052,6 @@ const KnowledgeCanvas: React.FC = () => {
           if (changes.length === 0) return prevArr;
           return applyEdgeChanges(changes as any, prevArr);
         });
-      } catch {
-        // ignore edge update failures
       }
 
       // Signal mapping completion for tests
@@ -1153,10 +1137,8 @@ const KnowledgeCanvas: React.FC = () => {
         : [];
       if (incomingSubjects.length > 0) {
         for (const s of incomingSubjects) {
-          try {
+          {
             pendingSubjects.add(String(s));
-          } catch {
-            // ignore per-item
           }
         }
       }
@@ -1446,93 +1428,6 @@ const KnowledgeCanvas: React.FC = () => {
       );
     }
 
-    // Run an initial snapshot-to-mapping immediately so the canvas populates on mount
-    // even if the RDF manager does not emit a subject-level event right away.
-    try {
-      const store =
-        mgr.getStore && typeof mgr.getStore === "function"
-          ? mgr.getStore()
-          : null;
-      if (store && typeof store.getQuads === "function") {
-        const all = store.getQuads(null, null, null, null) || [];
-        if (Array.isArray(all) && all.length > 0) {
-          // Seed pendingQuads from the authoritative store snapshot and run mapping now.
-          for (const q of all) pendingQuads.push(q);
-
-          console.debug(
-            "[VG_DEBUG] seeded pendingQuads from store snapshot",
-            { count: pendingQuads.length },
-          );
-
-          // Eager initial seeding: compute mapper output synchronously so the canvas
-          // has a deterministically seeded node/edge snapshot immediately. This
-          // avoids races in test environments where async mapping scheduling may
-          // run after assertions that expect nodes to be present.
-          try {
-            const eagerOpts = {
-              predicateKind: predicateClassifier,
-              availableProperties: availablePropertiesSnapshot,
-              availableClasses: availableClassesSnapshot,
-              registry: registrySnapshot,
-              palette: palette as any,
-            } as any;
-            try {
-              const diagram = mapQuadsToDiagram(all, eagerOpts);
-              const mappedNodes: RFNode<NodeData>[] =
-                (diagram && diagram.nodes) || [];
-              const mappedEdges: RFEdge<LinkData>[] = (
-                (diagram && diagram.edges) ||
-                []
-              ).map((e: any) => createEdge(e));
-
-              // Merge into React Flow state without removing existing runtime metadata.
-              try {
-                setNodes((prev = []) => {
-                  const current = prev || [];
-                  const byId = new Map(current.map((n) => [String(n.id), n]));
-                  const out = current.slice();
-                  for (const m of mappedNodes || []) {
-                    if (!byId.has(String(m.id))) out.push(m as any);
-                  }
-                  return out;
-                });
-              } catch {
-                // ignore
-              }
-
-              try {
-                setEdges((prev = []) => {
-                  const current = prev || [];
-                  const byId = new Set(current.map((e) => String(e.id)));
-                  const out = current.slice();
-                  for (const me of mappedEdges || []) {
-                    if (!byId.has(String(me.id))) out.push(me as any);
-                  }
-                  return out;
-                });
-              } catch {
-                // ignore
-              }
-            } catch (errMapSync) {
-              console.debug(
-                "[VG_DEBUG] eager mapQuadsToDiagram failed",
-                errMapSync,
-              );
-            }
-          } catch {
-            // ignore
-          }
-
-          try {
-            scheduleRunMapping();
-          } catch (err) {
-            console.debug("[VG_DEBUG] scheduleRunMapping failed", err);
-          }
-        }
-      }
-    } catch {
-      // ignore snapshot failures
-    }
 
     // Also subscribe to the generic change counter as a robust fallback for
     // environments where subject-level notifications are not delivered.
@@ -1619,7 +1514,7 @@ const KnowledgeCanvas: React.FC = () => {
     if (typeof window === "undefined") return;
 
     (window as any).__VG_INIT_APP = async (opts?: { force?: boolean }) => {
-      try {
+      {
         (window as any).__VG_INIT_APP_RAN = true;
 
         const cfg = (useAppConfigStore as any).getState
@@ -1734,8 +1629,6 @@ const KnowledgeCanvas: React.FC = () => {
             canvasActions.setLoading(false, 0, "");
           }
         }
-      } catch {
-        // ignore top-level init errors
       }
     };
 
@@ -1831,7 +1724,7 @@ const KnowledgeCanvas: React.FC = () => {
       const edgeWarnMap = new Map<string, string[]>();
 
       for (const er of errors) {
-        try {
+        {
           if (er && er.nodeId) {
             const a = nodeErrMap.get(String(er.nodeId)) || [];
             a.push(String(er.message || er));
@@ -1842,13 +1735,11 @@ const KnowledgeCanvas: React.FC = () => {
             a.push(String(er.message || er));
             edgeErrMap.set(String(er.edgeId), a);
           }
-        } catch {
-          // per-item
         }
       }
 
       for (const w of warnings) {
-        try {
+        {
           if (w && w.nodeId) {
             const a = nodeWarnMap.get(String(w.nodeId)) || [];
             a.push(String(w.message || w));
@@ -1859,8 +1750,6 @@ const KnowledgeCanvas: React.FC = () => {
             a.push(String(w.message || w));
             edgeWarnMap.set(String(w.edgeId), a);
           }
-        } catch {
-          // per-item
         }
       }
 
@@ -1945,7 +1834,7 @@ const KnowledgeCanvas: React.FC = () => {
     const edgeWarnMap = new Map<string, string[]>();
 
     for (const er of errors) {
-      try {
+      {
         if (er && er.nodeId) {
           const a = nodeErrMap.get(String(er.nodeId)) || [];
           a.push(String(er.message || er));
@@ -1956,13 +1845,11 @@ const KnowledgeCanvas: React.FC = () => {
           a.push(String(er.message || er));
           edgeErrMap.set(String(er.edgeId), a);
         }
-      } catch {
-        // per-item
       }
     }
 
     for (const w of warnings) {
-      try {
+      {
         if (w && w.nodeId) {
           const a = nodeWarnMap.get(String(w.nodeId)) || [];
           a.push(String(w.message || w));
@@ -1973,8 +1860,6 @@ const KnowledgeCanvas: React.FC = () => {
           a.push(String(w.message || w));
           edgeWarnMap.set(String(w.edgeId), a);
         }
-      } catch {
-        // per-item
       }
     }
 
@@ -2082,15 +1967,13 @@ const KnowledgeCanvas: React.FC = () => {
       if (wasSelected) {
         setNodeEditorOpen(true);
       } else {
-        try {
+        {
           setNodes((prev = []) =>
             (prev || []).map((n) => ({
               ...n,
               selected: String(n.id) === String(node.id),
             })),
           );
-        } catch {
-          // ignore
         }
       }
     },
@@ -2125,10 +2008,8 @@ const KnowledgeCanvas: React.FC = () => {
       dragMetricsRef.current.last = now;
       dragMetricsRef.current.count = 0;
       dragMetricsRef.current.intervals = [];
-      try {
+      {
         (window as any).__VG_DRAG_METRICS_ACTIVE = true;
-      } catch {
-        // ignore
       }
     },
     [config],
@@ -2154,10 +2035,8 @@ const KnowledgeCanvas: React.FC = () => {
     (event: any, node: any) => {
       if (!isDebugMetricsEnabled()) return;
       const intervals = dragMetricsRef.current.intervals || [];
-      try {
+      {
         (window as any).__VG_DRAG_METRICS_ACTIVE = false;
-      } catch {
-        // ignore
       }
       if (intervals.length === 0) {
         console.debug("[VG_DEBUG] drag metrics: no intervals");
@@ -2172,10 +2051,8 @@ const KnowledgeCanvas: React.FC = () => {
           fps: Math.round(fps),
         };
         console.debug("[VG_DEBUG] drag metrics", metrics);
-        try {
+        {
           (window as any).__VG_LAST_DRAG_METRICS = metrics;
-        } catch {
-          // ignore
         }
       }
     },
@@ -2264,15 +2141,13 @@ const KnowledgeCanvas: React.FC = () => {
       if (wasSelected) {
         setLinkEditorOpen(true);
       } else {
-        try {
+        {
           setEdges((prev = []) =>
             (prev || []).map((e) => ({
               ...e,
               selected: String(e.id) === String(edge.id),
             })),
           );
-        } catch {
-          // ignore
         }
       }
     },
@@ -2720,7 +2595,7 @@ const KnowledgeCanvas: React.FC = () => {
           setNodeEditorOpen(false);
         }}
         onDelete={(iriOrId: string) => {
-          try {
+          {
             const id = String(iriOrId);
             // Remove node from RF state by id or by node.data.iri match
             try {
@@ -2764,8 +2639,6 @@ const KnowledgeCanvas: React.FC = () => {
             } catch {
               // ignore
             }
-          } catch {
-            // ignore
           }
         }}
       />

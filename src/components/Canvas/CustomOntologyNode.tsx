@@ -133,7 +133,7 @@ function CustomOntologyNodeImpl(props: NodeProps) {
   const annotations: Array<{ term: string; value: string }> = [];
   if (Array.isArray(nodeData.properties) && nodeData.properties.length > 0) {
     (nodeData.properties as Array<{ property: string; value: any }>).slice(0, 6).forEach((ap) => {
-      try {
+      {
         const propertyIri = String((ap && ap.property) || "");
         const rawValue = ap && ap.value;
         if (!propertyIri) return;
@@ -149,8 +149,6 @@ function CustomOntologyNodeImpl(props: NodeProps) {
           }
         })();
         annotations.push({ term, value: valueStr });
-      } catch (_) {
-        /* ignore per-entry */
       }
     });
   }
@@ -351,10 +349,10 @@ function CustomOntologyNodeImpl(props: NodeProps) {
           position={Position.Right}
           type="source"
           onPointerDown={() => {
-            try { console.log("[VG_DEBUG] handle pointerdown", { nodeId: id, handle: "source" }); } catch (_) { void 0; }
+            { console.log("[VG_DEBUG] handle pointerdown", { nodeId: id, handle: "source" }); }
           }}
           onPointerUp={() => {
-            try { console.log("[VG_DEBUG] handle pointerup", { nodeId: id, handle: "source" }); } catch (_) { void 0; }
+            { console.log("[VG_DEBUG] handle pointerup", { nodeId: id, handle: "source" }); }
           }}
         />
       )}
@@ -366,10 +364,10 @@ function CustomOntologyNodeImpl(props: NodeProps) {
           type="target"
           isConnectableStart={false}
           onPointerDown={() => {
-            try { console.log("[VG_DEBUG] handle pointerdown", { nodeId: id, handle: "target" }); } catch (_) { void 0; }
+            { console.log("[VG_DEBUG] handle pointerdown", { nodeId: id, handle: "target" }); }
           }}
           onPointerUp={() => {
-            try { console.log("[VG_DEBUG] handle pointerup", { nodeId: id, handle: "target" }); } catch (_) { void 0; }
+            { console.log("[VG_DEBUG] handle pointerup", { nodeId: id, handle: "target" }); }
           }}
         />
       )}

@@ -24,10 +24,8 @@ export async function loadFixtureRdf(
 ): Promise<void> {
   const clear = options?.clearGraphBeforeLoad === true;
   if (graphName && clear) {
-    try {
+    {
       rdfManager.removeGraph(graphName);
-    } catch (_) {
-      /* ignore */
     }
   }
 

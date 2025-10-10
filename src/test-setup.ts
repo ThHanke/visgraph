@@ -25,7 +25,7 @@ class SimpleDOMMatrixReadOnly {
     this.m41 = 0;
     this.m42 = 0;
 
-    try {
+    {
       const s = String(init || "").trim();
       if (!s || s === "none") return;
 
@@ -60,8 +60,6 @@ class SimpleDOMMatrixReadOnly {
           return;
         }
       }
-    } catch (_) {
-      // swallow parse errors and keep identity defaults
     }
   }
 
@@ -73,7 +71,7 @@ class SimpleDOMMatrixReadOnly {
 }
 
 // Attach to globals used by libraries
-try {
+{
   // Node + jsdom environment: globalThis.window may exist
   (globalThis as any).DOMMatrixReadOnly = (globalThis as any).DOMMatrixReadOnly || SimpleDOMMatrixReadOnly;
   (globalThis as any).DOMMatrix = (globalThis as any).DOMMatrix || SimpleDOMMatrixReadOnly;
@@ -81,12 +79,10 @@ try {
     (globalThis as any).window.DOMMatrixReadOnly = (globalThis as any).window.DOMMatrixReadOnly || SimpleDOMMatrixReadOnly;
     (globalThis as any).window.DOMMatrix = (globalThis as any).window.DOMMatrix || SimpleDOMMatrixReadOnly;
   }
-} catch (_) {
-  // best-effort
 }
 
 // Polyfill ResizeObserver for jsdom environment (minimal)
-try {
+{
   if (typeof (globalThis as any).ResizeObserver === "undefined") {
     class MockResizeObserver {
       private cb: any;
@@ -108,13 +104,11 @@ try {
       (globalThis as any).window.ResizeObserver = MockResizeObserver;
     }
   }
-} catch (_) {
-  // ignore
 }
 
 // Some libraries access window.devicePixelRatio or call window.getComputedStyle expecting sensible defaults.
 // Ensure a safe default exists for tests.
-try {
+{
   if (typeof (globalThis as any).window !== "undefined") {
     if (typeof (globalThis as any).window.devicePixelRatio === "undefined") {
       (globalThis as any).window.devicePixelRatio = 1;
@@ -130,17 +124,13 @@ try {
       return style;
     };
   }
-} catch (_) {
-  // ignore
 }
 
  // Polyfill Element.scrollIntoView for jsdom (some UI libs call it)
-try {
+{
   if (typeof (globalThis as any).Element !== "undefined" && typeof (globalThis as any).Element.prototype.scrollIntoView === "undefined") {
     (globalThis as any).Element.prototype.scrollIntoView = function () { /* no-op for tests */ };
   }
-} catch (_) {
-  // ignore
 }
 
 /*
@@ -150,7 +140,7 @@ try {
   before importing UI components.
 */
 void (async () => {
-  try {
+  {
     const mod = await import('./stores/appConfigStore');
     // The store exports a named `useAppConfigStore`. Access it via `any` to avoid
     // TypeScript errors in the test setup environment.
@@ -162,7 +152,5 @@ void (async () => {
         // ignore if setter not present yet
       }
     }
-  } catch (_) {
-    // best-effort; do not fail test setup
   }
 })();

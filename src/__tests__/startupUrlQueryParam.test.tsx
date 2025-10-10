@@ -48,10 +48,8 @@ test(
 
     // Trigger the explicit initializer (ensure initializeApp runs in test env)
     if (typeof (window as any).__VG_INIT_APP === "function") {
-      try {
+      {
         await (window as any).__VG_INIT_APP({ force: true });
-      } catch (_) {
-        // ignore initializer errors in test harness
       }
     }
 
