@@ -139,7 +139,9 @@ export function toPrefixed(
     const entryForFat = findRegistryEntryForIri(candidateIri, reg);
     if (entryForFat && entryForFat.namespace) {
       const local = candidateIri.startsWith(entryForFat.namespace) ? candidateIri.substring(entryForFat.namespace.length) : shortLocalName(candidateIri);
-      return `${entryForFat.prefix}:${local}`;
+      const p = String(entryForFat.prefix || "");
+      if (p === ":" || p === "") return `:${local}`;
+      return `${p}:${local}`;
     }
   }
 
@@ -147,7 +149,9 @@ export function toPrefixed(
     const entry = findRegistryEntryForIri(String(iri), reg);
     if (entry && entry.namespace) {
       const local = String(iri).startsWith(entry.namespace) ? String(iri).substring(entry.namespace.length) : shortLocalName(iri);
-      return `${entry.prefix}:${local}`;
+      const p = String(entry.prefix || "");
+      if (p === ":" || p === "") return `:${local}`;
+      return `${p}:${local}`;
     }
   }
 

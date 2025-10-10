@@ -697,6 +697,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
         // Delegate fetch + parse + store insertion to rdfManager; it will handle formats and prefix merging.
         await (mgrInstance as any).loadRDFFromUrl(source, "urn:vg:data", { timeoutMs: timeout });
+        // (mgrInstance as any).addNamespace(":", String(source));
 
         // After manager insertion, perform the authoritative fat-map rebuild once.
         // Use the store's updateFatMap (full rebuild) to preserve existing behavior.
@@ -713,6 +714,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         true,
         "urn:vg:data",
       );
+      // (get().rdfManager as any).addNamespace(":", "http://file.local");
       options?.onProgress?.(100, "RDF loaded");
     } catch (error: any) {
       try {

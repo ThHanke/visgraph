@@ -11,19 +11,10 @@
  * Internally notifyChange() is invoked whenever quads are added/removed/graphs modified.
  */
 
- 
-import {
-  Store,
-  Parser,
-  Writer,
-  Quad,
-  DataFactory,
-} from "n3";
+import { Store, Parser, Writer, Quad, DataFactory } from "n3";
 import { rdfParser } from "rdf-parse";
 import { rdfSerializer } from "rdf-serialize";
 import type * as RDF from "@rdfjs/types";
-
-
 
 const { namedNode, literal, quad, blankNode, defaultGraph } = DataFactory;
 
@@ -34,17 +25,32 @@ const { namedNode, literal, quad, blankNode, defaultGraph } = DataFactory;
  * into the browser build. Returns a Node Readable when possible, otherwise returns undefined.
  * Callers should fall back to WHATWG Response.body when this returns undefined.
  */
-async function createNodeReadableFromText(content: string | ArrayBuffer | Uint8Array): Promise<any | undefined> {
+async function createNodeReadableFromText(
+  content: string | ArrayBuffer | Uint8Array,
+): Promise<any | undefined> {
   {
-    const _streamMod = await import("stream").catch(() => ({ Readable: undefined } as any));
-    const Readable = (_streamMod && _streamMod.Readable) ? _streamMod.Readable : undefined;
-    const _bufMod = await import("buffer").catch(() => ({ Buffer: (globalThis as any).Buffer } as any));
-    const BufferImpl = (_bufMod && _bufMod.Buffer) ? _bufMod.Buffer : (globalThis as any).Buffer;
+    const _streamMod = await import("stream").catch(
+      () => ({ Readable: undefined }) as any,
+    );
+    const Readable =
+      _streamMod && _streamMod.Readable ? _streamMod.Readable : undefined;
+    const _bufMod = await import("buffer").catch(
+      () => ({ Buffer: (globalThis as any).Buffer }) as any,
+    );
+    const BufferImpl =
+      _bufMod && _bufMod.Buffer ? _bufMod.Buffer : (globalThis as any).Buffer;
 
     // Prefer Readable.from when available
-    if (Readable && typeof (Readable as any).from === "function" && typeof BufferImpl !== "undefined") {
+    if (
+      Readable &&
+      typeof (Readable as any).from === "function" &&
+      typeof BufferImpl !== "undefined"
+    ) {
       try {
-        const chunk = typeof content === "string" ? BufferImpl.from(content) : (content as any);
+        const chunk =
+          typeof content === "string"
+            ? BufferImpl.from(content)
+            : (content as any);
         return (Readable as any).from([chunk]);
       } catch (_) {
         // fall through to manual construction
@@ -52,10 +58,18 @@ async function createNodeReadableFromText(content: string | ArrayBuffer | Uint8A
     }
 
     // Manual construction: create a Readable, push the content, then push EOF.
-    if (Readable && typeof Readable === "function" && typeof BufferImpl !== "undefined") {
+    if (
+      Readable &&
+      typeof Readable === "function" &&
+      typeof BufferImpl !== "undefined"
+    ) {
       try {
         const rs = new Readable();
-        rs.push(typeof content === "string" ? BufferImpl.from(content) : (content as any));
+        rs.push(
+          typeof content === "string"
+            ? BufferImpl.from(content)
+            : (content as any),
+        );
         rs.push(null);
         return rs as any;
       } catch (_) {
@@ -70,12 +84,7 @@ async function createNodeReadableFromText(content: string | ArrayBuffer | Uint8A
 import { useAppConfigStore } from "../stores/appConfigStore";
 import { useOntologyStore } from "../stores/ontologyStore";
 import { WELL_KNOWN } from "../utils/wellKnownOntologies";
-import {
-  debugLog,
-  debug,
-  fallback,
-  incr,
-} from "../utils/startupDebug";
+import { debugLog, debug, fallback, incr } from "../utils/startupDebug";
 
 /**
  * Manages RDF data with proper store operations
@@ -145,7 +154,13 @@ export class RDFManager {
   // Blacklist configuration: prefixes and absolute namespace URIs that should be
   // ignored when emitting subject-level change notifications. Default set below
   // matches common RDF/OWL core vocabularies so they don't create canvas nodes.
-  private blacklistedPrefixes: Set<string> = new Set(["owl", "rdf", "rdfs", "xml", "xsd"]);
+  private blacklistedPrefixes: Set<string> = new Set([
+    "owl",
+    "rdf",
+    "rdfs",
+    "xml",
+    "xsd",
+  ]);
   private blacklistedUris: string[] = [
     "http://www.w3.org/2002/07/owl",
     "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
@@ -168,25 +183,42 @@ export class RDFManager {
    * Set the blacklist. This updates the in-memory manager configuration and (best-effort)
    * persists into the application config store if available.
    */
-  public setBlacklist(prefixes: string[] | undefined | null, uris?: string[] | undefined | null): void {
+  public setBlacklist(
+    prefixes: string[] | undefined | null,
+    uris?: string[] | undefined | null,
+  ): void {
     try {
       this.blacklistedPrefixes = new Set((prefixes || []).map(String));
       if (Array.isArray(uris)) this.blacklistedUris = uris.slice();
       // Best-effort: persist into app config if the store exposes setConfig
       try {
-        if (typeof useAppConfigStore !== "undefined" && (useAppConfigStore as any).getState) {
+        if (
+          typeof useAppConfigStore !== "undefined" &&
+          (useAppConfigStore as any).getState
+        ) {
           const st = (useAppConfigStore as any).getState();
           if (st && typeof st.setConfig === "function") {
             try {
-              st.setConfig({ ...(st.config || {}), blacklistedPrefixes: Array.from(this.blacklistedPrefixes), blacklistedUris: this.blacklistedUris });
-            } catch (_) { /* ignore */ }
+              st.setConfig({
+                ...(st.config || {}),
+                blacklistedPrefixes: Array.from(this.blacklistedPrefixes),
+                blacklistedUris: this.blacklistedUris,
+              });
+            } catch (_) {
+              /* ignore */
+            }
           }
         }
-      } catch (_) { /* ignore */ }
+      } catch (_) {
+        /* ignore */
+      }
     } catch (err) {
       try {
-        if (typeof fallback === "function") fallback("rdf.setBlacklist.failed", { error: String(err) });
-      } catch (_) { /* ignore */ }
+        if (typeof fallback === "function")
+          fallback("rdf.setBlacklist.failed", { error: String(err) });
+      } catch (_) {
+        /* ignore */
+      }
     }
   }
 
@@ -221,7 +253,9 @@ export class RDFManager {
           try {
             const wk = (WELL_KNOWN && (WELL_KNOWN as any).prefixes) || {};
             if (wk && wk[p]) uriCandidates.add(String(wk[p]));
-          } catch (_) { void 0; }
+          } catch (_) {
+            void 0;
+          }
           // Also consider any ontology entries whose namespaces include this prefix and add their ontology keys/aliases
           try {
             const ontMap = (WELL_KNOWN && (WELL_KNOWN as any).ontologies) || {};
@@ -234,9 +268,13 @@ export class RDFManager {
                     m.aliases.forEach((a: any) => uriCandidates.add(String(a)));
                   }
                 }
-              } catch (_) { void 0; }
+              } catch (_) {
+                void 0;
+              }
             }
-          } catch (_) { void 0; }
+          } catch (_) {
+            void 0;
+          }
         }
       });
 
@@ -275,7 +313,7 @@ export class RDFManager {
     return false;
   }
 
-    constructor() {
+  constructor() {
     this.store = new Store();
     // Wrap store.getQuads/countQuads to accept flexible string inputs used across tests.
     // Many tests call getQuads using plain strings (subject/predicate/object) — normalize those
@@ -352,7 +390,10 @@ export class RDFManager {
             try {
               const st = new Error().stack || "";
               // remove the leading "Error:" line for cleaner logs
-              console.debug("[VG_RDF_WRITE_STACK]", st.replace(/^Error:\\s*/, ""));
+              console.debug(
+                "[VG_RDF_WRITE_STACK]",
+                st.replace(/^Error:\\s*/, ""),
+              );
             } catch (_) {
               /* ignore stack formatting failures */
             }
@@ -372,7 +413,10 @@ export class RDFManager {
             );
             try {
               const st = new Error().stack || "";
-              console.debug("[VG_RDF_REMOVE_STACK]", st.replace(/^Error:\\s*/, ""));
+              console.debug(
+                "[VG_RDF_REMOVE_STACK]",
+                st.replace(/^Error:\\s*/, ""),
+              );
             } catch (_) {
               /* ignore stack formatting failures */
             }
@@ -384,7 +428,9 @@ export class RDFManager {
             if ((this as any).bufferSubjectFromQuad) {
               try {
                 (this as any).bufferSubjectFromQuad(q);
-              } catch (_) { /* ignore buffering failures */ }
+              } catch (_) {
+                /* ignore buffering failures */
+              }
             }
           } catch (_) {
             /* ignore buffering failures */
@@ -416,7 +462,6 @@ export class RDFManager {
       xsd: "http://www.w3.org/2001/XMLSchema#",
     };
 
-
     // Enable tracing automatically in dev mode, or when the runtime flag is set.
     try {
       if (typeof window !== "undefined") {
@@ -441,11 +486,26 @@ export class RDFManager {
         }
         // Expose a runtime helper so you can enable tracing from the console:
         // window.__VG_ENABLE_RDF_WRITE_LOGGING && window.__VG_ENABLE_RDF_WRITE_LOGGING()
-        (window as any).__VG_ENABLE_RDF_ENABLE_RDF_WRITE_LOGGING = (function() {
-          // legacy compatibility alias (some dev envs may call the older name)
-          try { (window as any).__VG_ENABLE_RDF_WRITE_LOGGING = (window as any).__VG_ENABLE_RDF_WRITE_LOGGING || (() => { try { (window as any).__VG_LOG_RDF_WRITES = true; enableWriteTracing(); return true; } catch (err) { return false; } }); } catch (_) { void 0; }
-          return (window as any).__VG_ENABLE_RDF_WRITE_LOGGING;
-        })();
+        (window as any).__VG_ENABLE_RDF_ENABLE_RDF_WRITE_LOGGING =
+          (function () {
+            // legacy compatibility alias (some dev envs may call the older name)
+            try {
+              (window as any).__VG_ENABLE_RDF_WRITE_LOGGING =
+                (window as any).__VG_ENABLE_RDF_WRITE_LOGGING ||
+                (() => {
+                  try {
+                    (window as any).__VG_LOG_RDF_WRITES = true;
+                    enableWriteTracing();
+                    return true;
+                  } catch (err) {
+                    return false;
+                  }
+                });
+            } catch (_) {
+              void 0;
+            }
+            return (window as any).__VG_ENABLE_RDF_WRITE_LOGGING;
+          })();
         // Do not enable tracing proactively by default; keep it available via the console helper.
         // Tracing can be enabled by running:
         // window.__VG_ENABLE_RDF_WRITE_LOGGING && window.__VG_ENABLE_RDF_WRITE_LOGGING()
@@ -538,7 +598,8 @@ export class RDFManager {
           // Buffer authoritative per-subject quads when possible so scheduleSubjectFlush can emit them.
           try {
             const subjTerm = namedNode(String(s));
-            const subjectQuads = this.store.getQuads(subjTerm, null, null, null) || [];
+            const subjectQuads =
+              this.store.getQuads(subjTerm, null, null, null) || [];
             if (Array.isArray(subjectQuads) && subjectQuads.length > 0) {
               const existing = this.subjectQuadBuffer.get(s) || [];
               existing.push(...subjectQuads);
@@ -549,7 +610,11 @@ export class RDFManager {
           }
 
           // Mark subject buffered so schedule/flush behavior is consistent
-          try { this.subjectChangeBuffer.add(s); } catch (_) { /* ignore */ }
+          try {
+            this.subjectChangeBuffer.add(s);
+          } catch (_) {
+            /* ignore */
+          }
         } catch (_) {
           /* ignore per-item failures */
         }
@@ -564,9 +629,13 @@ export class RDFManager {
       } catch (e) {
         try {
           if (typeof fallback === "function") {
-            fallback("rdf.triggerSubjectUpdate.schedule_failed", { error: String(e) });
+            fallback("rdf.triggerSubjectUpdate.schedule_failed", {
+              error: String(e),
+            });
           }
-        } catch (_) { /* ignore */ }
+        } catch (_) {
+          /* ignore */
+        }
       }
     } catch (err) {
       try {
@@ -600,7 +669,9 @@ export class RDFManager {
           // (e.g., rdf:, rdfs:, owl:) do not trigger canvas updates even if they were buffered.
           const subjects = Array.from(this.subjectChangeBuffer).filter((s) => {
             try {
-              return !(this.isBlacklistedIri && this.isBlacklistedIri(String(s)));
+              return !(
+                this.isBlacklistedIri && this.isBlacklistedIri(String(s))
+              );
             } catch (_) {
               return true;
             }
@@ -612,7 +683,8 @@ export class RDFManager {
             for (const s of subjects) {
               try {
                 const subjTerm = namedNode(String(s));
-                const subjectQuads = this.store.getQuads(subjTerm, null, null, null) || [];
+                const subjectQuads =
+                  this.store.getQuads(subjTerm, null, null, null) || [];
                 if (Array.isArray(subjectQuads) && subjectQuads.length > 0) {
                   _storeSnapshots.push(...subjectQuads);
                 }
@@ -635,12 +707,26 @@ export class RDFManager {
           // After successful reconcile (or if none needed), clear buffered deltas and emit subscribers with authoritative quads.
           try {
             for (const s of subjects) {
-              try { this.subjectQuadBuffer.delete(s); } catch (_) { void 0; }
+              try {
+                this.subjectQuadBuffer.delete(s);
+              } catch (_) {
+                void 0;
+              }
             }
-          } catch (_) { /* ignore */ }
+          } catch (_) {
+            /* ignore */
+          }
 
-          try { this.subjectChangeBuffer.clear(); } catch (_) { /* ignore */ }
-          try { this.subjectFlushTimer = null; } catch (_) { /* ignore */ }
+          try {
+            this.subjectChangeBuffer.clear();
+          } catch (_) {
+            /* ignore */
+          }
+          try {
+            this.subjectFlushTimer = null;
+          } catch (_) {
+            /* ignore */
+          }
 
           const emitQuads: Quad[] = reconcileArg;
           for (const cb of Array.from(this.subjectChangeSubscribers)) {
@@ -711,10 +797,16 @@ export class RDFManager {
   // Helper: add a quad to the store with buffering and track addedQuads
   private addQuadToStore(toAdd: Quad, g: any, addedQuads: Quad[]): void {
     try {
-      const exists = this.store.countQuads(toAdd.subject, toAdd.predicate, toAdd.object, g) > 0;
+      const exists =
+        this.store.countQuads(toAdd.subject, toAdd.predicate, toAdd.object, g) >
+        0;
       if (!exists) {
         this.store.addQuad(toAdd);
-        try { this.bufferSubjectFromQuad(toAdd); } catch (_) { /* ignore */ }
+        try {
+          this.bufferSubjectFromQuad(toAdd);
+        } catch (_) {
+          /* ignore */
+        }
         if (Array.isArray(addedQuads)) addedQuads.push(toAdd);
       }
     } catch (_) {
@@ -722,112 +814,87 @@ export class RDFManager {
         // best-effort add
         this.store.addQuad(toAdd);
         if (Array.isArray(addedQuads)) addedQuads.push(toAdd);
-      } catch (_) { /* ignore */ }
+      } catch (_) {
+        /* ignore */
+      }
     }
   }
 
   // Helper: finalize a load - apply prefixes, run reconciliation, notify and schedule subject flush
-  private async finalizeLoad(addedQuads: Quad[], prefixes?: Record<string, any>, loadId?: string): Promise<void> {
+  private async finalizeLoad(
+    addedQuads: Quad[],
+    prefixes?: Record<string, any>,
+    loadId?: string,
+  ): Promise<void> {
     try {
       // Capture raw parsed prefixes for inspection instead of merging them.
       // Push the raw object into a dev-only collection on window so developers can
       // inspect exactly what parsers emit before we decide a strict runtime type.
+      // Normalize collected prefixes into the shape expected by applyParsedNamespaces.
       try {
-        if (prefixes && typeof prefixes === "object" && Object.keys(prefixes).length > 0) {
+        const normalizedPrefixMap: Record<string, any> = {};
+        // prefixes may contain strings, NamedNode-like objects, or our new { prefix, raw } objects.
+        for (const [p, v] of Object.entries(prefixes || {})) {
           try {
-            // Lightweight capture (keeps original object)
-            (window as any).__VG_PARSED_PREFIXES = (window as any).__VG_PARSED_PREFIXES || [];
-            (window as any).__VG_PARSED_PREFIXES.push({
-              id: loadId || (`load-${Date.now()}`),
-              kind: "n3-parser",
-              prefixes,
-              time: Date.now(),
-            });
-
-            // Detailed diagnostics per-prefix to reveal runtime shape without mutating values.
-            (window as any).__VG_PARSED_PREFIXES_DETAILED = (window as any).__VG_PARSED_PREFIXES_DETAILED || [];
-            try {
-              const diag: Record<string, any> = {};
-              for (const [k, v] of Object.entries(prefixes || {})) {
-                try {
-                  const hasValueProp = v && typeof (v as any).value === "string";
-                  diag[String(k)] = {
-                    raw: v,
-                    typeof: typeof v,
-                    ctor: v && (v as any).constructor ? (v as any).constructor.name : null,
-                    hasValueProp: Boolean(hasValueProp),
-                    valueProp: hasValueProp ? String((v as any).value) : undefined,
-                    toString: (() => { try { return String(v); } catch (_) { return null; } })(),
-                    keys: (v && typeof v === "object") ? Object.keys(v).slice(0, 20) : undefined,
-                  };
-                } catch (_) {
-                  /* per-value diag failure - ignore */
-                }
-              }
-              (window as any).__VG_PARSED_PREFIXES_DETAILED.push({
-                id: loadId || (`load-${Date.now()}`),
-                kind: "n3-parser",
-                time: Date.now(),
-                count: Object.keys(diag).length,
-                diag,
-              });
-            } catch (_) {
-              /* ignore diag construction failures */
+            const key = p === null || typeof p === "undefined" ? "" : String(p);
+            let uri: string | undefined = undefined;
+            if (v && typeof (v as any).raw === "string" && String((v as any).raw).trim() !== "") {
+              uri = String((v as any).raw).trim();
+            } else if (typeof v === "string" && String(v).trim() !== "") {
+              uri = String(v).trim();
+            } else if (v && typeof (v as any).value === "string" && String((v as any).value).trim() !== "") {
+              uri = String((v as any).value).trim();
             }
-
-            // Expose convenience clearers
-            try {
-              (window as any).__VG_CLEAR_PARSED_PREFIXES = () => { (window as any).__VG_PARSED_PREFIXES = []; return true; };
-            } catch (_) { /* ignore */ }
-            try {
-              (window as any).__VG_CLEAR_PARSED_PREFIXES_DETAILED = () => { (window as any).__VG_PARSED_PREFIXES_DETAILED = []; return true; };
-            } catch (_) { /* ignore */ }
-
-            // Print a concise console line for immediate inspection in devtools.
-            try { console.info("[VG_PARSED_PREFIXES_DETAILED] (n3-parser)", { id: loadId || null, count: Object.keys(prefixes || {}).length }); } catch (_) { /* ignore */ }
+            if (typeof uri === "string" && uri !== "") {
+              // Keep the new object shape for downstream consumers.
+              // Store default (empty) prefix under the literal ":" key as requested.
+              const storageKey = key === "" ? ":" : key;
+              normalizedPrefixMap[storageKey] = { prefix: storageKey, raw: uri };
+            }
           } catch (_) {
-            /* ignore capture failures */
+            /* ignore per-entry */
           }
         }
-      } catch (_) { /* ignore prefix capture failures */ }
-
-      // Pass only NamedNode-like prefix values to applyParsedNamespaces; do NOT coerce plain strings.
-      try {
+        // Preserve raw & normalized prefixes for developer inspection
         try {
-          if (typeof (this as any).applyParsedNamespaces === "function") {
-            try {
-              const filtered: Record<string, RDF.NamedNode> = {};
-              try {
-                for (const [k, v] of Object.entries(prefixes || {})) {
-                  try {
-                    if (v && typeof (v as any).value === "string") {
-                      filtered[k] = v as RDF.NamedNode;
-                    } else {
-                      // record that this load contained non-NamedNode prefix values (strings or other shapes)
-                      try {
-                        (window as any).__VG_NAMESPACE_WRITER_LOG = (window as any).__VG_NAMESPACE_WRITER_LOG || [];
-                        (window as any).__VG_NAMESPACE_WRITER_LOG.push({ kind: "finalizeLoad.skipped_non_namednode", prefix: k, raw: v, time: Date.now() });
-                      } catch (_) { /* ignore */ }
-                      try { console.warn("[VG_PREFIX_FINALIZE_SKIPPED]", { prefix: k, raw: v }); } catch (_) { /* ignore */ }
-                    }
-                  } catch (_) { /* ignore per-entry */ }
-                }
-              } catch (_) { /* ignore filtering failures */ }
-              try { this.applyParsedNamespaces(filtered); } catch (_) { /* ignore */ }
-            } catch (_) { /* ignore */ }
-          }
-        } catch (_) { /* ignore apply failures */ }
-      } catch (_) { /* ignore */ }
+          (window as any).__VG_RAW_PARSED_PREFIXES = (window as any).__VG_RAW_PARSED_PREFIXES || [];
+          (window as any).__VG_RAW_PARSED_PREFIXES.push({
+            id: loadId || null,
+            raw: prefixes,
+            normalized: normalizedPrefixMap,
+            time: Date.now(),
+          });
+        } catch (_) {
+          /* ignore */
+        }
+        // Pass the normalized object-shape map to applyParsedNamespaces (new shape)
+        this.applyParsedNamespaces(normalizedPrefixMap);
+      } catch (e) {
+        // Fallback to original behavior if normalization fails
+        try {
+          this.applyParsedNamespaces(prefixes);
+        } catch (_) {
+          /* ignore */
+        }
+      }
 
       // Run reconciliation with the quads we added so consumers get authoritative snapshot
       try {
         if (Array.isArray(addedQuads) && addedQuads.length > 0) {
           await (this as any).runReconcile(addedQuads);
         } else {
-          try { this.notifyChange(); } catch (_) { /* ignore */ }
+          try {
+            this.notifyChange();
+          } catch (_) {
+            /* ignore */
+          }
         }
       } catch (e) {
-        try { fallback("rdf.finalizeLoad.reconcile_failed", { error: String(e) }); } catch (_) { /* ignore */ }
+        try {
+          fallback("rdf.finalizeLoad.reconcile_failed", { error: String(e) });
+        } catch (_) {
+          /* ignore */
+        }
       }
 
       // Schedule subject-level flush immediately (only if window is available)
@@ -835,7 +902,9 @@ export class RDFManager {
         if (typeof window !== "undefined") {
           this.scheduleSubjectFlush(0);
         }
-      } catch (_) { /* ignore */ }
+      } catch (_) {
+        /* ignore */
+      }
 
       // Developer debug: report per-graph triple counts after a batch load
       try {
@@ -843,16 +912,41 @@ export class RDFManager {
         const graphCounts: Record<string, number> = {};
         for (const qq of allQuads) {
           try {
-            const g = (qq && qq.graph && (qq.graph as any).value) ? (qq.graph as any).value : "default";
+            const g =
+              qq && qq.graph && (qq.graph as any).value
+                ? (qq.graph as any).value
+                : "default";
             graphCounts[g] = (graphCounts[g] || 0) + 1;
-          } catch (_) { /* ignore per-quad counting failures */ }
+          } catch (_) {
+            /* ignore per-quad counting failures */
+          }
         }
-        try { debugLog("rdf.load.batchCounts", { id: loadId || "unknown", graphCounts }); } catch (_) { void 0; }
-        try { console.debug("[VG_DEBUG] rdf.load.batchCounts", { id: loadId || "unknown", graphCounts }); } catch (_) { void 0; }
-      } catch (_) { /* ignore */ }
-
+        try {
+          debugLog("rdf.load.batchCounts", {
+            id: loadId || "unknown",
+            graphCounts,
+          });
+        } catch (_) {
+          void 0;
+        }
+        try {
+          console.debug("[VG_DEBUG] rdf.load.batchCounts", {
+            id: loadId || "unknown",
+            graphCounts,
+          });
+        } catch (_) {
+          void 0;
+        }
+      } catch (_) {
+        /* ignore */
+      }
     } catch (err) {
-      try { if (typeof fallback === "function") fallback("rdf.finalizeLoad.failed", { error: String(err) }); } catch (_) { /* ignore */ }
+      try {
+        if (typeof fallback === "function")
+          fallback("rdf.finalizeLoad.failed", { error: String(err) });
+      } catch (_) {
+        /* ignore */
+      }
     }
   }
 
@@ -862,10 +956,15 @@ export class RDFManager {
     mimeType?: string,
   ): Promise<void> {
     // Defensive guard: ensure we do not pass null/empty input into the parsers
-    if (rdfContent === null || typeof rdfContent !== "string" || rdfContent.trim() === "") {
+    if (
+      rdfContent === null ||
+      typeof rdfContent !== "string" ||
+      rdfContent.trim() === ""
+    ) {
       throw new Error("Empty RDF content provided to loadRDFIntoGraph");
     }
-    if (!graphName) return this.loadRDFIntoGraph(rdfContent, "urn:vg:data", mimeType);
+    if (!graphName)
+      return this.loadRDFIntoGraph(rdfContent, "urn:vg:data", mimeType);
 
     const rawKey =
       typeof rdfContent === "string" ? rdfContent : String(rdfContent);
@@ -906,13 +1005,19 @@ export class RDFManager {
 
     this._inFlightLoads.set(key, promise);
     // Mark that parsing is in progress so subject-level notification flushes are deferred
-    { this.parsingInProgress = true; }
+    {
+      this.parsingInProgress = true;
+    }
 
     const finalize = (prefixes?: Record<string, string>) => {
       // Notify subscribers that RDF changed
       this.notifyChange();
-      { this.parsingInProgress = false; }
-      { this.scheduleSubjectFlush(0); }
+      {
+        this.parsingInProgress = false;
+      }
+      {
+        this.scheduleSubjectFlush(0);
+      }
       {
         this.notifyChange();
       }
@@ -923,14 +1028,28 @@ export class RDFManager {
         const graphCounts: Record<string, number> = {};
         for (const qq of allQuads) {
           try {
-            const g = (qq && qq.graph && (qq.graph as any).value) ? (qq.graph as any).value : "default";
+            const g =
+              qq && qq.graph && (qq.graph as any).value
+                ? (qq.graph as any).value
+                : "default";
             graphCounts[g] = (graphCounts[g] || 0) + 1;
           } catch (_) {
             /* ignore per-quad counting failures */
           }
         }
-        try { debugLog("rdf.load.batchCounts", { id: _vg_loadId, graphCounts }); } catch (_) { void 0; }
-        try { console.debug("[VG_DEBUG] rdf.load.batchCounts", { id: _vg_loadId, graphCounts }); } catch (_) { void 0; }
+        try {
+          debugLog("rdf.load.batchCounts", { id: _vg_loadId, graphCounts });
+        } catch (_) {
+          void 0;
+        }
+        try {
+          console.debug("[VG_DEBUG] rdf.load.batchCounts", {
+            id: _vg_loadId,
+            graphCounts,
+          });
+        } catch (_) {
+          void 0;
+        }
       }
 
       resolveFn();
@@ -1016,17 +1135,35 @@ export class RDFManager {
           try {
             // Build a quad under the target graph and delegate adding to the helper so
             // we keep consistent add/buffer behavior and track addedQuads for reconciliation.
-            if (quadItem && quadItem.subject && quadItem.predicate && quadItem.object) {
+            if (
+              quadItem &&
+              quadItem.subject &&
+              quadItem.predicate &&
+              quadItem.object
+            ) {
               try {
-                const toAdd = quad(quadItem.subject, quadItem.predicate, quadItem.object, g);
+                const toAdd = quad(
+                  quadItem.subject,
+                  quadItem.predicate,
+                  quadItem.object,
+                  g,
+                );
                 try {
                   this.addQuadToStore(toAdd, g, addedQuads);
                 } catch (_) {
                   // best-effort fallback: direct add
-                  try { this.store.addQuad(toAdd); if (Array.isArray(addedQuads)) addedQuads.push(toAdd); } catch (_) { /* ignore */ }
+                  try {
+                    this.store.addQuad(toAdd);
+                    if (Array.isArray(addedQuads)) addedQuads.push(toAdd);
+                  } catch (_) {
+                    /* ignore */
+                  }
                 }
               } catch (_) {
-                console.warn("[VG_RDF_ADD_SKIPPED] invalid quadItem from parser for graph", quadItem);
+                console.warn(
+                  "[VG_RDF_ADD_SKIPPED] invalid quadItem from parser for graph",
+                  quadItem,
+                );
               }
             } else {
               // ignore invalid quadItem shapes
@@ -1034,7 +1171,9 @@ export class RDFManager {
           } catch (e) {
             try {
               // best-effort direct add if helper failed
-              this.store.addQuad(quad(quadItem.subject, quadItem.predicate, quadItem.object, g));
+              this.store.addQuad(
+                quad(quadItem.subject, quadItem.predicate, quadItem.object, g),
+              );
             } catch (_) {
               try {
                 if (typeof fallback === "function") {
@@ -1047,15 +1186,31 @@ export class RDFManager {
           }
         } else {
           // when parser finishes, merge prefixes & finalize via shared finalizeLoad helper
-          try { this.parsingInProgress = false; } catch (_) { /* ignore */ }
+          try {
+            this.parsingInProgress = false;
+          } catch (_) {
+            /* ignore */
+          }
           (async () => {
             try {
-              await (this as any).finalizeLoad(addedQuads, prefixes, _vg_loadId);
+              await (this as any).finalizeLoad(
+                addedQuads,
+                prefixes,
+                _vg_loadId,
+              );
             } catch (e) {
-              try { rejectFn(e); } catch (_) { /* ignore */ }
+              try {
+                rejectFn(e);
+              } catch (_) {
+                /* ignore */
+              }
               return;
             }
-            try { resolveFn(); } catch (_) { /* ignore */ }
+            try {
+              resolveFn();
+            } catch (_) {
+              /* ignore */
+            }
           })();
         }
       });
@@ -1096,7 +1251,6 @@ export class RDFManager {
     return promise;
   }
 
-
   /**
    * Fetch a URL and return its RDF/text content and detected mime type.
    *
@@ -1112,19 +1266,31 @@ export class RDFManager {
     if (!url) throw new Error("loadRDFFromUrl requires a url");
     const timeoutMs = options?.timeoutMs ?? 15000;
 
-    const { doFetch } = await import("./fetcher").catch(() => ({ doFetch: undefined as any }));
-    const doFetchImpl = typeof doFetch === "function"
-      ? doFetch
-      : (async (t: string, to: number) => {
-          const c = new AbortController();
-          const id = setTimeout(() => c.abort(), to);
-          try {
-            // return await fetch(t, { signal: c.signal, headers: { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" } });
-            return await fetch(t, { signal: c.signal, headers: { Accept: "text/turtle" } });
-          } finally { clearTimeout(id); }
-        });
+    const { doFetch } = await import("./fetcher").catch(() => ({
+      doFetch: undefined as any,
+    }));
+    const doFetchImpl =
+      typeof doFetch === "function"
+        ? doFetch
+        : async (t: string, to: number) => {
+            const c = new AbortController();
+            const id = setTimeout(() => c.abort(), to);
+            try {
+              // return await fetch(t, { signal: c.signal, headers: { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" } });
+              return await fetch(t, {
+                signal: c.signal,
+                headers: { Accept: "text/turtle" },
+              });
+            } finally {
+              clearTimeout(id);
+            }
+          };
 
-    console.debug("[VG_RDF] loadRDFFromUrl start", { url, graphName, timeoutMs });
+    console.debug("[VG_RDF] loadRDFFromUrl start", {
+      url,
+      graphName,
+      timeoutMs,
+    });
 
     // Fetch the resource once and trust Content-Type for rdf-parse
     const res = await doFetchImpl(url, timeoutMs, { minimal: false });
@@ -1132,56 +1298,95 @@ export class RDFManager {
     if (!res.ok) {
       console.warn(`[VG_RDF] HTTP ${res.status} ${res.statusText} for ${url}`);
     }
-    const contentTypeHeader = (res.headers && res.headers.get ? res.headers.get("content-type") : null) || null;
-    console.debug("[VG_RDF] fetched", { url, status: res.status, contentType: contentTypeHeader });
+    const contentTypeHeader =
+      (res.headers && res.headers.get
+        ? res.headers.get("content-type")
+        : null) || null;
+    console.debug("[VG_RDF] fetched", {
+      url,
+      status: res.status,
+      contentType: contentTypeHeader,
+    });
 
     // Normalise to text first to avoid streaming differences between Node and browsers.
     const txt = await res.text();
 
     // If the fetched content clearly looks like Turtle (or the content-type explicitly indicates Turtle),
     // prefer the in-memory N3 parser path which accepts a string and does not require Node Readable streams.
-    const mimeType = contentTypeHeader ? (contentTypeHeader.split(";")[0].trim() || null) : null;
-
+    const mimeType = contentTypeHeader
+      ? contentTypeHeader.split(";")[0].trim() || null
+      : null;
 
     // const prefersTurtle = mimeType === "text/turtle" || mimeType === "text/n3" || looksLikeRdfLocal(txt);
     const prefersTurtle = mimeType === "text/turtle" || mimeType === "text/n3";
 
     if (prefersTurtle) {
       try {
-        console.info("[VG_RDF] parsing text directly with N3 Parser (browser-friendly)", { url, mimeType });
+        console.info(
+          "[VG_RDF] parsing text directly with N3 Parser (browser-friendly)",
+          { url, mimeType },
+        );
         // Delegate directly to the existing loader which parses a string using N3.Parser.
-        return await this.loadRDFIntoGraph(txt, graphName || "urn:vg:data", "text/turtle");
+        return await this.loadRDFIntoGraph(
+          txt,
+          graphName || "urn:vg:data",
+          "text/turtle",
+        );
       } catch (err) {
         // If direct parsing fails for unexpected reasons, fall through to the rdf-parse path as a fallback.
-        console.info("[VG_RDF] direct N3 parse failed, will try rdf-parse fallback", { url, error: String(err).slice(0, 200) });
+        console.info(
+          "[VG_RDF] direct N3 parse failed, will try rdf-parse fallback",
+          { url, error: String(err).slice(0, 200) },
+        );
       }
     }
 
-        // Prefer a Node-style Readable created by the shared helper; fall back to WHATWG stream when unavailable.
-        const inputStream = (await createNodeReadableFromText(txt)) || (new Response(txt).body as any);
-
+    // Prefer a Node-style Readable created by the shared helper; fall back to WHATWG stream when unavailable.
+    const inputStream =
+      (await createNodeReadableFromText(txt)) ||
+      (new Response(txt).body as any);
 
     // Attempt 1: prefer parsing by HTTP content-type (mimetype). If this fails
     // (parser/serializer rejects) we will retry using the filename/path as baseIRI.
-    console.info("[VG_RDF] parse-by-mimetype:start", { contentType: contentTypeHeader, url });
+    console.info("[VG_RDF] parse-by-mimetype:start", {
+      contentType: contentTypeHeader,
+      url,
+    });
     try {
-      const quadStream = rdfParser.parse(inputStream, { contentType: contentTypeHeader || undefined, baseIRI: url });
-      return await this.loadQuadsToDiagram(quadStream, graphName || "urn:vg:data");
+      const quadStream = rdfParser.parse(inputStream, {
+        contentType: contentTypeHeader || undefined,
+        baseIRI: url,
+      });
+      return await this.loadQuadsToDiagram(
+        quadStream,
+        graphName || "urn:vg:data",
+      );
     } catch (err) {
       // parse/serialize via mimetype failed — retry using filename/baseIRI heuristics
-      console.info("[VG_RDF] parse-by-mimetype:failed, retrying by filename", { url, error: String(err).slice(0, 500) });
+      console.info("[VG_RDF] parse-by-mimetype:failed, retrying by filename", {
+        url,
+        error: String(err).slice(0, 500),
+      });
 
       // Re-create a fresh Node-style Readable for retry (streams are single-use)
-      const inputStream2 = (await createNodeReadableFromText(txt)) || (new Response(txt).body as any);
-      console.info("[VG_RDF] parse-by-filename:start", { path: url, baseIRI: url });
-      const quadStream2 = rdfParser.parse(inputStream2, { path: url, baseIRI: url });
+      const inputStream2 =
+        (await createNodeReadableFromText(txt)) ||
+        (new Response(txt).body as any);
+      console.info("[VG_RDF] parse-by-filename:start", {
+        path: url,
+        baseIRI: url,
+      });
+      const quadStream2 = rdfParser.parse(inputStream2, {
+        path: url,
+        baseIRI: url,
+      });
       // Delegate to existing loader which handles store insertion, namespaces, notifications
-      return await this.loadQuadsToDiagram(quadStream2, graphName || "urn:vg:data");
+      return await this.loadQuadsToDiagram(
+        quadStream2,
+        graphName || "urn:vg:data",
+      );
     }
-
   }
-
-  
 
   exportToTurtle(): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -1216,7 +1421,12 @@ export class RDFManager {
       // standard triple statements rather than named-graph blocks.
       const triples = (quads || []).map((q: any) => {
         try {
-          return quad((q as any).subject, (q as any).predicate, (q as any).object, defaultGraph());
+          return quad(
+            (q as any).subject,
+            (q as any).predicate,
+            (q as any).object,
+            defaultGraph(),
+          );
         } catch (_) {
           return q;
         }
@@ -1265,7 +1475,16 @@ export class RDFManager {
 
       // Convert to triples (drop graph) so JSON-LD writer doesn't emit named graph wrappers.
       const triplesForJsonLd = (quads || []).map((q: any) => {
-        try { return quad((q as any).subject, (q as any).predicate, (q as any).object, defaultGraph()); } catch (_) { return q; }
+        try {
+          return quad(
+            (q as any).subject,
+            (q as any).predicate,
+            (q as any).object,
+            defaultGraph(),
+          );
+        } catch (_) {
+          return q;
+        }
       });
       writer.addQuads(triplesForJsonLd);
 
@@ -1317,7 +1536,16 @@ export class RDFManager {
 
       // Convert to triples (drop graph) so RDF/XML writer emits triples rather than named-graph constructs.
       const triplesForXml = (quads || []).map((q: any) => {
-        try { return quad((q as any).subject, (q as any).predicate, (q as any).object, defaultGraph()); } catch (_) { return q; }
+        try {
+          return quad(
+            (q as any).subject,
+            (q as any).predicate,
+            (q as any).object,
+            defaultGraph(),
+          );
+        } catch (_) {
+          return q;
+        }
       });
       writer.addQuads(triplesForXml);
 
@@ -1359,10 +1587,13 @@ export class RDFManager {
     // coerce incoming uri to a string only for supported shapes
     let uriStr = "";
     if (typeof uri === "string") uriStr = uri;
-    else if (uri && typeof (uri as any).value === "string") uriStr = String((uri as any).value);
+    else if (uri && typeof (uri as any).value === "string")
+      uriStr = String((uri as any).value);
     if (!uriStr) return;
 
-    const prev = Object.prototype.hasOwnProperty.call(this.namespaces, prefix) ? this.namespaces[prefix] : undefined;
+    const prev = Object.prototype.hasOwnProperty.call(this.namespaces, prefix)
+      ? this.namespaces[prefix]
+      : undefined;
     const changed = prev === undefined || String(prev) !== uriStr;
 
     // Update internal map
@@ -1370,7 +1601,9 @@ export class RDFManager {
 
     // Persisting the registry is handled by the reconcile/fat-map path only.
     if (changed) {
-      { this.notifyChange({ kind: "namespaces", prefixes: [prefix] }); }
+      {
+        this.notifyChange({ kind: "namespaces", prefixes: [prefix] });
+      }
     }
   }
 
@@ -1507,7 +1740,10 @@ export class RDFManager {
 
       // Notify subscribers that namespaces changed (best-effort)
       try {
-        this.notifyChange({ kind: "namespaces", prefixes: prefixToRemove ? [prefixToRemove] : [] });
+        this.notifyChange({
+          kind: "namespaces",
+          prefixes: prefixToRemove ? [prefixToRemove] : [],
+        });
       } catch (_) {
         /* ignore */
       }
@@ -1519,12 +1755,22 @@ export class RDFManager {
             try {
               fallback(
                 "console.warn",
-                { args: [ (err && (err as any).message) ? (err as any).message : String(err) ] },
+                {
+                  args: [
+                    err && (err as any).message
+                      ? (err as any).message
+                      : String(err),
+                  ],
+                },
                 { level: "warn" },
               );
-            } catch (_) { void 0; }
+            } catch (_) {
+              void 0;
+            }
           }
-        } catch (_) { void 0; }
+        } catch (_) {
+          void 0;
+        }
         console.warn("removeNamespaceAndQuads failed:", err);
       } catch (_) {
         try {
@@ -1550,7 +1796,11 @@ export class RDFManager {
       quads.forEach((q: Quad) => {
         try {
           // Buffer removed quad so subject-level subscribers are notified.
-          try { this.bufferSubjectFromQuad(q); } catch (_) { /* ignore */ }
+          try {
+            this.bufferSubjectFromQuad(q);
+          } catch (_) {
+            /* ignore */
+          }
           this.store.removeQuad(q);
         } catch (_) {
           try {
@@ -1568,39 +1818,57 @@ export class RDFManager {
       } catch (_) {
         /* ignore */
       }
-      } catch (err) {
+    } catch (err) {
+      try {
         try {
-          try {
-            if (typeof fallback === "function") {
-              try {
-                fallback(
-                  "console.warn",
-                  { args: [ (err && (err as any).message) ? (err as any).message : String(err) ] },
-                  { level: "warn" },
-                );
-              } catch (_) { void 0; }
+          if (typeof fallback === "function") {
+            try {
+              fallback(
+                "console.warn",
+                {
+                  args: [
+                    err && (err as any).message
+                      ? (err as any).message
+                      : String(err),
+                  ],
+                },
+                { level: "warn" },
+              );
+            } catch (_) {
+              void 0;
             }
-          } catch (_) { void 0; }
-          console.warn("removeGraph failed:", err);
-        } catch (_) {
-          try {
-            if (typeof fallback === "function") {
-              fallback("emptyCatch", { error: String(err) });
-            }
-          } catch (_) {
-            /* ignore */
           }
+        } catch (_) {
+          void 0;
+        }
+        console.warn("removeGraph failed:", err);
+      } catch (_) {
+        try {
+          if (typeof fallback === "function") {
+            fallback("emptyCatch", { error: String(err) });
+          }
+        } catch (_) {
+          /* ignore */
         }
       }
+    }
   }
 
   /**
    * Remove quads in a specific named graph that match any of the provided namespace URIs.
    * Useful for removing an ontology's quads from a shared ontologies graph without touching other graphs.
    */
-  public removeQuadsInGraphByNamespaces(graphName: string, namespaceUris?: string[] | null): void {
+  public removeQuadsInGraphByNamespaces(
+    graphName: string,
+    namespaceUris?: string[] | null,
+  ): void {
     try {
-      if (!graphName || !Array.isArray(namespaceUris) || namespaceUris.length === 0) return;
+      if (
+        !graphName ||
+        !Array.isArray(namespaceUris) ||
+        namespaceUris.length === 0
+      )
+        return;
       const g = namedNode(graphName);
       const quads = this.store.getQuads(null, null, null, g) || [];
       quads.forEach((q: Quad) => {
@@ -1608,13 +1876,21 @@ export class RDFManager {
           const subj = (q.subject && (q.subject as any).value) || "";
           const pred = (q.predicate && (q.predicate as any).value) || "";
           const obj = (q.object && (q.object as any).value) || "";
-          const matches = (namespaceUris || []).some((ns) =>
-            ns && (subj.startsWith(ns) || pred.startsWith(ns) || obj.startsWith(ns)),
+          const matches = (namespaceUris || []).some(
+            (ns) =>
+              ns &&
+              (subj.startsWith(ns) ||
+                pred.startsWith(ns) ||
+                obj.startsWith(ns)),
           );
           if (matches) {
             try {
               // Buffer removed quad so subject-level subscribers are notified.
-              try { this.bufferSubjectFromQuad(q); } catch (_) { /* ignore */ }
+              try {
+                this.bufferSubjectFromQuad(q);
+              } catch (_) {
+                /* ignore */
+              }
               this.store.removeQuad(q);
             } catch (_) {
               /* ignore */
@@ -1632,7 +1908,10 @@ export class RDFManager {
     } catch (err) {
       try {
         if (typeof fallback === "function") {
-          fallback("rdf.removeQuadsInGraphByNamespaces.failed", { graphName, error: String(err) });
+          fallback("rdf.removeQuadsInGraphByNamespaces.failed", {
+            graphName,
+            error: String(err),
+          });
         }
       } catch (_) {
         /* ignore */
@@ -1645,35 +1924,76 @@ export class RDFManager {
    * inside the specified named graph (defaults to urn:vg:data). This is idempotent and emits
    * a single notifyChange() after the removals. Blank-node subjects (prefixed "_:b0") are supported.
    */
-  public async removeAllQuadsForIri(iri: string, graphName: string = "urn:vg:data"): Promise<void> {
+  public async removeAllQuadsForIri(
+    iri: string,
+    graphName: string = "urn:vg:data",
+  ): Promise<void> {
     try {
       if (!iri) return;
       const g = namedNode(String(graphName));
       // Subject term may be a blank node or named node
-      const subjTerm = /^_:/i.test(String(iri)) ? blankNode(String(iri).replace(/^_:/, "")) : namedNode(String(iri));
+      const subjTerm = /^_:/i.test(String(iri))
+        ? blankNode(String(iri).replace(/^_:/, ""))
+        : namedNode(String(iri));
       // Remove quads where subject === iri
       try {
         const subjQuads = this.store.getQuads(subjTerm, null, null, g) || [];
         for (const q of subjQuads) {
-          try { this.bufferSubjectFromQuad(q); } catch (_) { void 0; }
-          try { this.store.removeQuad(q); } catch (_) { void 0; }
+          try {
+            this.bufferSubjectFromQuad(q);
+          } catch (_) {
+            void 0;
+          }
+          try {
+            this.store.removeQuad(q);
+          } catch (_) {
+            void 0;
+          }
         }
-      } catch (_) { /* ignore per-subject remove failures */ }
+      } catch (_) {
+        /* ignore per-subject remove failures */
+      }
 
       // Remove quads where object === iri (object must be a named node to match IRIs)
       try {
         const objTerm = namedNode(String(iri));
         const objQuads = this.store.getQuads(null, null, objTerm, g) || [];
         for (const q of objQuads) {
-          try { this.bufferSubjectFromQuad(q); } catch (_) { void 0; }
-          try { this.store.removeQuad(q); } catch (_) { void 0; }
+          try {
+            this.bufferSubjectFromQuad(q);
+          } catch (_) {
+            void 0;
+          }
+          try {
+            this.store.removeQuad(q);
+          } catch (_) {
+            void 0;
+          }
         }
-      } catch (_) { /* ignore per-object remove failures */ }
+      } catch (_) {
+        /* ignore per-object remove failures */
+      }
 
       // Notify subscribers once
-      try { this.notifyChange({ kind: "removeAllQuadsForIri", iri, graph: graphName }); } catch (_) { void 0; }
+      try {
+        this.notifyChange({
+          kind: "removeAllQuadsForIri",
+          iri,
+          graph: graphName,
+        });
+      } catch (_) {
+        void 0;
+      }
     } catch (err) {
-      try { fallback("rdf.removeAllQuadsForIri.failed", { iri, graphName, error: String(err) }); } catch (_) { void 0; }
+      try {
+        fallback("rdf.removeAllQuadsForIri.failed", {
+          iri,
+          graphName,
+          error: String(err),
+        });
+      } catch (_) {
+        void 0;
+      }
     }
   }
 
@@ -1705,8 +2025,11 @@ export class RDFManager {
       const wk = (WELL_KNOWN && (WELL_KNOWN as any).prefixes) || {};
       Object.entries(wk).forEach(([k, v]) => {
         try {
-          if (!wellKnownFallbacks[k] && typeof v === "string") wellKnownFallbacks[k] = v;
-        } catch (_) { void 0; }
+          if (!wellKnownFallbacks[k] && typeof v === "string")
+            wellKnownFallbacks[k] = v;
+        } catch (_) {
+          void 0;
+        }
       });
     }
 
@@ -1777,19 +2100,30 @@ export class RDFManager {
           : "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 
       // Build incoming annotation predicate set and prepared rdfTypes
-      const incomingAnn = Array.isArray(updates.annotationProperties) ? updates.annotationProperties : [];
+      const incomingAnn = Array.isArray(updates.annotationProperties)
+        ? updates.annotationProperties
+        : [];
       const incomingPreds = new Set<string>();
       for (const ap of incomingAnn) {
         try {
-          const predRaw = (ap && (ap.propertyUri || ap.property || ap.key)) || "";
+          const predRaw =
+            (ap && (ap.propertyUri || ap.property || ap.key)) || "";
           const pred =
             predRaw && typeof this.expandPrefix === "function"
               ? this.expandPrefix(String(predRaw))
               : String(predRaw);
           if (pred) incomingPreds.add(String(pred));
-        } catch (_) { /* ignore */ }
+        } catch (_) {
+          /* ignore */
+        }
       }
-      const incomingTypes = Array.isArray(updates.rdfTypes) ? updates.rdfTypes.map((t: any) => (typeof this.expandPrefix === "function" ? this.expandPrefix(String(t)) : String(t))) : [];
+      const incomingTypes = Array.isArray(updates.rdfTypes)
+        ? updates.rdfTypes.map((t: any) =>
+            typeof this.expandPrefix === "function"
+              ? this.expandPrefix(String(t))
+              : String(t),
+          )
+        : [];
 
       // Replacement semantics implemented via applyBatch removes to ensure atomicity:
       // - Build a set of removes that clear all existing non-rdf:type annotation triples
@@ -1807,7 +2141,9 @@ export class RDFManager {
             if (!p) continue;
             if (String(p) === String(rdfTypePred)) continue;
             predsToRemove.add(String(p));
-          } catch (_) { /* ignore per-quad */ }
+          } catch (_) {
+            /* ignore per-quad */
+          }
         }
         for (const p of Array.from(predsToRemove)) {
           removes.push({ subject: subjIri, predicate: String(p), object: "" });
@@ -1815,7 +2151,11 @@ export class RDFManager {
 
         // If incomingTypes provided, remove all existing rdf:type triples for the subject
         if (Array.isArray(updates.rdfTypes)) {
-          removes.push({ subject: subjIri, predicate: String(rdfTypePred), object: "" });
+          removes.push({
+            subject: subjIri,
+            predicate: String(rdfTypePred),
+            object: "",
+          });
         }
       } catch (_) {
         /* ignore building removes */
@@ -1825,7 +2165,8 @@ export class RDFManager {
       const adds: any[] = [];
       for (const ap of incomingAnn) {
         try {
-          const predRaw = (ap && (ap.propertyUri || ap.property || ap.key)) || "";
+          const predRaw =
+            (ap && (ap.propertyUri || ap.property || ap.key)) || "";
           const pred =
             predRaw && typeof this.expandPrefix === "function"
               ? this.expandPrefix(String(predRaw))
@@ -1836,7 +2177,9 @@ export class RDFManager {
             predicate: String(pred),
             object: String(ap.value),
           });
-        } catch (_) { /* ignore per-item */ }
+        } catch (_) {
+          /* ignore per-item */
+        }
       }
 
       for (const t of incomingTypes) {
@@ -1848,7 +2191,9 @@ export class RDFManager {
             predicate: String(rdfTypePred),
             object: String(expanded),
           });
-        } catch (_) { /* ignore per-type */ }
+        } catch (_) {
+          /* ignore per-type */
+        }
       }
 
       // Apply removals then additions synchronously so callers observe immediate store changes.
@@ -1860,10 +2205,16 @@ export class RDFManager {
             const pred = namedNode(String(r.predicate));
             const found = this.store.getQuads(subj, pred, null, g) || [];
             for (const q of found) {
-              try { this.bufferSubjectFromQuad(q); } catch (_) { void 0; }
+              try {
+                this.bufferSubjectFromQuad(q);
+              } catch (_) {
+                void 0;
+              }
               this.store.removeQuad(q);
             }
-          } catch (_) { /* ignore per-remove */ }
+          } catch (_) {
+            /* ignore per-remove */
+          }
         }
 
         // Perform adds
@@ -1871,13 +2222,23 @@ export class RDFManager {
           try {
             const subj = namedNode(String(a.subject));
             const pred = namedNode(String(a.predicate));
-            const obj = /^https?:\/\//i.test(String(a.object)) ? namedNode(String(a.object)) : literal(String(a.object));
+            const obj = /^https?:\/\//i.test(String(a.object))
+              ? namedNode(String(a.object))
+              : literal(String(a.object));
             const exists = this.store.countQuads(subj, pred, obj as any, g) > 0;
             if (!exists) {
               this.store.addQuad(quad(subj as any, pred as any, obj as any, g));
-              try { this.bufferSubjectFromQuad(quad(subj as any, pred as any, obj as any, g)); } catch (_) { void 0; }
+              try {
+                this.bufferSubjectFromQuad(
+                  quad(subj as any, pred as any, obj as any, g),
+                );
+              } catch (_) {
+                void 0;
+              }
             }
-          } catch (_) { void 0; }
+          } catch (_) {
+            void 0;
+          }
         }
 
         // Notify and dedupe multiple objects per predicate (keep the last)
@@ -1890,13 +2251,25 @@ export class RDFManager {
               const qts = this.store.getQuads(s, predTerm, null, g) || [];
               if (Array.isArray(qts) && qts.length > 1) {
                 for (let i = 0; i < qts.length - 1; i++) {
-                  try { this.bufferSubjectFromQuad(qts[i]); } catch (_) { void 0; }
-                  try { this.store.removeQuad(qts[i]); } catch (_) { void 0; }
+                  try {
+                    this.bufferSubjectFromQuad(qts[i]);
+                  } catch (_) {
+                    void 0;
+                  }
+                  try {
+                    this.store.removeQuad(qts[i]);
+                  } catch (_) {
+                    void 0;
+                  }
                 }
               }
-            } catch (_) { /* ignore per-predicate dedupe failures */ }
+            } catch (_) {
+              /* ignore per-predicate dedupe failures */
+            }
           }
-        } catch (_) { /* ignore notify/dedupe failures */ }
+        } catch (_) {
+          /* ignore notify/dedupe failures */
+        }
       } catch (_) {
         /* ignore apply failures */
       }
@@ -1916,19 +2289,42 @@ export class RDFManager {
   /**
    * addTriple - idempotently add a triple to the specified graph
    */
-  public addTriple(subject: string, predicate: string, object: string, graphName: string = "urn:vg:data"): void {
+  public addTriple(
+    subject: string,
+    predicate: string,
+    object: string,
+    graphName: string = "urn:vg:data",
+  ): void {
     try {
       const g = namedNode(String(graphName));
       const s = namedNode(String(subject));
       const p = namedNode(String(predicate));
-      const o = (object && /^_:/i.test(String(object))) ? blankNode(String(object).replace(/^_:/, "")) : (object && /^https?:\/\//i.test(String(object)) ? namedNode(String(object)) : literal(String(object)));
+      const o =
+        object && /^_:/i.test(String(object))
+          ? blankNode(String(object).replace(/^_:/, ""))
+          : object && /^https?:\/\//i.test(String(object))
+            ? namedNode(String(object))
+            : literal(String(object));
       const exists = this.store.countQuads(s, p, o as any, g) > 0;
       if (!exists) {
         this.store.addQuad(quad(s as any, p as any, o as any, g));
-        try { this.bufferSubjectFromQuad(quad(s as any, p as any, o as any, g)); } catch (_) { void 0; }
+        try {
+          this.bufferSubjectFromQuad(quad(s as any, p as any, o as any, g));
+        } catch (_) {
+          void 0;
+        }
       }
     } catch (e) {
-      try { fallback("rdf.addTriple.failed", { subject, predicate, object, error: String(e) }); } catch (_) { void 0; }
+      try {
+        fallback("rdf.addTriple.failed", {
+          subject,
+          predicate,
+          object,
+          error: String(e),
+        });
+      } catch (_) {
+        void 0;
+      }
     }
   }
 
@@ -1936,14 +2332,25 @@ export class RDFManager {
    * removeTriple - idempotently remove matching triple(s) from the specified graph
    * Matches exact subject/predicate/object shapes (object must match value & literal form).
    */
-  public removeTriple(subject: string, predicate: string, object: string, graphName: string = "urn:vg:data"): void {
+  public removeTriple(
+    subject: string,
+    predicate: string,
+    object: string,
+    graphName: string = "urn:vg:data",
+  ): void {
     try {
       // Strict policy: require an explicit graph name for removals. This enforces
       // callers to choose between 'urn:vg:data' (ABox/user edits) and
       // 'urn:vg:ontologies' (TBox/ontology provenance). Passing no graph will
       // throw so callers cannot accidentally remove triples from the wrong graph.
-      if (!graphName || typeof graphName !== "string" || String(graphName).trim() === "") {
-        throw new Error("rdfManager.removeTriple requires an explicit graphName (e.g. 'urn:vg:data' or 'urn:vg:ontologies')");
+      if (
+        !graphName ||
+        typeof graphName !== "string" ||
+        String(graphName).trim() === ""
+      ) {
+        throw new Error(
+          "rdfManager.removeTriple requires an explicit graphName (e.g. 'urn:vg:data' or 'urn:vg:ontologies')",
+        );
       }
 
       const g = namedNode(String(graphName));
@@ -1952,11 +2359,19 @@ export class RDFManager {
       // match literal or named node based on object shape
       const objs: any[] = [];
       try {
-        if (object === null || typeof object === "undefined" || String(object) === "") {
+        if (
+          object === null ||
+          typeof object === "undefined" ||
+          String(object) === ""
+        ) {
           // remove any object for the predicate from the specified graph
           const found = this.store.getQuads(s, p, null, g) || [];
           for (const q of found) {
-            try { this.bufferSubjectFromQuad(q); } catch (_) { void 0; }
+            try {
+              this.bufferSubjectFromQuad(q);
+            } catch (_) {
+              void 0;
+            }
             this.store.removeQuad(q);
           }
           return;
@@ -1968,19 +2383,32 @@ export class RDFManager {
         } else {
           objs.push(literal(String(object)));
         }
-      } catch (_) { objs.push(literal(String(object))); }
+      } catch (_) {
+        objs.push(literal(String(object)));
+      }
 
       for (const o of objs) {
         {
           const found = this.store.getQuads(s, p, o as any, g) || [];
           for (const q of found) {
-            try { this.bufferSubjectFromQuad(q); } catch (_) { void 0; }
+            try {
+              this.bufferSubjectFromQuad(q);
+            } catch (_) {
+              void 0;
+            }
             this.store.removeQuad(q);
           }
         }
       }
     } catch (e) {
-      { fallback("rdf.removeTriple.failed", { subject, predicate, object, error: String(e) }); }
+      {
+        fallback("rdf.removeTriple.failed", {
+          subject,
+          predicate,
+          object,
+          error: String(e),
+        });
+      }
     }
   }
 
@@ -1988,10 +2416,17 @@ export class RDFManager {
    * applyBatch - apply a batch of removes then adds atomically (single notify)
    * changes: { removes: Array<{subject,predicate,object}>, adds: Array<{subject,predicate,object}> }
    */
-  public async applyBatch(changes: { removes?: any[]; adds?: any[] }, graphName: string = "urn:vg:data"): Promise<void> {
+  public async applyBatch(
+    changes: { removes?: any[]; adds?: any[] },
+    graphName: string = "urn:vg:data",
+  ): Promise<void> {
     try {
-      const removes = Array.isArray(changes && changes.removes) ? changes.removes.slice() : [];
-      const adds = Array.isArray(changes && changes.adds) ? changes.adds.slice() : [];
+      const removes = Array.isArray(changes && changes.removes)
+        ? changes.removes.slice()
+        : [];
+      const adds = Array.isArray(changes && changes.adds)
+        ? changes.adds.slice()
+        : [];
       const g = namedNode(String(graphName));
 
       // Perform removals first
@@ -2001,29 +2436,49 @@ export class RDFManager {
           const pred = namedNode(String(r.predicate));
           let objs: any[] = [];
           try {
-            if (r.object === null || typeof r.object === "undefined" || String(r.object) === "") {
+            if (
+              r.object === null ||
+              typeof r.object === "undefined" ||
+              String(r.object) === ""
+            ) {
               const found = this.store.getQuads(subj, pred, null, g) || [];
               for (const q of found) {
-                try { this.bufferSubjectFromQuad(q); } catch (_) { void 0; }
+                try {
+                  this.bufferSubjectFromQuad(q);
+                } catch (_) {
+                  void 0;
+                }
                 this.store.removeQuad(q);
               }
               continue;
             }
-            if (/^_:/i.test(String(r.object))) objs = [blankNode(String(r.object).replace(/^_:/, ""))];
-            else if (/^https?:\/\//i.test(String(r.object))) objs = [namedNode(String(r.object))];
+            if (/^_:/i.test(String(r.object)))
+              objs = [blankNode(String(r.object).replace(/^_:/, ""))];
+            else if (/^https?:\/\//i.test(String(r.object)))
+              objs = [namedNode(String(r.object))];
             else objs = [literal(String(r.object))];
-          } catch (_) { objs = [literal(String(r.object))]; }
+          } catch (_) {
+            objs = [literal(String(r.object))];
+          }
 
           for (const o of objs) {
             try {
               const found = this.store.getQuads(subj, pred, o as any, g) || [];
               for (const q of found) {
-                try { this.bufferSubjectFromQuad(q); } catch (_) { void 0; }
+                try {
+                  this.bufferSubjectFromQuad(q);
+                } catch (_) {
+                  void 0;
+                }
                 this.store.removeQuad(q);
               }
-            } catch (_) { /* ignore per-object */ }
+            } catch (_) {
+              /* ignore per-object */
+            }
           }
-        } catch (_) { /* ignore per-remove */ }
+        } catch (_) {
+          /* ignore per-remove */
+        }
       }
 
       // Then perform adds (idempotent)
@@ -2033,24 +2488,52 @@ export class RDFManager {
           const pred = namedNode(String(a.predicate));
           let obj: any;
           try {
-            if (/^_:/i.test(String(a.object))) obj = blankNode(String(a.object).replace(/^_:/, ""));
-            else if (/^https?:\/\//i.test(String(a.object))) obj = namedNode(String(a.object));
+            if (/^_:/i.test(String(a.object)))
+              obj = blankNode(String(a.object).replace(/^_:/, ""));
+            else if (/^https?:\/\//i.test(String(a.object)))
+              obj = namedNode(String(a.object));
             else obj = literal(String(a.object));
-          } catch (_) { obj = literal(String(a.object)); }
+          } catch (_) {
+            obj = literal(String(a.object));
+          }
 
           const exists = this.store.countQuads(subj, pred, obj as any, g) > 0;
           if (!exists) {
             this.store.addQuad(quad(subj as any, pred as any, obj as any, g));
-            try { this.bufferSubjectFromQuad(quad(subj as any, pred as any, obj as any, g)); } catch (_) { void 0; }
+            try {
+              this.bufferSubjectFromQuad(
+                quad(subj as any, pred as any, obj as any, g),
+              );
+            } catch (_) {
+              void 0;
+            }
           }
-        } catch (_) { void 0; }
+        } catch (_) {
+          void 0;
+        }
       }
 
       // Notify once after batch applied
-      try { this.notifyChange(); } catch (_) { void 0; }
+      try {
+        this.notifyChange();
+      } catch (_) {
+        void 0;
+      }
     } catch (e) {
-      try { fallback("rdf.applyBatch.failed", { error: String(e) }, { level: "warn" }); } catch (_) { void 0; }
-      try { this.notifyChange(); } catch (_) { void 0; }
+      try {
+        fallback(
+          "rdf.applyBatch.failed",
+          { error: String(e) },
+          { level: "warn" },
+        );
+      } catch (_) {
+        void 0;
+      }
+      try {
+        this.notifyChange();
+      } catch (_) {
+        void 0;
+      }
     }
   }
 
@@ -2115,7 +2598,9 @@ export class RDFManager {
    * - Plain string values are NOT coerced here; they are recorded in diagnostics and skipped.
    * - Returns a Record<string, RDF.NamedNode> suitable for applyParsedNamespaces.
    */
-  private sanitizeParserPrefixes(namespaces: Record<string, any> | undefined | null): Record<string, RDF.NamedNode> {
+  private sanitizeParserPrefixes(
+    namespaces: Record<string, any> | undefined | null,
+  ): Record<string, RDF.NamedNode> {
     const out: Record<string, RDF.NamedNode> = {};
     {
       if (!namespaces || typeof namespaces !== "object") return out;
@@ -2131,10 +2616,25 @@ export class RDFManager {
               out[p] = v as RDF.NamedNode;
             } else {
               try {
-                (window as any).__VG_NAMESPACE_WRITER_LOG = (window as any).__VG_NAMESPACE_WRITER_LOG || [];
-                (window as any).__VG_NAMESPACE_WRITER_LOG.push({ kind: "sanitizer.empty_namednode", prefix: p, raw: v, time: Date.now() });
-              } catch (_) { /* ignore */ }
-              try { console.warn("[VG_PREFIX_SKIPPED_EMPTY_NAMEDNODE]", { prefix: p, raw: v }); } catch (_) { /* ignore */ }
+                (window as any).__VG_NAMESPACE_WRITER_LOG =
+                  (window as any).__VG_NAMESPACE_WRITER_LOG || [];
+                (window as any).__VG_NAMESPACE_WRITER_LOG.push({
+                  kind: "sanitizer.empty_namednode",
+                  prefix: p,
+                  raw: v,
+                  time: Date.now(),
+                });
+              } catch (_) {
+                /* ignore */
+              }
+              try {
+                console.warn("[VG_PREFIX_SKIPPED_EMPTY_NAMEDNODE]", {
+                  prefix: p,
+                  raw: v,
+                });
+              } catch (_) {
+                /* ignore */
+              }
             }
             continue;
           }
@@ -2142,18 +2642,38 @@ export class RDFManager {
           // If value is a plain string, record diagnostic and skip (do NOT coerce)
           if (typeof v === "string") {
             try {
-              (window as any).__VG_NAMESPACE_WRITER_LOG = (window as any).__VG_NAMESPACE_WRITER_LOG || [];
-              (window as any).__VG_NAMESPACE_WRITER_LOG.push({ kind: "sanitizer.skipped_string_value", prefix: p, raw: v, time: Date.now() });
-            } catch (_) { /* ignore */ }
-            try { console.warn("[VG_PREFIX_SKIPPED_STRING]", { prefix: p, raw: v }); } catch (_) { /* ignore */ }
+              (window as any).__VG_NAMESPACE_WRITER_LOG =
+                (window as any).__VG_NAMESPACE_WRITER_LOG || [];
+              (window as any).__VG_NAMESPACE_WRITER_LOG.push({
+                kind: "sanitizer.skipped_string_value",
+                prefix: p,
+                raw: v,
+                time: Date.now(),
+              });
+            } catch (_) {
+              /* ignore */
+            }
+            try {
+              console.warn("[VG_PREFIX_SKIPPED_STRING]", { prefix: p, raw: v });
+            } catch (_) {
+              /* ignore */
+            }
             continue;
           }
 
           // Skip other shapes and log
           try {
-            (window as any).__VG_NAMESPACE_WRITER_LOG = (window as any).__VG_NAMESPACE_WRITER_LOG || [];
-            (window as any).__VG_NAMESPACE_WRITER_LOG.push({ kind: "sanitizer.skipped_other_shape", prefix: p, raw: v, time: Date.now() });
-          } catch (_) { /* ignore */ }
+            (window as any).__VG_NAMESPACE_WRITER_LOG =
+              (window as any).__VG_NAMESPACE_WRITER_LOG || [];
+            (window as any).__VG_NAMESPACE_WRITER_LOG.push({
+              kind: "sanitizer.skipped_other_shape",
+              prefix: p,
+              raw: v,
+              time: Date.now(),
+            });
+          } catch (_) {
+            /* ignore */
+          }
         } catch (_) {
           /* ignore per-entry errors */
         }
@@ -2170,35 +2690,65 @@ export class RDFManager {
    * - Sanitizes input via sanitizeParserPrefixes and merges only sanitized entries.
    * - Logs merged result and records diagnostics for any skipped entries.
    */
-  applyParsedNamespaces(namespaces: Record<string, RDF.NamedNode> | undefined | null): void {
+  applyParsedNamespaces(
+    namespaces: Record<string, any> | undefined | null,
+  ): void {
     try {
       // Reject non-object inputs early
       if (!namespaces || typeof namespaces !== "object") return;
 
       const mergedPrefixes: string[] = [];
-      for (const [p, node] of Object.entries(namespaces || {})) {
+
+      for (const [rawKey, val] of Object.entries(namespaces || {})) {
         try {
-          if (!p) continue;
-          // Accept only NamedNode-like objects with a non-empty .value
-          if (node && typeof (node as any).value === "string" && String((node as any).value).trim() !== "") {
-            const uriStr = String((node as any).value);
-            const prev = this.namespaces[p];
-            if (String(prev) !== uriStr) {
-              this.namespaces[p] = uriStr;
-              mergedPrefixes.push(String(p));
+          // Accept empty-string or ":" as possible keys; normalize storage key:
+          // user requested to keep ':' as the literal prefix key for default namespace.
+          const key = rawKey === "" ? ":" : String(rawKey);
+
+          // Derive a URI string from possible value shapes:
+          // - { prefix: string, raw: string } (our new object shape)
+          // - NamedNode-like { value: string }
+          // - plain string "http://..."
+          let uriStr: string | undefined = undefined;
+          try {
+            if (val && typeof (val as any).raw === "string" && String((val as any).raw).trim() !== "") {
+              uriStr = String((val as any).raw).trim();
+            } else if (val && typeof (val as any).value === "string" && String((val as any).value).trim() !== "") {
+              uriStr = String((val as any).value).trim();
+            } else if (typeof val === "string" && String(val).trim() !== "") {
+              uriStr = String(val).trim();
             }
-          } else {
-            // Record diagnostic for skipped non-NamedNode entries
+          } catch (_) {
+            // ignore per-entry extraction failures
+          }
+
+          if (!uriStr) {
+            // Record diagnostic for skipped/invalid entries
             try {
-              (window as any).__VG_NAMESPACE_WRITER_LOG = (window as any).__VG_NAMESPACE_WRITER_LOG || [];
+              (window as any).__VG_NAMESPACE_WRITER_LOG =
+                (window as any).__VG_NAMESPACE_WRITER_LOG || [];
               (window as any).__VG_NAMESPACE_WRITER_LOG.push({
                 kind: "applyParsedNamespaces.invalid_value",
-                prefix: p,
-                raw: node,
+                prefix: key,
+                raw: val,
                 time: Date.now(),
               });
-            } catch (_) { /* ignore */ }
-            try { console.warn("[VG_PREFIX_SKIPPED_NON_NAMEDNODE]", { prefix: p, raw: node }); } catch (_) { /* ignore */ }
+            } catch (_) {
+              /* ignore */
+            }
+            try {
+              console.warn("[VG_PREFIX_SKIPPED_INVALID]", { prefix: key, raw: val });
+            } catch (_) {
+              /* ignore */
+            }
+            continue;
+          }
+
+          // Persist string URI directly (do not wrap in NamedNode).
+          const prev = this.namespaces[key];
+          if (String(prev) !== uriStr) {
+            this.namespaces[key] = uriStr;
+            mergedPrefixes.push(String(key));
           }
         } catch (_) {
           /* ignore per-entry failures */
@@ -2208,16 +2758,37 @@ export class RDFManager {
       if (mergedPrefixes.length > 0) {
         // Debug: print the new namespaces map for inspection
         try {
-          console.info("[VG_NAMESPACES_MERGED]", { mergedPrefixes, namespaces: { ...(this.namespaces || {}) } });
-        } catch (_) { /* ignore console failures */ }
+          console.info("[VG_NAMESPACES_MERGED]", {
+            mergedPrefixes,
+            namespaces: { ...(this.namespaces || {}) },
+          });
+        } catch (_) {
+          /* ignore console failures */
+        }
 
-        try { debugLog("rdf.namespaces.merged", { mergedPrefixes, namespaces: { ...(this.namespaces || {}) } }); } catch (_) { /* ignore */ }
+        try {
+          debugLog("rdf.namespaces.merged", {
+            mergedPrefixes,
+            namespaces: { ...(this.namespaces || {}) },
+          });
+        } catch (_) {
+          /* ignore */
+        }
 
         // Emit a single notify with namespace-change kind so consumers update once.
-        try { this.notifyChange({ kind: "namespaces", prefixes: mergedPrefixes }); } catch (_) { /* ignore */ }
+        try {
+          this.notifyChange({ kind: "namespaces", prefixes: mergedPrefixes });
+        } catch (_) {
+          /* ignore */
+        }
       }
     } catch (err) {
-      try { if (typeof fallback === "function") fallback("rdf.applyParsedNamespaces.failed", { error: String(err) }); } catch (_) { /* ignore */ }
+      try {
+        if (typeof fallback === "function")
+          fallback("rdf.applyParsedNamespaces.failed", { error: String(err) });
+      } catch (_) {
+        /* ignore */
+      }
     }
   }
 
@@ -2225,10 +2796,15 @@ export class RDFManager {
    * Remove all quads stored in the named graph identified by graphName.
    * Best-effort and idempotent.
    */
-  public async loadQuadsToDiagram(quadStream: any, graphName: string = "urn:vg:data"): Promise<void> {
+  public async loadQuadsToDiagram(
+    quadStream: any,
+    graphName: string = "urn:vg:data",
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!quadStream || typeof quadStream.on !== "function") {
-        return reject(new Error("Invalid quad stream provided to loadQuadsToDiagram"));
+        return reject(
+          new Error("Invalid quad stream provided to loadQuadsToDiagram"),
+        );
       }
 
       const g = namedNode(String(graphName));
@@ -2238,9 +2814,9 @@ export class RDFManager {
       const onData = (q: any) => {
         try {
           // Some quad streams provide full quad objects; ensure we add under the target graph.
-          const subj = (q && q.subject) ? q.subject : null;
-          const pred = (q && q.predicate) ? q.predicate : null;
-          const obj = (q && q.object) ? q.object : null;
+          const subj = q && q.subject ? q.subject : null;
+          const pred = q && q.predicate ? q.predicate : null;
+          const obj = q && q.object ? q.object : null;
           if (!subj || !pred || !obj) return;
           const toAdd = quad(subj, pred, obj, g);
           try {
@@ -2248,17 +2824,38 @@ export class RDFManager {
             this.addQuadToStore(toAdd, g, addedQuads);
           } catch (_) {
             // Best-effort add when helper fails
-            try { this.store.addQuad(toAdd); addedQuads.push(toAdd); } catch (_) { /* ignore */ }
+            try {
+              this.store.addQuad(toAdd);
+              addedQuads.push(toAdd);
+            } catch (_) {
+              /* ignore */
+            }
           }
         } catch (err) {
           // swallow per-quad errors but surface if needed via debug
-          try { console.debug("[VG_RDF] loadQuadsToDiagram.data.error", String(err).slice(0,200)); } catch (_) { /* ignore */ }
+          try {
+            console.debug(
+              "[VG_RDF] loadQuadsToDiagram.data.error",
+              String(err).slice(0, 200),
+            );
+          } catch (_) {
+            /* ignore */
+          }
         }
       };
 
       const onPrefix = (prefix: string, iri: any) => {
         {
-          if (prefix && typeof iri !== "undefined") prefixes[String(prefix)] = iri;
+          try {
+            const pKey = String(prefix || "");
+            let raw: string | undefined = undefined;
+            if (typeof iri === "string") raw = iri;
+            else if (iri && typeof (iri as any).value === "string") raw = (iri as any).value;
+            else if (iri !== undefined && iri !== null) raw = String(iri);
+            prefixes[pKey] = { prefix: pKey, raw: raw || "" };
+          } catch (_) {
+            /* ignore */
+          }
         }
       };
 
@@ -2275,7 +2872,8 @@ export class RDFManager {
         {
           // Capture stream-level errors for diagnostic inspection (dev-only surface)
           try {
-            (window as any).__VG_PARSED_PREFIXES_ERRORS = (window as any).__VG_PARSED_PREFIXES_ERRORS || [];
+            (window as any).__VG_PARSED_PREFIXES_ERRORS =
+              (window as any).__VG_PARSED_PREFIXES_ERRORS || [];
             (window as any).__VG_PARSED_PREFIXES_ERRORS.push({
               id: null,
               kind: "quad-stream",
@@ -2283,12 +2881,20 @@ export class RDFManager {
               message: err && err.message ? String(err.message) : String(err),
               stack: err && err.stack ? String(err.stack) : undefined,
             });
-          } catch (_) { /* ignore capture failures */ }
+          } catch (_) {
+            /* ignore capture failures */
+          }
 
-          try { console.error("[VG_PARSED_PREFIXES_ERROR] (quad-stream)", err); } catch (_) { /* ignore */ }
+          try {
+            console.error("[VG_PARSED_PREFIXES_ERROR] (quad-stream)", err);
+          } catch (_) {
+            /* ignore */
+          }
         }
 
-        { cleanup(); }
+        {
+          cleanup();
+        }
         reject(err);
       };
 
@@ -2299,7 +2905,13 @@ export class RDFManager {
           try {
             await (this as any).finalizeLoad(addedQuads, prefixes);
           } catch (e) {
-            try { fallback("rdf.loadQuadsToDiagram.reconcile_failed", { error: String(e) }); } catch (_) { /* ignore */ }
+            try {
+              fallback("rdf.loadQuadsToDiagram.reconcile_failed", {
+                error: String(e),
+              });
+            } catch (_) {
+              /* ignore */
+            }
           }
 
           resolve();
@@ -2314,21 +2926,36 @@ export class RDFManager {
         quadStream.on("end", onEnd);
         // some parsers emit prefix and context events
         if (typeof quadStream.on === "function") {
-          try { quadStream.on("prefix", onPrefix); } catch (_) { /* ignore */ }
+          try {
+            quadStream.on("prefix", onPrefix);
+          } catch (_) {
+            /* ignore */
+          }
           try {
             quadStream.on("context", (ctx: any) => {
               try {
-                (window as any).__VG_PARSED_PREFIXES_DETAILED = (window as any).__VG_PARSED_PREFIXES_DETAILED || [];
+                (window as any).__VG_PARSED_PREFIXES_DETAILED =
+                  (window as any).__VG_PARSED_PREFIXES_DETAILED || [];
                 (window as any).__VG_PARSED_PREFIXES_DETAILED.push({
                   id: null,
                   kind: "quad-stream-context",
                   time: Date.now(),
                   context: ctx,
                 });
-              } catch (_) { /* ignore */ }
-              try { console.info("[VG_PARSED_CONTEXT] (quad-stream)", { context: ctx }); } catch (_) { /* ignore */ }
+              } catch (_) {
+                /* ignore */
+              }
+              try {
+                console.info("[VG_PARSED_CONTEXT] (quad-stream)", {
+                  context: ctx,
+                });
+              } catch (_) {
+                /* ignore */
+              }
             });
-          } catch (_) { /* ignore */ }
+          } catch (_) {
+            /* ignore */
+          }
         }
       } catch (err) {
         cleanup();
@@ -2336,7 +2963,6 @@ export class RDFManager {
       }
     });
   }
-
 }
 
 export const rdfManager = new RDFManager();
