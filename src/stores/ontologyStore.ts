@@ -13,6 +13,7 @@ import { debug, info, warn, error, fallback } from "../utils/startupDebug";
 import { WELL_KNOWN } from "../utils/wellKnownOntologies";
 import { DataFactory, Quad } from "n3";
 import { buildPaletteMap } from "../components/Canvas/core/namespacePalette";
+import { shortLocalName } from "../utils/termUtils";
 const { namedNode, quad } = DataFactory;
 
 
@@ -274,25 +275,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
   setNamespaceRegistry: (registry: { prefix: string; namespace: string; color: string }[]) => {
     try {
       // Capture callsite and values for debugging when tests trigger namespace writes.
-      try {
-        const err = new Error("[VG_DEBUG] setNamespaceRegistry called");
-        const stack = (err && err.stack) || (new Error()).stack || "";
-        const prev = (useOntologyStore as any).getState ? (useOntologyStore as any).getState().namespaceRegistry : undefined;
-        const entry = {
-          kind: "setNamespaceRegistry.call",
-          time: Date.now(),
-          prevCount: Array.isArray(prev) ? prev.length : (prev ? 1 : 0),
-          newCount: Array.isArray(registry) ? registry.length : (registry ? 1 : 0),
-          prevPreview: Array.isArray(prev) ? (prev || []).slice(0,5) : prev,
-          newPreview: Array.isArray(registry) ? (registry || []).slice(0,5) : registry,
-          stack,
-        };
-        try {
-          (window as any).__VG_NAMESPACE_MUTATION_LOG = (window as any).__VG_NAMESPACE_MUTATION_LOG || [];
-          (window as any).__VG_NAMESPACE_MUTATION_LOG.push(entry);
-        } catch (_) { /* ignore logging failure */ }
-        try { console.error("[VG_DEBUG] setNamespaceRegistry", entry); } catch (_) { /* ignore */ }
-      } catch (_) { /* ignore debug */ }
+      
 
       set((st: any) => ({
         namespaceRegistry: Array.isArray(registry) ? registry.slice() : [],
@@ -1019,8 +1002,8 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       const typesNormalized = Array.from(new Set((types || []).map((t) => normalizeTermIri(t)).filter(Boolean)));
 
       let label = parsedLabelBySubject[subjStr];
-      // Do not query the RDF manager for labels; prefer parsed label or default to subject string.
-      if (!label) label = subjStr;
+      // Do not query the RDF manager for labels; prefer parsed label or default to the short local name.
+      if (!label) label = shortLocalName(subjStr);
 
       const nsMatch = String(subjStr || "").match(/^(.*[\/#])/);
       const namespace = nsMatch && nsMatch[1] ? String(nsMatch[1]) : "";
@@ -1080,17 +1063,22 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       ontologiesVersion: (s.ontologiesVersion || 0) + 1,
     }));
 
-    // Debug: report incremental update results (counts + samples)
-      {
-        const classesArr = Object.values(classByIri);
-        const propsArr = Object.values(propByIri);
-        console.debug("[VG_DEBUG] updateFatMap.result", {
-          classesCount: classesArr.length,
-          propertiesCount: propsArr.length,
-          sampleClasses: (classesArr || []).slice(0, 5).map((c: any) => (c && c.iri) || c),
-          sampleProperties: (propsArr || []).slice(0, 5).map((p: any) => (p && p.iri) || p),
-        });
-      }
+    // Debug: log a small sample of availableClasses when updateFatMap runs with parsed quads.
+    // Keeps output safe for tests by wrapping in try/catch and avoiding heavy object serialization.
+    try {
+      const _allClasses = Object.values(classByIri);
+      const classesSample = (_allClasses || []).slice(0, 10).map((c: any) => ({
+        iri: c.iri,
+        label: c.label,
+        namespace: c.namespace,
+      }));
+      console.debug("[VG_DEBUG] updateFatMap.availableClasses.sample", {
+        total: Array.isArray(_allClasses) ? _allClasses.length : 0,
+        sample: classesSample,
+      });
+    } catch (_) { /* ignore logging failures */ }
+
+      
 
       // Also persist the namespace registry as part of incremental reconciles so
       // consumers observing namespaceRegistry (the legend) receive colors immediately.
@@ -1155,7 +1143,7 @@ async function buildFatMap(rdfMgr?: any): Promise<void> {
     const isClass = types.some((t: string) => /Class/i.test(String(t)));
 
     const labelQ = store.getQuads(subj, namedNode(RDFS_LABEL), null, null) || [];
-    const label = labelQ.length > 0 ? String((labelQ[0].object as any).value) : String(s);
+    const label = labelQ.length > 0 ? String((labelQ[0].object as any).value) : "";
     const nsMatch = String(s || "").match(/^(.*[\/#])/);
     const namespace = nsMatch && nsMatch[1] ? String(nsMatch[1]) : "";
 
@@ -1191,15 +1179,7 @@ async function buildFatMap(rdfMgr?: any): Promise<void> {
     ontologiesVersion: (st.ontologiesVersion || 0) + 1,
   }));
 
-  // Debug: report full rebuild results (counts + samples)
-  {
-    console.debug("[VG_DEBUG] buildFatMap.result", {
-      classesCount: mergedClasses.length,
-      propertiesCount: mergedProps.length,
-      sampleClasses: (mergedClasses || []).slice(0,5).map((c:any) => (c && c.iri) || c),
-      sampleProperties: (mergedProps || []).slice(0,5).map((p:any) => (p && p.iri) || p),
-    });
-  }
+      
 
   // Persist namespace registry
   const nsMap = mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
@@ -1340,96 +1320,3 @@ function deriveOntologyName(url: string): string {
     return "Custom Ontology";
   }
 }
-
- // TEMPORARY GUARD: capture destructive writes to the fat-map (availableProperties / availableClasses).
- // This instrumentation is temporary and only intended to collect stack traces so we can identify
- // the runtime callsite that clears or replaces the fat-map unexpectedly. It records events on
- // window.__VG_FATMAP_MUTATION_LOG for offline inspection.
- {
-   const storeAny: any = (useOntologyStore as any);
-   if (storeAny && typeof storeAny.setState === "function" && typeof storeAny.getState === "function") {
-     const origSetState = storeAny.setState.bind(storeAny);
-     storeAny.setState = function (patch: any, replace?: boolean) {
-       try {
-         // Compute tentative new partial state to inspect potential fat-map writes.
-         let newPartial: any = {};
-         try {
-           if (typeof patch === "function") {
-             try {
-               const prev = storeAny.getState ? storeAny.getState() : {};
-               newPartial = patch(prev) || {};
-             } catch (_) {
-               newPartial = {};
-             }
-           } else {
-             newPartial = patch || {};
-           }
-         } catch (_) {
-           newPartial = patch || {};
-         }
- 
-         try {
-           const prevState = storeAny.getState ? storeAny.getState() : {};
- 
-           // Keys we already monitored for destructive writes
-           const keysToCheck = ["availableProperties", "availableClasses"];
-           for (const k of keysToCheck) {
-             try {
-               const oldVal = prevState && prevState[k];
-               const newVal = Object.prototype.hasOwnProperty.call(newPartial, k) ? newPartial[k] : oldVal;
-               const oldLen = Array.isArray(oldVal) ? oldVal.length : (oldVal ? 1 : 0);
-               const newLen = Array.isArray(newVal) ? newVal.length : (newVal ? 1 : 0);
-               // Flag destructive clear or major shrink (non-empty -> empty or large reduction)
-               if (oldLen > 0 && (newLen === 0 || newLen < Math.max(1, Math.floor(oldLen / 3)))) {
-                 try {
-                   const sampleOld = Array.isArray(oldVal) ? (oldVal || []).slice(0, 5).map((x: any) => x && (x.iri || x.key || x)) : oldVal;
-                   const sampleNew = Array.isArray(newVal) ? (newVal || []).slice(0, 5).map((x: any) => x && (x.iri || x.key || x)) : newVal;
-                   const err = new Error(`[VG_ALERT] destructive fat-map write detected for '${k}': ${oldLen} -> ${newLen}`);
-                   const stack = (err && err.stack) || (new Error()).stack || "";
-                   try {
-                     (window as any).__VG_FATMAP_MUTATION_LOG = (window as any).__VG_FATMAP_MUTATION_LOG || [];
-                     (window as any).__VG_FATMAP_MUTATION_LOG.push({
-                       key: k,
-                       oldLen,
-                       newLen,
-                       sampleOld,
-                       sampleNew,
-                       stack,
-                       time: Date.now(),
-                     });
-                   } catch (_) {
-                     /* ignore logging failure */
-                   }
-                   try { console.error("[VG_ALERT] destructive fat-map write", { key: k, oldLen, newLen, sampleOld, sampleNew }); } catch (_) { /* ignore */ }
-                   try { console.error(stack); } catch (_) { /* ignore */ }
-                 } catch (_) { /* ignore per-key */ }
-               }
-             } catch (_) { /* ignore per-key */ }
-           }
- 
-           
- 
-         } catch (_) { /* ignore inspection errors */ }
-       } catch (_) { /* ignore outer */ }
-       return origSetState(patch, replace);
-     };
- 
-     // Expose a small runtime helper for quick inspection (dev-only)
-     try {
-       if (typeof window !== "undefined") {
-         try {
-           (window as any).__VG_DUMP_NAMESPACES = function() {
-             try {
-               const mgr = (useOntologyStore.getState && useOntologyStore.getState().rdfManager) || rdfManager;
-               const mgrNs = mgr && typeof mgr.getNamespaces === "function" ? mgr.getNamespaces() : {};
-               const reg = (useOntologyStore.getState && useOntologyStore.getState().namespaceRegistry) || [];
-               return { manager: mgrNs, registry: reg };
-             } catch (e) {
-               return { error: String(e) };
-             }
-           };
-         } catch (_) { /* ignore */ }
-       }
-     } catch (_) { /* ignore helper install failure */ }
-   }
- }

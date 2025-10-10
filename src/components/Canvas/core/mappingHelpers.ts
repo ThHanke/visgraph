@@ -317,23 +317,12 @@ export function mapQuadsToDiagram(
           const labelVal = obj && obj.value ? String(obj.value) : entry.label;
           entry.label = labelVal;
           {
-            const propPrefixed = toPrefixed(
-              predIri,
-              options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-              options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-              (options as any).registry
-            );
-            const exists = Array.isArray(entry.annotationProperties)
-              ? entry.annotationProperties.some((ap) => {
-                  try { return String(ap.property) === String(propPrefixed) && String(ap.value) === String(labelVal); } catch { return false; }
-                })
-              : false;
-            if (!exists) {
-              entry.annotationProperties.push({
+            const propPrefixed = toPrefixed(predIri);
+            entry.annotationProperties.push({
                 property: propPrefixed,
                 value: labelVal,
               });
-            }
+
           }
           continue;
         }
@@ -428,6 +417,7 @@ export function mapQuadsToDiagram(
 
         // object is NamedNode (IRI) for data quads
         if (obj && (obj.termType === "NamedNode" || (obj.value && /^https?:\/\//i.test(String(obj.value))))) {
+          // assume the object is in subjects and needs no creation (else it would override the existing node in canvas)
           const objectIri = obj && obj.value ? String(obj.value) : "";
           if (!objectIri) continue;
 

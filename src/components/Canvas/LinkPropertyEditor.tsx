@@ -69,17 +69,21 @@ export const LinkPropertyEditor = ({
   }, [entityIndex]);
 
   const computedAllObjectProperties = useMemo(() => {
+    
+
     if (Array.isArray(entitySuggestions) && entitySuggestions.length > 0) {
       return entitySuggestions.map((ent: any) => ({
         value: ent.iri,
         label: ent.label || ent.iri,
-        description: ent.display || undefined,
+        // prefer sanitized display but do not include raw namespace strings created elsewhere
+        description: ent.display,
       }));
     }
     return (availableProperties || []).map((prop: any) => ({
       value: prop.iri,
       label: prop.label || prop.iri,
-      description: prop.namespace ? `From ${prop.namespace}` : undefined,
+      // Avoid showing raw namespace URLs as description; let UI compute labels via computeTermDisplay.
+      description: undefined,
     }));
   }, [entitySuggestions, availableProperties]);
 

@@ -38,7 +38,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { X, Plus, Info } from "lucide-react";
 // React Flow selection hook — allow editor to derive node when no explicit prop provided
-import { useOnSelectionChange } from "@xyflow/react";
 
 // Simple termForIri helper used for constructing N3 terms (handles blank nodes like "_:b0")
 const termForIri = (iri: string) => {
@@ -103,7 +102,6 @@ export const NodePropertyEditor = ({
   // Fat-map sources from ontology store (used only for autocomplete)
   const availableClasses = useOntologyStore((s) => s.availableClasses || []);
   const availableProperties = useOntologyStore((s) => s.availableProperties || []);
-  const entityIndex = useOntologyStore((s: any) => (s as any).entityIndex);
 
   // Build classEntities and property suggestions from fat-map
   const classEntities = useMemo(() => {
@@ -119,19 +117,8 @@ export const NodePropertyEditor = ({
   }, [availableClasses, availableEntities]);
 
   const propertySuggestions = useMemo(() => {
-    const common = [
-      "rdfs:label",
-      "rdfs:comment",
-      "skos:prefLabel",
-      "skos:altLabel",
-      "dc:description",
-      "owl:sameAs",
-    ];
     const fromFat = Array.isArray(availableProperties) ? availableProperties.map((p: any) => ({ value: String(p.iri || p.key || p), label: String(p.label || p.name || p.iri || p) })) : [];
-    const merged = new Map<string, any>();
-    common.forEach((p) => merged.set(p, { value: p, label: p }));
-    fromFat.forEach((p: any) => merged.set(String(p.value), p));
-    return Array.from(merged.values());
+    return fromFat;
   }, [availableProperties]);
 
   // Selection is driven by the parent KnowledgeCanvas which passes `nodeData` prop.
@@ -169,6 +156,8 @@ export const NodePropertyEditor = ({
     // Class/type info: prefer explicit rdfTypes array or classType/displayType fields
     const rdfTypes = Array.isArray(d.rdfTypes) ? d.rdfTypes.slice() : (d.rdfType ? [d.rdfType] : []);
     setRdfTypesState(rdfTypes);
+    // Capture the initial rdf.types snapshot so subsequent saves can compute removals.
+    initialRdfTypesRef.current = Array.isArray(rdfTypes) ? rdfTypes.slice() : [];
     // For UI selection show the first non-NamedIndividual meaningful class if present, otherwise empty
     const chosen = (rdfTypes || []).find((t: any) => t && !String(t).includes("NamedIndividual")) || d.classType || d.displayType || "";
     setNodeType(String(chosen || ""));

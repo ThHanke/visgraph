@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './command';
 import { Popover, PopoverContent, PopoverTrigger } from './popover';
 import { Button } from './button';
@@ -46,55 +46,61 @@ export const AutoComplete = ({
     }
   }, [autoOpen]);
 
+  // Subscribe to store slices individually so Zustand can optimize snapshots and avoid
+  // creating a new object on every render (this prevents infinite update warnings).
+  const availableProperties = useOntologyStore((s) => s.availableProperties);
+  const availableClasses = useOntologyStore((s) => s.availableClasses);
+  const namespaceRegistry = useOntologyStore((s) => s.namespaceRegistry);
+  const entityIndex = useOntologyStore((s) => (s as any).entityIndex);
+
   // Determine the selected option from the provided options first.
   const selectedOption = options.find(option => option.value === value);
 
   // Derive the final options array: prefer the caller-supplied `options` prop.
-  // If empty, fall back to the ontology store (fat-map) to provide sensible defaults
-  // for node/link editors that rely on store-driven suggestions.
-  const finalOptions = (Array.isArray(options) && options.length > 0) ? options : (() => {
-    {
-      const st = useOntologyStore.getState();
-      // Prefer entityIndex.suggestions when available (stable suggestions produced by mapping).
-      const entityIndex = (st as any).entityIndex;
-      if (entityIndex && Array.isArray(entityIndex.suggestions) && entityIndex.suggestions.length > 0) {
-        return entityIndex.suggestions.map((s: any) => ({
-          value: String(s.iri || s.id || s.key || ""),
-          label: String(s.label || s.display || shortLocalName(String(s.iri || s.id || s.key || ""))),
-          description: s.display || undefined,
-        }));
-      }
-      // Fallback to availableProperties from the fat-map
-      const av = Array.isArray((st as any).availableProperties) ? (st as any).availableProperties : [];
-      if (av && av.length > 0) {
-        return av.map((p: any) => ({
-          value: String(p.iri || p.key || p),
-          label: String(p.label || p.name || p.iri || p),
-          description: p.namespace ? `From ${p.namespace}` : undefined,
-        }));
-      }
+  // If empty, fall back to the ontology store but do NOT snapshot labels/descriptions —
+  // rely on computeTermDisplay for formatting.
+  const finalOptions: AutoCompleteOption[] = (Array.isArray(options) && options.length > 0) ? options : (() => {
+    // Fallback to availableProperties from the fat-map (produce minimal entries)
+    const av = Array.isArray(availableProperties) ? availableProperties : [];
+    if (av && av.length > 0) {
+      return av.map((p: any) => ({
+        value: String(p.iri || p.key || p),
+        label: "",
+        description: "",
+      }));
     }
-    return options;
+    return [];
   })();
 
-  // Ranking: prefer matches by rdfs:label first, then by IRI substring, then description.
-  // If no input (empty), return the full finalOptions list.
+  // Precompute display info (computeTermDisplay) once per option and memoize.
+  // Recompute when finalOptions or the store slices (fat-map/registry) change.
+  const cachedOptions = useMemo(() => {
+    return (finalOptions || []).map((opt) => {
+      const val = String(opt.value || "");
+      const td = computeTermDisplay(val);
+      return { opt, td };
+    });
+    // Recompute when options or the store slices used by computeTermDisplay change.
+  }, [finalOptions, availableProperties, availableClasses, namespaceRegistry]);
+
+  // Ranking: prefer matches by label (from computeTermDisplay) first, then by IRI substring, then description.
+  // If no input (empty), return the full cachedOptions list.
   const filteredOptions = (() => {
     const q = String(inputValue || "").trim().toLowerCase();
-    if (!q) return finalOptions;
-    const labelMatches = (finalOptions || []).filter((option) =>
-      String(option.label || "").toLowerCase().includes(q),
+    if (!q) return cachedOptions;
+    const labelMatches = (cachedOptions || []).filter(({ opt, td }) =>
+      String(td && (td.label || td.prefixed || td.short) || "").toLowerCase().includes(q),
     );
-    const valueMatches = (finalOptions || []).filter(
-      (option) =>
-        String(option.value || "").toLowerCase().includes(q) &&
-        !labelMatches.some((m) => m.value === option.value),
+    const valueMatches = (cachedOptions || []).filter(
+      ({ opt }) =>
+        String(opt.value || "").toLowerCase().includes(q) &&
+        !labelMatches.some((m) => m.opt.value === opt.value),
     );
-    const descMatches = (finalOptions || []).filter(
-      (option) =>
-        !labelMatches.some((m) => m.value === option.value) &&
-        !valueMatches.some((m) => m.value === option.value) &&
-        String(option.description || "").toLowerCase().includes(q),
+    const descMatches = (cachedOptions || []).filter(
+      ({ opt }) =>
+        !labelMatches.some((m) => m.opt.value === opt.value) &&
+        !valueMatches.some((m) => m.opt.value === opt.value) &&
+        String(opt.description || "").toLowerCase().includes(q),
     );
     return [...labelMatches, ...valueMatches, ...descMatches];
   })();
@@ -109,27 +115,18 @@ export const AutoComplete = ({
               className={cn("justify-between", className)}
               disabled={disabled}
             >
-              {(() => {
-                const mgrState = useOntologyStore.getState();
-                const rdfMgr = typeof mgrState.getRdfManager === 'function' ? mgrState.getRdfManager() : mgrState.rdfManager;
-                const format = (iri?: string) => {
-                  if (!iri) return "";
-                  const s = String(iri);
-                  if (s.startsWith('_:')) return s;
-                  {
-                    const nsMap = rdfMgr && typeof (rdfMgr as any).getNamespaces === 'function'
-                      ? (rdfMgr as any).getNamespaces()
-                      : (rdfMgr && typeof rdfMgr === 'object' ? (rdfMgr as unknown as Record<string,string>) : undefined);
-                    if (nsMap && nsMap[''] && s.startsWith(String(nsMap['']))) {
-                      return `:${shortLocalName(s)}`.replace(/^(https?:\/\/)?(www\.)?/, '');
-                    }
+                {(() => {
+                  // Prefer selectedOption.value, then value prop. Use computeTermDisplay (store-first) for formatting.
+                  const sel = selectedOption ? selectedOption.value : value;
+                  if (!sel) return placeholder;
+                  try {
+                    const td = computeTermDisplay(String(sel));
+                    return td.prefixed;
+                  } catch (e) {
+                    // If computeTermDisplay fails for any reason, fall back to shortLocalName
+                    return shortLocalName(String(sel));
                   }
-                  return shortLocalName(s).replace(/^(https?:\/\/)?(www\.)?/, '');
-                };
-                if (selectedOption) return format(selectedOption.value);
-                if (value) return format(value);
-                return placeholder;
-              })()}
+                })()}
               <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
             </Button>
           </PopoverTrigger>
@@ -143,41 +140,29 @@ export const AutoComplete = ({
           <CommandList>
             <CommandEmpty>{emptyMessage}</CommandEmpty>
             <CommandGroup>
-              {filteredOptions.map((option) => (
+              {filteredOptions.map(({ opt, td }) => (
                 <CommandItem
-                  key={option.value}
-                  value={option.value}
+                  key={opt.value}
+                  value={opt.value}
                   onSelect={() => {
-                    onValueChange(option.value);
+                    onValueChange(opt.value);
                     setOpen(false);
                     setInputValue('');
                   }}
                   className="flex items-center justify-between"
                 >
                   <div className="flex flex-col">
-                    <span>{(() => {
-                      const mgrState = useOntologyStore.getState();
-                      const rdfMgr = typeof mgrState.getRdfManager === 'function' ? mgrState.getRdfManager() : mgrState.rdfManager;
-                      {
-                        if (rdfMgr) {
-                          const td = computeTermDisplay(String(option.value), rdfMgr as any);
-                          const pref = (td.prefixed || td.short || '').replace(/^(https?:\/\/)?(www\.)?/, '');
-                          // Preserve leading ':' so options for the default namespace appear as ':local'
-                          return pref;
-                        }
-                      }
-                      return shortLocalName(String(option.value)).replace(/^(https?:\/\/)?(www\.)?/, '');
-                    })()}</span>
-                    {(option.label || option.description) && (
+                    <span>{td.prefixed}</span>
+                    {(td.label && td.labelSource === "fatmap") ? (
                       <span className="text-xs text-muted-foreground">
-                        {option.label ? option.label : option.description}
+                        {td.label}
                       </span>
-                    )}
+                    ) : null}
                   </div>
                   <Check
                     className={cn(
                       "ml-auto h-4 w-4",
-                      value === option.value ? "opacity-100" : "opacity-0"
+                      value === opt.value ? "opacity-100" : "opacity-0"
                     )}
                   />
                 </CommandItem>

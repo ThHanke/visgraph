@@ -2,10 +2,13 @@ import { test, expect, beforeEach } from "vitest";
 import { rdfManager } from "../../utils/rdfManager";
 import { computeTermDisplay } from "../../utils/termUtils";
 import { FIXTURES } from "../fixtures/rdfFixtures";
+import { useOntologyStore } from "../../stores/ontologyStore";
 
 beforeEach(() => {
-  // start from a clean manager for each test
+  // start from a clean manager and ontology store for each test
   rdfManager.clear();
+  useOntologyStore.getState().setNamespaceRegistry([]);
+  useOntologyStore.setState({ availableClasses: [], availableProperties: [] });
 });
 
 test("computeTermDisplay produces expected fields for absolute IRI loaded from fixture", async () => {
@@ -18,10 +21,12 @@ test("computeTermDisplay produces expected fields for absolute IRI loaded from f
 
   // Use an explicit registry for deterministic behavior (fixture declares ex:)
   const registry = [{ prefix: "ex", namespace: "http://example.com/", color: "#000000" }];
+  useOntologyStore.getState().setNamespaceRegistry(registry);
+  useOntologyStore.setState({ availableClasses: [{ iri: "http://example.com/john_doe", label: "John Doe", namespace: "http://example.com/", properties: [], restrictions: {} }] });
 
   // compute display for the full IRI using explicit registry and fat-map label
   const iri = "http://example.com/john_doe";
-  const info = computeTermDisplay(iri, registry, undefined, { availableClasses: [{ iri, label: "John Doe" }] });
+  const info = computeTermDisplay(iri);
   console.log("----- TEST LOG (absolute IRI) -----");
   console.log("Fixture (TTL):\n", ttl);
   console.log("Input IRI:", iri);
@@ -46,8 +51,10 @@ test("computeTermDisplay accepts a prefixed name and returns same resolved IRI/d
 
   // Use explicit registry for expansion/lookup (fixture-known)
   const registry2 = [{ prefix: "ex", namespace: "http://example.com/", color: "#000000" }];
+  useOntologyStore.getState().setNamespaceRegistry(registry2);
+  useOntologyStore.setState({ availableClasses: [{ iri: "http://example.com/john_doe", label: "John Doe", namespace: "http://example.com/", properties: [], restrictions: {} }] });
   const pref = "ex:john_doe";
-  const info = computeTermDisplay(pref, registry2, undefined, { availableClasses: [{ iri: "http://example.com/john_doe", label: "John Doe" }] });
+  const info = computeTermDisplay(pref);
   console.log("----- TEST LOG (prefixed input) -----");
   console.log("Fixture (TTL):\n", ttl);
   console.log("Input prefixed:", pref);
@@ -76,10 +83,12 @@ test("computeTermDisplay handles default ':' prefix declared in a fixture", asyn
 
   // Prefer an explicit registry for the default prefix declared in the fixture
   const registryDefault = [{ prefix: "", namespace: "http://example.org/", color: "#000000" }];
+  useOntologyStore.getState().setNamespaceRegistry(registryDefault);
+  useOntologyStore.setState({ availableClasses: [{ iri: "http://example.org/LocalThing", label: "Local Thing", namespace: "http://example.org/", properties: [], restrictions: {} }] });
 
   // Test using absolute IRI (use explicit registry)
   const abs = "http://example.org/LocalThing";
-  const infoAbs = computeTermDisplay(abs, registryDefault, undefined, { availableClasses: [{ iri: abs, label: "Local Thing" }] });
+  const infoAbs = computeTermDisplay(abs);
   console.log("----- TEST LOG (default prefix absolute IRI) -----");
   console.log("Fixture (TTL):\n", ttlDefault);
   console.log("Input absolute IRI:", abs);
@@ -97,7 +106,7 @@ test("computeTermDisplay handles default ':' prefix declared in a fixture", asyn
 
   // Also test passing the prefixed short form as input
   const prefLocal = ":LocalThing";
-  const infoPref = computeTermDisplay(prefLocal, registryDefault, undefined, { availableClasses: [{ iri: abs, label: "Local Thing" }] });
+  const infoPref = computeTermDisplay(prefLocal);
   console.log("----- TEST LOG (default prefix prefixed input) -----");
   console.log("Input prefixed:", prefLocal);
   console.log("Output TermDisplayInfo:", infoPref);

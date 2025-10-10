@@ -27,32 +27,6 @@ function CustomOntologyNodeImpl(props: NodeProps) {
   const nodeData = (data ?? {}) as NodeData;
   const showHandles = !!(connectionInProgress || !selected);
 
-  // // const rdfManager = useOntologyStore((s) => s.rdfManager);
-  // // // const ontologiesVersion = useOntologyStore((s) => s.ontologiesVersion);
-  // // const availableClasses = useOntologyStore((s) => s.availableClasses);
-  // // const availableProperties = useOntologyStore((s) => s.availableProperties);
-
-  // const lastFp = useRef<string | null>(null);
-  // const rdfTypesKey = Array.isArray(nodeData.rdfTypes)
-  //   ? nodeData.rdfTypes.join("|")
-  //   : "";
-  // useEffect(() => {
-  //   try {
-  //     const uri = String(nodeData.iri || "");
-  //     const fp = `${uri}`;
-  //     if (lastFp.current === fp) return;
-  //     lastFp.current = fp;
-  //     if (_loggedFingerprints.has(fp)) return;
-  //     _loggedFingerprints.add(fp);
-  //     const payload = {
-  //       uri,
-  //     };
-  //   } catch (_) {
-  //     /* ignore */
-  //   }
-  // }, [
-  //   nodeData.iri,
-  // ]);
 
   // Compute display info for the node IRI and for the meaningful type (classType) if present.
   const { badgeText, subtitleText, headerDisplay, typesList } = useMemo(() => {
@@ -60,10 +34,6 @@ function CustomOntologyNodeImpl(props: NodeProps) {
   const headerDisp =
     (nodeData.displayPrefixed as string);
 
-  // Badge: prefer the mapped/class display for the classType (if present).
-  // Compute a prefixed form for the classType using the effectiveRegistry. Avoid runtime
-  // exceptions by falling back to raw values.
-  
   let badge = "";
   // Prefer: mapper-provided displayClassType, then computed prefixed classDisplayPrefixed,
   // then node-level displayPrefixed, then raw classType, then short local name.
@@ -83,34 +53,6 @@ function CustomOntologyNodeImpl(props: NodeProps) {
     nodeData.primaryTypeIri,
     nodeData.rdfTypes,
   ]);
-
-  
-  // Simple helpers to choose readable badge foreground for a given hex color.
-  function hexToRgb(hex?: string) {
-    if (!hex) return null;
-    const c = hex.replace("#", "");
-    const full = c.length === 3 ? c.split("").map((s) => s + s).join("") : c;
-    const num = parseInt(full, 16);
-    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
-  }
-
-  // function relativeLuminance({ r, g, b }: { r: number; g: number; b: number }) {
-  //   const srgb = [r, g, b].map((v) => {
-  //     const s = v / 255;
-  //     return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-  //   });
-  //   return 0.2126 * srgb[0] + 0.7152 * srgb[1] + 0.0722 * srgb[2];
-  // }
-
-  // function pickBadgeForeground(hex?: string) {
-  //   const rgb = hexToRgb(hex || "");
-  //   // const L = relativeLuminance(rgb);
-  //   // contrast with white = (1.05)/(L+0.05), contrast with black = (L+0.05)/0.05
-  //   const contrastWhite = (1.05) / (L + 0.05);
-  //   const contrastBlack = (L + 0.05) / 0.05;
-  //   // prefer white if it has higher contrast, otherwise dark gray
-  //   return contrastWhite >= contrastBlack ? "#ffffff" : "#111827";
-  // }
 
   const nodeColor = nodeData.color;
   

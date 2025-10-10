@@ -22,9 +22,11 @@ vi.mock("../../components/Canvas/CanvasToolbar", () => {
 });
 
 vi.mock("../../components/Canvas/LinkPropertyEditor", () => {
+  // Provide both a default and a named export to satisfy consumers and tests.
   return {
     __esModule: true,
     default: (props: any) => React.createElement("div", { "data-testid": "link-editor" }),
+    LinkPropertyEditor: (props: any) => React.createElement("div", { "data-testid": "link-editor-named" }),
   };
 });
 

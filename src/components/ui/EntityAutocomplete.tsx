@@ -5,28 +5,6 @@ import { Button } from './button';
 import { ChevronDown, Check } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
-/**
- * Derive a short, human-readable label from a URI/prefixed name or short label.
- * Examples:
- * - "http://example.com/TestClass" -> "TestClass"
- * - "foaf:Person" -> "Person"
- * - "Person" -> "Person"
- */
-function shortLabelFromUri(uri?: string) {
-  if (!uri) return '';
-  // If it's an HTTP(S) URI, extract the last path/fragment segment (avoid splitting on the scheme colon)
-  if (/^https?:\/\//i.test(uri)) {
-    const parts = uri.split(new RegExp('[#/]')).filter(Boolean);
-    return parts.length ? parts[parts.length - 1] : uri;
-  }
-  // For prefixed names like "ex:Thing" or other URIs without http scheme, split on colon
-  if (uri.includes(':')) {
-    const parts = uri.split(':');
-    return parts[parts.length - 1];
-  }
-  const parts = uri.split(new RegExp('[#/]')).filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : uri;
-}
 
 export interface EntityOption {
  iri: string;
@@ -71,7 +49,7 @@ export const EntityAutocomplete = ({
     .slice(0, 5); // Show only top 5 matches
 
   const selectedEntity = entities.find(entity => entity.iri === value);
-  const displayLabel = selectedEntity ? selectedEntity.label : (value ? shortLabelFromUri(value) : placeholder);
+  const displayLabel = selectedEntity.iri;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -115,7 +93,7 @@ export const EntityAutocomplete = ({
                   <div className="flex flex-col">
                     <span className="font-medium">{entity.label}</span>
                     <span className="text-xs text-muted-foreground">
-                      {entity.namespace}:{entity.label} ({entity.rdfType})
+                      {entity.iri}
                     </span>
                     {entity.description && (
                       <span className="text-xs text-muted-foreground">
