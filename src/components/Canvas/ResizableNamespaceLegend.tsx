@@ -1,19 +1,22 @@
 /**
- * Resizable and draggable namespace legend component (simplified)
+ * ResizableNamespaceLegend (simplified)
  *
- * This version displays exactly the registered prefix -> namespace mappings
- * as provided by the RDF manager (or the optional `namespaces` prop). It
- * intentionally avoids additional filtering, heuristics, or normalization.
+ * This version removes the custom JS resize logic and relies on Tailwind/CSS
+ * for sizing constraints and internal scrolling. Drag-to-reposition is kept.
+ *
+ * Goals:
+ * - Remove size state and resize handlers (prevent inner overflow from breaking layout)
+ * - Keep header drag behavior so users can reposition the legend
+ * - Use Tailwind classes for min/max widths and heights (viewport-relative)
+ * - Ensure the content area is overflow-auto so long lists scroll instead of overflowing
  */
 
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import { Badge } from "../ui/badge";
 import NamespaceLegendCore from "./NamespaceLegendCore";
 import { useOntologyStore } from "@/stores/ontologyStore";
-import { GripVertical, X } from "lucide-react";
-import { usePaletteFromRdfManager } from "./core/namespacePalette";
-import { Button } from "../ui/button";
+import { GripVertical } from "lucide-react";
 import { Input } from "../ui/input";
+import { buildPaletteMap } from "./core/namespacePalette";
 
 interface ResizableNamespaceLegendProps {
   namespaces?: Record<string, string>;
@@ -23,10 +26,10 @@ interface ResizableNamespaceLegendProps {
 export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNamespaceLegendProps) => {
   const rdfManager = useOntologyStore((s) => s.rdfManager);
   const ontologiesVersion = useOntologyStore((s) => s.ontologiesVersion);
-  // Persisted registry is the single source of truth for legend entries and colors.
   const namespaceRegistry = useOntologyStore((s) => (Array.isArray(s.namespaceRegistry) ? s.namespaceRegistry : []));
+  const setNamespaceRegistry = useOntologyStore((s) => s.setNamespaceRegistry);
+
   // Build palette map directly from persisted registry (store-only).
-  // No fallbacks: colors must be present in namespaceRegistry (reconcile is responsible).
   const palette = (() => {
     try {
       const m: Record<string, string> = {};
@@ -45,13 +48,10 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
     }
   })();
 
-  // Derive the map we display: prefer explicit prop, otherwise use persisted registry (store-only).
-  // No fallbacks: if the persisted registry is empty the legend will not render entries.
   const displayNamespaces = useMemo(() => {
     try {
       if (namespaces && Object.keys(namespaces).length > 0) return namespaces;
 
-      // Build a mapping from the persisted namespaceRegistry array.
       const mapFromRegistry: Record<string, string> = {};
       try {
         (namespaceRegistry || []).forEach((e: any) => {
@@ -63,81 +63,51 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
         });
       } catch (_) { /* ignore registry read errors */ }
 
-      // Use the persisted registry only (no fallback)
       return mapFromRegistry;
     } catch (_) {
       return namespaces || {};
     }
   }, [namespaces, namespaceRegistry, ontologiesVersion]);
 
-  // Simple entries array reflecting the registered map exactly, sorted by prefix for stable order.
   const entries = useMemo(() => {
     return Object.entries(displayNamespaces)
       .map(([p, u]) => [String(p ?? ""), String(u ?? "")] as [string, string])
       .sort(([a], [b]) => a.localeCompare(b));
   }, [displayNamespaces, ontologiesVersion, palette]);
 
-  // Build palette map so legend colors match canvas palette (if available).
-
-  // Basic sizing/position state (kept minimal)
-  const calculateInitialSize = () => {
-    const maxWidth = Math.min(420, window.innerWidth * 0.32);
-    const maxHeight = Math.min(520, window.innerHeight * 0.6);
-    const minWidth = 240;
-    const minHeight = 140;
-    const estimatedHeight = Math.min(maxHeight, Math.max(minHeight, entries.length * 30 + 80));
-    return { width: maxWidth, height: estimatedHeight };
+  // Compute a reasonable default width based on viewport (used to position the legend initially).
+  const calculateInitialWidth = () => {
+    return Math.min(420, window.innerWidth * 0.32);
   };
 
-  const [position, setPosition] = useState({ x: Math.max(16, window.innerWidth - calculateInitialSize().width - 16), y: 16 });
-  const [size, setSize] = useState(calculateInitialSize());
+  // Keep only position and drag state (no JS resize)
+  const [position, setPosition] = useState(() => ({ x: Math.max(16, window.innerWidth - calculateInitialWidth() - 16), y: 16 }));
   const [isDragging, setIsDragging] = useState(false);
-  const [isResizing, setIsResizing] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 });
 
   // Local UI state for "Add namespace" flow
   const [showAdd, setShowAdd] = useState(false);
   const [newPrefix, setNewPrefix] = useState("");
   const [newUri, setNewUri] = useState("");
   const [error, setError] = useState("");
-  // tick to force small re-renders when needed after adding a namespace
   const [tick, setTick] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const [needsScroll, setNeedsScroll] = useState(false);
 
-  useEffect(() => {
-    if (contentRef.current) {
-      const { scrollHeight, clientHeight } = contentRef.current;
-      setNeedsScroll(scrollHeight > clientHeight);
-    }
-  }, [entries, size]);
+  const handlePointerDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
 
-  const handlePointerDown = (e: React.PointerEvent, type: "drag" | "resize") => {
-    {
-      e.preventDefault();
-      e.stopPropagation();
+    const el = containerRef.current as any;
+    if (el && typeof el.setPointerCapture === "function") {
+      try {
+        el.setPointerCapture((e as any).pointerId);
+      } catch (_) { /* ignore */ }
     }
 
-    // Try to capture the pointer on the container so we continue receiving pointer events
-    // even when the pointer leaves the visible element. This avoids using document-level
-    // listeners which can interfere with React Flow pointer handling.
-    {
-      const el = containerRef.current as any;
-      if (el && typeof el.setPointerCapture === "function") {
-        try { el.setPointerCapture((e as any).pointerId); } catch (_) { /* ignore */ }
-      }
-    }
-
-    if (type === "drag") {
-      setIsDragging(true);
-      setDragStart({ x: (e as any).clientX - position.x, y: (e as any).clientY - position.y });
-    } else {
-      setIsResizing(true);
-      setResizeStart({ x: (e as any).clientX, y: (e as any).clientY, width: size.width, height: size.height });
-    }
+    setIsDragging(true);
+    setDragStart({ x: (e as any).clientX - position.x, y: (e as any).clientY - position.y });
   };
 
   useEffect(() => {
@@ -145,58 +115,46 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
     if (!el) return;
 
     const handlePointerMove = (e: PointerEvent) => {
-      {
-        if (isDragging) {
-          setPosition({ x: Math.max(0, e.clientX - dragStart.x), y: Math.max(0, e.clientY - dragStart.y) });
-        } else if (isResizing) {
-          const newWidth = Math.max(200, resizeStart.width + (e.clientX - resizeStart.x));
-          const newHeight = Math.max(150, resizeStart.height + (e.clientY - resizeStart.y));
-          setSize({ width: newWidth, height: newHeight });
-        }
+      if (isDragging) {
+        setPosition({ x: Math.max(0, e.clientX - dragStart.x), y: Math.max(0, e.clientY - dragStart.y) });
       }
     };
 
     const handlePointerUp = (e: PointerEvent) => {
-      {
-        // release pointer capture if supported
-        try {
-          if (el && typeof (el as any).releasePointerCapture === "function") {
-            try { (el as any).releasePointerCapture((e as any).pointerId); } catch (_) { /* ignore */ }
-          }
-        } catch (_) { /* ignore */ }
-      }
+      try {
+        if (el && typeof (el as any).releasePointerCapture === "function") {
+          try { (el as any).releasePointerCapture((e as any).pointerId); } catch (_) { /* ignore */ }
+        }
+      } catch (_) { /* ignore */ }
       setIsDragging(false);
-      setIsResizing(false);
     };
 
-    if (isDragging || isResizing) {
-      {
-        el.addEventListener("pointermove", handlePointerMove);
-        el.addEventListener("pointerup", handlePointerUp);
-        el.addEventListener("pointercancel", handlePointerUp);
-      }
+    if (isDragging) {
+      el.addEventListener("pointermove", handlePointerMove);
+      el.addEventListener("pointerup", handlePointerUp);
+      el.addEventListener("pointercancel", handlePointerUp);
     }
 
     return () => {
-      {
-        el.removeEventListener("pointermove", handlePointerMove);
-        el.removeEventListener("pointerup", handlePointerUp);
-        el.removeEventListener("pointercancel", handlePointerUp);
-      }
+      el.removeEventListener("pointermove", handlePointerMove);
+      el.removeEventListener("pointerup", handlePointerUp);
+      el.removeEventListener("pointercancel", handlePointerUp);
     };
-  }, [isDragging, isResizing, dragStart, resizeStart]);
+  }, [isDragging, dragStart]);
 
   if (!entries || entries.length === 0) return null;
 
   return (
     <div
       ref={containerRef}
-      className="resizable-namespace-legend absolute bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border rounded-lg shadow-lg resize-none select-none"
-      style={{ left: position.x, top: position.y, width: size.width, height: size.height, zIndex: 50 }}
+      // Keep left/top inline so drag updates position, but let Tailwind control sizing.
+      // When the add form is open increase min-height so the stacked inputs are visible.
+      className={`absolute bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border rounded-lg shadow-lg select-none min-w-[240px] max-w-[420px] w-[min(32vw,420px)] ${showAdd ? "min-h-[240px]" : "min-h-[140px]"} max-h-[60vh] z-50`}
+      style={{ left: position.x, top: position.y }}
     >
       <div
         className="flex items-center justify-between p-3 border-b cursor-move bg-muted/50 rounded-t-lg"
-        onPointerDown={(e) => handlePointerDown(e, "drag")}
+        onPointerDown={handlePointerDown}
       >
         <div className="flex items-center gap-2">
           <GripVertical className="h-4 w-4 text-foreground" />
@@ -204,35 +162,35 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
         </div>
       </div>
 
-      {/* Add-namespace UI (tailwind-styled controls) */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
+      {/* Add-namespace UI */}
+      <div className="px-3 py-2 border-b bg-muted/30">
         <div className="flex items-center gap-2">
           <button
             type="button"
             className="text-foreground text-sm px-2 py-1 rounded border bg-transparent hover:bg-muted"
-            onClick={() => setShowAdd(true)}
+            onClick={() => setShowAdd((s) => !s)}
           >
             Add namespace
           </button>
         </div>
 
         {showAdd && (
-          <div className="ml-auto w-full max-w-full">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full">
-            <Input
-              aria-label="prefix"
-              placeholder="prefix"
-              className="w-full sm:w-24 text-sm min-w-0 flex-none bg-transparent bg-transparent! text-foreground !text-foreground placeholder:text-muted-foreground !placeholder:text-muted-foreground"
-              value={newPrefix}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPrefix(String(e.target.value))}
-            />
-            <Input
-              aria-label="namespace-uri"
-              placeholder="https://example.org/"
-              className="w-full sm:flex-1 text-sm min-w-0 bg-transparent bg-transparent! text-foreground !text-foreground placeholder:text-muted-foreground !placeholder:text-muted-foreground"
-              value={newUri}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUri(String(e.target.value))}
-            />
+          <div className="mt-2 w-full">
+            <div className="flex flex-col gap-2 w-full">
+              <Input
+                aria-label="prefix"
+                placeholder="prefix"
+                className="w-full text-sm min-w-0 bg-transparent text-foreground placeholder:text-muted-foreground"
+                value={newPrefix}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPrefix(String(e.target.value))}
+              />
+              <Input
+                aria-label="namespace-uri"
+                placeholder="https://example.org/"
+                className="w-full text-sm min-w-0 bg-transparent text-foreground placeholder:text-muted-foreground break-words"
+                value={newUri}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUri(String(e.target.value))}
+              />
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -252,7 +210,6 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
                         setError("Namespace must be an absolute http(s) URI");
                         return;
                       }
-                      // Avoid duplicates — consult the persisted namespaceRegistry (authoritative) instead of rdfManager directly.
                       const currentNsMap: Record<string, string> = {};
                       try {
                         (namespaceRegistry || []).forEach((entry: any) => {
@@ -267,15 +224,33 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
                         setError("Prefix already registered");
                         return;
                       }
-                      // addNamespace will handle toast notification and idempotency
                       try {
                         if (rdfManager && typeof rdfManager.addNamespace === "function") {
                           try { rdfManager.addNamespace(p, u); } catch (_) { /* ignore */ }
                         }
-                      } catch (_) {
-                        /* ignore */
-                      }
-                      // Force local refresh
+                      } catch (_) { /* ignore */ }
+
+                      // Update the persisted namespace registry in the store so the legend refreshes immediately.
+                      try {
+                        const mgr = rdfManager;
+                        const nsMap = mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
+                        const prefixes = Object.keys(nsMap || []).sort();
+                        const paletteMap = buildPaletteMap(prefixes || []);
+                        const registry = (prefixes || []).map((pr) => {
+                          try {
+                            return { prefix: String(pr), namespace: String((nsMap as any)[pr] || ""), color: String((paletteMap as any)[pr] || "") };
+                          } catch (_) {
+                            return { prefix: String(pr), namespace: String((nsMap as any)[pr] || ""), color: "" };
+                          }
+                        });
+                        try {
+                          if (typeof setNamespaceRegistry === "function") setNamespaceRegistry(registry);
+                          else if ((useOntologyStore as any).setState && typeof (useOntologyStore as any).setState === "function") {
+                            try { (useOntologyStore as any).setState((s:any) => ({ namespaceRegistry: registry })); } catch (_) { /* ignore */ }
+                          }
+                        } catch (_) { /* ignore */ }
+                      } catch (_) { /* ignore */ }
+
                       setShowAdd(false);
                       setNewPrefix("");
                       setNewUri("");
@@ -305,6 +280,7 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
           </div>
         )}
       </div>
+
       {error && (
         <div className="px-3 py-2 text-sm text-red-600">
           {error}
@@ -313,20 +289,12 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
 
       <div
         ref={contentRef}
-        className={needsScroll ? "p-3 overflow-y-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent" : "p-3 overflow-y-auto"}
-        style={{ height: size.height - 60, overflowY: needsScroll ? "auto" : "hidden" }}
+        className="p-3 overflow-auto min-w-0"
+        // make the content scrollable and bounded by the container's max-height.
+        // Use a slightly larger subtraction to account for header + add-form heights when open.
+        style={{ maxHeight: "calc(60vh - 10rem)" }}
       >
         <NamespaceLegendCore entries={entries} palette={palette} />
-      </div>
-
-      <div
-        className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize bg-muted/50 rounded-tl-lg border-l border-t border-border/50"
-        onPointerDown={(e) => handlePointerDown(e, "resize")}
-      >
-        <div className="absolute bottom-1 right-1 w-2 h-2">
-          <div className="absolute bottom-0 right-0 w-1 h-1 bg-muted-foreground/50 rounded-full"></div>
-          <div className="absolute bottom-0.5 right-0.5 w-0.5 h-0.5 bg-muted-foreground/30 rounded-full"></div>
-        </div>
       </div>
     </div>
   );
