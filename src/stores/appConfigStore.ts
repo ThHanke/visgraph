@@ -131,8 +131,8 @@ const defaultConfig: AppConfig = {
   disabledAdditionalOntologies: [],
   // New: opt-in persisted autoload. When true, configured additionalOntologies will be loaded automatically on startup.
   persistedAutoload: false,
-  // Blacklist defaults (enabled)
-  blacklistEnabled: true,
+  // Blacklist defaults (disabled by default)
+  blacklistEnabled: false,
   blacklistedPrefixes: ['owl', 'rdf', 'rdfs', 'xml', 'xsd'],
   blacklistedUris: [
     'http://www.w3.org/2002/07/owl',

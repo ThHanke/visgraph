@@ -731,19 +731,19 @@ const KnowledgeCanvas: React.FC = () => {
     {
       canvasActions.setLoading(true, 10, "Preparing SVG export...");
     }
-    try {
-      await exportSvgFull({
-        reactFlowContainerSelector: ".knowledge-graph-canvas",
-      });
-      toast.success("SVG exported (full)");
-    } catch (err) {
-      console.error(err);
-      toast.error("SVG export failed");
-    } finally {
-      {
-        canvasActions.setLoading(false, 0, "");
+      try {
+        // exportSvgFull does not accept a reactFlowContainerSelector option;
+        // call with no options and let the helper choose the viewport.
+        await exportSvgFull();
+        toast.success("SVG exported (full)");
+      } catch (err) {
+        console.error(err);
+        toast.error("SVG export failed");
+      } finally {
+        {
+          canvasActions.setLoading(false, 0, "");
+        }
       }
-    }
   }, [canvasActions]);
 
   const exportPng = useCallback(
@@ -751,20 +751,18 @@ const KnowledgeCanvas: React.FC = () => {
       {
         canvasActions.setLoading(true, 10, "Preparing PNG export...");
       }
-      try {
-        await exportPngFull({
-          reactFlowContainerSelector: ".knowledge-graph-canvas",
-          scale,
-        });
-        toast.success("PNG exported (full)");
-      } catch (err) {
-        console.error(err);
-        toast.error("PNG export failed");
-      } finally {
-        {
-          canvasActions.setLoading(false, 0, "");
+        try {
+          // exportPngFull accepts only filename and scale; pass scale directly.
+          await exportPngFull({ scale });
+          toast.success("PNG exported (full)");
+        } catch (err) {
+          console.error(err);
+          toast.error("PNG export failed");
+        } finally {
+          {
+            canvasActions.setLoading(false, 0, "");
+          }
         }
-      }
     },
     [canvasActions],
   );
@@ -1159,6 +1157,31 @@ const KnowledgeCanvas: React.FC = () => {
           "[VG_DEBUG] mgr.onSubjectsChange registration failed",
           err,
         );
+      }
+
+      // Safety-net: after registering, request an immediate subject emission for
+      // any subjects already present in the store so late subscribers receive a snapshot.
+      try {
+        if (mgr && typeof (mgr as any).triggerSubjectUpdate === "function" && typeof mgr.getStore === "function") {
+          try {
+            const dataGraph = namedNode("urn:vg:data");
+            const all = mgr.getStore().getQuads(null, null, null, dataGraph) || [];
+            const subs = Array.from(new Set((all || []).map((q: any) => {
+              try { return q && q.subject && (q.subject as any).value ? String((q.subject as any).value) : null; } catch { return null; }
+            }).filter(Boolean)));
+            if (subs.length > 0) {
+              // Fire-and-forget; do not block init on errors
+              (mgr as any).triggerSubjectUpdate(subs).catch((e: any) => {
+                console.debug("[VG_DEBUG] triggerSubjectUpdate (post-register) failed", e);
+              });
+            }
+          } catch (e) {
+            // ignore any failures here
+            console.debug("[VG_DEBUG] post-registration subject replay failed", e);
+          }
+        }
+      } catch (_) {
+        /* ignore */
       }
     } else {
       console.debug(

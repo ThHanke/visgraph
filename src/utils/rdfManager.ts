@@ -906,6 +906,40 @@ export class RDFManager {
         /* ignore */
       }
 
+      // After a load finalizes, proactively request a subject-level emission for the
+      // subjects that were part of this load. This helps ensure late-registered
+      // subscribers (e.g., UI components mounted slightly later in production)
+      // still receive notifications for the newly added subjects.
+      try {
+        if (Array.isArray(addedQuads) && addedQuads.length > 0) {
+          try {
+            const subs = Array.from(
+              new Set(
+                (addedQuads || [])
+                  .map((q: any) =>
+                    q && q.subject && (q.subject as any).value
+                      ? String((q.subject as any).value)
+                      : null,
+                  )
+                  .filter((s) => s),
+              ),
+            );
+            if (subs.length > 0) {
+              try {
+                // Use the public triggerSubjectUpdate API so buffering/reconcile path is reused.
+                await (this as any).triggerSubjectUpdate(subs);
+              } catch (_) {
+                /* ignore trigger failures */
+              }
+            }
+          } catch (_) {
+            /* ignore per-load subject trigger failures */
+          }
+        }
+      } catch (_) {
+        /* ignore overall errors */
+      }
+
       // Developer debug: report per-graph triple counts after a batch load
       try {
         const allQuads = this.store.getQuads(null, null, null, null) || [];
