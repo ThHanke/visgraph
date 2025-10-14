@@ -49,7 +49,9 @@ export const EntityAutocomplete = ({
     .slice(0, 5); // Show only top 5 matches
 
   const selectedEntity = entities.find(entity => entity.iri === value);
-  const displayLabel = selectedEntity.iri;
+  const displayLabel = selectedEntity
+    ? selectedEntity.label
+    : (value ?? placeholder);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

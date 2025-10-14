@@ -1,5 +1,6 @@
 import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
 import { generateEdgeId } from "./edgeHelpers";
+import initializeEdge from "./edgeStyle";
 import { shortLocalName, toPrefixed, getNodeColor } from "../../../utils/termUtils";
 import type { NodeData, LinkData } from "../../../types/canvas";
 
@@ -372,33 +373,35 @@ export function mapQuadsToDiagram(
             }
 
             const edgeId = String(generateEdgeId(subjectIri, bn, predIri || ""));
-            rfEdges.push({
-              id: edgeId,
-              source: subjectIri,
-              target: bn,
-              type: "floating",
-              data: {
-                key: edgeId,
-                from: subjectIri,
-                to: bn,
-                propertyUri: predIri,
-                propertyPrefixed: toPrefixed(
-                  predIri,
-                  options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                  options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-                  (options as any).registry
-                ),
-                propertyType: "",
-                label: toPrefixed(
-                  predIri,
-                  options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                  options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-                  (options as any).registry
-                ),
-                namespace: "",
-                rdfType: "",
-              } as LinkData,
-            });
+            rfEdges.push(
+              initializeEdge({
+                id: edgeId,
+                source: subjectIri,
+                target: bn,
+                type: "floating",
+                data: {
+                  key: edgeId,
+                  from: subjectIri,
+                  to: bn,
+                  propertyUri: predIri,
+                  propertyPrefixed: toPrefixed(
+                    predIri,
+                    options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                    options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                    (options as any).registry
+                  ),
+                  propertyType: "",
+                  label: toPrefixed(
+                    predIri,
+                    options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                    options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                    (options as any).registry
+                  ),
+                  namespace: "",
+                  rdfType: "",
+                } as LinkData,
+              })
+            );
           } else {
             {
               entry.annotationProperties.push({
@@ -429,33 +432,35 @@ export function mapQuadsToDiagram(
             }
 
             const edgeId = String(generateEdgeId(subjectIri, objectIri, predIri || ""));
-            rfEdges.push({
-              id: edgeId,
-              source: subjectIri,
-              target: objectIri,
-              type: "floating",
-              data: {
-                key: edgeId,
-                from: subjectIri,
-                to: objectIri,
-                propertyUri: predIri,
-                propertyPrefixed: toPrefixed(
-                  predIri,
-                  options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                  options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-                  (options as any).registry
-                ),
-                propertyType: "",
-                label: toPrefixed(
-                  predIri,
-                  options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                  options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-                  (options as any).registry
-                ),
-                namespace: "",
-                rdfType: "",
-              } as LinkData,
-            });
+            rfEdges.push(
+              initializeEdge({
+                id: edgeId,
+                source: subjectIri,
+                target: objectIri,
+                type: "floating",
+                data: {
+                  key: edgeId,
+                  from: subjectIri,
+                  to: objectIri,
+                  propertyUri: predIri,
+                  propertyPrefixed: toPrefixed(
+                    predIri,
+                    options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                    options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                    (options as any).registry
+                  ),
+                  propertyType: "",
+                  label: toPrefixed(
+                    predIri,
+                    options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
+                    options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
+                    (options as any).registry
+                  ),
+                  namespace: "",
+                  rdfType: "",
+                } as LinkData,
+              })
+            );
           } else {
             {
               entry.annotationProperties.push({

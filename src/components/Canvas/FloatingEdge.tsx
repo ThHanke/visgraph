@@ -5,6 +5,7 @@ import {
   EdgeProps,
   BaseEdge,
   useInternalNode,
+  MarkerType,
 } from "@xyflow/react";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip";
@@ -68,7 +69,11 @@ const FloatingEdge = memo((props: EdgeProps) => {
   let badgeText = "";
 
   const { edgeStyle, markerEnd, markerSize } = resolveEdgeRenderProps({ id, style, data });
-  const finalMarkerEnd = (props as any).markerEnd ?? propMarkerEnd ?? markerEnd;
+  const finalMarkerEnd =
+    (props as any).markerEnd ??
+    propMarkerEnd ??
+    markerEnd ??
+    { type: (MarkerType as any)?.Arrow ?? "arrow" };
 
   // 1) prefixed property from mapper -> props/data.propertyPrefixed
   badgeText = String((dataTyped as any)?.propertyPrefixed || (props as any)?.label || (dataTyped as any)?.label || "").trim();
