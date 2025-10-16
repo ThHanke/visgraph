@@ -84,7 +84,8 @@ test("KnowledgeCanvas renders only nodes/edges from mapQuadsToDiagram and ignore
           obj = {
             value: String(objRaw.value),
             termType: "Literal",
-            datatype: objRaw.datatype && obj.datatype && objRaw.datatype.value ? { value: String(objRaw.datatype.value) } : undefined,
+            // Fixed: use objRaw.datatype (was referencing undefined `obj.datatype` causing TypeError)
+            datatype: objRaw.datatype && objRaw.datatype.value ? { value: String(objRaw.datatype.value) } : undefined,
             language: objRaw.language || undefined,
           };
         } else {

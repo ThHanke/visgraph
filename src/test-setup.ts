@@ -1,10 +1,16 @@
-// Test environment polyfills for jsdom -> provide minimal DOMMatrix/DOMMatrixReadOnly
-// used by @xyflow/react internals when running under jsdom in Vitest.
-//
-// This file is loaded by the test runner setup (see vitest config or package.json).
-// It implements a forgiving DOMMatrixReadOnly that accepts CSS transform strings
-// like "matrix(a, b, c, d, tx, ty)" and exposes m11/m12/m21/m22/m41/m42 (m41/m42 as tx/ty).
-// If parsing fails, it falls back to the identity matrix.
+ // Test environment polyfills for jsdom -> provide minimal DOMMatrix/DOMMatrixReadOnly
+ // used by @xyflow/react internals when running under jsdom in Vitest.
+ //
+ // This file is loaded by the test runner setup (see vitest config or package.json).
+ // It implements a forgiving DOMMatrixReadOnly that accepts CSS transform strings
+ // like "matrix(a, b, c, d, tx, ty)" and exposes m11/m12/m21/m22/m41/m42 (m41/m42 as tx/ty).
+ // If parsing fails, it falls back to the identity matrix.
+ //
+ // Ensure a `window` global exists in the test environment (some runtimes may not provide it).
+ // Point it at globalThis so libraries that reference `window` work under Vitest/jsdom.
+ if (typeof (globalThis as any).window === "undefined") {
+   (globalThis as any).window = globalThis;
+ }
 //
 // Keep this file minimal and robust; it's only needed so xyflow/react can compute
 // element transforms during tests that render ReactFlow components.
@@ -154,3 +160,66 @@ void (async () => {
     }
   }
 })();
+ 
+// Additional lightweight polyfills to help React/ReactDOM and reactflow internals in jsdom tests.
+// Provide window.getSelection, document.activeElement helpers and a minimal global React Flow instance
+// so tests that query window.__VG_RF_INSTANCE or inspect selection/activeElement do not crash.
+{
+  if (typeof (globalThis as any).window !== "undefined") {
+    const w: any = globalThis.window;
+
+    // getSelection used by react-dom internals
+    if (typeof w.getSelection === "undefined") {
+      w.getSelection = () => {
+        return {
+          removeAllRanges: () => {},
+          addRange: () => {},
+          getRangeAt: () => undefined,
+          toString: () => "",
+        } as any;
+      };
+    }
+
+    // requestAnimationFrame / cancelAnimationFrame -> map to setTimeout so RAF-based queues run in tests
+    if (typeof w.requestAnimationFrame === "undefined") {
+      w.requestAnimationFrame = (cb: FrameRequestCallback) => {
+        return setTimeout(() => {
+          try { cb(Date.now()); } catch (_) { /* swallow */ }
+        }, 0) as unknown as number;
+      };
+    }
+    if (typeof w.cancelAnimationFrame === "undefined") {
+      w.cancelAnimationFrame = (id: number) => clearTimeout(id as any);
+    }
+
+    // document.activeElement / getActiveElementDeep used by react-dom - provide sane defaults
+    if (typeof (globalThis as any).document !== "undefined") {
+      try {
+        if (typeof (globalThis as any).document.activeElement === "undefined") {
+          (globalThis as any).document.activeElement = null;
+        }
+      } catch (_) { /* ignore */ }
+    }
+
+    // Provide a minimal global React Flow instance used by some tests to introspect nodes/edges.
+    // Tests will replace this as needed. Shape mirrors the small API used in tests: getNodes/getEdges.
+    if (typeof w.__VG_RF_INSTANCE === "undefined") {
+      w.__VG_RF_INSTANCE = {
+        _nodes: [] as any[],
+        _edges: [] as any[],
+        getNodes() {
+          return Array.isArray(this._nodes) ? this._nodes : [];
+        },
+        getEdges() {
+          return Array.isArray(this._edges) ? this._edges : [];
+        },
+        setNodes(nodes: any[]) {
+          this._nodes = Array.isArray(nodes) ? nodes : [];
+        },
+        setEdges(edges: any[]) {
+          this._edges = Array.isArray(edges) ? edges : [];
+        },
+      };
+    }
+  }
+}

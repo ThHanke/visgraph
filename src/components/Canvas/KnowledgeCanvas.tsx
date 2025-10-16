@@ -35,7 +35,6 @@ import mapQuadsToDiagram from "./core/mappingHelpers";
 import { CustomOntologyNode as OntologyNode } from "./CustomOntologyNode";
 import FloatingEdge from "./FloatingEdge";
 import FloatingConnectionLine from "./FloatingConnectionLine";
-import createEdge from "./core/createEdge";
 import { generateEdgeId } from "./core/edgeHelpers";
 import { usePaletteFromRdfManager } from "./core/namespacePalette";
 import { exportSvgFull, exportPngFull } from "./core/downloadHelpers";
@@ -2468,7 +2467,7 @@ const KnowledgeCanvas: React.FC = () => {
         <ResizableNamespaceLegend onClose={() => handleToggleLegend()} />
       ) : null}
       {canvasState.isLoading && (
-        <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-50 bg-card p-4 rounded-lg shadow-lg min-w-96">
+        <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-50 bg-card p-4 rounded-lg shadow-lg min-w-96 text-foreground">
           <div className="space-y-2">
             <div className="text-sm font-medium">
               {canvasState.loadingMessage}

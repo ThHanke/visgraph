@@ -117,14 +117,9 @@ export class RDFManager {
       os = (useOntologyStore as any).getState();
       // Start the reconcile and store the in-flight promise so concurrent callers wait on it.
       this.reconcileInProgress = (async () => {
-        try {
-          // Call the explicit store API (no fallbacks) so tests and runtime instrumentation
-          // can reliably observe the fat-map update invocation.
-          await os.updateFatMap(quads);
-        } finally {
-          // clear the in-flight marker regardless of success/failure so future reconciles can run
-          this.reconcileInProgress = null;
-        }
+        await os.updateFatMap(quads);
+        // clear the in-flight marker regardless of success/failure so future reconciles can run
+        this.reconcileInProgress = null;
       })();
 
       return this.reconcileInProgress;

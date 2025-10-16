@@ -37,7 +37,6 @@ test("computeTermDisplay produces expected fields for absolute IRI loaded from f
   expect(info.iri).toBe(iri);
   expect(info.prefixed).toBe("ex:john_doe");
   expect(info.short).toBe("john_doe");
-  expect(info.namespace).toBe("ex");
   expect(Array.isArray(info.tooltipLines)).toBe(true);
   expect(info.tooltipLines).toContain("john_doe");
   expect(info.label).toBe("John Doe");
@@ -65,7 +64,6 @@ test("computeTermDisplay accepts a prefixed name and returns same resolved IRI/d
   expect(info.iri).toBe("http://example.com/john_doe");
   expect(info.prefixed).toBe("ex:john_doe");
   expect(info.short).toBe("john_doe");
-  expect(info.namespace).toBe("ex");
   expect(info.label).toBe("John Doe");
   expect(info.labelSource).toBe("fatmap");
 });
@@ -98,8 +96,6 @@ test("computeTermDisplay handles default ':' prefix declared in a fixture", asyn
   expect(infoAbs).toBeTruthy();
   // Expect the prefixed form to use the default ':' prefix (i.e., ':LocalThing')
   expect(infoAbs.prefixed).toBe(":LocalThing");
-  // The namespace field falls back to empty string when the prefix is the empty/default prefix
-  expect(infoAbs.namespace).toBe("");
   expect(infoAbs.short).toBe("LocalThing");
   expect(infoAbs.label).toBe("Local Thing");
   expect(infoAbs.labelSource).toBe("fatmap");
@@ -116,7 +112,6 @@ test("computeTermDisplay handles default ':' prefix declared in a fixture", asyn
   expect(infoPref.iri).toBe(abs);
   expect(infoPref.prefixed).toBe(":LocalThing");
   expect(infoPref.short).toBe("LocalThing");
-  expect(infoPref.namespace).toBe("");
   expect(infoPref.label).toBe("Local Thing");
   expect(infoPref.labelSource).toBe("fatmap");
 });

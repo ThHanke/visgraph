@@ -25,7 +25,7 @@ export const ReasoningReportModal = memo(({ open, onOpenChange }: ReasoningRepor
   if (!currentReasoning) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-4xl max-h-[90vh] max-w-[min(90vw,64rem)] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] max-w-[min(90vw,64rem)] overflow-y-auto text-foreground">
           <DialogHeader>
             <DialogTitle>Reasoning Report</DialogTitle>
             <DialogDescription>

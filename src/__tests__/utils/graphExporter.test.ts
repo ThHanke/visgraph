@@ -10,7 +10,13 @@ describe('Ontology store export (rdfManager-backed)', () => {
     // Ensure a clean store between runs
     const s = useOntologyStore.getState();
     {
-      s.clearOntologies();
+      try {
+        if (s && typeof s.clearOntologies === "function") {
+          s.clearOntologies();
+        }
+      } catch (_) {
+        // Some test harnesses may initialize the store partially; ignore failures here.
+      }
     }
   });
 

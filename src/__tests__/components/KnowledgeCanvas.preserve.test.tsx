@@ -103,8 +103,8 @@ describe("KnowledgeCanvas incremental mapping preserves data (reworked)", () => 
     // Allow any pending timers/mapping runs to complete and then unmount the component
     await act(async () => {
       {
-        // advance timers to flush any debounced mapping work or queued setTimeouts
-        vi.advanceTimersByTime(500);
+        // Allow any pending timers/debounced work to complete by awaiting a short real timeout.
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
     });
 

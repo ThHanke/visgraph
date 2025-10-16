@@ -666,6 +666,51 @@ export function mapQuadsToDiagram(
       isTBox: !!isTBox,
     };
 
+    // Compose a human-friendly subtitle for the node and attach as nodeData.subtitle.
+    // Prefer explicit labels where available and fall back to already-computed
+    // prefixed values (displayPrefixed / displayclassType) and finally to short local names.
+    try {
+      const resolveFromAvailable = (iriToFind: string | undefined, arr: any[] | undefined) => {
+        try {
+          if (!iriToFind || !Array.isArray(arr)) return "";
+          const key = String(iriToFind);
+          const found = arr.find((e: any) => {
+            const cand = String((e && (e.iri || e.key || e)) || "");
+            return cand === key;
+          });
+          if (!found) return "";
+          return String(found.label || found.name || found.title || found.display || "").trim();
+        } catch (_) { return ""; }
+      };
+
+      const subjectText = (() => {
+        // prefer explicit node label (info.label), then already-computed displayPrefixed, then shortLocalName
+        const lab = info.label && String(info.label).trim() ? String(info.label).trim() : "";
+        if (lab && lab !== iri) return lab;
+        if (nodeData.displayPrefixed && String(nodeData.displayPrefixed).trim()) return String(nodeData.displayPrefixed).trim();
+        return shortLocalName(String(iri));
+      })();
+
+      const classText = (() => {
+        if (!classType) return "";
+        // prefer label from availableClasses snapshot (if provided)
+        const fromAvail = resolveFromAvailable(classType, options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined);
+        if (fromAvail) return fromAvail;
+        // reuse already-computed prefixed displayclassType
+        if (nodeData.displayclassType && String(nodeData.displayclassType).trim()) return String(nodeData.displayclassType).trim();
+        // final fallback: short local name
+        return shortLocalName(String(classType));
+      })();
+
+      if (classText) {
+        nodeData.subtitle = `${subjectText} is a ${classText}`;
+      } else {
+        nodeData.subtitle = subjectText;
+      }
+    } catch (_) {
+      // non-fatal: if anything goes wrong, leave subtitle undefined
+    }
+
     const rfNode: RFNode<NodeData> = {
       id: iri,
       type: "ontology",

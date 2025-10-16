@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { AutoComplete } from '../ui/AutoComplete';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { Slider } from '../ui/slider';
@@ -411,7 +410,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
             Add Node
           </Button>
         </DialogTrigger>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md text-foreground">
           <DialogHeader>
             <DialogTitle>Add New Node</DialogTitle>
             <DialogDescription>
@@ -465,7 +464,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
             Load Ontology
           </Button>
         </DialogTrigger>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] max-w-[min(90vw,32rem)] overflow-y-auto">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] max-w-[min(90vw,32rem)] overflow-y-auto text-foreground">
           <DialogHeader>
             <DialogTitle>Load Ontology</DialogTitle>
             <DialogDescription>
@@ -788,7 +787,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
             Load File
           </Button>
         </DialogTrigger>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md text-foreground">
           <DialogHeader>
             <DialogTitle>Load RDF File</DialogTitle>
             <DialogDescription>

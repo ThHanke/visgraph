@@ -109,7 +109,7 @@ const defaultConfig: AppConfig = {
   currentLayout: 'horizontal',
   layoutAnimations: true,
   layoutSpacing: 120,
-  autoApplyLayout: false,
+  autoApplyLayout: true,
   showLegend: false,
   viewMode: 'abox',
   canvasTheme: 'auto',
@@ -130,7 +130,7 @@ const defaultConfig: AppConfig = {
   ],
   disabledAdditionalOntologies: [],
   // New: opt-in persisted autoload. When true, configured additionalOntologies will be loaded automatically on startup.
-  persistedAutoload: false,
+  persistedAutoload: true,
   // Blacklist defaults (disabled by default)
   blacklistEnabled: false,
   blacklistedPrefixes: ['owl', 'rdf', 'rdfs', 'xml', 'xsd'],

@@ -39,14 +39,14 @@ function CustomOntologyNodeImpl(props: NodeProps) {
   // then node-level displayPrefixed, then raw classType, then short local name.
   badge = String(nodeData.displayclassType || "");
 
-  // Subtitle: prefer humanLabel, then label, then displayPrefixed/displayShort, then short local name.
+  // Subtitle: prefer explicit subtitle, then humanLabel, then label, then displayPrefixed/displayShort, then short local name.
   const subtitle =
-    (nodeData.label as string) ||
-    (nodeData.displayPrefixed as string);
+    (nodeData.subtitle as string);
   return { badgeText: badge, subtitleText: subtitle, headerDisplay: headerDisp, typesList: nodeData.rdfTypes};
   }, [
     nodeData.classType,
     nodeData.label,
+    nodeData.subtitle,
     nodeData.iri,
     nodeData.displayPrefixed,
     nodeData.displayShort,
