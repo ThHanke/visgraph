@@ -693,12 +693,7 @@ export class RDFManager {
           // Use undefined to signal a full rebuild only when there are no per-subject snapshots.
           const reconcileArg = _storeSnapshots;
 
-          // Do NOT clear buffered quads yet; perform reconcile first so the emitted quads are exactly the ones reconciled.
-          // Run reconciliation for these snapshots (runReconcile is quads-only and returns a shared in-flight promise).
-          if (Array.isArray(reconcileArg)) {
-            await (this as any).runReconcile(reconcileArg);
-          }
-
+          
           // After successful reconcile (or if none needed), clear buffered deltas and emit subscribers with authoritative quads.
           try {
             for (const s of subjects) {
@@ -826,64 +821,50 @@ export class RDFManager {
       // Push the raw object into a dev-only collection on window so developers can
       // inspect exactly what parsers emit before we decide a strict runtime type.
       // Normalize collected prefixes into the shape expected by applyParsedNamespaces.
-      try {
-        const normalizedPrefixMap: Record<string, any> = {};
-        // prefixes may contain strings, NamedNode-like objects, or our new { prefix, raw } objects.
-        for (const [p, v] of Object.entries(prefixes || {})) {
-          try {
-            const key = p === null || typeof p === "undefined" ? "" : String(p);
-            let uri: string | undefined = undefined;
-            if (v && typeof (v as any).raw === "string" && String((v as any).raw).trim() !== "") {
-              uri = String((v as any).raw).trim();
-            } else if (typeof v === "string" && String(v).trim() !== "") {
-              uri = String(v).trim();
-            } else if (v && typeof (v as any).value === "string" && String((v as any).value).trim() !== "") {
-              uri = String((v as any).value).trim();
-            }
-            if (typeof uri === "string" && uri !== "") {
-              // Keep the new object shape for downstream consumers.
-              // Store default (empty) prefix under the literal ":" key as requested.
-              const storageKey = key === "" ? ":" : key;
-              normalizedPrefixMap[storageKey] = { prefix: storageKey, raw: uri };
-            }
-          } catch (_) {
-            /* ignore per-entry */
+      const normalizedPrefixMap: Record<string, any> = {};
+      // prefixes may contain strings, NamedNode-like objects, or our new { prefix, raw } objects.
+      for (const [p, v] of Object.entries(prefixes || {})) {
+        try {
+          const key = p === null || typeof p === "undefined" ? "" : String(p);
+          let uri: string | undefined = undefined;
+          if (v && typeof (v as any).raw === "string" && String((v as any).raw).trim() !== "") {
+            uri = String((v as any).raw).trim();
+          } else if (typeof v === "string" && String(v).trim() !== "") {
+            uri = String(v).trim();
+          } else if (v && typeof (v as any).value === "string" && String((v as any).value).trim() !== "") {
+            uri = String((v as any).value).trim();
           }
-        }
-        // Preserve raw & normalized prefixes for developer inspection
-        try {
-          (window as any).__VG_RAW_PARSED_PREFIXES = (window as any).__VG_RAW_PARSED_PREFIXES || [];
-          (window as any).__VG_RAW_PARSED_PREFIXES.push({
-            id: loadId || null,
-            raw: prefixes,
-            normalized: normalizedPrefixMap,
-            time: Date.now(),
-          });
+          if (typeof uri === "string" && uri !== "") {
+            // Keep the new object shape for downstream consumers.
+            // Store default (empty) prefix under the literal ":" key as requested.
+            const storageKey = key === "" ? ":" : key;
+            normalizedPrefixMap[storageKey] = { prefix: storageKey, raw: uri };
+          }
         } catch (_) {
-          /* ignore */
-        }
-        // Pass the normalized object-shape map to applyParsedNamespaces (new shape)
-        this.applyParsedNamespaces(normalizedPrefixMap);
-      } catch (e) {
-        // Fallback to original behavior if normalization fails
-        try {
-          this.applyParsedNamespaces(prefixes);
-        } catch (_) {
-          /* ignore */
+          /* ignore per-entry */
         }
       }
+      // Preserve raw & normalized prefixes for developer inspection
+      try {
+        (window as any).__VG_RAW_PARSED_PREFIXES = (window as any).__VG_RAW_PARSED_PREFIXES || [];
+        (window as any).__VG_RAW_PARSED_PREFIXES.push({
+          id: loadId || null,
+          raw: prefixes,
+          normalized: normalizedPrefixMap,
+          time: Date.now(),
+        });
+      } catch (_) {
+        /* ignore */
+      }
+      // Pass the normalized object-shape map to applyParsedNamespaces (new shape)
+      this.applyParsedNamespaces(normalizedPrefixMap);
 
-      // Run reconciliation with the quads we added so consumers get authoritative snapshot
       try {
         if (Array.isArray(addedQuads) && addedQuads.length > 0) {
-          await (this as any).runReconcile(addedQuads);
-        } else {
-          try {
+            await (this as any).runReconcile(addedQuads);
+          } else {
             this.notifyChange();
-          } catch (_) {
-            /* ignore */
           }
-        }
       } catch (e) {
         try {
           fallback("rdf.finalizeLoad.reconcile_failed", { error: String(e) });

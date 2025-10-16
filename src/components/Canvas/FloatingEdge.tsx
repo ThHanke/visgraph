@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import React, { memo, useState, useCallback } from "react";
 import {
   getBezierPath,
   EdgeLabelRenderer,
@@ -78,10 +78,16 @@ const FloatingEdge = memo((props: EdgeProps) => {
   // 1) prefixed property from mapper -> props/data.propertyPrefixed
   badgeText = String((dataTyped as any)?.propertyPrefixed || (props as any)?.label || (dataTyped as any)?.label || "").trim();
 
+  const [isHovered, setIsHovered] = useState(false);
+  const onHoverEnter = useCallback(() => setIsHovered(true), []);
+  const onHoverLeave = useCallback(() => setIsHovered(false), []);
+
   return (
     <>
 
-      <BaseEdge id={id} path={edgePath} markerEnd={finalMarkerEnd} style={edgeStyle} />
+      <g className={`edge-container ${isHovered ? "vg-edge--hover" : ""}`} onMouseEnter={onHoverEnter} onMouseLeave={onHoverLeave}>
+        <BaseEdge id={id} path={edgePath} markerEnd={finalMarkerEnd} style={edgeStyle} />
+      </g>
       <EdgeLabelRenderer>
         <div
           style={{
@@ -95,6 +101,8 @@ const FloatingEdge = memo((props: EdgeProps) => {
                   <button
                   type="button"
                   className="p-0 bg-transparent border-0 pointer-events-auto"
+                  onMouseEnter={onHoverEnter}
+                  onMouseLeave={onHoverLeave}
                 >
                   <Badge
                     variant={hasEdgeErrors ? "destructive" : "secondary"}

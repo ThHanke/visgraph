@@ -102,7 +102,6 @@
   position: absolute;
 }
 
-
 /* Keep controls visible above canvas; UI layer should use Tailwind classes where possible */
 .react-flow__controls {
   z-index: 60;
@@ -135,7 +134,7 @@
   /* background: var(--node-bg); */
   color: var(--node-foreground);
   /* border-color: var(--node-border); */
-  box-shadow: var(--node-shadow);
+  /* box-shadow: var(--node-shadow); */
 }
 
 /* Keep react-flow markers positioned */
@@ -165,6 +164,61 @@
 /* Edge container fallback: allows using currentColor on SVG children for theme-aware strokes/fills */
 .edge-container {
   color: var(--edge-default);
+}
+
+/* Visual "halo" for edges when hovered (applies to path, markers and connection circles).
+   We toggle the class vg-edge--hover on the SVG group wrapper in FloatingEdge so the
+   path/markers and the label can share the same visual state. Uses --edge-selected token
+   so the glow follows theme tokens. */
+
+/* Edge hover styling (stronger visible color + single, stronger drop-shadow).
+   Rather than stacking many shadows, increase the stroke prominence and use one
+   stronger drop-shadow so the edge appears more vivid and intense. */
+.edge-container.vg-edge--hover {
+  color: var(--edge-selected);
+}
+
+/* Make the visible stroke thicker + fully opaque when hovered so color reads stronger.
+   Apply a single stronger drop-shadow for a clearer glow without multiple layered shadows. */
+.edge-container.vg-edge--hover path.react-flow__edge-path {
+  stroke: var(--edge-selected) !important;
+  stroke-width: calc(var(--edge-width) * 2.5) !important;
+  stroke-opacity: 1 !important;
+  filter: drop-shadow(0 0 14px var(--edge-selected));
+  transition: stroke-width 160ms ease, filter 220ms cubic-bezier(0.2,0.8,0.2,1);
+}
+
+/* Keep the interaction path wide for pointer targeting but visually transparent;
+   still apply the same single drop-shadow so the halo follows pointer area. */
+.edge-container.vg-edge--hover path.react-flow__edge-interaction {
+  stroke-opacity: 0;
+  filter: drop-shadow(0 0 14px var(--edge-selected));
+  transition: filter 220ms cubic-bezier(0.2,0.8,0.2,1);
+}
+
+/* Make markers clearly use the selected color and receive the same single glow. */
+.edge-container.vg-edge--hover .react-flow__arrowhead,
+.edge-container.vg-edge--hover marker.react-flow__arrowhead {
+  fill: var(--edge-selected) !important;
+  stroke: var(--edge-selected) !important;
+  filter: drop-shadow(0 0 10px var(--edge-selected));
+  transition: filter 220ms cubic-bezier(0.2,0.8,0.2,1);
+}
+
+/* Ensure label-based hover also exposes pointer affordance and doesn't block events */
+.edge-label-renderer__custom-edge button {
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+}
+
+/* Selected node halo: React Flow marks nodes with .react-flow__node.selected.
+   Provide an additional glow so selection reads clearly on the canvas. */
+.react-flow__node.selected > * {
+  /* Keep existing ring/outline but add a blue glow */
+  /* box-shadow: 0 8px 28px rgba(59,130,246,0.12), 0 0 18px rgba(59,130,246,0.12); */
+  filter: drop-shadow(0 0 12px var(--edge-selected));
+  transition: box-shadow 160ms ease, filter 160ms ease, border-color 160ms ease;
 }
 
 /* FloatingConnectionLine visuals: use currentColor and theme tokens for stroke/size */
