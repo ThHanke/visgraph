@@ -1056,12 +1056,36 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     for (const p of existingProps) propByIri[String(p.iri)] = p;
     for (const p of Object.values(propsMap)) propByIri[String(p.iri)] = { ...(propByIri[String(p.iri)] || {}), ...(p || {}) };
 
-    // Single atomic state update
-    useOntologyStore.setState((s: any) => ({
-      availableClasses: Object.values(classByIri),
-      availableProperties: Object.values(propByIri),
-      ontologiesVersion: (s.ontologiesVersion || 0) + 1,
-    }));
+    // Compute namespace registry now so we can persist classes/properties and registry
+    // in a single atomic state update. This avoids a race where consumers see an
+    // updated fat-map but the namespaceRegistry is not yet persisted (causes missing colors).
+    try {
+      const mgr = get().rdfManager;
+      const nsMap = mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
+      const prefixes = Object.keys(nsMap || []).sort();
+      const paletteMap = buildPaletteMap(prefixes || []);
+      const registry = (prefixes || []).map((p) => {
+        try {
+          return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: String((paletteMap as any)[p] || "") };
+        } catch (_) {
+          return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: "" };
+        }
+      });
+
+      useOntologyStore.setState((s: any) => ({
+        availableClasses: Object.values(classByIri),
+        availableProperties: Object.values(propByIri),
+        ontologiesVersion: (s.ontologiesVersion || 0) + 1,
+        namespaceRegistry: registry,
+      }));
+    } catch (_) {
+      // Fallback to previous behavior if registry computation fails
+      useOntologyStore.setState((s: any) => ({
+        availableClasses: Object.values(classByIri),
+        availableProperties: Object.values(propByIri),
+        ontologiesVersion: (s.ontologiesVersion || 0) + 1,
+      }));
+    }
 
     // Debug: log a small sample of availableClasses when updateFatMap runs with parsed quads.
     // Keeps output safe for tests by wrapping in try/catch and avoiding heavy object serialization.
@@ -1080,24 +1104,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
       
 
-      // Also persist the namespace registry as part of incremental reconciles so
-      // consumers observing namespaceRegistry (the legend) receive colors immediately.
-      {
-        try {
-          const mgr = get().rdfManager;
-          const nsMap = mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
-          const prefixes = Object.keys(nsMap || []).sort();
-          const paletteMap = buildPaletteMap(prefixes || []);
-          const registry = (prefixes || []).map((p) => {
-            try {
-              return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: String((paletteMap as any)[p] || "") };
-            } catch (_) {
-              return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: "" };
-            }
-          });
-          useOntologyStore.setState((s: any) => ({ namespaceRegistry: registry }));
-        } catch (_) { /* ignore incremental registry persist failures */ }
-      }
+      
   },
 
   getRdfManager: () => {
@@ -1173,26 +1180,37 @@ async function buildFatMap(rdfMgr?: any): Promise<void> {
   const mergedProps = Object.values(propsMap) as ObjectProperty[];
   const mergedClasses = Object.values(classesMap) as OntologyClass[];
 
-  useOntologyStore.setState((st: any) => ({
-    availableProperties: mergedProps,
-    availableClasses: mergedClasses,
-    ontologiesVersion: (st.ontologiesVersion || 0) + 1,
-  }));
+  // Compute and persist namespace registry in the same atomic update as the fat-map so consumers
+  // that rely on both availableClasses/availableProperties and namespaceRegistry see a consistent state.
+  try {
+    const nsMap = mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
+    const prefixes = Object.keys(nsMap || []).sort();
+    const paletteMap = buildPaletteMap(prefixes || []);
+    const registry = (prefixes || []).map((p) => {
+      try {
+        return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: String((paletteMap as any)[p] || "") };
+      } catch (_) {
+        return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: "" };
+      }
+    });
+
+    useOntologyStore.setState((st: any) => ({
+      availableProperties: mergedProps,
+      availableClasses: mergedClasses,
+      ontologiesVersion: (st.ontologiesVersion || 0) + 1,
+      namespaceRegistry: registry,
+    }));
+  } catch (_) {
+    useOntologyStore.setState((st: any) => ({
+      availableProperties: mergedProps,
+      availableClasses: mergedClasses,
+      ontologiesVersion: (st.ontologiesVersion || 0) + 1,
+    }));
+  }
 
       
 
-  // Persist namespace registry
-  const nsMap = mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
-  const prefixes = Object.keys(nsMap || []).sort();
-  const paletteMap = buildPaletteMap(prefixes || []);
-  const registry = (prefixes || []).map((p) => {
-    try {
-      return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: String((paletteMap as any)[p] || "") };
-    } catch (_) {
-      return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: "" };
-    }
-  });
-  useOntologyStore.setState((s:any) => ({ namespaceRegistry: registry }));
+  
 }
 
 /**

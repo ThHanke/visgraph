@@ -1,5 +1,5 @@
  
-import React, { memo, useEffect, useRef, useMemo } from "react";
+import React, { memo, useEffect, useRef, useMemo, useState } from "react";
 import {
   Handle, 
   Position,
@@ -104,7 +104,50 @@ function CustomOntologyNodeImpl(props: NodeProps) {
 
 
   const rootRef = useRef<HTMLDivElement | null>(null);
+  // Track hover-open state for selected nodes so we can open tooltips even when pointer events
+  // are intercepted by overlays/handles. We compute hover by listening to global mousemove while
+  // the node is selected to avoid touching pointer-events on handles.
+  const [hoverOpen, setHoverOpen] = useState(false);
   // const lastMeasuredRef = useRef<{ w: number; h: number } | null>(null);
+
+  // Listen to global mousemove and compute whether the pointer is inside this
+  // node's bounding rect. We do this for all nodes (selected or not) because
+  // pointerenter may be intercepted by overlay handles; global detection is more
+  // reliable and still lightweight for a single node element.
+  React.useEffect(() => {
+    const nodeEl = rootRef.current;
+    if (!nodeEl) return;
+
+    const onMove = (e: MouseEvent) => {
+      try {
+        const rect = nodeEl.getBoundingClientRect();
+        const inside =
+          e.clientX >= rect.left &&
+          e.clientX <= rect.right &&
+          e.clientY >= rect.top &&
+          e.clientY <= rect.bottom;
+        // Debug probe: log global mousemove detection for this node.
+        try {
+          // eslint-disable-next-line no-console
+          console.debug("[VG_DEBUG] node onMove probe", { nodeId: id, inside });
+        } catch (_) {}
+        setHoverOpen(inside);
+      } catch (_) {
+        // ignore
+      }
+    };
+
+    window.addEventListener("mousemove", onMove, { capture: true });
+    // Also listen for pointerdown to immediately close (avoids sticking open after clicks)
+    const onDown = () => setHoverOpen(false);
+    window.addEventListener("pointerdown", onDown, { capture: true });
+
+    return () => {
+      window.removeEventListener("mousemove", onMove, { capture: true });
+      window.removeEventListener("pointerdown", onDown, { capture: true });
+      setHoverOpen(false);
+    };
+  }, []);
 
 
   // Size reporting removed — component is now pure/read-only and does not observe element size.
@@ -165,13 +208,29 @@ function CustomOntologyNodeImpl(props: NodeProps) {
         style={{ background: nodeColor || "transparent" }}
       />
 
-      <Tooltip delayDuration={250}>
+      {/* Always use a controlled Tooltip to avoid switching between controlled/uncontrolled.
+          hoverOpen is updated by either local pointer events (unselected) or the global
+          mousemove probe (selected). */}
+      <Tooltip delayDuration={250} open={hoverOpen} onOpenChange={setHoverOpen}>
         <TooltipTrigger asChild>
-          <div className="px-4 py-3 min-w-0 flex-1 w-auto node-bg">
+          <div
+            className="px-4 py-3 min-w-0 flex-1 w-auto node-bg"
+            onPointerEnter={() => {
+              // For unselected nodes we open tooltip on direct pointer events.
+              if (!selected) {
+                try { setHoverOpen(true); } catch (_) { /* ignore */ }
+              }
+            }}
+            onPointerLeave={() => {
+              if (!selected) {
+                try { setHoverOpen(false); } catch (_) { /* ignore */ }
+              }
+            }}
+          >
             <div className="flex items-center gap-3 mb-2">
               <div
                 className="text-sm font-bold text-foreground truncate"
-                title={headerDisplay}
+                aria-label={headerDisplay}
               >
                 {headerDisplay}
               </div>

@@ -280,6 +280,13 @@
   cursor: default; /* don't show grab cursor for whole node body */
 }
 
+/* Ensure node content sits above handles by default so hover events reach the node.
+   This keeps handles available for pointerdown but allows pointerenter/hover on the
+   visible node content so tooltips and hover behaviors work. */
+.knowledge-graph-canvas .react-flow__node > * {
+  z-index: 3;
+}
+
 /* Prefer showing pointer on handles so users can spot where to start a connection.
    Use !important sparingly to overcome inline utility classes that may set
    pointer-events or transparency. */
@@ -297,6 +304,9 @@
   transform: none;
   border: none;
   opacity: 0;
+
+  /* DEBUG: outline handles was removed after debugging. */
+  z-index: 2;
 }
 
 /* Slightly enlarge and highlight handle on node hover to make it discoverable */

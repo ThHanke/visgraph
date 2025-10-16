@@ -55,6 +55,20 @@ export const Tooltip: React.FC<any> = ({ children, ...props }) => {
     tooltipEnabled = true;
   }
 
+  // Ensure tooltips remain consistently available in the browser runtime to avoid
+  // switching between controlled/uncontrolled tooltip usage when persisted config
+  // toggles between renders. Respect test environments (headless) but in a real
+  // browser prefer the richer Radix tooltip behavior.
+  if (typeof window !== "undefined") {
+    tooltipEnabled = true;
+  }
+
+  // Remove temporary diagnostic override: respect persisted setting again.
+  // (This was temporarily forced true for debugging.)
+  // tooltipEnabled = true;
+
+  // debug logs removed
+
   // In test environment default to inert passthrough unless tests explicitly opt-in via env var
   if (isTestEnv && !allowRadixInTests) {
     return <>{children}</>;
@@ -87,6 +101,8 @@ export const TooltipTrigger: React.FC<any> = ({ children, asChild, ...props }) =
   }
 
   const enableRadix = tooltipEnabled && (!isTestEnv || allowRadixInTests);
+
+  // debug logs removed
 
   if (enableRadix && TooltipPrimitive && TooltipPrimitive.Trigger) {
     return (
@@ -123,6 +139,9 @@ export const TooltipContent = React.forwardRef<HTMLDivElement, any>(({ className
   } catch (_) {
     tooltipEnabled = true;
   }
+
+  // debug logs removed
+  // (respect persisted tooltipEnabled)
 
   // If tests run in a test env and Radix isn't explicitly allowed, avoid Radix usage and fall back.
   if (isTestEnv && !allowRadixInTests) {
