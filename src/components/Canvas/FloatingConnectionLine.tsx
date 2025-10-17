@@ -52,6 +52,29 @@ const FloatingConnectionLine: React.FC<Props> = ({
         cy={ty || toY}
         r={3}
         className="edge-connection-circle"
+        onPointerDown={(ev: any) => {
+          // Temporarily let the underlying node receive pointer events by disabling
+          // pointer-events on the handle for the duration of the press. Restore on pointerup.
+          try {
+            const el = ev.currentTarget as HTMLElement;
+            // Keep previous inline styles untouched where possible
+            el.style.pointerEvents = "none";
+            // Optionally lower z-index to ensure the node is above visually for the event
+            el.style.zIndex = "0";
+            const restore = () => {
+              try {
+                el.style.pointerEvents = "";
+                el.style.zIndex = "";
+              } catch (_) {
+                // ignore
+              }
+            };
+            // Restore once when pointer is released (capture to ensure we get it)
+            window.addEventListener("pointerup", restore, { once: true, capture: true } as any);
+          } catch (_) {
+            // ignore any DOM errors
+          }
+        }}
       />
     </g>
   );

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-expressions, no-useless-catch, react-hooks/exhaustive-deps */
+/* eslint-disable @typescript-eslint/no-unused-expressions, no-useless-catch, react-hooks/exhaustive-deps, no-empty */
 import React, {
   useCallback,
   useEffect,
@@ -479,6 +479,22 @@ const KnowledgeCanvas: React.FC = () => {
   const layoutInProgressRef = useRef<boolean>(false);
   const lastLayoutFingerprintRef = useRef<string | null>(null);
   const suppressSelectionRef = useRef<boolean>(false);
+  const lastDragStopRef = useRef<number | null>(null);
+  // Time window (ms) during which selection/clicks after a drag are ignored
+  const RECENT_DRAG_MS = 500;
+
+  // Track the pointer-down snapshot for the most recent pointer interaction.
+  // This lets us deterministically know whether the node was selected at the
+  // moment the user pressed down, which avoids selection-then-drag races.
+  const lastPointerDownRef = useRef<{
+    pointerId: any;
+    nodeId: any;
+    wasSelectedAtDown: boolean;
+  } | null>(null);
+
+  // Pointer id that started a drag — used to cancel click-open when a drag occurred.
+  const dragStartedPointerRef = useRef<any | null>(null);
+
   // One-shot capture-phase mouseup handler ref used to intercept the native mouseup
   // event that fires at the end of a node drag. This helps avoid timing races where
   // a mouseup propagates and triggers click/double-click handlers that open editors.
@@ -850,6 +866,20 @@ const KnowledgeCanvas: React.FC = () => {
       // would immediately close an editor opened by double-click.
       if (suppressSelectionRef.current) {
         return;
+      }
+
+      // Ignore selection events that arrive immediately after a node drag stop.
+      // This prevents late-arriving selection/click events from opening editors.
+      try {
+        const last = lastDragStopRef.current;
+        if (typeof last === "number" && Date.now() - last < RECENT_DRAG_MS) {
+          console.debug("[VG_DEBUG] selection ignored due to recent drag", {
+            ageMs: Date.now() - last,
+          });
+          return;
+        }
+      } catch (_) {
+        // ignore guard failures
       }
 
       const selNodes = Array.isArray(selection.nodes) ? selection.nodes : [];
@@ -1743,28 +1773,110 @@ const KnowledgeCanvas: React.FC = () => {
     (event: any, node: any) => {
       event?.stopPropagation && event.stopPropagation();
 
+      // Short suppress guard to avoid selection-change races opening other editors.
       suppressSelectionRef.current = true;
       setTimeout(() => {
         suppressSelectionRef.current = false;
       }, 0);
 
-      const wasSelected = !!(node && (node as any).selected);
-      setSelectedNodePayload(node || null);
-      if (wasSelected) {
-        setNodeEditorOpen(true);
-      } else {
-        {
-          setNodes((prev = []) =>
-            (prev || []).map((n) => ({
-              ...n,
-              selected: String(n.id) === String(node.id),
-            })),
-          );
+      // Defensive: if we just finished a drag, do not open the editor.
+      try {
+        const last = lastDragStopRef.current;
+        if (typeof last === "number" && Date.now() - last < RECENT_DRAG_MS) {
+          console.debug("[VG_DEBUG] double-click suppressed due to recent drag", {
+            ageMs: Date.now() - last,
+          });
+          return;
         }
+      } catch (_) {
+        // ignore guard failures
+      }
+
+      // Open the node editor on double-click without mutating React Flow node state.
+      try {
+        setSelectedNodePayload(node || null);
+        setNodeEditorOpen(true);
+      } catch (_) {
+        // ignore UI open failures
       }
     },
-    [setNodes],
+    [],
   );
+
+  // Record pointer-down snapshot: whether the node was selected at the time the user pressed.
+  const onNodeMouseDown = useCallback((event: any, node: any) => {
+    try {
+      const pid =
+        (event && event.pointerId) ||
+        (event && event.nativeEvent && (event.nativeEvent as any).pointerId) ||
+        "mouse";
+      lastPointerDownRef.current = {
+        pointerId: pid,
+        nodeId: node ? String(node.id) : null,
+        wasSelectedAtDown: !!(node && (node as any).selected),
+      };
+    } catch (_) {
+      // ignore
+      lastPointerDownRef.current = null;
+    }
+  }, []);
+
+  const onNodeClickStrict = useCallback((event: any, node: any) => {
+    // Respect the suppress guard used for drag/double-click races.
+    if (suppressSelectionRef.current) return;
+
+    // If a drag just finished recently, ignore this click as it may be a
+    // synthetic/late click that should not open the editor.
+    try {
+      const last = lastDragStopRef.current;
+      if (typeof last === "number" && Date.now() - last < RECENT_DRAG_MS) {
+        console.debug("[VG_DEBUG] click suppressed due to recent drag", {
+          ageMs: Date.now() - last,
+        });
+        return;
+      }
+    } catch (_) {
+      // ignore guard failures
+    }
+
+    try {
+      const pid =
+        (event && event.pointerId) ||
+        (event && event.nativeEvent && (event.nativeEvent as any).pointerId) ||
+        "mouse";
+
+      // Check pointer-down snapshot. If the pointerdown happened on this node and the node
+      // was already selected at down AND no drag was started for this pointer, treat as a
+      // deliberate click-to-open. If the pointerdown shows the node was not selected at down,
+      // then this click was the selection action and should not open the editor.
+      const snap = lastPointerDownRef.current;
+      if (snap && String(snap.nodeId) === String(node && node.id)) {
+        const dragStartedForPointer = dragStartedPointerRef.current === snap.pointerId;
+        // Clear snapshot immediately
+        lastPointerDownRef.current = null;
+
+        if (snap.wasSelectedAtDown && !dragStartedForPointer) {
+          // Deliberate click on an already-selected node -> open editor
+          setSelectedNodePayload(node || null);
+          setNodeEditorOpen(true);
+        }
+        return;
+      }
+    } catch (_) {
+      // ignore and fallback
+      lastPointerDownRef.current = null;
+    }
+
+    // Fallback: preserve previous behavior (open only when node already selected)
+    try {
+      if (node && (node as any).selected) {
+        setSelectedNodePayload(node || null);
+        setNodeEditorOpen(true);
+      }
+    } catch (_) {
+      // ignore
+    }
+  }, []);
 
   // Drag performance metrics: simple measurement of drag event frequency and derived FPS.
   // Enabled only when the global debugAll flag is active in app config to avoid overhead in production.
@@ -1785,17 +1897,32 @@ const KnowledgeCanvas: React.FC = () => {
 
   const onNodeDragStart = useCallback(
     (event: any, node: any) => {
-      if (!isDebugMetricsEnabled()) return;
       const now =
         typeof performance !== "undefined" && performance.now
           ? performance.now()
           : Date.now();
-      dragMetricsRef.current.start = now;
-      dragMetricsRef.current.last = now;
-      dragMetricsRef.current.count = 0;
-      dragMetricsRef.current.intervals = [];
-      {
-        (window as any).__VG_DRAG_METRICS_ACTIVE = true;
+
+      // Only update debug metrics when enabled (keep metrics isolated).
+      if (isDebugMetricsEnabled()) {
+        dragMetricsRef.current.start = now;
+        dragMetricsRef.current.last = now;
+        dragMetricsRef.current.count = 0;
+        dragMetricsRef.current.intervals = [];
+        {
+          (window as any).__VG_DRAG_METRICS_ACTIVE = true;
+        }
+      }
+
+      // Mark drag started for the pointer associated with this event so click-open is cancelled.
+      try {
+        const pid =
+          (event && event.pointerId) ||
+          (event && event.nativeEvent && (event.nativeEvent as any).pointerId) ||
+          lastPointerDownRef.current?.pointerId ||
+          "mouse";
+        dragStartedPointerRef.current = pid;
+      } catch (_) {
+        // ignore
       }
 
       // Install a one-shot capture-phase handler for pointerup + mouseup to intercept
@@ -1888,6 +2015,61 @@ const KnowledgeCanvas: React.FC = () => {
         }
       } catch (_) {
         /* ignore debug errors */
+      }
+
+      // Unselect-on-drag-stop disabled — rely on the RECENT_DRAG_MS guard to suppress
+      // late selection/click events instead. If you want selection to be re-applied
+      // after a deliberate click, we can add that behavior separately.
+
+      // Record last drag stop timestamp to suppress the click that often follows dragend.
+      try {
+        lastDragStopRef.current = Date.now();
+
+        // Also clear/consume the dragStarted marker for the pointer related to this event.
+        try {
+          const pid =
+            (event && event.pointerId) ||
+            (event && event.nativeEvent && (event.nativeEvent as any).pointerId) ||
+            lastPointerDownRef.current?.pointerId ||
+            "mouse";
+          if (dragStartedPointerRef.current === pid) dragStartedPointerRef.current = null;
+        } catch (_) {
+          // ignore
+        }
+
+        // Install a one-shot capture-phase click handler that discards the next click
+        // event if it arrives immediately after dragstop. This defends against the
+        // browser dispatching a synthetic click after a drag sequence.
+        const stopClick = (ev: Event) => {
+          try {
+            const last = lastDragStopRef.current;
+            if (typeof last === "number" && Date.now() - last < 500) {
+              try {
+                if (typeof (ev as any).stopImmediatePropagation === "function")
+                  (ev as any).stopImmediatePropagation();
+              } catch (_) {}
+              try {
+                if (typeof (ev as any).stopPropagation === "function")
+                  (ev as any).stopPropagation();
+              } catch (_) {}
+              try {
+                if (typeof (ev as any).preventDefault === "function")
+                  (ev as any).preventDefault();
+              } catch (_) {}
+            }
+          } catch (_) {
+            // ignore
+          }
+        };
+        try {
+          window.addEventListener("click", stopClick as any, { capture: true, once: true } as any);
+        } catch (_) {
+          try {
+            (window as any).addEventListener("click", stopClick as any, true);
+          } catch (_) {}
+        }
+      } catch (_) {
+        // ignore
       }
 
       // Remove any installed capture-phase handlers (defensive)
@@ -2626,6 +2808,7 @@ const KnowledgeCanvas: React.FC = () => {
           onEdgesChange={onEdgesChange}
           onInit={onInit}
           onNodeDoubleClick={onNodeDoubleClickStrict}
+          onNodeClick={onNodeClickStrict}
           onNodeDragStart={onNodeDragStart}
           onNodeDrag={onNodeDrag}
           onNodeDragStop={onNodeDragStop}
