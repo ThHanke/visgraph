@@ -335,8 +335,6 @@ export function mapQuadsToDiagram(
             entry.annotationProperties.push({
               property: toPrefixed(
                 predIri,
-                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
                 (options as any).registry
               ),
               value: val,
@@ -352,8 +350,6 @@ export function mapQuadsToDiagram(
             entry.annotationProperties.push({
               property: toPrefixed(
                 predIri,
-                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
                 (options as any).registry
               ),
               value: litVal,
@@ -386,17 +382,10 @@ export function mapQuadsToDiagram(
                   propertyUri: predIri,
                   propertyPrefixed: toPrefixed(
                     predIri,
-                    options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                    options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
                     (options as any).registry
                   ),
                   propertyType: "",
-                  label: toPrefixed(
-                    predIri,
-                    options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                    options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-                    (options as any).registry
-                  ),
+                  label: options.availableProperties.find(p => String(p.iri) === String(predIri))?.label,
                   namespace: "",
                   rdfType: "",
                 } as LinkData,
@@ -407,8 +396,6 @@ export function mapQuadsToDiagram(
               entry.annotationProperties.push({
                 property: toPrefixed(
                   predIri,
-                  options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                  options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
                   (options as any).registry
                 ),
                 value: bn,
@@ -445,17 +432,10 @@ export function mapQuadsToDiagram(
                   propertyUri: predIri,
                   propertyPrefixed: toPrefixed(
                     predIri,
-                    options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                    options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
                     (options as any).registry
                   ),
                   propertyType: "",
-                  label: toPrefixed(
-                    predIri,
-                    options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                    options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-                    (options as any).registry
-                  ),
+                  label: options.availableProperties.find(p => String(p.iri) === String(predIri))?.label,
                   namespace: "",
                   rdfType: "",
                 } as LinkData,
@@ -466,8 +446,6 @@ export function mapQuadsToDiagram(
               entry.annotationProperties.push({
                 property: toPrefixed(
                   predIri,
-                  options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                  options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
                   (options as any).registry
                 ),
                 value: objectIri,
@@ -617,8 +595,6 @@ export function mapQuadsToDiagram(
       label: info.label || iri,
       displayPrefixed: toPrefixed(
         iri,
-        options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-        options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
         (options as any).registry
       ),
       displayShort: shortLocalName(iri),
@@ -626,8 +602,6 @@ export function mapQuadsToDiagram(
         try {
           const pref = toPrefixed(
             classType,
-            options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-            options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
             (options as any).registry
           );
           return pref;

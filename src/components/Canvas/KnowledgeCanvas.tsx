@@ -32,8 +32,8 @@ import type { ReactFlowInstance } from "@xyflow/react";
 import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
 import type { NodeData, LinkData } from "../../types/canvas";
 import mapQuadsToDiagram from "./core/mappingHelpers";
-import { CustomOntologyNode as OntologyNode } from "./CustomOntologyNode";
-import FloatingEdge from "./FloatingEdge";
+import { RDFNode as OntologyNode } from "./RDFNode";
+import ObjectPropertyEdge from "./ObjectPropertyEdge";
 import FloatingConnectionLine from "./FloatingConnectionLine";
 import { generateEdgeId } from "./core/edgeHelpers";
 import { usePaletteFromRdfManager } from "./core/namespacePalette";
@@ -1819,100 +1819,7 @@ const KnowledgeCanvas: React.FC = () => {
     [config],
   );
 
-  const onEdgeDoubleClickStrict = useCallback(
-    (event: any, edge: any) => {
-      event?.stopPropagation && event.stopPropagation();
-
-      suppressSelectionRef.current = true;
-      setTimeout(() => {
-        suppressSelectionRef.current = false;
-      }, 0);
-
-      const srcId =
-        edge.source || edge.from || (edge.data && edge.data.from) || "";
-      const tgtId = edge.target || edge.to || (edge.data && edge.data.to) || "";
-
-      const findNode = (id: string) =>
-        nodes.find((n) => {
-          try {
-            return (
-              String(n.id) === String(id) ||
-              String((n as any).key) === String(id) ||
-              (n.data &&
-                (String(n.data.iri) === String(id) ||
-                  String(n.data.key) === String(id)))
-            );
-          } catch {
-            return false;
-          }
-        });
-
-      const sourceNode = findNode(srcId);
-      const targetNode = findNode(tgtId);
-
-      linkSourceRef.current = sourceNode ? (sourceNode.data as any) : null;
-      linkTargetRef.current = targetNode ? (targetNode.data as any) : null;
-
-      const edgeData = edge.data || {};
-      const propUriFromEdge =
-        edgeData.propertyUri ||
-        edgeData.propertyType ||
-        edge.propertyUri ||
-        edge.propertyType ||
-        "";
-      let propLabelFromEdge = "";
-      if (edgeData.label) {
-        propLabelFromEdge = String(edgeData.label);
-      } else {
-        const foundPropEdge =
-          (availableProperties || []).find(
-            (p: any) => String(p.iri) === String(propUriFromEdge),
-          ) ||
-          (loadedOntologies || [])
-            .flatMap((o: any) => o.properties || [])
-            .find((p: any) => String(p.iri) === String(propUriFromEdge));
-        if (foundPropEdge && (foundPropEdge.label || foundPropEdge.name)) {
-          propLabelFromEdge = String(foundPropEdge.label || foundPropEdge.name);
-        } else {
-          const mgrLocal =
-            getRdfManagerRef.current && getRdfManagerRef.current();
-          if (mgrLocal && propUriFromEdge) {
-            propLabelFromEdge = String(propUriFromEdge);
-          } else {
-            propLabelFromEdge = "";
-          }
-        }
-      }
-
-      const selectedLinkPayload = {
-        id: edge.id || edge.key || `${srcId}-${tgtId}`,
-        key: edge.id || edge.key || `${srcId}-${tgtId}`,
-        source: srcId,
-        target: tgtId,
-        data: {
-          propertyType: edgeData.propertyType || edge.propertyType || "",
-          propertyUri: propUriFromEdge,
-          label: propLabelFromEdge,
-        },
-      };
-
-      const wasSelected = !!(edge && (edge as any).selected);
-      setSelectedLinkPayload(selectedLinkPayload || edge || null);
-      if (wasSelected) {
-        setLinkEditorOpen(true);
-      } else {
-        {
-          setEdges((prev = []) =>
-            (prev || []).map((e) => ({
-              ...e,
-              selected: String(e.id) === String(edge.id),
-            })),
-          );
-        }
-      }
-    },
-    [nodes, availableProperties, loadedOntologies, setEdges],
-  );
+  
 
   const onEdgeClickStrict = useCallback(
     (event: any, edge: any) => {
@@ -2149,8 +2056,8 @@ const KnowledgeCanvas: React.FC = () => {
     [OntologyNode],
   );
   const memoEdgeTypes = useMemo(
-    () => ({ floating: FloatingEdge }),
-    [FloatingEdge],
+    () => ({ floating: ObjectPropertyEdge }),
+    [ObjectPropertyEdge],
   );
   const memoConnectionLine = useMemo(
     () => FloatingConnectionLine,

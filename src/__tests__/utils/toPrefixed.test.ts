@@ -85,24 +85,24 @@ describe("toPrefixed (integration with RDF store)", () => {
 
     // Ensure toPrefixed returns prefixed form for the property and class,
     // but accept full-IRI fallbacks in runtimes that do not expose a prefix map.
-    const propPrefixed = toPrefixed("http://example.com/prop", availableProperties, availableClasses, registryMap);
+    const propPrefixed = toPrefixed("http://example.com/prop", registryMap);
     expect(propPrefixed === "ex:prop" || propPrefixed === "http://example.com/prop").toBe(true);
 
-    const classPrefixed = toPrefixed("http://example.com/Type", availableProperties, availableClasses, registryMap);
+    const classPrefixed = toPrefixed("http://example.com/Type", registryMap);
     expect(classPrefixed === "ex:Type" || classPrefixed === "http://example.com/Type").toBe(true);
 
     // Also ensure non-registered IRI falls back to full IRI (per decision)
-    const fallback = toPrefixed("http://other.org/x/Name", [], [], registryMap);
+    const fallback = toPrefixed("http://other.org/x/Name", registryMap);
     expect(fallback).toBe("http://other.org/x/Name");
 
     // Also ensure that passing the base namespace returns the registered prefix with an empty local part (e.g. "ex:")
-    const basePrefixed = toPrefixed("http://example.com/", [], [], registryMap);
+    const basePrefixed = toPrefixed("http://example.com/", registryMap);
     // Accept either the prefixed base ("ex:") or full-IRI fallback depending on runtime registry availability.
     expect(basePrefixed === "ex:" || basePrefixed === "http://example.com/").toBe(true);
 
     // Test empty/default prefix declaration (': <http://example.org/prefix/>') -> should return ':Local'
     const registryWithEmpty = { ...registryMap, "": "http://example.org/prefix/" };
-    const emptyPrefixed = toPrefixed("http://example.org/prefix/Local", [], [], registryWithEmpty);
+    const emptyPrefixed = toPrefixed("http://example.org/prefix/Local", registryWithEmpty);
     // Accept either the prefixed short form ':Local' or the runtime may return the full IRI fallback.
     expect(emptyPrefixed === ":Local" || emptyPrefixed === "http://example.org/prefix/Local").toBe(true);
   }, 20000);

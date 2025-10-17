@@ -334,3 +334,13 @@
   border-radius: inherit;
   pointer-events: none; /* leave events to the handle itself */
 }
+
+.react-flow .react-flow__edges {
+	z-index: 1;
+}
+.react-flow .react-flow__nodes {
+	z-index: 2;
+}
+.react-flow__edgelabel-renderer {
+	z-index: 2;
+}

@@ -38,7 +38,7 @@ vi.mock("@xyflow/react", () => {
 });
 
 import ResizableNamespaceLegend from "../../components/Canvas/ResizableNamespaceLegend";
-import { CustomOntologyNode } from "../../components/Canvas/CustomOntologyNode";
+import { RDFNode } from "../../components/Canvas/RDFNode";
 import { ReactFlowProvider } from "@xyflow/react";
 
 describe("Legend + registry-driven prefixed display", () => {
@@ -100,7 +100,7 @@ describe("Legend + registry-driven prefixed display", () => {
       React.createElement(
         ReactFlowProvider,
         null,
-        React.createElement(CustomOntologyNode as any, { id: "node-1", data: mappedNode!.data, selected: false })
+        React.createElement(RDFNode as any, { id: "node-1", data: mappedNode!.data, selected: false })
       )
     );
 

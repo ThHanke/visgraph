@@ -58,7 +58,7 @@ vi.mock("@xyflow/react", () => {
   };
 });
 
-import { CustomOntologyNode } from "../../components/Canvas/CustomOntologyNode";
+import { RDFNode } from "../../components/Canvas/RDFNode";
 import { ReactFlowProvider } from "@xyflow/react";
 
 describe("CustomOntologyNode (owl:Ontology) display", () => {
@@ -112,7 +112,7 @@ describe("CustomOntologyNode (owl:Ontology) display", () => {
       React.createElement(
         ReactFlowProvider,
         null,
-        React.createElement(CustomOntologyNode as any, { id: "node-1", data: mappedNode!.data, selected: false })
+        React.createElement(RDFNode as any, { id: "node-1", data: mappedNode!.data, selected: false })
       )
     );
 

@@ -12,7 +12,7 @@ import { NodeData } from "../../types/canvas";
 import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip";
 
 
-function CustomOntologyNodeImpl(props: NodeProps) {
+function RDFNodeImpl(props: NodeProps) {
   const { data, selected, id } = props;
   const connection = useConnection();
 
@@ -126,11 +126,6 @@ function CustomOntologyNodeImpl(props: NodeProps) {
           e.clientX <= rect.right &&
           e.clientY >= rect.top &&
           e.clientY <= rect.bottom;
-        // Debug probe: log global mousemove detection for this node.
-        try {
-          // eslint-disable-next-line no-console
-          console.debug("[VG_DEBUG] node onMove probe", { nodeId: id, inside });
-        } catch (_) {}
         setHoverOpen(inside);
       } catch (_) {
         // ignore
@@ -378,5 +373,5 @@ function CustomOntologyNodeImpl(props: NodeProps) {
 }
 
 
-export const CustomOntologyNode = memo(CustomOntologyNodeImpl);
-CustomOntologyNode.displayName = "CustomOntologyNode";
+export const RDFNode = memo(RDFNodeImpl);
+RDFNode.displayName = "RDFNode";

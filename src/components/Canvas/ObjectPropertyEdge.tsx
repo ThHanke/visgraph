@@ -25,7 +25,7 @@ import type { LinkData } from "../../types/canvas";
  * Implementation keeps logic straightforward and avoids deep nesting to prevent
  * accidental syntax errors introduced during iterative edits.
  */
-const FloatingEdge = memo((props: EdgeProps) => {
+const ObjectPropertyEdge = memo((props: EdgeProps) => {
   const { id, source, target, style, data, markerEnd: propMarkerEnd } = props as any;
   const dataTyped = data as LinkData;
 
@@ -66,7 +66,20 @@ const FloatingEdge = memo((props: EdgeProps) => {
 
   // Resolve badge text using centralized helper so new and persisted edges share formatting.
   // Prefer mapper-provided prefixed property when available (propertyPrefixed), then fall back to label fields.
-  let badgeText = "";
+  const badgePrimary = String((dataTyped as any)?.propertyPrefixed || (props as any)?.label || "").trim();
+  const badgeSecondary = (() => {
+    try {
+      // Only treat a label as secondary if it is explicitly present on the edge data.
+      // The mapper is responsible for setting data.label only when a fat-map property label exists.
+      const v = (dataTyped as any)?.label;
+      if (typeof v === "undefined" || v === null) return undefined;
+      const s = String(v).trim();
+      return s ? s : undefined;
+    } catch (_) {
+      return undefined;
+    }
+  })();
+  const badgeText = String(badgePrimary || badgeSecondary || "").trim();
 
   const { edgeStyle, markerEnd, markerSize } = resolveEdgeRenderProps({ id, style, data });
   const finalMarkerEnd =
@@ -74,9 +87,6 @@ const FloatingEdge = memo((props: EdgeProps) => {
     propMarkerEnd ??
     markerEnd ??
     { type: (MarkerType as any)?.Arrow ?? "arrow" };
-
-  // 1) prefixed property from mapper -> props/data.propertyPrefixed
-  badgeText = String((dataTyped as any)?.propertyPrefixed || (props as any)?.label || (dataTyped as any)?.label || "").trim();
 
   const [isHovered, setIsHovered] = useState(false);
   const onHoverEnter = useCallback(() => setIsHovered(true), []);
@@ -114,7 +124,12 @@ const FloatingEdge = memo((props: EdgeProps) => {
                           : "text-xs px-2 py-1 shadow-md border cursor-pointer"
                     }
                   >
-                    {badgeText}
+                    <div className="flex flex-col items-center">
+                      <div className="leading-tight break-words whitespace-pre-wrap">{badgePrimary || badgeSecondary}</div>
+                      {badgeSecondary ? (
+                        <div className="text-[10px] leading-tight mt-0.5 opacity-80 break-words whitespace-pre-wrap">{badgeSecondary}</div>
+                      ) : null}
+                    </div>
                   </Badge>
                 </button>
               </TooltipTrigger>
@@ -123,8 +138,13 @@ const FloatingEdge = memo((props: EdgeProps) => {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <div className="text-sm font-semibold text-foreground break-words whitespace-pre-wrap">
-                        {String(dataTyped.propertyPrefixed || dataTyped.label || badgeText)}
+                        {String(dataTyped.propertyPrefixed || badgePrimary || "")}
                       </div>
+                      {badgeSecondary ? (
+                        <div className="text-xs text-muted-foreground break-words mt-1">
+                          {String(badgeSecondary)}
+                        </div>
+                      ) : null}
                       <div className="text-xs text-muted-foreground break-words mt-1">
                         {String(dataTyped.propertyUri || "")}
                       </div>
@@ -181,6 +201,6 @@ const FloatingEdge = memo((props: EdgeProps) => {
   );
 });
 
-FloatingEdge.displayName = "FloatingEdge";
+ObjectPropertyEdge.displayName = "ObjectPropertyEdge";
 
-export default FloatingEdge;
+export default ObjectPropertyEdge;

@@ -139,8 +139,6 @@ export function expandPrefixed(prefixedOrIri: string, registry?: RegistryEntry[]
 
 export function toPrefixed(
   iri: string,
-  availableProperties?: any[],
-  availableClasses?: any[],
   registry?: RegistryEntry[] | Record<string,string>,
 ): string {
   if (!iri) return "";

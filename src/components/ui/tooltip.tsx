@@ -189,10 +189,10 @@ export const TooltipContent = React.forwardRef<HTMLDivElement, any>(({ className
       ref={ref}
       {...props}
       className={cn(
-        "vg-tooltip-content z-[9999] inline-block max-w-[90vw] rounded-md border bg-popover shadow-md outline-none",
+        "vg-tooltip-content absolute max-w-[90vw] rounded-md border bg-popover shadow-md outline-none",
         className,
       )}
-      style={{ marginTop: sideOffset } as React.CSSProperties}
+      style={{ position: "absolute", marginTop: sideOffset } as React.CSSProperties}
     >
       <div
         className="pointer-events-auto touch-action-auto px-3 py-2 text-sm text-popover-foreground max-w-[32rem] max-h-64 overflow-auto whitespace-pre-wrap"
