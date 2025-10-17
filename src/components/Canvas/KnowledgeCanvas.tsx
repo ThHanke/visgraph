@@ -1218,11 +1218,13 @@ const KnowledgeCanvas: React.FC = () => {
   useEffect(() => {
     if (typeof window === "undefined") return;
     (window as any).__VG_KNOWLEDGE_CANVAS_READY = true;
+
     // Expose a helper so other UI components can request that the next mapping run triggers layout.
     (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING = () => {
       forceLayoutNextMappingRef.current = true;
     };
 
+    // Persisted-layout helper: process queued apply layout requests that arrived before mount.
     const pending = (window as any).__VG_APPLY_LAYOUT_PENDING;
     if (Array.isArray(pending) && pending.length > 0) {
       void Promise.resolve().then(async () => {
@@ -1259,16 +1261,18 @@ const KnowledgeCanvas: React.FC = () => {
       return dataUrl;
     };
 
+
+
+
+
     return () => {
       delete (window as any).__VG_KNOWLEDGE_CANVAS_READY;
-
+      delete (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING;
       delete (window as any).__VG_APPLY_LAYOUT;
-
       delete (window as any).__VG_EXPORT_SVG_FULL;
-
       delete (window as any).__VG_EXPORT_PNG_FULL;
     };
-  }, []);
+  }, [nodes, edges, setEdges, setNodes, doLayout]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1793,35 +1797,77 @@ const KnowledgeCanvas: React.FC = () => {
 
   const onNodeDragStop = useCallback(
     (event: any, node: any) => {
-      if (!isDebugMetricsEnabled()) return;
-      const intervals = dragMetricsRef.current.intervals || [];
-      {
-        (window as any).__VG_DRAG_METRICS_ACTIVE = false;
-      }
-      if (intervals.length === 0) {
-        console.debug("[VG_DEBUG] drag metrics: no intervals");
-      } else {
-        const sum = intervals.reduce((a, b) => a + b, 0);
-        const avg = sum / intervals.length;
-        const fps = avg > 0 ? 1000 / avg : 0;
-        const count = dragMetricsRef.current.count || intervals.length;
-        const metrics = {
-          count,
-          avgMs: Number(avg.toFixed(2)),
-          fps: Math.round(fps),
-        };
-        console.debug("[VG_DEBUG] drag metrics", metrics);
-        {
-          (window as any).__VG_LAST_DRAG_METRICS = metrics;
+      // Debug metrics (unchanged)
+      try {
+        if (isDebugMetricsEnabled()) {
+          const intervals = dragMetricsRef.current.intervals || [];
+          (window as any).__VG_DRAG_METRICS_ACTIVE = false;
+          if (intervals.length === 0) {
+            console.debug("[VG_DEBUG] drag metrics: no intervals");
+          } else {
+            const sum = intervals.reduce((a, b) => a + b, 0);
+            const avg = sum / intervals.length;
+            const fps = avg > 0 ? 1000 / avg : 0;
+            const count = dragMetricsRef.current.count || intervals.length;
+            const metrics = {
+              count,
+              avgMs: Number(avg.toFixed(2)),
+              fps: Math.round(fps),
+            };
+            console.debug("[VG_DEBUG] drag metrics", metrics);
+            (window as any).__VG_LAST_DRAG_METRICS = metrics;
+          }
         }
+      } catch (_) {
+        /* ignore debug errors */
+      }
+
+      // Trigger an update for edges attached to the moved node so their custom
+      // edge components recompute their control points (using persisted shift).
+      try {
+        const movedId = node && node.id ? String(node.id) : null;
+        if (movedId) {
+          setEdges((prev = []) => {
+            // Identify affected edges and replace them to force React Flow to re-render them.
+            const affected = new Set<string>();
+            for (const e of prev || []) {
+              try {
+                if (String(e.source) === movedId || String(e.target) === movedId) {
+                  affected.add(String(e.id));
+                }
+              } catch {
+                // ignore per-edge
+              }
+            }
+            if (affected.size === 0) return prev;
+            const newEdges = (prev || []).map((e) =>
+              affected.has(String(e.id)) ? { ...e } : e,
+            );
+
+            // Optional notification hook
+            try {
+              const affectedArr = Array.from(affected);
+              if (typeof (window as any).__VG_ON_EDGES_NODE_MOVE === "function") {
+                (window as any).__VG_ON_EDGES_NODE_MOVE([movedId], affectedArr);
+              }
+            } catch (_) {
+              // ignore
+            }
+
+            return newEdges;
+          });
+        }
+      } catch (_) {
+        // ignore
       }
     },
-    [config],
+    [setEdges, config],
   );
 
 
-  const onEdgeClickStrict = useCallback(
+  const onEdgeDoubleClickStrict = useCallback(
     (event: any, edge: any) => {
+      // Mirror node double-click: stop propagation and use a short suppress guard.
       event?.stopPropagation && event.stopPropagation();
 
       suppressSelectionRef.current = true;
@@ -1833,43 +1879,39 @@ const KnowledgeCanvas: React.FC = () => {
         edge.source || edge.from || (edge.data && edge.data.from) || "";
       const tgtId = edge.target || edge.to || (edge.data && edge.data.to) || "";
 
-      const findNode = (id: string) =>
-        nodes.find((n) => {
-          try {
-            return (
-              String(n.id) === String(id) ||
-              String((n as any).key) === String(id) ||
-              (n.data &&
-                (String(n.data.iri) === String(id) ||
-                  String(n.data.key) === String(id)))
-            );
-          } catch {
-            return false;
-          }
-        });
+      const edgeId = edge.id || edge.key || `${srcId}-${tgtId}`;
 
-      const sourceNode = findNode(srcId);
-      const targetNode = findNode(tgtId);
+      linkSourceRef.current = nodes.find((n) => String(n.id) === String(srcId))?.data as any;
+      linkTargetRef.current = nodes.find((n) => String(n.id) === String(tgtId))?.data as any;
 
-      linkSourceRef.current = sourceNode ? (sourceNode.data as any) : null;
-      linkTargetRef.current = targetNode ? (targetNode.data as any) : null;
-
-      const selectedLinkPayload = {
-        id: edge.id || edge.key || `${srcId}-${tgtId}`,
-        key: edge.id || edge.key || `${srcId}-${tgtId}`,
+      const payload = {
+        id: edgeId,
+        key: edgeId,
         source: srcId,
         target: tgtId,
-        data: {
-          propertyType: edge.data?.propertyType || edge.propertyType || "",
-          propertyUri: edge.data?.propertyUri || edge.propertyUri || "",
-          label: edge.data?.label || "",
-        },
+        data: edge.data || {},
+        operation: "edit",
       };
 
-      setSelectedLinkPayload(selectedLinkPayload || edge || null);
-      setLinkEditorOpen(true);
+      // Determine selection from current RF state (edges array).
+      const existing = (edges || []).find((ee) => String(ee.id) === String(edgeId));
+      const wasSelected = !!(existing && ((existing as any).selected as boolean));
+
+      setSelectedLinkPayload(payload);
+      if (wasSelected) {
+        setLinkEditorOpen(true);
+      } else {
+        // Mark edge selected via RF state so selected prop flows to edge component.
+        try {
+          setEdges((prev = []) =>
+            (prev || []).map((e) => ({ ...e, selected: String(e.id) === String(edgeId) })),
+          );
+        } catch (_) {
+          // ignore
+        }
+      }
     },
-    [nodes],
+    [nodes, edges, setEdges],
   );
 
   const onConnectStrict = useCallback(
@@ -2079,10 +2121,16 @@ const KnowledgeCanvas: React.FC = () => {
 
   // Memoize edges to provide a stable reference into ReactFlow and avoid
   // unnecessary reprocessing when edge list content hasn't materially changed.
-  // We compute a small fingerprint based on edge ids to detect content changes.
+  // Ensure edges are selectable by default so React Flow's native selection can be used.
   const memoEdges = useMemo(() => {
     try {
-      return (edges || []).slice();
+      return (edges || []).map((e: any) => ({
+        ...(e || {}),
+        selectable:
+          typeof (e as any)?.selectable === "boolean"
+            ? (e as any).selectable
+            : true,
+      }));
     } catch {
       return edges;
     }
@@ -2290,15 +2338,24 @@ const KnowledgeCanvas: React.FC = () => {
               const id = String(m.id);
               const existing = prevById.get(id);
               if (existing) {
+                // Preserve existing runtime flags but ensure the edge remains selectable
                 const item = {
                   ...existing,
                   source: m && m.source ? m.source : existing.source,
                   target: m && m.target ? m.target : existing.target,
                   data: { ...(existing.data || {}), ...(m && m.data ? m.data : {}) },
                 } as any;
+                // If selectable wasn't explicitly set on the existing edge, default to true.
+                if (typeof (item as any).selectable !== "boolean") {
+                  (item as any).selectable = true;
+                }
                 changes.push({ id, type: "replace", item });
               } else {
                 const item = { ...(m as any) } as any;
+                // Ensure newly added edges are selectable by default unless caller explicitly disabled it.
+                if (typeof (item as any).selectable !== "boolean") {
+                  (item as any).selectable = true;
+                }
                 changes.push({ type: "add", item });
               }
             } catch {
@@ -2405,7 +2462,7 @@ const KnowledgeCanvas: React.FC = () => {
       )}
 
       <div className="w-full h-full">
-        <ReactFlow
+          <ReactFlow
           nodes={safeNodes}
           edges={memoEdges}
           onNodesChange={onNodesChange}
@@ -2415,7 +2472,7 @@ const KnowledgeCanvas: React.FC = () => {
           onNodeDragStart={onNodeDragStart}
           onNodeDrag={onNodeDrag}
           onNodeDragStop={onNodeDragStop}
-          onEdgeClick={onEdgeClickStrict}
+          onEdgeDoubleClick={onEdgeDoubleClickStrict}
           onConnect={onConnectStrict}
           onSelectionChange={onSelectionChange}
           nodeTypes={memoNodeTypes}
