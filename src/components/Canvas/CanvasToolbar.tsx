@@ -42,6 +42,7 @@ import {
   Grid3X3,
   Layers,
   TreeDeciduous,
+  Trash2,
   Sparkles,
 } from 'lucide-react';
 import { useOntologyStore } from '../../stores/ontologyStore';
@@ -73,6 +74,8 @@ interface CanvasToolbarProps {
   onToggleLayoutEnabled?: (enabled: boolean) => void;
   onOpenNodeEditor?: (id?: string | null) => void;
   onOpenLinkEditor?: (id?: string | null) => void;
+  // Callback invoked when the user confirms clearing the canvas data (UI-level clear).
+  onClearData?: () => void;
   // New: allow CanvasToolbar to display programmatic layout application (control removed)
   availableEntities: Array<{
    iri: string;
@@ -83,10 +86,11 @@ interface CanvasToolbarProps {
   }>;
 }
 
-export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onExportSvg, onExportPng, onLoadFile, viewMode, onViewModeChange, onLayoutChange, currentLayout = 'horizontal', layoutEnabled = false, onToggleLayoutEnabled, availableEntities }: CanvasToolbarProps) => {
+export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onExportSvg, onExportPng, onLoadFile, onClearData, viewMode, onViewModeChange, onLayoutChange, currentLayout = 'horizontal', layoutEnabled = false, onToggleLayoutEnabled, availableEntities }: CanvasToolbarProps) => {
   const [isAddNodeOpen, setIsAddNodeOpen] = useState(false);
   const [isLoadOntologyOpen, setIsLoadOntologyOpen] = useState(false);
   const [isLoadFileOpen, setIsLoadFileOpen] = useState(false);
+  const [isClearDataOpen, setIsClearDataOpen] = useState(false);
   const [ontologyUrl, setOntologyUrl] = useState('');
   const [newNodeClass, setNewNodeClass] = useState('');
   const [newNodeNamespace, setNewNodeNamespace] = useState('');
@@ -317,7 +321,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
       setNewNodeNamespace('');
       setNewNodeIri('');
       setIsAddNodeOpen(false);
-    } catch (e) {
+      } catch (e) {
       try {
         if (typeof fallback === "function") {
           try {
@@ -326,6 +330,36 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
         }
       } catch (_) { void 0; }
       console.error('Failed to add node:', e);
+    }
+  };
+
+  const handleConfirmClearData = () => {
+    try {
+      const mgr = (typeof getRdfManager === 'function' && getRdfManager && getRdfManager()) || null;
+      if (!mgr) {
+        toast.error('RDF manager not available');
+        setIsClearDataOpen(false);
+        return;
+      }
+      try {
+        // First, clear the canvas UI immediately if the parent provided a handler.
+        try {
+          if (typeof onClearData === 'function') {
+            try { onClearData(); } catch (_) { /* ignore parent handler errors */ }
+          }
+        } catch (_) { /* ignore */ }
+
+        // Then remove persistence from the RDF graph.
+        mgr.removeGraph('urn:vg:data');
+        toast.success('Cleared graph: urn:vg:data');
+      } catch (err) {
+        console.error('Failed to clear data graph', err);
+        toast.error('Failed to clear data graph');
+      } finally {
+        setIsClearDataOpen(false);
+      }
+    } catch (err) {
+      try { setIsClearDataOpen(false); } catch (_) { void 0; }
     }
   };
 
@@ -892,6 +926,40 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
               className="w-full"
             >
               Choose File
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Clear Data (remove all triples from urn:vg:data) */}
+      <Dialog open={isClearDataOpen} onOpenChange={setIsClearDataOpen}>
+        <DialogTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shadow-glass backdrop-blur-sm text-foreground"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Clear Data
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-md text-foreground">
+          <DialogHeader>
+            <DialogTitle>Clear data</DialogTitle>
+            <DialogDescription>
+              Remove all triples from the data graph <code>urn:vg:data</code>. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setIsClearDataOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="outline"
+              className="border-red-600 text-red-600"
+              onClick={handleConfirmClearData}
+            >
+              Clear Data
             </Button>
           </div>
         </DialogContent>

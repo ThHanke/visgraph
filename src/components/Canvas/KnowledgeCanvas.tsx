@@ -2361,6 +2361,24 @@ const KnowledgeCanvas: React.FC = () => {
         onExportSvg={exportSvg}
         onExportPng={exportPng}
         onLoadFile={onLoadFile}
+        onClearData={() => {
+          try {
+            // Clear react-flow nodes/edges and selection immediately
+            setNodes([]);
+            setEdges([]);
+            setSelectedNodePayload(null);
+            setSelectedLinkPayload(null);
+            // Try to fit view to avoid awkward viewport state
+            try {
+              const inst = reactFlowInstance && reactFlowInstance.current;
+              if (inst && typeof (inst as any).fitView === "function") {
+                (inst as any).fitView({ padding: 0.1 });
+              }
+            } catch (_) { /* ignore */ }
+          } catch (_) {
+            /* ignore UI clear failures */
+          }
+        }}
         viewMode={viewMode}
         onViewModeChange={handleViewModeChange}
         onLayoutChange={handleLayoutChange}
