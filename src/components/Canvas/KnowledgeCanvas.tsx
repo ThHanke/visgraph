@@ -479,6 +479,10 @@ const KnowledgeCanvas: React.FC = () => {
   const layoutInProgressRef = useRef<boolean>(false);
   const lastLayoutFingerprintRef = useRef<string | null>(null);
   const suppressSelectionRef = useRef<boolean>(false);
+  // One-shot capture-phase mouseup handler ref used to intercept the native mouseup
+  // event that fires at the end of a node drag. This helps avoid timing races where
+  // a mouseup propagates and triggers click/double-click handlers that open editors.
+  const nodeDragMouseUpHandlerRef = useRef<any>(null);
 
   const linkSourceRef = useRef<NodeData | null>(null);
   const linkTargetRef = useRef<NodeData | null>(null);
@@ -1793,6 +1797,52 @@ const KnowledgeCanvas: React.FC = () => {
       {
         (window as any).__VG_DRAG_METRICS_ACTIVE = true;
       }
+
+      // Install a one-shot capture-phase handler for pointerup + mouseup to intercept
+      // the release event fired when the user releases the pointer after dragging.
+      // This prevents the native release event from reaching downstream click/selection
+      // handlers that may open editors due to timing races. We register both pointerup
+      // and mouseup for broader compatibility. Handlers are registered with { once: true, capture: true }.
+      try {
+        const handler = (ev: Event) => {
+          try {
+            const target = (ev as any).target as Node | null;
+            const viewport = document.querySelector(".react-flow__viewport") as HTMLElement | null;
+            if (viewport && target && viewport.contains(target as Node)) {
+              try {
+                // Stop propagation as early as possible (capture phase) so downstream handlers do not receive this release.
+                if (typeof (ev as any).stopImmediatePropagation === "function") {
+                  (ev as any).stopImmediatePropagation();
+                }
+              } catch (_) {}
+              try {
+                if (typeof (ev as any).stopPropagation === "function") (ev as any).stopPropagation();
+              } catch (_) {}
+              // avoid preventDefault to not interfere with native behaviors
+            }
+          } catch (_) {
+            // ignore
+          }
+        };
+
+        nodeDragMouseUpHandlerRef.current = handler;
+
+        try {
+          // Modern addEventListener with options (capture + once)
+          window.addEventListener("pointerup", handler as any, { capture: true, once: true } as any);
+          window.addEventListener("mouseup", handler as any, { capture: true, once: true } as any);
+        } catch (_) {
+          // Fallback older signature (capture boolean)
+          try {
+            (window as any).addEventListener("pointerup", handler as any, true);
+          } catch (_) {}
+          try {
+            (window as any).addEventListener("mouseup", handler as any, true);
+          } catch (_) {}
+        }
+      } catch (_) {
+        // ignore registration failures
+      }
     },
     [config],
   );
@@ -1838,6 +1888,42 @@ const KnowledgeCanvas: React.FC = () => {
         }
       } catch (_) {
         /* ignore debug errors */
+      }
+
+      // Remove any installed capture-phase handlers (defensive)
+      try {
+        const h = nodeDragMouseUpHandlerRef.current;
+        if (h) {
+          try {
+            window.removeEventListener("pointerup", h, true);
+          } catch (_) {
+            try {
+              (window as any).removeEventListener("pointerup", h as any, { capture: true } as any);
+            } catch (_) {}
+          }
+          try {
+            window.removeEventListener("mouseup", h as any, true);
+          } catch (_) {
+            try {
+              (window as any).removeEventListener("mouseup", h as any, { capture: true } as any);
+            } catch (_) {}
+          }
+          nodeDragMouseUpHandlerRef.current = null;
+        }
+      } catch (_) {
+        // ignore
+      }
+
+      // Defensive stop on the synthetic React event to prevent any propagation that might
+      // trigger selection/click handlers when the drag ends.
+      try {
+        if (event && typeof event.stopPropagation === "function") event.stopPropagation();
+        if (event && typeof event.preventDefault === "function") event.preventDefault();
+        if (event && event.nativeEvent && typeof event.nativeEvent.stopImmediatePropagation === "function") {
+          event.nativeEvent.stopImmediatePropagation();
+        }
+      } catch (_) {
+        // ignore
       }
 
       // Prevent the immediate selection-change/click handlers from opening editors
