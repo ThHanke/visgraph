@@ -1819,7 +1819,6 @@ const KnowledgeCanvas: React.FC = () => {
     [config],
   );
 
-  
 
   const onEdgeClickStrict = useCallback(
     (event: any, edge: any) => {
