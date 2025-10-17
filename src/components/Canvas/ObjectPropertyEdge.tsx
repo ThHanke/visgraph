@@ -101,8 +101,10 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
       const len = Math.hypot(perp.x, perp.y) || 1;
       perpUnitRef.current = { x: perp.x / len, y: perp.y / len };
 
-      // If control isn't user-fixed, set it from baseline + persistedShift.
-      if (!controlFixedRef.current) {
+      // Recompute control from baseline + persistedShift when not actively dragging.
+      // This ensures node moves update the baseline and the stored shift is applied
+      // relative to the new geometry instead of persisting an absolute screen position.
+      if (!draggingRef.current) {
         setControl({
           x: baselineX + perpUnitRef.current.x * persistedShift,
           y: baselineY + perpUnitRef.current.y * persistedShift,
@@ -353,8 +355,10 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
     } catch (_) {}
 
     if (draggingRef.current) {
+      // End drag but do not freeze the control as an absolute position. Instead,
+      // persist the scalar shift and allow future node moves to recompute the baseline
+      // and apply this shift so the label follows geometry changes.
       draggingRef.current = false;
-      controlFixedRef.current = true;
       pointerStartProjRef.current = null;
 
       const baseline = defaultLabelRef.current;

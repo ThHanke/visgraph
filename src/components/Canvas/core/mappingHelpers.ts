@@ -701,6 +701,57 @@ export function mapQuadsToDiagram(
   const rfNodes: RFNode<NodeData>[] = allNodeEntries.map((e) => e.rfNode);
 
   const rfEdgesFiltered = rfEdges || [];
+
+  // Assign deterministic alternating shifts for parallel edges produced by the mapper.
+  // Sequence: 0, +STEP, -STEP, +2*STEP, -2*STEP, ...
+  // This always overwrites/sets edge.data.shift for mapper-generated edges so that
+  // ObjectPropertyEdge can render separated parallel edges and labels.
+  try {
+    const PARALLEL_EDGE_SHIFT_STEP = 60;
+    const groups = new Map<string, any[]>();
+    for (const e of rfEdgesFiltered || []) {
+      try {
+        const src = e && (e.source || (e.data && e.data.from)) ? String(e.source || (e.data && e.data.from)) : "";
+        const tgt = e && (e.target || (e.data && e.data.to)) ? String(e.target || (e.data && e.data.to)) : "";
+        const key = `${src}||${tgt}`;
+        const arr = groups.get(key) || [];
+        arr.push(e);
+        groups.set(key, arr);
+      } catch (_) {
+        // ignore per-edge grouping failures
+      }
+    }
+
+    const indexToShift = (i: number) => {
+      if (i === 0) return 0;
+      const k = Math.ceil(i / 2);
+      const sign = i % 2 === 1 ? 1 : -1;
+      return sign * k * PARALLEL_EDGE_SHIFT_STEP;
+    };
+
+    // Apply shifts deterministically: sort by edge id then assign
+    for (const [_, arr] of groups) {
+      try {
+        (arr || []).sort((a: any, b: any) =>
+          String(a && a.id ? a.id : "").localeCompare(String(b && b.id ? b.id : ""))
+        );
+        for (let i = 0; i < (arr || []).length; i++) {
+          try {
+            const edge = arr[i];
+            if (!edge) continue;
+            edge.data = { ...(edge.data || {}), shift: indexToShift(i) } as any;
+          } catch (_) {
+            // ignore per-edge assignment
+          }
+        }
+      } catch (_) {
+        // ignore per-group failures
+      }
+    }
+  } catch (_) {
+    // ignore overall shift-assignment failures
+  }
+
   console.debug("[VG_DEBUG] mapQuadsToDiagram.return", { rfNodes, rfEdgesFiltered });
   return { nodes: rfNodes, edges: rfEdgesFiltered };
 }

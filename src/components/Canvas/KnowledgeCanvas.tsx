@@ -1261,6 +1261,24 @@ const KnowledgeCanvas: React.FC = () => {
       return dataUrl;
     };
 
+    // Immediate persistence helper: update the React Flow edges state with a new shift value.
+    // This is a small runtime helper used by the edge component to ensure the UI observes
+    // the updated shift immediately on pointerUp. It intentionally only updates the in-memory
+    // React Flow state (does not persist to external stores).
+    (window as any).__VG_PERSIST_EDGE_SHIFT = (edgeId: string, shift: number) => {
+      try {
+        setEdges((prev = []) =>
+          (prev || []).map((e) =>
+            String(e.id) === String(edgeId)
+              ? { ...(e as any), data: { ...(e as any).data, shift } }
+              : e,
+          ),
+        );
+      } catch (_) {
+        // ignore persistence failures
+      }
+    };
+
 
 
 
@@ -1822,6 +1840,14 @@ const KnowledgeCanvas: React.FC = () => {
         /* ignore debug errors */
       }
 
+      // Prevent the immediate selection-change/click handlers from opening editors
+      // when the user finishes dragging a node. This mirrors the double-click guard
+      // and avoids the editor opening on mouse-up after drag.
+      suppressSelectionRef.current = true;
+      setTimeout(() => {
+        suppressSelectionRef.current = false;
+      }, 0);
+
       // Trigger an update for edges attached to the moved node so their custom
       // edge components recompute their control points (using persisted shift).
       try {
@@ -2349,6 +2375,29 @@ const KnowledgeCanvas: React.FC = () => {
                 if (typeof (item as any).selectable !== "boolean") {
                   (item as any).selectable = true;
                 }
+
+                // Provide an immediate persistence hook so UI updates to shift are visible
+                // as soon as the handle drag completes. This is a runtime-only callback and
+                // will not be serialized/stored by the mapper.
+                try {
+                  item.data = item.data || {};
+                  (item.data as any).onEdgeUpdate = (payload: { id: string; shift: number }) => {
+                    try {
+                      setEdges((prev = []) =>
+                        (prev || []).map((e) =>
+                          String(e.id) === String(id)
+                            ? { ...(e as any), data: { ...(e as any).data, shift: payload.shift } }
+                            : e,
+                        ),
+                      );
+                    } catch (_) {
+                      // ignore
+                    }
+                  };
+                } catch (_) {
+                  // ignore
+                }
+
                 changes.push({ id, type: "replace", item });
               } else {
                 const item = { ...(m as any) } as any;
@@ -2356,6 +2405,28 @@ const KnowledgeCanvas: React.FC = () => {
                 if (typeof (item as any).selectable !== "boolean") {
                   (item as any).selectable = true;
                 }
+
+                // Inject onEdgeUpdate callback for newly added edges as well so a label drag
+                // persists shift immediately into React Flow state.
+                try {
+                  item.data = item.data || {};
+                  (item.data as any).onEdgeUpdate = (payload: { id: string; shift: number }) => {
+                    try {
+                      setEdges((prev = []) =>
+                        (prev || []).map((e) =>
+                          String(e.id) === String(id)
+                            ? { ...(e as any), data: { ...(e as any).data, shift: payload.shift } }
+                            : e,
+                        ),
+                      );
+                    } catch (_) {
+                      // ignore
+                    }
+                  };
+                } catch (_) {
+                  // ignore
+                }
+
                 changes.push({ type: "add", item });
               }
             } catch {
