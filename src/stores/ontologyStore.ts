@@ -565,6 +565,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     onProgress?: (progress: number, message: string) => void,
     preserveGraph: boolean = true,
     graphName?: string,
+    filename?: string,
   ) => {
     logCallGraph?.("loadOntologyFromRDF:start", {
       length: (rdfContent || "").length,
@@ -592,7 +593,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           }
         }
 
-        await rdfManager.loadRDFIntoGraph(rdfContent, targetGraph);
+        await rdfManager.loadRDFIntoGraph(rdfContent, targetGraph, undefined, filename);
 
         // Debug: report store triple count after parser load
         try {

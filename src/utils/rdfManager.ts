@@ -856,6 +856,12 @@ export class RDFManager {
       } catch (_) {
         /* ignore */
       }
+      // Allow subject-level notification flushes now that parsing finished
+      try {
+        this.parsingInProgress = false;
+      } catch (_) {
+        /* ignore */
+      }
       // Pass the normalized object-shape map to applyParsedNamespaces (new shape)
       this.applyParsedNamespaces(normalizedPrefixMap);
 
@@ -882,10 +888,9 @@ export class RDFManager {
         /* ignore */
       }
 
-      // After a load finalizes, proactively request a subject-level emission for the
-      // subjects that were part of this load. This helps ensure late-registered
-      // subscribers (e.g., UI components mounted slightly later in production)
-      // still receive notifications for the newly added subjects.
+      // After a load finalizes, proactively emit subject-level notifications for the
+      // subjects that were part of this load. Emit directly (synchronously) so
+      // subscribers registered before the load are guaranteed to receive the event.
       try {
         if (Array.isArray(addedQuads) && addedQuads.length > 0) {
           try {
@@ -901,15 +906,54 @@ export class RDFManager {
               ),
             );
             if (subs.length > 0) {
+              // Build authoritative per-subject snapshots from the internal store
+              const emitQuads: Quad[] = [];
               try {
-                // Use the public triggerSubjectUpdate API so buffering/reconcile path is reused.
-                await (this as any).triggerSubjectUpdate(subs);
+                for (const s of subs) {
+                  try {
+                    const subjTerm = namedNode(String(s));
+                    const subjectQuads =
+                      this.store.getQuads(subjTerm, null, null, null) || [];
+                    if (Array.isArray(subjectQuads) && subjectQuads.length > 0) {
+                      emitQuads.push(...subjectQuads);
+                    }
+                  } catch (_) {
+                    /* ignore per-subject read failures */
+                  }
+                }
               } catch (_) {
-                /* ignore trigger failures */
+                /* ignore snapshot build failures */
+              }
+
+              // Emit directly to registered subject-change subscribers.
+              for (const cb of Array.from(this.subjectChangeSubscribers)) {
+                try {
+                  try {
+                    (cb as any)(subs, emitQuads);
+                  } catch (_) {
+                    cb(subs);
+                  }
+                } catch (_) {
+                  /* ignore individual subscriber errors */
+                }
+              }
+
+              // Clear buffered deltas for these subjects to avoid duplicate emission later.
+              try {
+                for (const s of subs) {
+                  try {
+                    this.subjectQuadBuffer.delete(s);
+                  } catch (_) {
+                    /* ignore */
+                  }
+                }
+                this.subjectChangeBuffer.clear();
+              } catch (_) {
+                /* ignore */
               }
             }
           } catch (_) {
-            /* ignore per-load subject trigger failures */
+            /* ignore per-load emission failures */
           }
         }
       } catch (_) {
@@ -964,6 +1008,7 @@ export class RDFManager {
     rdfContent: string,
     graphName?: string,
     mimeType?: string,
+    filename?: string,
   ): Promise<void> {
     // Defensive guard: ensure we do not pass null/empty input into the parsers
     if (
@@ -1066,136 +1111,102 @@ export class RDFManager {
     };
 
     try {
-      // Simplified: assume rdfContent is Turtle. Use N3 Parser directly.
+      // Prefer the fast Turtle path, but detect XML/OWL and route to rdf-parse when appropriate.
       const g = namedNode(graphName);
       const addedQuads: Quad[] = [];
 
-      // NOTE: removed automatic prefix-prepend logic.
-      // We must not mutate server-provided RDF content (e.g. JSON-LD) by injecting
-      // Turtle @prefix lines. Network-loaded RDF is parsed via rdf-parse/rdf-serialize
-      // and namespaces are discovered from the parser output; keep rdfContent unchanged.
-
+      // Do not mutate server-provided RDF content.
       rdfContent = rdfContent.replace(/^\s+/, "");
-      this.parser.parse(rdfContent, (error, quadItem, prefixes) => {
+
+      // Heuristic detection for XML/RDF formats (filename or mimeType hints, or content markers).
+      const looksLikeXml =
+        (typeof mimeType === "string" && /xml/i.test(mimeType)) ||
+        (typeof filename === "string" && /\.(rdf|owl|xml|rdfxml)$/i.test(filename)) ||
+        /^\s*<\?xml/i.test(rdfContent) ||
+        /<rdf:RDF\b/i.test(rdfContent) ||
+        /<rdf:Description\b/i.test(rdfContent);
+
+      if (looksLikeXml) {
+        // Create a Node-style readable and hand off to rdf-parse which understands RDF/XML and others.
+        const inputStream =
+          (await createNodeReadableFromText(rdfContent)) ||
+          (new Response(rdfContent).body as any);
+        // Let rdf-parse infer content-type from provided mimeType or use RDF/XML as a sensible default.
+        const quadStream = rdfParser.parse(inputStream, {
+          contentType: mimeType || "application/rdf+xml",
+          path: filename,
+          baseIRI: undefined,
+        });
+        return await this.loadQuadsToDiagram(quadStream, graphName || "urn:vg:data");
+      }
+
+      // If content wasn't detected as XML, prefer the fast N3.Parser (Turtle) path.
+      // On parser error, attempt a single rdf-parse fallback using the string content.
+      this.parser.parse(rdfContent, async (error, quadItem, prefixes) => {
         if (error) {
+          // Attempt rdf-parse fallback once for non-turtle inputs provided as text.
+          const inputStream =
+            (await createNodeReadableFromText(rdfContent)) ||
+            (new Response(rdfContent).body as any);
           try {
-            // Expose the last RDF content to the browser runtime for quick inspection in devtools.
+            const quadStream = rdfParser.parse(inputStream, {
+              contentType: mimeType || undefined,
+              path: filename,
+              baseIRI: undefined,
+            });
+            await this.loadQuadsToDiagram(quadStream, graphName || "urn:vg:data");
+            resolveFn();
+            return;
+          } catch (fallbackErr) {
+            // Fallback failed — expose diagnostic info and reject with the original parser error for context.
             if (typeof window !== "undefined") {
               try {
                 (window as any).__VG_LAST_RDF = rdfContent;
               } catch (_) {
                 /* ignore */
               }
-              // Build a concise snippet for UI/console consumption (first ~40 lines)
               try {
                 const lines = String(rdfContent || "").split(/\r?\n/);
-                const snippet = lines
-                  .slice(0, Math.min(lines.length, 40))
-                  .join("\n");
+                const snippet = lines.slice(0, Math.min(lines.length, 40)).join("\n");
                 const errMsg = String(error);
-                // Expose structured parse error so UI can consume it deterministically
                 try {
-                  (window as any).__VG_LAST_RDF_ERROR = {
-                    message: errMsg,
-                    snippet,
-                  };
+                  (window as any).__VG_LAST_RDF_ERROR = { message: errMsg, snippet };
                 } catch (_) {
                   /* ignore */
                 }
-                // Dispatch a DOM event so any listeners may react (optional)
                 try {
-                  window.dispatchEvent(
-                    new CustomEvent("vg:rdf-parse-error", {
-                      detail: { message: errMsg, snippet },
-                    }),
-                  );
+                  window.dispatchEvent(new CustomEvent("vg:rdf-parse-error", { detail: { message: errMsg, snippet } }));
                 } catch (_) {
                   /* ignore */
                 }
-                // Log a concise console line for developers
-
-                console.error(
-                  "[VG_RDF_PARSE_ERROR]",
-                  errMsg.slice(0, 200),
-                  "snippet:",
-                  snippet.slice(0, 1000),
-                );
+                console.error("[VG_RDF_PARSE_ERROR]", errMsg.slice(0, 200), "snippet:", snippet.slice(0, 1000));
               } catch (_) {
-                /* ignore snippet logging failures */
+                /* ignore diagnostic failures */
               }
             }
-          } catch (_) {
-            /* ignore outer logging failures */
-          }
-          try {
             rejectFn(error);
-          } catch (_) {
-            try {
-              if (typeof fallback === "function") {
-                fallback("emptyCatch", { error: String(_) });
-              }
-            } catch (_) {
-              /* ignore */
-            }
+            return;
           }
-          return;
         }
 
         if (quadItem) {
-          try {
-            // Build a quad under the target graph and delegate adding to the helper so
-            // we keep consistent add/buffer behavior and track addedQuads for reconciliation.
-            if (
-              quadItem &&
-              quadItem.subject &&
-              quadItem.predicate &&
-              quadItem.object
-            ) {
-              try {
-                const toAdd = quad(
-                  quadItem.subject,
-                  quadItem.predicate,
-                  quadItem.object,
-                  g,
-                );
-                try {
-                  this.addQuadToStore(toAdd, g, addedQuads);
-                } catch (_) {
-                  // best-effort fallback: direct add
-                  try {
-                    this.store.addQuad(toAdd);
-                    if (Array.isArray(addedQuads)) addedQuads.push(toAdd);
-                  } catch (_) {
-                    /* ignore */
-                  }
-                }
-              } catch (_) {
-                console.warn(
-                  "[VG_RDF_ADD_SKIPPED] invalid quadItem from parser for graph",
-                  quadItem,
-                );
-              }
-            } else {
-              // ignore invalid quadItem shapes
-            }
-          } catch (e) {
+          // Add parsed quad into target graph
+          if (quadItem && quadItem.subject && quadItem.predicate && quadItem.object) {
+            const toAdd = quad(quadItem.subject, quadItem.predicate, quadItem.object, g);
             try {
-              // best-effort direct add if helper failed
-              this.store.addQuad(
-                quad(quadItem.subject, quadItem.predicate, quadItem.object, g),
-              );
+              this.addQuadToStore(toAdd, g, addedQuads);
             } catch (_) {
+              // Best-effort fallback
               try {
-                if (typeof fallback === "function") {
-                  fallback("emptyCatch", { error: String(_) });
-                }
+                this.store.addQuad(toAdd);
+                if (Array.isArray(addedQuads)) addedQuads.push(toAdd);
               } catch (_) {
                 /* ignore */
               }
             }
           }
         } else {
-          // when parser finishes, merge prefixes & finalize via shared finalizeLoad helper
+          // Parser finished: merge prefixes & finalize
           try {
             this.parsingInProgress = false;
           } catch (_) {
@@ -1203,11 +1214,7 @@ export class RDFManager {
           }
           (async () => {
             try {
-              await (this as any).finalizeLoad(
-                addedQuads,
-                prefixes,
-                _vg_loadId,
-              );
+              await (this as any).finalizeLoad(addedQuads, prefixes, _vg_loadId);
             } catch (e) {
               try {
                 rejectFn(e);
