@@ -54,8 +54,10 @@ describe("CanvasToolbar Add Node dialog - class type population", () => {
     fireEvent.click(addBtn);
 
     // The EntityAutocomplete renders its input inside a popover that must be opened.
-    // Find the autocomplete trigger (a button with role="combobox") and click it to reveal the input.
-    const combo = await screen.findByRole("combobox");
+    // Find the autocomplete trigger (there can be multiple elements with role="combobox" in the dialog).
+    // Prefer the button trigger when present.
+    const combos = await screen.findAllByRole("combobox");
+    const combo = combos.find((el) => el.tagName === 'BUTTON') || combos[0];
     fireEvent.click(combo);
 
     // The Class Type trigger shows the placeholder text; locate the command input directly.

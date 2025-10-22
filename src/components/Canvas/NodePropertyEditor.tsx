@@ -14,7 +14,10 @@
 
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { DataFactory } from "n3";
-const { namedNode } = DataFactory;
+const { namedNode, blankNode } = DataFactory;
+
+// Module-scoped counter for generated blank-node identifiers used when creating new nodes
+let __vg_blank_counter = 1;
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -32,8 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import { AutoComplete } from "../ui/AutoComplete";
-import { EntityAutocomplete } from "../ui/EntityAutocomplete";
+import EntityAutoComplete from "../ui/EntityAutoComplete";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { X, Plus, Info } from "lucide-react";
@@ -41,10 +43,8 @@ import { X, Plus, Info } from "lucide-react";
 
 // Simple termForIri helper used for constructing N3 terms (handles blank nodes like "_:b0")
 const termForIri = (iri: string) => {
-  {
-    if (typeof iri === "string" && iri.startsWith("_:")) {
-      return DataFactory.blankNode(iri.slice(2));
-    }
+  if (typeof iri === "string" && iri.startsWith("_:")) {
+    return blankNode(iri.slice(2));
   }
   return namedNode(String(iri));
 };
@@ -66,13 +66,6 @@ interface NodePropertyEditorProps {
   onOpenChange: (open: boolean) => void;
   nodeData: any; // expected to be the React Flow node object or an object with .data
   onSave: (updatedData: any) => void;
-  availableEntities: Array<{
-    iri: string;
-    label: string;
-    namespace: string;
-    rdfType: string;
-    description?: string;
-  }>;
   // optional callback so parent can immediately remove the node from the canvas (deleteElements)
   onDelete?: (iriOrId: string) => void;
 }
@@ -86,7 +79,6 @@ export const NodePropertyEditor = ({
   onOpenChange,
   nodeData,
   onSave,
-  availableEntities,
   onDelete,
 }: NodePropertyEditorProps) => {
   // Local form state
@@ -99,43 +91,18 @@ export const NodePropertyEditor = ({
   const initialPropertiesRef = useRef<LiteralProperty[]>([]);
   const initialRdfTypesRef = useRef<string[]>([]);
 
-  // Fat-map sources from ontology store (used only for autocomplete)
+  // Minimal selector used only for UI affordances (popover) to detect whether a chosen
+  // rdf:type is present in the loaded fat-map. This is lightweight and avoids any
+  // snapshotting logic while keeping the dialog simple.
   const availableClasses = useOntologyStore((s) => s.availableClasses || []);
-  const availableProperties = useOntologyStore((s) => s.availableProperties || []);
 
-  // Build classEntities and property suggestions from fat-map
-  const classEntities = useMemo(() => {
-    const fromStore = Array.isArray(availableClasses)
-      ? availableClasses.map((cls: any) => ({ iri: cls.iri, label: cls.label, namespace: cls.namespace }))
-      : [];
-    // Also include availableEntities provided by caller if any
-    const fromProps = Array.isArray(availableEntities) ? availableEntities.map((e) => ({ iri: e.iri, label: e.label, namespace: e.namespace })) : [];
-    const merged = new Map<string, any>();
-    fromStore.forEach((e) => { if (e && e.iri) merged.set(String(e.iri), e); });
-    fromProps.forEach((e) => { if (e && e.iri) merged.set(String(e.iri), e); });
-    return Array.from(merged.values());
-  }, [availableClasses, availableEntities]);
-
-  const propertySuggestions = useMemo(() => {
-    const fromFat = Array.isArray(availableProperties) ? availableProperties.map((p: any) => ({ value: String(p.iri || p.key || p), label: String(p.label || p.name || p.iri || p) })) : [];
-    return fromFat;
-  }, [availableProperties]);
-
-  // Selection is driven by the parent KnowledgeCanvas which passes `nodeData` prop.
-  // Keep a local state slot for future use but do not subscribe to React Flow here to
-  // avoid requiring a ReactFlowProvider in tests.
-  const [selectedFromRF, setSelectedFromRF] = useState<any | null>(null);
 
   // Initialize local form state from the passed nodeData when dialog opens.
   useEffect(() => {
     if (!open) return;
 
-    // Prefer explicit prop nodeData, otherwise use selection-derived node
-    const sourceNode = nodeData && (nodeData.data || nodeData)
-      ? (nodeData.data || nodeData)
-      : selectedFromRF && (selectedFromRF.data || selectedFromRF)
-        ? (selectedFromRF.data || selectedFromRF)
-        : selectedFromRF;
+    // Prefer explicit prop nodeData (no selection probing in this simplified editor)
+    const sourceNode = nodeData && (nodeData.data || nodeData) ? (nodeData.data || nodeData) : null;
 
     if (!sourceNode) {
       setNodeIri("");
@@ -183,7 +150,7 @@ export const NodePropertyEditor = ({
 
     setProperties(existingProps);
     initialPropertiesRef.current = existingProps.map(p => ({ ...p }));
-  }, [open, nodeData, selectedFromRF]);
+  }, [open, nodeData]);
 
   // Handlers for properties
   const handleAddProperty = (e?: React.MouseEvent) => {
@@ -222,9 +189,18 @@ export const NodePropertyEditor = ({
       throw new Error("Please provide property names for all annotation properties (no empty keys).");
     }
 
-    // Subject IRI
-    const subjIri = String(nodeIri);
-    if (!subjIri) throw new Error("Node IRI missing; cannot persist node properties.");
+    // Subject IRI (allow empty during "create" flows — we will generate a blank node id)
+    let subjIri = String(nodeIri || "");
+    const isCreate = !(nodeData && (nodeData.iri || nodeData.id || nodeData.key));
+    let generatedBlank = false;
+    if (!subjIri && isCreate) {
+      // Generate a session-unique blank node id (client-side only)
+      subjIri = `_:vgb${String(__vg_blank_counter++)}`;
+      generatedBlank = true;
+    }
+    if (!subjIri) {
+      throw new Error("Node IRI missing; cannot persist node properties.");
+    }
 
     // Acquire RDF manager (must exist)
     const mgrState = useOntologyStore.getState();
@@ -291,14 +267,29 @@ export const NodePropertyEditor = ({
       throw err;
     }
 
-    // Notify parent about saved properties (preserve previous contract: pass annotation properties array)
+    // Notify parent about saved properties.
     const annotationProperties = properties.map((p) => ({
       propertyUri: p.key,
       key: p.key,
       value: p.value,
       type: p.type || "xsd:string",
     }));
-    { if (typeof onSave === "function") onSave(annotationProperties); }
+
+    // For create flows, provide a richer payload including the subject IRI (which
+    // may be a generated blank node), selected class candidate and rdfTypes.
+    if (isCreate) {
+      const createPayload = {
+        iri: subjIri,
+        classCandidate: nodeType ? String(nodeType) : undefined,
+        namespace: undefined,
+        annotationProperties,
+        rdfTypes: currentTypes || [],
+      };
+      if (typeof onSave === "function") onSave(createPayload);
+    } else {
+      // Preserve existing contract for edit flows (legacy behavior)
+      if (typeof onSave === "function") onSave(annotationProperties);
+    }
 
     // Close dialog (manager already emits change notifications)
     onOpenChange(false);
@@ -345,10 +336,6 @@ export const NodePropertyEditor = ({
     onOpenChange(false);
   };
 
-  // Annotation property helpers for UI
-  const getAnnotationProperties = () => {
-    return propertySuggestions;
-  };
 
   const getXSDTypes = () => [
     "xsd:string",
@@ -390,15 +377,16 @@ export const NodePropertyEditor = ({
           <div className="space-y-2">
             <Label htmlFor="nodeType">Node Type (Meaningful Class)</Label>
             <div className="flex items-center gap-2">
-              <EntityAutocomplete
-                entities={classEntities}
+              <EntityAutoComplete
+                mode="classes"
+                optionsLimit={5}
                 value={nodeType}
-                onValueChange={(value: string) => { setNodeType(value); setRdfTypesState(value ? [value] : []); }}
+                onChange={(ent: any) => { const val = ent ? String(ent.iri || '') : ''; setNodeType(val); setRdfTypesState(val ? [val] : []); }}
                 placeholder="Type to search for classes..."
                 emptyMessage="No OWL classes found. Load an ontology first."
                 className="w-full"
               />
-              {nodeType && !classEntities.find(e => e.iri === nodeType) && (
+              {nodeType && !availableClasses.find(e => (String(e.iri || '') === String(nodeType))) && (
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground">
@@ -442,10 +430,10 @@ export const NodePropertyEditor = ({
                 <div key={index} className="grid grid-cols-12 gap-2 items-end">
                   <div className="col-span-4">
                     <Label className="text-xs">Property *</Label>
-                    <AutoComplete
-                      options={getAnnotationProperties()}
+                    <EntityAutoComplete
+                      mode="properties"
                       value={property.key}
-                      onValueChange={(value) => handleUpdateProperty(index, "key", value)}
+                      onChange={(ent) => handleUpdateProperty(index, "key", ent ? String(ent.iri || '') : "")}
                       placeholder="Select property..."
                       className={!property.key.trim() ? "border-destructive" : ""}
                     />

@@ -8,9 +8,17 @@
  //
  // Ensure a `window` global exists in the test environment (some runtimes may not provide it).
  // Point it at globalThis so libraries that reference `window` work under Vitest/jsdom.
- if (typeof (globalThis as any).window === "undefined") {
-   (globalThis as any).window = globalThis;
- }
+if (typeof (globalThis as any).window === "undefined") {
+  (globalThis as any).window = globalThis;
+}
+ // Ensure a robust global `window` binding while allowing the test runner to clean up during teardown.
+ // Define the property configurable so test frameworks (Vitest/jsdom) can delete or replace the global
+ // during environment teardown. Keep writable:false to avoid accidental reassignment.
+try {
+  Object.defineProperty(globalThis, "window", { value: globalThis, writable: false, configurable: true });
+} catch (_) {
+  // If the environment prevents redefining globals, ignore and continue with the best-effort binding.
+}
 //
 // Keep this file minimal and robust; it's only needed so xyflow/react can compute
 // element transforms during tests that render ReactFlow components.

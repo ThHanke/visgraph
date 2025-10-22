@@ -47,7 +47,7 @@ import {
 } from 'lucide-react';
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { useAppConfigStore } from '../../stores/appConfigStore';
-import { EntityAutocomplete } from '../ui/EntityAutocomplete';
+import { NodePropertyEditor } from './NodePropertyEditor';
 import { fallback } from '../../utils/startupDebug';
 import { LayoutManager } from './LayoutManager';
 import { WELL_KNOWN_PREFIXES } from '../../utils/wellKnownOntologies';
@@ -224,24 +224,18 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   const rdfManagerNamespaces = (getRdfManager && typeof getRdfManager === 'function') ? (getRdfManager()?.getNamespaces?.() || {}) : {};
   const mergedNamespaces = { ...namespacesFromLoaded, ...rdfManagerNamespaces };
 
-  // Build a stable list of class entities for the Add Node autocomplete.
-  // This mirrors the merge logic used in NodePropertyEditor so the same class list
-  // is available in both editors (fallback to ontologyStore.availableClasses).
+  // Use the canonical fat-map classes from the ontology store (availableClasses).
+  // The test and runtime populate availableClasses via the ontology store; prefer that.
   const classEntities = useMemo(() => {
-    const fromEntities = (availableEntities || []).filter(e => e.rdfType === 'owl:Class');
-    const fromStore = (availableClasses || []).map((cls: any) => ({
-      iri: cls.iri,
-      label: cls.label,
+    if (!Array.isArray(availableClasses)) return [];
+    return (availableClasses as any[]).map((cls: any) => ({
+      iri: String(cls.iri || cls || ''),
+      label: (typeof cls.label === 'string' && cls.label.trim().length > 0) ? String(cls.label) : undefined,
       namespace: cls.namespace || '',
-      rdfType: 'owl:Class'
+      rdfType: cls.rdfType || cls.type || 'owl:Class',
+      description: cls.description
     }));
-
-    const merged = new Map<string, any>();
-    fromStore.forEach((e: any) => { if (e && e.iri) merged.set(e.iri, e); });
-    fromEntities.forEach((e: any) => { if (e && e.iri) merged.set(e.iri, e); });
-
-    return Array.from(merged.values());
-  }, [availableEntities, availableClasses]);
+  }, [availableClasses]);
 
   // Centralized: ask LayoutManager for available layouts (keeps single source of truth).
   const layoutManager = new LayoutManager();
@@ -436,59 +430,51 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
 
   return (
     <div className="absolute top-4 left-4 z-10 flex flex-wrap gap-2">
-      {/* Add Node Dialog */}
-      <Dialog open={isAddNodeOpen} onOpenChange={setIsAddNodeOpen}>
-          <DialogTrigger asChild>
-          <Button variant="default" size="sm" className="shadow-glass backdrop-blur-sm text-foreground">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Node
-          </Button>
-        </DialogTrigger>
-        <DialogContent className="sm:max-w-md text-foreground">
-          <DialogHeader>
-            <DialogTitle>Add New Node</DialogTitle>
-            <DialogDescription>
-              Create a new individual of an ontology class.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="nodeIri">Entity IRI (required) or prefixed form</Label>
-              <Input
-                id="nodeIri"
-                placeholder="https://example.org/resource or ex:LocalName"
-                value={newNodeIri}
-                onChange={(e) => setNewNodeIri(e.target.value)}
-                className="w-full"
-              />
-              <div className="text-xs text-muted-foreground">
-                You may enter a full IRI or a registered prefix form (e.g. ex:Local). If omitted, the selected class IRI will be used.
-              </div>
-            </div>
+      {/* Add Node: open the full NodePropertyEditor in create mode (empty node data).
+          If the editor returns a create payload (with iri), forward to onAddNode; otherwise
+          fall back to toolbar inputs. */}
+      <Button variant="default" size="sm" className="shadow-glass backdrop-blur-sm text-foreground" onClick={() => setIsAddNodeOpen(true)}>
+        <Plus className="h-4 w-4 mr-2" />
+        Add Node
+      </Button>
 
-            <div className="space-y-2">
-              <Label htmlFor="classType">Class Type (optional)</Label>
-              <EntityAutocomplete 
-                entities={classEntities}
-                value={newNodeClass}
-                onValueChange={setNewNodeClass}
-                placeholder="Type to search for classes..."
-                emptyMessage="No OWL classes found. Load an ontology first."
-                className="w-full"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsAddNodeOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleAddNode} disabled={!newNodeIri && !newNodeClass}>
-                Add Node
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <NodePropertyEditor
+        open={isAddNodeOpen}
+        onOpenChange={(v) => setIsAddNodeOpen(v)}
+        nodeData={{}} // empty => create flow; editor will generate blank node if left empty on save
+        onSave={(payload: any) => {
+          try {
+            if (payload && payload.iri) {
+              // create payload from editor
+              onAddNode({
+                iri: String(payload.iri),
+                classCandidate: payload.classCandidate,
+                namespace: payload.namespace,
+                annotationProperties: payload.annotationProperties,
+                rdfTypes: payload.rdfTypes,
+              });
+            } else {
+              // fallback: use toolbar inputs if editor returned legacy shape
+              const iriToAdd = (newNodeIri && String(newNodeIri).trim()) ? String(newNodeIri).trim() : String(newNodeClass || '').trim();
+              if (iriToAdd) {
+                onAddNode({
+                  iri: iriToAdd,
+                  classCandidate: newNodeClass ? String(newNodeClass) : undefined,
+                  namespace: newNodeNamespace ? String(newNodeNamespace) : undefined,
+                });
+              }
+            }
+          } catch (_) {
+            // ignore add failures here — caller will handle
+          } finally {
+            setNewNodeIri('');
+            setNewNodeClass('');
+            setNewNodeNamespace('');
+            setIsAddNodeOpen(false);
+          }
+        }}
+        onDelete={undefined}
+      />
 
       {/* Load Ontology Dialog */}
       <Dialog open={isLoadOntologyOpen} onOpenChange={setIsLoadOntologyOpen}>

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { DataFactory } from 'n3';
 const { namedNode, quad } = DataFactory;
 import { Button } from '../ui/button';
-import { AutoComplete } from '../ui/AutoComplete';
+import EntityAutoComplete from '../ui/EntityAutoComplete';
 import { Label } from '../ui/label';
 import {
   Dialog,
@@ -12,10 +12,8 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { useOntologyStore } from '../../stores/ontologyStore';
-import { shortLocalName } from '../../utils/termUtils';
+import { toPrefixed } from '../../utils/termUtils';
 import { rdfManager as fallbackRdfManager } from '../../utils/rdfManager';
-// React Flow selection hook - allows editor to fallback to RF selection when no props provided
-import { useOnSelectionChange } from '@xyflow/react';
 
 interface LinkPropertyEditorProps {
   open: boolean;
@@ -59,77 +57,35 @@ export const LinkPropertyEditor = ({
     linkData?.propertyType ||
     '';
 
+  // Read suggestions directly from the store each render (no snapshots).
   const availableProperties = useOntologyStore((s) => s.availableProperties);
-  // Subscribe to the entityIndex object (stable reference) and derive suggestions via useMemo.
-  // Returning a nested array directly from the selector can create a new array each render
-  // and lead to the "getSnapshot should be cached" / infinite update warning from Zustand.
   const entityIndex = useOntologyStore((s) => (s as any).entityIndex);
-  const entitySuggestions = useMemo(() => {
-    return Array.isArray(entityIndex?.suggestions) ? entityIndex!.suggestions : [];
-  }, [entityIndex]);
+  const entitySuggestions = Array.isArray(entityIndex?.suggestions) ? entityIndex.suggestions : [];
+  const computedAllObjectProperties = Array.isArray(entitySuggestions) && entitySuggestions.length > 0
+    ? entitySuggestions.map((ent: any) => ({
+        iri: String(ent.iri || ent || ''),
+        label: ent.label || undefined,
+        description: ent.display || ent.description,
+        rdfType: ent.rdfType,
+        prefixed: ent.prefixed,
+        __native: ent,
+      }))
+    : (Array.isArray(availableProperties) ? availableProperties.map((prop: any) => ({
+        iri: String(prop.iri || prop || ''),
+        label: prop.label || undefined,
+        description: prop.description || prop.namespace || undefined,
+        rdfType: prop.rdfType || prop.type,
+        prefixed: prop.prefixed,
+        __native: prop,
+      })) : []);
 
-  const computedAllObjectProperties = useMemo(() => {
-    
+  // Use the memoized computedAllObjectProperties directly as the AutoComplete options.
+  // This avoids keeping a duplicate state copy; computedAllObjectProperties is memoized and stable.
 
-    if (Array.isArray(entitySuggestions) && entitySuggestions.length > 0) {
-      return entitySuggestions.map((ent: any) => ({
-        value: ent.iri,
-        label: ent.label || ent.iri,
-        // prefer sanitized display but do not include raw namespace strings created elsewhere
-        description: ent.display,
-      }));
-    }
-    return (availableProperties || []).map((prop: any) => ({
-      value: prop.iri,
-      label: prop.label || prop.iri,
-      // Avoid showing raw namespace URLs as description; let UI compute labels via computeTermDisplay.
-      description: undefined,
-    }));
-  }, [entitySuggestions, availableProperties]);
-
-  // Keep a state-backed copy of the computed options so we can reliably pass a stable,
-  // up-to-date options array to the AutoComplete component. Some AutoComplete implementations
-  // may not update internal caches when a new array identity is supplied; updating a state
-  // variable here forces React to re-render the child with a fresh reference.
-  const [allObjectPropertiesState, setAllObjectPropertiesState] = useState(computedAllObjectProperties);
+  // No React Flow selection fallback in this streamlined editor; source/target must be provided via props.
 
   useEffect(() => {
-    {
-      setAllObjectPropertiesState(computedAllObjectProperties);
-    }
-  }, [computedAllObjectProperties]);
-
-  // Subscribe to React Flow selection when caller did not provide explicit linkData.
-  const [selectedEdgeFromRF, setSelectedEdgeFromRF] = useState<any | null>(null);
-  try {
-    // useOnSelectionChange expects an options object; provide an onChange callback.
-    useOnSelectionChange({
-      onChange: (selection: any) => {
-        try {
-          const selEdges = Array.isArray(selection?.edges) ? selection.edges : [];
-          const edge = selEdges.length === 1 ? selEdges[0] : null;
-
-          // Avoid redundant state updates: only update if the selected edge identity changed.
-          const prevId = selectedEdgeFromRF && (selectedEdgeFromRF.id || selectedEdgeFromRF.key) ? (selectedEdgeFromRF.id || selectedEdgeFromRF.key) : null;
-          const edgeId = edge && (edge.id || edge.key) ? (edge.id || edge.key) : null;
-          if (edgeId !== prevId) {
-            setSelectedEdgeFromRF(edge);
-          }
-
-          // Mirror RF selection into dialog open state only when it would change the open prop.
-          const shouldOpen = Boolean(edge);
-          if (!linkData && typeof onOpenChange === 'function' && shouldOpen !== open) {
-            try { onOpenChange(shouldOpen); } catch (_) { void 0; }
-          }
-        } catch (_) { /* ignore per-callback */ }
-      },
-    });
-  } catch (_) {
-    /* ignore: React Flow provider not present */
-  }
-
-  useEffect(() => {
-    const candidate = linkData || selectedEdgeFromRF || {};
+    const candidate = linkData || {};
     const resolved =
       (candidate &&
         (candidate.data?.propertyUri ||
@@ -143,7 +99,7 @@ export const LinkPropertyEditor = ({
       setSelectedProperty(resolvedStr);
     }
   }, [
-    // Re-run when the dialog is opened or when linkData identity/fields change or RF selection changes.
+    // Re-run when the dialog is opened or when linkData identity/fields change.
     open,
     linkData?.id,
     linkData?.key,
@@ -151,22 +107,19 @@ export const LinkPropertyEditor = ({
     linkData?.propertyType,
     linkData?.data?.propertyUri,
     linkData?.data?.propertyType,
-    selectedEdgeFromRF,
   ]);
 
   // If the editor opens and there is no selectedProperty yet, but available properties exist,
   // prefill the selector with the first available property so UI tests and users immediately
-  // see a sensible default. This also makes the AutoComplete predictable for tests.
+  // see a sensible default. Use the memoized computedAllObjectProperties directly.
   useEffect(() => {
-    {
-      if ((!selectedProperty || String(selectedProperty).trim() === "") && Array.isArray(allObjectPropertiesState) && allObjectPropertiesState.length > 0) {
-        const first = allObjectPropertiesState[0];
-        if (first && first.value) {
-          setSelectedProperty(String(first.value));
-        }
+    if ((!selectedProperty || String(selectedProperty).trim() === "") && Array.isArray(computedAllObjectProperties) && computedAllObjectProperties.length > 0) {
+      const first = computedAllObjectProperties[0];
+      if (first && first.iri) {
+        setSelectedProperty(String(first.iri));
       }
     }
-  }, [allObjectPropertiesState, selectedProperty, open]);
+  }, [computedAllObjectProperties, selectedProperty, open]);
 
   useEffect(() => {
     {
@@ -235,7 +188,7 @@ export const LinkPropertyEditor = ({
       }
     }
     // Notify parent; canvas mapping will pick up the change via RDF manager
-    const property = allObjectPropertiesState.find((p) => p.value === uriToSave);
+    const property = (computedAllObjectProperties || []).find((p) => String(p.iri || '') === String(uriToSave));
     onSave(uriToSave, property?.label || uriToSave);
     onOpenChange(false);
   };
@@ -303,7 +256,14 @@ export const LinkPropertyEditor = ({
                 const format = (iri: string) => {
                   if (!iri) return '';
                   if (iri.startsWith('_:')) return iri;
-                  return shortLocalName(iri).replace(/^(https?:\/\/)?(www\.)?/, '');
+                  try {
+                    // Prefer toPrefixed; it will return a prefixed form if available.
+                    const p = toPrefixed(iri);
+                    return String(p || '');
+                  } catch (_) {
+                    // Fallback to raw IRI string if prefixing fails
+                    return iri;
+                  }
                 };
                 const sDisplay = format(sIri);
                 const tDisplay = format(tIri);
@@ -317,14 +277,13 @@ export const LinkPropertyEditor = ({
 
           <div className="space-y-2">
             <Label>Type</Label>
-            <AutoComplete
-              options={allObjectPropertiesState}
+            <EntityAutoComplete
+              mode="properties"
               value={selectedProperty}
-              onValueChange={setSelectedProperty}
+              onChange={(ent: any) => setSelectedProperty(ent ? String(ent.iri || '') : '')}
               placeholder="Type to search for object properties..."
               emptyMessage="No object properties found. Load an ontology first."
               className="w-full"
-              autoOpen={open}
             />
           </div>
 

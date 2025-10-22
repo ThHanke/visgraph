@@ -50,7 +50,8 @@ describe("AutoComplete / LinkPropertyEditor seeded suggestions", () => {
 
     // Wait for the seeded suggestion label to appear in the editor's autocomplete
     await waitFor(() => {
-      expect(screen.getByText("Prop Seed")).toBeTruthy();
+      const matches = screen.getAllByText("Prop Seed");
+      expect(matches.length).toBeGreaterThan(0);
     });
 
     // Cleanup store

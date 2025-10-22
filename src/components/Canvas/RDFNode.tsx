@@ -7,7 +7,7 @@ import {
   useConnection,
 } from "@xyflow/react";
 import { cn } from "../../lib/utils";
-import { shortLocalName, toPrefixed } from "../../utils/termUtils";
+import { toPrefixed } from "../../utils/termUtils";
 import { NodeData } from "../../types/canvas";
 import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip";
 
@@ -85,9 +85,11 @@ function RDFNodeImpl(props: NodeProps) {
         const term = (() => {
           if (propertyIri.startsWith("_:")) return propertyIri;
           try {
-            return toPrefixed(propertyIri);
+            const p = toPrefixed(propertyIri);
+            // Only accept a prefixed form when it differs from the raw IRI; otherwise keep the raw IRI.
+            return p && String(p) !== String(propertyIri) ? String(p) : String(propertyIri);
           } catch (_) {
-            return shortLocalName(propertyIri);
+            return String(propertyIri);
           }
         })();
         annotations.push({ term, value: valueStr });
@@ -307,7 +309,17 @@ function RDFNodeImpl(props: NodeProps) {
               <div className="mt-2">
                 <div className="text-xs text-muted-foreground font-medium">Types</div>
                 <ul className="text-xs space-y-0.5">
-                  {typesList.map((t, idx) => <li key={idx} className="break-words whitespace-pre-wrap">{String(t)}</li>)}
+                  {typesList.map((t, idx) => {
+                    const termDisplay = (() => {
+                      try {
+                        const p = toPrefixed(String(t));
+                        return p && String(p) !== String(t) ? String(p) : String(t);
+                      } catch (_) {
+                        return String(t);
+                      }
+                    })();
+                    return <li key={idx} className="break-words whitespace-pre-wrap">{termDisplay}</li>;
+                  })}
                 </ul>
               </div>
             )}

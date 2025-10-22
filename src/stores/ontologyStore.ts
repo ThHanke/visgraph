@@ -13,8 +13,18 @@ import { debug, info, warn, error, fallback } from "../utils/startupDebug";
 import { WELL_KNOWN } from "../utils/wellKnownOntologies";
 import { DataFactory, Quad } from "n3";
 import { buildPaletteMap } from "../components/Canvas/core/namespacePalette";
-import { shortLocalName } from "../utils/termUtils";
+import { shortLocalName, toPrefixed } from "../utils/termUtils";
 const { namedNode, quad } = DataFactory;
+
+/* NOTE: attachPrefixed removed in favor of computing prefixed values locally
+   inside the authoritative fat-map update/reconcile path so the freshly
+   computed namespace registry can be passed into toPrefixed. A minimal helper
+   remains for compatibility but it only returns the entries as-is; callers in
+   this file are updated to compute prefixed using the registry computed at
+   update time. */
+function attachPrefixed(entries: any[] | undefined): any[] {
+  return Array.isArray(entries) ? entries : [];
+}
 
 
 /*
@@ -274,12 +284,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
   namespaceRegistry: [],
   setNamespaceRegistry: (registry: { prefix: string; namespace: string; color: string }[]) => {
     try {
-      // Capture callsite and values for debugging when tests trigger namespace writes.
-      
-
+      // Persist the provided namespace registry only. Fat-map consumers should be
+      // updated via the authoritative updateFatMap/reconcile path which computes
+      // prefixed fields using the registry at update time.
       set((st: any) => ({
         namespaceRegistry: Array.isArray(registry) ? registry.slice() : [],
       }));
+
     } catch (_) {
       try { set({ namespaceRegistry: [] }); } catch (_) { void 0; }
     }
@@ -1071,19 +1082,61 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         }
       });
 
+    {
+      const propsArr = Object.values(propByIri);
+      const classesArr = Object.values(classByIri);
+
+      const computePrefixed = (e: any) => {
+        try {
+          const iri = String((e && (e.iri || e.key)) || "");
+          const pref = iri ? toPrefixed(String(iri), registry as any) : "";
+          return { ...(e || {}), prefixed: pref && String(pref) !== String(iri) ? String(pref) : "" };
+        } catch (_) {
+          return { ...(e || {}), prefixed: "" };
+        }
+      };
+
+      const propsWithPref = (propsArr || []).map(computePrefixed);
+      const classesWithPref = (classesArr || []).map(computePrefixed);
+
       useOntologyStore.setState((s: any) => ({
-        availableClasses: Object.values(classByIri),
-        availableProperties: Object.values(propByIri),
+        availableClasses: classesWithPref,
+        availableProperties: propsWithPref,
         ontologiesVersion: (s.ontologiesVersion || 0) + 1,
         namespaceRegistry: registry,
       }));
+    }
     } catch (_) {
-      // Fallback to previous behavior if registry computation fails
-      useOntologyStore.setState((s: any) => ({
-        availableClasses: Object.values(classByIri),
-        availableProperties: Object.values(propByIri),
-        ontologiesVersion: (s.ontologiesVersion || 0) + 1,
-      }));
+      // Fallback to previous behavior if registry computation fails (attach prefixed best-effort)
+      try {
+        const propsArr = Object.values(propByIri);
+        const classesArr = Object.values(classByIri);
+
+        const computePrefixed = (e: any) => {
+          try {
+            const iri = String((e && (e.iri || e.key)) || "");
+            const pref = iri ? toPrefixed(String(iri)) : "";
+            return { ...(e || {}), prefixed: pref && String(pref) !== String(iri) ? String(pref) : "" };
+          } catch (_) {
+            return { ...(e || {}), prefixed: "" };
+          }
+        };
+
+        const propsWithPref = (propsArr || []).map(computePrefixed);
+        const classesWithPref = (classesArr || []).map(computePrefixed);
+
+        useOntologyStore.setState((s: any) => ({
+          availableClasses: classesWithPref,
+          availableProperties: propsWithPref,
+          ontologiesVersion: (s.ontologiesVersion || 0) + 1,
+        }));
+      } catch (_) {
+        useOntologyStore.setState((s: any) => ({
+          availableClasses: Object.values(classByIri),
+          availableProperties: Object.values(propByIri),
+          ontologiesVersion: (s.ontologiesVersion || 0) + 1,
+        }));
+      }
     }
 
     // Debug: log a small sample of availableClasses when updateFatMap runs with parsed quads.
@@ -1181,31 +1234,56 @@ async function buildFatMap(rdfMgr?: any): Promise<void> {
 
   // Compute and persist namespace registry in the same atomic update as the fat-map so consumers
   // that rely on both availableClasses/availableProperties and namespaceRegistry see a consistent state.
-  try {
-    const nsMap = mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
-    const prefixes = Object.keys(nsMap || []).sort();
-    const paletteMap = buildPaletteMap(prefixes || []);
-    const registry = (prefixes || []).map((p) => {
-      try {
-        return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: String((paletteMap as any)[p] || "") };
-      } catch (_) {
-        return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: "" };
-      }
-    });
+    try {
+      const nsMap = mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
+      const prefixes = Object.keys(nsMap || []).sort();
+      const paletteMap = buildPaletteMap(prefixes || []);
+      const registry = (prefixes || []).map((p) => {
+        try {
+          return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: String((paletteMap as any)[p] || "") };
+        } catch (_) {
+          return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: "" };
+        }
+      });
+
+      // Compute prefixed forms using the freshly computed registry before persisting so
+      // consumers see consistent prefixed values immediately.
+      const computePrefixed = (e: any) => {
+        try {
+          const iri = String((e && (e.iri || e.key)) || "");
+          const pref = iri ? toPrefixed(String(iri), registry as any) : "";
+          return { ...(e || {}), prefixed: pref && String(pref) !== String(iri) ? String(pref) : "" };
+        } catch (_) {
+          return { ...(e || {}), prefixed: "" };
+        }
+      };
+
+      const mergedPropsWithPref = (Array.isArray(mergedProps) ? mergedProps : []).map(computePrefixed);
+      const mergedClassesWithPref = (Array.isArray(mergedClasses) ? mergedClasses : []).map(computePrefixed);
 
     useOntologyStore.setState((st: any) => ({
-      availableProperties: mergedProps,
-      availableClasses: mergedClasses,
+      availableProperties: mergedPropsWithPref,
+      availableClasses: mergedClassesWithPref,
       ontologiesVersion: (st.ontologiesVersion || 0) + 1,
       namespaceRegistry: registry,
     }));
-  } catch (_) {
-    useOntologyStore.setState((st: any) => ({
-      availableProperties: mergedProps,
-      availableClasses: mergedClasses,
-      ontologiesVersion: (st.ontologiesVersion || 0) + 1,
-    }));
-  }
+    } catch (_) {
+      try {
+        const mergedPropsWithPref = attachPrefixed(Array.isArray(mergedProps) ? mergedProps : []);
+        const mergedClassesWithPref = attachPrefixed(Array.isArray(mergedClasses) ? mergedClasses : []);
+        useOntologyStore.setState((st: any) => ({
+          availableProperties: mergedPropsWithPref,
+          availableClasses: mergedClassesWithPref,
+          ontologiesVersion: (st.ontologiesVersion || 0) + 1,
+        }));
+      } catch (_) {
+        useOntologyStore.setState((st: any) => ({
+          availableProperties: mergedProps,
+          availableClasses: mergedClasses,
+          ontologiesVersion: (st.ontologiesVersion || 0) + 1,
+        }));
+      }
+    }
 
       
 
