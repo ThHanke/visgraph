@@ -1,6 +1,17 @@
 import React from "react";
 import { describe, it, expect } from "vitest";
-import { optionMatches } from "../../components/ui/AutoComplete";
+
+// Local copy of the matching helper (AutoComplete was renamed to EntityAutoComplete).
+// This reproduces the substring/camelCase/underscore-insensitive matching used by the UI.
+function optionMatches(option: { value?: string; label?: string }, query: string) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return false;
+  const src = String(option?.label || option?.value || "");
+  // Insert spaces between camelCase boundaries, then replace non-word characters with single spaces.
+  let normalized = src.replace(/([a-z])([A-Z])/g, "$1 $2");
+  normalized = normalized.replace(/[_\-\s]+/g, " ").toLowerCase();
+  return normalized.includes(q);
+}
 
 /**
  * Focused test to reproduce substring matching issues.

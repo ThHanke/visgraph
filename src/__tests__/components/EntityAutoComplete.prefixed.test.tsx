@@ -20,7 +20,7 @@ describe("EntityAutoComplete - in-field prefixed display", () => {
       },
     ];
 
-    render(
+    const { container } = render(
       <EntityAutoComplete
         entities={entities as any}
         value="http://example.org/test#propSeed"
@@ -29,15 +29,15 @@ describe("EntityAutoComplete - in-field prefixed display", () => {
       />
     );
 
-    const input = screen.getByRole("textbox") as HTMLInputElement;
+    const input = container.querySelector('input');
     expect(input).toBeTruthy();
-    expect(input.value).toBe("ex:propSeed");
+    expect((input as HTMLInputElement).value).toBe("ex:propSeed");
   });
 
   it("shows placeholder (empty input) when value does not match any entity", () => {
     const entities: any[] = [];
 
-    render(
+    const { container } = render(
       <EntityAutoComplete
         entities={entities}
         value="http://example.org/test#nonexistent"
@@ -46,9 +46,9 @@ describe("EntityAutoComplete - in-field prefixed display", () => {
       />
     );
 
-    const input = screen.getByRole("textbox") as HTMLInputElement;
+    const input = container.querySelector('input');
     expect(input).toBeTruthy();
     // input should be empty so placeholder is visible (value === "")
-    expect(input.value).toBe("");
+    expect((input as HTMLInputElement).value).toBe("");
   });
 });

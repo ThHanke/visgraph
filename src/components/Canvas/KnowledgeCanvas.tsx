@@ -76,27 +76,34 @@ const LinkPropertyEditor: any = (() => {
 
 const { namedNode } = DataFactory;
 
-// Provide a race-safe stub for external test runners that may call window.__VG_APPLY_LAYOUT
-// before the React component mounts. The stub queues requests and returns a Promise that
-// will be resolved once the component mounts and processes the queued requests.
-(window as any).__VG_APPLY_LAYOUT = (layoutKey?: string) => {
-  if (!(window as any).__VG_APPLY_LAYOUT_PENDING)
-    (window as any).__VG_APPLY_LAYOUT_PENDING = [];
-  return new Promise((resolve) => {
-    try {
-      (window as any).__VG_APPLY_LAYOUT_PENDING.push({
-        layoutKey,
-        resolve,
-      });
-    } catch (e) {
-      try {
-        resolve(false);
-      } catch (_) {
-        // intentionally ignore resolve failures
-      }
-    }
-  }).catch(() => Promise.resolve(false));
-};
+/**
+ * Provide a race-safe stub for external test runners that may call window.__VG_APPLY_LAYOUT
+ * before the React component mounts. Only install the stub in browser-like environments
+ * where `window` is defined. In non-browser (test/node) environments we skip defining it
+ * to avoid ReferenceError.
+ */
+if (typeof window !== "undefined") {
+  if (!(window as any).__VG_APPLY_LAYOUT) {
+    (window as any).__VG_APPLY_LAYOUT = (layoutKey?: string) => {
+      if (!(window as any).__VG_APPLY_LAYOUT_PENDING)
+        (window as any).__VG_APPLY_LAYOUT_PENDING = [];
+      return new Promise((resolve) => {
+        try {
+          (window as any).__VG_APPLY_LAYOUT_PENDING.push({
+            layoutKey,
+            resolve,
+          });
+        } catch (e) {
+          try {
+            resolve(false);
+          } catch (_) {
+            // intentionally ignore resolve failures
+          }
+        }
+      }).catch(() => Promise.resolve(false));
+    };
+  }
+}
 
 const KnowledgeCanvas: React.FC = () => {
   // Resolve NodePropertyEditor at runtime using require so test-level vi.mock

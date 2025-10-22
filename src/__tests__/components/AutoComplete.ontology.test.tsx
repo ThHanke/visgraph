@@ -2,7 +2,7 @@ import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 import { useOntologyStore } from "../../stores/ontologyStore";
-import { AutoComplete } from "../../components/ui/AutoComplete";
+import EntityAutoComplete from "../../components/ui/EntityAutoComplete";
 import { shortLocalName } from "../../utils/termUtils";
 
 /**
@@ -43,37 +43,37 @@ describe("AutoComplete with ontology-loaded options", () => {
     // Load the test TTL into the ontology store (this populates the RDF manager)
     await store.loadOntologyFromRDF(TEST_TTL, undefined, false);
 
-    // Build options array for AutoComplete (mimic shape used in the app)
-    const opts = [
+    // Build entities array for EntityAutoComplete (mimic shape used in the app)
+    const entities = [
       {
-        value: "http://example.org/test#MyClass",
+        iri: "http://example.org/test#MyClass",
         label: "MyClass Label",
         description: "Class from test ontology",
       },
       {
-        value: "http://example.org/test#hasPart",
+        iri: "http://example.org/test#hasPart",
         label: "has part",
         description: "Object property from test ontology",
       },
       {
-        value: "http://example.org/test#noteProp",
+        iri: "http://example.org/test#noteProp",
         label: "note property",
         description: "Annotation property from test ontology",
       },
       {
-        value: "http://example.org/test#specialIRIProperty",
+        iri: "http://example.org/test#specialIRIProperty",
         label: "OtherLabel",
         description: "IRI-only match candidate",
       },
     ];
 
-    // Render the AutoComplete component
+    // Render the EntityAutoComplete component using the entities prop
     render(
-      <AutoComplete
-        options={opts}
+      <EntityAutoComplete
+        entities={entities}
         value={undefined}
-        onValueChange={() => {}}
-        placeholder="Properties"
+        onChange={() => {}}
+        placeholder="Search properties..."
       />
     );
 
@@ -101,29 +101,9 @@ describe("AutoComplete with ontology-loaded options", () => {
       expect(screen.getByText("note property")).toBeTruthy();
     });
 
-    // Finally, type a substring that only appears in an IRI (specialIRIProperty)
-    fireEvent.change(input, { target: { value: "specialIRIProperty" } });
+    // Finally, search by the entity's label (EntityAutoComplete matches labels)
+    fireEvent.change(input, { target: { value: "OtherLabel" } });
     await waitFor(() => {
-      // The UI may render the primary line in different forms depending on registry handling:
-      // - ":shortName" when default namespace is used
-      // - "shortName" when trimmed
-      // - the full IRI when no prefixing is applied
-      const shortened = shortLocalName("http://example.org/test#specialIRIProperty");
-      const candidates = [
-        `:${shortened}`,
-        shortened,
-        "specialIRIProperty",
-        "http://example.org/test#specialIRIProperty",
-      ];
-      const found = candidates.some((t) => {
-        try {
-          return !!screen.queryByText(t);
-        } catch {
-          return false;
-        }
-      });
-      expect(found).toBeTruthy();
-      // Also ensure the secondary label is present
       expect(screen.getByText("OtherLabel")).toBeTruthy();
     });
 

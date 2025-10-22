@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { LinkPropertyEditor } from "../../components/Canvas/LinkPropertyEditor";
@@ -48,7 +48,10 @@ describe("AutoComplete / LinkPropertyEditor seeded suggestions", () => {
       />
     );
 
-    // Wait for the seeded suggestion label to appear in the editor's autocomplete
+    // Type into the autocomplete to open suggestions and wait for the seeded suggestion to appear
+    const input = await screen.findByPlaceholderText(/type to search for object properties/i);
+    input.focus();
+    fireEvent.change(input, { target: { value: "Prop" } });
     await waitFor(() => {
       const matches = screen.getAllByText("Prop Seed");
       expect(matches.length).toBeGreaterThan(0);

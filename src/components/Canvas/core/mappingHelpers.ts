@@ -106,8 +106,9 @@ export function mapQuadsToDiagram(
       iri: string;
       rdfTypes: string[];
       literalProperties: Array<{ key: string; value: string; type: string }>;
-      annotationProperties: Array<{ property: string; value: string }>;
-      inferredProperties: Array<{ property: string; value: string }>;
+      // annotationProperties now carry native Term objects (predicate/object) in addition to legacy string fields
+      annotationProperties: Array<{ property: string; value: string; predicateTerm?: any; objectTerm?: any; type?: string }>;
+      inferredProperties: Array<{ property: string; value: string; predicateTerm?: any; objectTerm?: any; type?: string }>;
       label?: string | undefined;
       // optional override used to propagate subject view (TBox/ABox) to objects created due to unknown/object predicates
       forceIsTBox?: boolean | undefined;
@@ -318,12 +319,14 @@ export function mapQuadsToDiagram(
           const labelVal = obj && obj.value ? String(obj.value) : entry.label;
           entry.label = labelVal;
           {
-            const propPrefixed = toPrefixed(predIri);
+            // Preserve legacy string fields but attach native predicate/object Terms for downstream consumers
             entry.annotationProperties.push({
-                property: propPrefixed,
-                value: labelVal,
-              });
-
+              property: predIri,
+              value: labelVal,
+              predicateTerm: pred,
+              objectTerm: obj,
+              type: obj && obj.datatype && obj.datatype.value ? String(obj.datatype.value) : (obj && obj.language ? `@${String(obj.language)}` : XSD_STRING),
+            });
           }
           continue;
         }
@@ -333,11 +336,11 @@ export function mapQuadsToDiagram(
           {
             const val = obj && obj.value ? String(obj.value) : "";
             entry.annotationProperties.push({
-              property: toPrefixed(
-                predIri,
-                (options as any).registry
-              ),
+              property: predIri,
               value: val,
+              predicateTerm: pred,
+              objectTerm: obj,
+              type: obj && obj.datatype && obj.datatype.value ? String(obj.datatype.value) : (obj && obj.language ? `@${String(obj.language)}` : XSD_STRING),
             });
           }
           continue;
@@ -348,11 +351,11 @@ export function mapQuadsToDiagram(
           {
             const litVal = obj && obj.value ? String(obj.value) : "";
             entry.annotationProperties.push({
-              property: toPrefixed(
-                predIri,
-                (options as any).registry
-              ),
+              property: predIri,
               value: litVal,
+              predicateTerm: pred,
+              objectTerm: obj,
+              type: obj && obj.datatype && obj.datatype.value ? String(obj.datatype.value) : (obj && obj.language ? `@${String(obj.language)}` : XSD_STRING),
             });
           }
           continue;
@@ -391,14 +394,13 @@ export function mapQuadsToDiagram(
                 } as LinkData,
               })
             );
-          } else {
+            } else {
             {
               entry.annotationProperties.push({
-                property: toPrefixed(
-                  predIri,
-                  (options as any).registry
-                ),
+                property: predIri,
                 value: bn,
+                predicateTerm: pred,
+                objectTerm: obj,
               });
             }
           }
@@ -444,11 +446,10 @@ export function mapQuadsToDiagram(
           } else {
             {
               entry.annotationProperties.push({
-                property: toPrefixed(
-                  predIri,
-                  (options as any).registry
-                ),
+                property: predIri,
                 value: objectIri,
+                predicateTerm: pred,
+                objectTerm: obj,
               });
             }
           }
@@ -484,35 +485,8 @@ export function mapQuadsToDiagram(
         if (!nodeMap.has(subjectIri)) continue;
         const entry = nodeMap.get(subjectIri)!;
 
-        let prop = predIri;
-        try {
-          prop = toPrefixed(
-            predIri,
-            options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-            options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-            (options as any).registry
-          );
-        } catch (_) {
-          prop = predIri;
-        }
-
-        let val = obj && obj.value ? String(obj.value) : "";
-        if (!isLiteral(obj)) {
-          if (isNamedNode(obj)) {
-            try {
-              val = toPrefixed(
-                String(obj.value),
-                options && Array.isArray((options as any).availableProperties) ? (options as any).availableProperties : undefined,
-                options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined,
-                (options as any).registry
-              );
-            } catch (_) {
-              val = String(obj.value || "");
-            }
-          } else {
-            val = String(obj && obj.value ? obj.value : "");
-          }
-        }
+        const prop = predIri;
+        const val = obj && obj.value ? String(obj.value) : "";
 
         // Push into annotationProperties (fold inferred triples into subject annotations)
         try {
@@ -522,7 +496,7 @@ export function mapQuadsToDiagram(
               })
             : false;
           if (!exists) {
-            entry.annotationProperties.push({ property: prop, value: val });
+            entry.annotationProperties.push({ property: prop, value: val, predicateTerm: pred, objectTerm: obj, type: obj && obj.datatype && obj.datatype.value ? String(obj.datatype.value) : (obj && obj.language ? `@${String(obj.language)}` : XSD_STRING) });
           }
         } catch (_) { /* ignore */ }
       } catch (_) { /* ignore per-quad */ }

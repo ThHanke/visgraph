@@ -14,7 +14,7 @@ import { WELL_KNOWN } from "../utils/wellKnownOntologies";
 import { DataFactory, Quad } from "n3";
 import { buildPaletteMap } from "../components/Canvas/core/namespacePalette";
 import { shortLocalName, toPrefixed } from "../utils/termUtils";
-const { namedNode, quad } = DataFactory;
+const { namedNode, quad, blankNode, literal } = DataFactory;
 
 /* NOTE: attachPrefixed removed in favor of computing prefixed values locally
    inside the authoritative fat-map update/reconcile path so the freshly
@@ -332,7 +332,27 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             const predRaw = (ap && (ap.propertyUri || ap.property || ap.key)) || "";
             const pred = typeof mgr?.expandPrefix === "function" && predRaw ? mgr.expandPrefix(String(predRaw)) : String(predRaw);
             if (!pred) continue;
-            adds.push({ subject: String(entityUri), predicate: String(pred), object: String(ap.value) });
+
+            // Prefer provided native Term if present; otherwise build a Term from the value.
+            let objTerm: any = undefined;
+            try {
+              if (ap && ap.objectTerm && (ap.objectTerm.termType || ap.objectTerm.termType === 0)) {
+                objTerm = ap.objectTerm;
+              } else {
+                const v = ap && ap.value !== undefined && ap.value !== null ? String(ap.value) : "";
+                if (/^_:/i.test(v)) {
+                  objTerm = blankNode(String(v).replace(/^_:/, ""));
+                } else if (/^[a-z][a-z0-9+.\-]*:/i.test(v)) {
+                  objTerm = namedNode(v);
+                } else {
+                  objTerm = literal(v);
+                }
+              }
+            } catch (_) {
+              objTerm = literal(String(ap && ap.value || ""));
+            }
+
+            adds.push({ subject: String(entityUri), predicate: String(pred), object: objTerm });
           } catch (_) { /* ignore per-item */ }
         }
         const types = Array.isArray(updates.rdfTypes) ? updates.rdfTypes : [];

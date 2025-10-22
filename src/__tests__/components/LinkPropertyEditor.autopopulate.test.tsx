@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, it, expect } from "vitest";
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { LinkPropertyEditor } from "../../components/Canvas/LinkPropertyEditor";
@@ -37,8 +38,10 @@ describe("LinkPropertyEditor autocomplete population from fat-map", () => {
       />
     );
 
-    // The LinkPropertyEditor passes autoOpen={open} to AutoComplete, so suggestions
-    // should be visible without additional interaction. Wait for the seeded suggestion.
+    // The EntityAutoComplete shows suggestions only when the user types.
+    // Simulate typing into the object property input to trigger suggestions.
+    const input = screen.getByPlaceholderText("Type to search for object properties...");
+    await userEvent.type(input, "prop");
     await waitFor(() => {
       expect(screen.getByText("prop one")).toBeTruthy();
     });

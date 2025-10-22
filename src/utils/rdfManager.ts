@@ -2446,52 +2446,107 @@ export class RDFManager {
         : [];
       const g = namedNode(String(graphName));
 
+      const toTermIfNeeded = (v: any, isObject = false) => {
+        try {
+          if (v === null || typeof v === "undefined") return null;
+          if (typeof v === "object" && (v as any).termType) return v;
+          const s = String(v);
+          if (!s) return null;
+          if (/^_:/i.test(s)) return blankNode(String(s).replace(/^_:/, ""));
+          if (isObject) {
+            // treat any scheme-like string as NamedNode
+            return /^[a-z][a-z0-9+.\-]*:/i.test(s) ? namedNode(s) : literal(s);
+          }
+          return namedNode(s);
+        } catch (_) {
+          return v;
+        }
+      };
+
       // Perform removals first
       for (const r of removes) {
         try {
-          const subj = namedNode(String(r.subject));
-          const pred = namedNode(String(r.predicate));
-          let objs: any[] = [];
-          try {
-            if (
-              r.object === null ||
-              typeof r.object === "undefined" ||
-              String(r.object) === ""
-            ) {
-              const found = this.store.getQuads(subj, pred, null, g) || [];
-              for (const q of found) {
-                try {
-                  this.bufferSubjectFromQuad(q);
-                } catch (_) {
-                  void 0;
-                }
-                this.store.removeQuad(q);
-              }
-              continue;
+          const subj = toTermIfNeeded(r.subject, false) || namedNode(String(r.subject));
+          const pred = toTermIfNeeded(r.predicate, false) || namedNode(String(r.predicate));
+
+          // Empty object -> remove all objects for predicate
+          if (r.object === null || typeof r.object === "undefined" || String(r.object) === "") {
+            const found = this.store.getQuads(subj, pred, null, g) || [];
+            for (const q of found) {
+              try { this.bufferSubjectFromQuad(q); } catch (_) { void 0; }
+              try { this.store.removeQuad(q); } catch (_) { void 0; }
             }
-            if (/^_:/i.test(String(r.object)))
-              objs = [blankNode(String(r.object).replace(/^_:/, ""))];
-            else if (/^https?:\/\//i.test(String(r.object)))
-              objs = [namedNode(String(r.object))];
-            else objs = [literal(String(r.object))];
-          } catch (_) {
-            objs = [literal(String(r.object))];
+            continue;
           }
 
-          for (const o of objs) {
+          // If caller provided a Term object, use it directly
+          if (typeof r.object === "object" && (r.object as any).termType) {
+            const oTerm = r.object;
             try {
-              const found = this.store.getQuads(subj, pred, o as any, g) || [];
+              const found = this.store.getQuads(subj, pred, oTerm as any, g) || [];
               for (const q of found) {
-                try {
-                  this.bufferSubjectFromQuad(q);
-                } catch (_) {
-                  void 0;
-                }
-                this.store.removeQuad(q);
+                try { this.bufferSubjectFromQuad(q); } catch (_) { void 0; }
+                try { this.store.removeQuad(q); } catch (_) { void 0; }
               }
             } catch (_) {
               /* ignore per-object */
             }
+            continue;
+          }
+
+          // Legacy string case: try exact literal/name match first, then fallback to lexical literal match
+          const sObj = String(r.object);
+          let matched = false;
+          try {
+            // Try named/blank node exact match first (treat scheme-like strings as IRIs)
+            if (/^_:/i.test(sObj)) {
+              const bn = blankNode(sObj.replace(/^_:/, ""));
+              const found = this.store.getQuads(subj, pred, bn as any, g) || [];
+              for (const q of found) {
+                try { this.bufferSubjectFromQuad(q); } catch (_) { void 0; }
+                try { this.store.removeQuad(q); } catch (_) { void 0; }
+              }
+              matched = found.length > 0;
+            } else if (/^[a-z][a-z0-9+.\-]*:/i.test(sObj)) {
+              const nn = namedNode(sObj);
+              const found = this.store.getQuads(subj, pred, nn as any, g) || [];
+              for (const q of found) {
+                try { this.bufferSubjectFromQuad(q); } catch (_) { void 0; }
+                try { this.store.removeQuad(q); } catch (_) { void 0; }
+              }
+              matched = found.length > 0;
+            } else {
+              // treat as literal: try exact typed literal first
+              const lit = literal(sObj);
+              const found = this.store.getQuads(subj, pred, lit as any, g) || [];
+              for (const q of found) {
+                try { this.bufferSubjectFromQuad(q); } catch (_) { void 0; }
+                try { this.store.removeQuad(q); } catch (_) { void 0; }
+              }
+              matched = found.length > 0;
+            }
+          } catch (_) {
+            /* ignore */
+          }
+
+          if (matched) continue;
+
+          // Fallback: remove any literal with the same lexical value regardless of datatype/lang
+          try {
+            const foundAll = this.store.getQuads(subj, pred, null, g) || [];
+            for (const q of foundAll) {
+              try {
+                const objTerm = (q as any).object;
+                if (objTerm && typeof objTerm.termType === "string" && objTerm.termType === "Literal" && String(objTerm.value) === sObj) {
+                  try { this.bufferSubjectFromQuad(q); } catch (_) { void 0; }
+                  try { this.store.removeQuad(q); } catch (_) { void 0; }
+                }
+              } catch (_) {
+                /* ignore per-quad */
+              }
+            }
+          } catch (_) {
+            /* ignore fallback */
           }
         } catch (_) {
           /* ignore per-remove */
@@ -2501,28 +2556,34 @@ export class RDFManager {
       // Then perform adds (idempotent)
       for (const a of adds) {
         try {
-          const subj = namedNode(String(a.subject));
-          const pred = namedNode(String(a.predicate));
+          const subj = toTermIfNeeded(a.subject, false) || namedNode(String(a.subject));
+          const pred = toTermIfNeeded(a.predicate, false) || namedNode(String(a.predicate));
           let obj: any;
-          try {
-            if (/^_:/i.test(String(a.object)))
-              obj = blankNode(String(a.object).replace(/^_:/, ""));
-            else if (/^https?:\/\//i.test(String(a.object)))
-              obj = namedNode(String(a.object));
-            else obj = literal(String(a.object));
-          } catch (_) {
-            obj = literal(String(a.object));
+
+          // If caller provided a Term object, use it directly
+          if (typeof a.object === "object" && (a.object as any).termType) {
+            obj = a.object;
+          } else {
+            const sObj = String(a.object);
+            try {
+              if (/^_:/i.test(sObj)) obj = blankNode(sObj.replace(/^_:/, ""));
+              else if (/^[a-z][a-z0-9+.\-]*:/i.test(sObj)) obj = namedNode(sObj);
+              else obj = literal(sObj);
+            } catch (_) {
+              obj = literal(sObj);
+            }
           }
 
           const exists = this.store.countQuads(subj, pred, obj as any, g) > 0;
           if (!exists) {
-            this.store.addQuad(quad(subj as any, pred as any, obj as any, g));
             try {
-              this.bufferSubjectFromQuad(
-                quad(subj as any, pred as any, obj as any, g),
-              );
+              this.store.addQuad(quad(subj as any, pred as any, obj as any, g));
+              try { this.bufferSubjectFromQuad(quad(subj as any, pred as any, obj as any, g)); } catch (_) { void 0; }
             } catch (_) {
-              void 0;
+              // best-effort add
+              try {
+                this.store.addQuad(quad(subj as any, pred as any, obj as any, g));
+              } catch (_) { void 0; }
             }
           }
         } catch (_) {

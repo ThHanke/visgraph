@@ -14,7 +14,7 @@
 
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { DataFactory } from "n3";
-const { namedNode, blankNode } = DataFactory;
+const { namedNode, blankNode, literal } = DataFactory;
 
 // Module-scoped counter for generated blank-node identifiers used when creating new nodes
 let __vg_blank_counter = 1;
@@ -38,6 +38,7 @@ import {
 import EntityAutoComplete from "../ui/EntityAutoComplete";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { useOntologyStore } from "../../stores/ontologyStore";
+import { toPrefixed } from "../../utils/termUtils";
 import { X, Plus, Info } from "lucide-react";
 // React Flow selection hook — allow editor to derive node when no explicit prop provided
 
@@ -56,6 +57,11 @@ interface LiteralProperty {
   key: string;
   value: string;
   type?: string;
+  // Optional native term objects when available from the mapper
+  predicateTerm?: any;
+  objectTerm?: any;
+  // Optional language tag when datatype is xsd:string (e.g. "en")
+  lang?: string;
 }
 
 /**
@@ -68,6 +74,8 @@ interface NodePropertyEditorProps {
   onSave: (updatedData: any) => void;
   // optional callback so parent can immediately remove the node from the canvas (deleteElements)
   onDelete?: (iriOrId: string) => void;
+  // optional list of available entities for the autocomplete (passed from canvas)
+  availableEntities?: any[];
 }
 
 /**
@@ -133,10 +141,65 @@ export const NodePropertyEditor = ({
     const existingProps: LiteralProperty[] = [];
     if (Array.isArray(d.annotationProperties)) {
       d.annotationProperties.forEach((p: any) => {
+        // Prefer native Term shapes when available (predicateTerm / objectTerm).
+        const predIri =
+          (p && (p.property || p.propertyUri)) ||
+          (p && p.predicateTerm && p.predicateTerm.value)
+            ? String((p && (p.property || p.propertyUri)) || (p && p.predicateTerm && p.predicateTerm.value) || "")
+            : "";
+        const objVal =
+          p && p.value !== undefined && p.value !== null
+            ? String(p.value)
+            : p && p.objectTerm && p.objectTerm.value
+            ? String(p.objectTerm.value)
+            : "";
+        // Derive a display-friendly type token:
+        // - prefer explicit p.type when present
+        // - else prefer objectTerm.datatype.value (full IRI) or objectTerm.language
+        // - convert full IRI datatypes into prefixed tokens for the UI when possible
+        // Prefer an explicit language tag when present on the Term.
+        // Order of precedence:
+        // 1) objectTerm.language (if present) -> display as xsd:string with lang populated
+        // 2) explicit p.type that starts with "@" (legacy language marker) -> display as xsd:string with lang populated
+        // 3) explicit p.type or objectTerm.datatype value -> use that datatype (prefixed for display when possible)
+        // 4) fallback -> xsd:string
+        let objTypeRaw =
+          (p && p.type) ||
+          (p && p.objectTerm && p.objectTerm.datatype && p.objectTerm.datatype.value)
+            ? String((p && p.type) || (p && p.objectTerm && p.objectTerm.datatype && p.objectTerm.datatype.value) || "")
+            : "";
+        let objLang: string | undefined = undefined;
+        let objType: string;
+        // 1) Term language wins
+        if (p && p.objectTerm && p.objectTerm.language) {
+          objLang = String(p.objectTerm.language);
+          objType = "xsd:string";
+        } else if (objTypeRaw && String(objTypeRaw).startsWith("@")) {
+          // 2) legacy "@lang" marker
+          objLang = String(objTypeRaw).slice(1);
+          objType = "xsd:string";
+        } else if (!objTypeRaw) {
+          // 4) no explicit type -> default string
+          objType = "xsd:string";
+        } else if (String(objTypeRaw).includes("://")) {
+          // 3) full IRI datatype -> convert to prefixed token for display when possible
+          try {
+            const pref = toPrefixed(String(objTypeRaw));
+            objType = pref || String(objTypeRaw);
+          } catch (_) {
+            objType = String(objTypeRaw);
+          }
+        } else {
+          // 3b) already-prefixed token
+          objType = String(objTypeRaw);
+        }
         existingProps.push({
-          key: p.propertyUri || p.property || p.key || "",
-          value: p.value || "",
-          type: p.type || "xsd:string",
+          key: predIri,
+          value: objVal,
+          type: objType,
+          lang: objLang,
+          predicateTerm: p && (p.predicateTerm || p.predicate),
+          objectTerm: p && (p.objectTerm || p.object),
         });
       });
     } else if (Array.isArray(d.annotations)) {
@@ -166,7 +229,48 @@ export const NodePropertyEditor = ({
   };
 
   const handleUpdateProperty = (index: number, field: keyof LiteralProperty, value: string) => {
-    setProperties((prev) => prev.map((p, i) => i === index ? { ...p, [field]: value } : p));
+    setProperties((prev) =>
+      prev.map((p, i) => {
+        if (i !== index) return p;
+        // Update the requested field and clear native Terms when the user edits
+        // the lexical value, datatype, or the predicate key so we don't reuse stale Terms.
+        const updated: LiteralProperty = { ...p, [field]: value };
+        try {
+          if (field === "value" || field === "type") {
+            // Value/type changed -> objectTerm no longer valid
+            if ((updated as any).objectTerm) delete (updated as any).objectTerm;
+          }
+        } catch (_) {
+          /* ignore */
+        }
+        try {
+          if (field === "key") {
+            // Predicate changed -> predicateTerm no longer valid
+            if ((updated as any).predicateTerm) delete (updated as any).predicateTerm;
+          }
+        } catch (_) {
+          /* ignore */
+        }
+        // Language/datatype exclusivity rules:
+        try {
+          if (field === "type") {
+            // If user changed type away from xsd:string, clear lang
+            if (String(value) !== "xsd:string" && (updated as any).lang) {
+              delete (updated as any).lang;
+            }
+          }
+          if (field === "lang") {
+            // If user sets a language, ensure type is xsd:string
+            if (value && String(value).trim()) {
+              (updated as any).type = "xsd:string";
+            }
+          }
+        } catch (_) {
+          /* ignore */
+        }
+        return updated;
+      }),
+    );
   };
 
   // Utility to diff annotation properties (simple equality on key+value+type)
@@ -221,47 +325,100 @@ export const NodePropertyEditor = ({
     const typesToAdd = currentTypes.filter((t) => t && !initialTypes.includes(t));
     const typesToRemove = initialTypes.filter((t) => t && !currentTypes.includes(t));
 
-    const removes: any[] = [];
-    const adds: any[] = [];
+    // Prepare removes/adds in the shape expected by rdfManager.applyBatch.
+    // Prefer existing native Term objects (objectTerm / predicateTerm) when present.
+    const rdfTypePred = typeof (mgr as any).expandPrefix === "function"
+      ? String((mgr as any).expandPrefix("rdf:type"))
+      : "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 
-    // Prepare rdf:type predicate full IRI
-    const rdfTypePred = typeof (mgr as any).expandPrefix === "function" ? String((mgr as any).expandPrefix("rdf:type")) : "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
+    const valueToTerm = (val: any, type?: string) => {
+      try {
+        const s = typeof val === "string" ? String(val) : String(val || "");
+        if (/^_:/i.test(s)) return blankNode(s.replace(/^_:/, ""));
 
-    // Build removes for annotation properties (remove specific literal values)
-    for (const p of propsToRemove || []) {
-      {
-        const predFull = typeof (mgr as any).expandPrefix === "function" ? String((mgr as any).expandPrefix(p.key)) : String(p.key);
-        removes.push({ subject: subjIri, predicate: predFull, object: String(p.value || "") });
+        // If type is a language marker like "@en", create a language-tagged literal
+        if (type && String(type).trim() && String(type).startsWith("@")) {
+          const lang = String(type).slice(1);
+          return literal(s, lang);
+        }
+
+        // If a datatype is provided prefer it (expand prefixed types if manager supports it)
+        if (type && String(type).trim()) {
+          try {
+            const maybePref = String(type).trim();
+            const dtIri =
+              typeof (mgr as any).expandPrefix === "function"
+                ? String((mgr as any).expandPrefix(maybePref))
+                : maybePref;
+            return literal(s, namedNode(dtIri));
+          } catch (_) {
+            // fallthrough to typed literal by string
+            try {
+              return literal(s, namedNode(String(type)));
+            } catch (_) {
+              // continue
+            }
+          }
+        }
+
+        // Treat any scheme-like string (urn:, http:, https:, etc.) as a NamedNode.
+        if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return namedNode(s);
+        // Fallback: literal (no datatype)
+        return literal(s);
+      } catch (_) {
+        return literal(String(val || ""));
       }
-    }
+    };
 
-    // Build removes for rdf:type removals
+    const removesPrepared = (propsToRemove || []).map((p: any) => {
+      try {
+        const objTerm = p && p.objectTerm && (p.objectTerm.termType || p.objectTerm.termType === 0)
+          ? p.objectTerm
+          : valueToTerm(p.value, p.lang ? `@${p.lang}` : p.type);
+        const pred = String(p.key || p.property || (p.predicateTerm && p.predicateTerm.value) || "");
+        return {
+          subject: subjIri,
+          predicate: pred,
+          object: objTerm,
+        };
+      } catch (_) {
+        return { subject: subjIri, predicate: String(p.key || p.property || ""), object: literal(String(p.value || "")) };
+      }
+    });
+
+    // RDF type removals (use NamedNode for types)
     for (const t of typesToRemove || []) {
-      {
+      try {
         const typeFull = typeof (mgr as any).expandPrefix === "function" ? String((mgr as any).expandPrefix(String(t))) : String(t);
-        removes.push({ subject: subjIri, predicate: rdfTypePred, object: typeFull });
-      }
+        removesPrepared.push({ subject: subjIri, predicate: rdfTypePred, object: namedNode(typeFull) });
+      } catch (_) { /* ignore per-item */ }
     }
 
-    // Build adds for annotation properties
-    for (const p of propsToAdd || []) {
-      {
-        const predFull = typeof (mgr as any).expandPrefix === "function" ? String((mgr as any).expandPrefix(p.key)) : String(p.key);
-        adds.push({ subject: subjIri, predicate: predFull, object: String(p.value || "") });
+    const addsPrepared = (propsToAdd || []).map((p: any) => {
+      try {
+        const objTerm = p && p.objectTerm && (p.objectTerm.termType || p.objectTerm.termType === 0)
+          ? p.objectTerm
+          : valueToTerm(p.value, p.lang ? `@${p.lang}` : p.type);
+        const pred = String(p.key || p.property || (p.predicateTerm && p.predicateTerm.value) || "");
+        return {
+          subject: subjIri,
+          predicate: pred,
+          object: objTerm,
+        };
+      } catch (_) {
+        return { subject: subjIri, predicate: String(p.key || p.property || ""), object: literal(String(p.value || "")) };
       }
-    }
+    });
 
-    // Build adds for rdf:type additions
     for (const t of typesToAdd || []) {
-      {
+      try {
         const typeFull = typeof (mgr as any).expandPrefix === "function" ? String((mgr as any).expandPrefix(String(t))) : String(t);
-        adds.push({ subject: subjIri, predicate: rdfTypePred, object: typeFull });
-      }
+        addsPrepared.push({ subject: subjIri, predicate: rdfTypePred, object: namedNode(typeFull) });
+      } catch (_) { /* ignore per-item */ }
     }
-
-    // Apply batch (manager will notify). Use empty arrays when nothing to do so applyBatch is deterministic.
+    // Apply batch (manager will accept Term objects directly)
     try {
-      await (mgr as any).applyBatch({ removes: removes, adds: adds }, "urn:vg:data");
+      await (mgr as any).applyBatch({ removes: removesPrepared, adds: addsPrepared }, "urn:vg:data");
     } catch (err) {
       try { console.warn("NodePropertyEditor.applyBatch.failed", err); } catch (_) { void 0; }
       throw err;
@@ -451,9 +608,13 @@ export const NodePropertyEditor = ({
                     />
                   </div>
 
-                  <div className="col-span-2">
+                  <div className="col-span-1">
                     <Label className="text-xs">Type</Label>
-                    <Select value={property.type || "xsd:string"} onValueChange={(value) => handleUpdateProperty(index, "type", value)}>
+                    <Select value={property.type || "xsd:string"} onValueChange={(value) => {
+                      // when changing type away from xsd:string, clear lang
+                      handleUpdateProperty(index, "type", value);
+                      if (String(value) !== "xsd:string") handleUpdateProperty(index, "lang", "");
+                    }}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select type..." />
                       </SelectTrigger>
@@ -466,6 +627,27 @@ export const NodePropertyEditor = ({
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {property.type === "xsd:string" && (
+                    <div className="col-span-1">
+                      <Label className="text-xs">Lang</Label>
+                      <Input
+                        value={property.lang || ""}
+                        onChange={(e) => {
+                          const v = String(e.target.value || "").trim();
+                          // if lang set, ensure type is xsd:string
+                          if (v) {
+                            handleUpdateProperty(index, "lang", v);
+                            handleUpdateProperty(index, "type", "xsd:string");
+                          } else {
+                            handleUpdateProperty(index, "lang", "");
+                          }
+                        }}
+                        placeholder="en"
+                        className="w-full"
+                      />
+                    </div>
+                  )}
 
                   <div className="col-span-1">
                     <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveProperty(index, e)} className="h-9 px-2">
