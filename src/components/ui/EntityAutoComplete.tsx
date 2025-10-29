@@ -32,7 +32,8 @@ function escapeRegExp(s: string) {
 
 /* Minimal, deterministic AutoComplete that reads fat-map entries from the store
    when mode is provided, or uses the supplied entities array. Matching is a
-   case-insensitive substring test against entity.label only (per spec). */
+   case-insensitive substring test; extended to match label, prefixed, computed
+   prefixed and full IRI. */
 export default function EntityAutoComplete({
   mode,
   entities,
@@ -75,11 +76,7 @@ export default function EntityAutoComplete({
 
   // Ensure the in-field display reflects the selected entity's prefixed value on init
   // and whenever the resolved selectedEntity or value changes — but only when the user
-  // is not actively typing (query is empty). The rule is:
-  // 1) If a fat-map entry (selectedEntity) exists and has a non-empty prefixed property -> use that.
-  // 2) Otherwise compute a prefixed form via toPrefixed(value) and use it only if it differs
-  //    from the raw IRI (i.e., toPrefixed returned a real prefixed representation). If not,
-  //    clear the display so the placeholder shows.
+  // is not actively typing (query is empty).
   useEffect(() => {
     try {
       if (String(query || "").trim() !== "") return;
@@ -108,7 +105,7 @@ export default function EntityAutoComplete({
     }
   }, [value, selectedEntity, query]);
 
-  // Build filtered list based on query; match only against label (case-insensitive substring)
+  // Build filtered list based on query; match against label, prefixed, computed prefixed, and iri
   // IMPORTANT: do not show any suggestions when the query is empty — suggestions are shown only
   // when the user has typed something into the field.
   const filtered = useMemo(() => {
@@ -119,12 +116,28 @@ export default function EntityAutoComplete({
     const rx = new RegExp(escapeRegExp(q), "i");
     const matched = source.filter((e) => {
       const lab = String(e?.label || "");
-      return rx.test(lab);
+      const pref = String(e?.prefixed || "");
+      const iri = String(e?.iri || "");
+
+      // Match label
+      if (lab && rx.test(lab)) return true;
+      // Match stored prefixed form
+      if (pref && rx.test(pref)) return true;
+      // Match full IRI
+      if (iri && rx.test(iri)) return true;
+      // If no stored prefixed, try computing one and match against it (toPrefixed may throw)
+      if (!pref && iri) {
+        try {
+          const computed = String(toPrefixed(iri) || "");
+          if (computed && rx.test(computed)) return true;
+        } catch (_) {
+          // ignore toPrefixed failures
+        }
+      }
+      return false;
     });
     return optionsLimit && optionsLimit > 0 ? matched.slice(0, optionsLimit) : matched;
   }, [source, query, optionsLimit]);
-
-  // selectedEntity resolved above
 
   // Handle keyboard navigation
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -192,9 +205,15 @@ export default function EntityAutoComplete({
           placeholder={placeholder}
           value={inputValue}
           onChange={(ev) => {
-            setQuery(ev.target.value);
+            const v = ev.target.value;
+            setQuery(v);
             // open only when user has typed something — entering text will open suggestions
-            if (String(ev.target.value).trim() !== "") setOpen(true);
+            if (String(v).trim() !== "") {
+              setOpen(true);
+            } else {
+              // user cleared the field explicitly — keep input empty so placeholder shows
+              setInitialDisplay("");
+            }
             setHighlight(0);
           }}
           onFocus={() => { if (String(query).trim() !== "") setOpen(true); }}
