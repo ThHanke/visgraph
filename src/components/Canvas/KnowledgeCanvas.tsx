@@ -960,9 +960,15 @@ const KnowledgeCanvas: React.FC = () => {
         sample: Array.isArray(quads) ? quads.slice(0, 10) : quads,
       });
 
+      // Read live availableProperties from the ontology store at mapping time to avoid
+      // stale memoization races where reconcile updates may not yet have propagated.
+      const liveAvailableProps =
+        (useOntologyStore as any).getState && (useOntologyStore as any).getState().availableProperties
+          ? (useOntologyStore as any).getState().availableProperties
+          : availableProperties;
       const opts = {
         predicateKind: predicateClassifier,
-        availableProperties: availablePropertiesSnapshot,
+        availableProperties: Array.isArray(liveAvailableProps) ? (liveAvailableProps as any[]).slice() : [],
         availableClasses: availableClasses,
         registry,
         palette: palette as any,
@@ -1319,6 +1325,29 @@ const KnowledgeCanvas: React.FC = () => {
         // ignore persistence failures
       }
     };
+
+    // Expose a global setter so other UI components can toggle the canvas loading modal.
+    // Use a function reference rather than accessing canvas actions directly to avoid
+    // stale closure issues in other modules.
+    try {
+      (window as any).__VG_SET_LOADING = (loading: boolean, progress = 0, message = "") => {
+        try {
+          // Prefer the local canvas actions when available
+          try {
+            if (canvasActions && typeof canvasActions.setLoading === "function") {
+              canvasActions.setLoading(Boolean(loading), Number(progress), String(message));
+              return;
+            }
+          } catch (_) {
+            // ignore and fall back to no-op
+          }
+        } catch (_) {
+          // ignore
+        }
+      };
+    } catch (_) {
+      // ignore global attach failures
+    }
 
 
 
@@ -2437,7 +2466,17 @@ const KnowledgeCanvas: React.FC = () => {
     }
   }, [
     (edges || []).length,
-    (edges || []).map((e: any) => String(e.id)).join(","),
+    (edges || [])
+      .map((e: any) =>
+        String(e.id) +
+        ":" +
+        String((e && e.data && (e.data.label || "")) || "") +
+        ":" +
+        String((e && e.data && (e.data.propertyUri || "")) || "") +
+        ":" +
+        String((e && e.data && (e.data.shift || "")) || "")
+      )
+      .join(","),
   ]);
 
   // Use React Flow native change handlers so RF manages runtime metadata correctly.
@@ -2638,42 +2677,75 @@ const KnowledgeCanvas: React.FC = () => {
             try {
               const id = String(m.id);
               const existing = prevById.get(id);
+
+              const incomingData = (m && (m as any).data) || {};
+              // Build a minimal rendering-relevant snapshot for incoming edge
+              const incomingSnapshot = {
+                source: m && m.source ? String(m.source) : "",
+                target: m && m.target ? String(m.target) : "",
+                propertyUri: incomingData && incomingData.propertyUri ? String(incomingData.propertyUri) : "",
+                label: incomingData && typeof incomingData.label !== "undefined" ? String(incomingData.label || "") : "",
+                propertyType: incomingData && incomingData.propertyType ? String(incomingData.propertyType) : "",
+                shift: typeof incomingData.shift === "number" ? Number(incomingData.shift) : null,
+                namespace: incomingData && incomingData.namespace ? String(incomingData.namespace) : "",
+                rdfType: incomingData && incomingData.rdfType ? String(incomingData.rdfType) : "",
+              };
+
               if (existing) {
-                // Preserve existing runtime flags but ensure the edge remains selectable
-                const item = {
-                  ...existing,
-                  source: m && m.source ? m.source : existing.source,
-                  target: m && m.target ? m.target : existing.target,
-                  data: { ...(existing.data || {}), ...(m && m.data ? m.data : {}) },
-                } as any;
-                // If selectable wasn't explicitly set on the existing edge, default to true.
-                if (typeof (item as any).selectable !== "boolean") {
-                  (item as any).selectable = true;
-                }
+                // Build same snapshot for existing edge
+                const existingData = (existing && (existing as any).data) || {};
+                const existingSnapshot = {
+                  source: existing && existing.source ? String(existing.source) : "",
+                  target: existing && existing.target ? String(existing.target) : "",
+                  propertyUri: existingData && existingData.propertyUri ? String(existingData.propertyUri) : "",
+                  label: existingData && typeof existingData.label !== "undefined" ? String(existingData.label || "") : "",
+                  propertyType: existingData && existingData.propertyType ? String(existingData.propertyType) : "",
+                  shift: typeof existingData.shift === "number" ? Number(existingData.shift) : null,
+                  namespace: existingData && existingData.namespace ? String(existingData.namespace) : "",
+                  rdfType: existingData && existingData.rdfType ? String(existingData.rdfType) : "",
+                };
 
-                // Provide an immediate persistence hook so UI updates to shift are visible
-                // as soon as the handle drag completes. This is a runtime-only callback and
-                // will not be serialized/stored by the mapper.
-                try {
-                  item.data = item.data || {};
-                  (item.data as any).onEdgeUpdate = (payload: { id: string; shift: number }) => {
-                    try {
-                      setEdges((prev = []) =>
-                        (prev || []).map((e) =>
-                          String(e.id) === String(id)
-                            ? { ...(e as any), data: { ...(e as any).data, shift: payload.shift } }
-                            : e,
-                        ),
-                      );
-                    } catch (_) {
-                      // ignore
-                    }
-                  };
-                } catch (_) {
-                  // ignore
-                }
+                const changed =
+                  JSON.stringify(existingSnapshot) !== JSON.stringify(incomingSnapshot);
 
-                changes.push({ id, type: "replace", item });
+                if (changed) {
+                  // Preserve existing runtime flags but ensure the edge remains selectable
+                  const item = {
+                    ...existing,
+                    source: m && m.source ? m.source : existing.source,
+                    target: m && m.target ? m.target : existing.target,
+                    data: { ...(existing.data || {}), ...(m && m.data ? m.data : {}) },
+                  } as any;
+                  // If selectable wasn't explicitly set on the existing edge, default to true.
+                  if (typeof (item as any).selectable !== "boolean") {
+                    (item as any).selectable = true;
+                  }
+
+                  // Provide an immediate persistence hook so UI updates to shift are visible
+                  // as soon as the handle drag completes. This is a runtime-only callback and
+                  // will not be serialized/stored by the mapper.
+                  try {
+                    item.data = item.data || {};
+                    (item.data as any).onEdgeUpdate = (payload: { id: string; shift: number }) => {
+                      try {
+                        setEdges((prev = []) =>
+                          (prev || []).map((e) =>
+                            String(e.id) === String(id)
+                              ? { ...(e as any), data: { ...(e as any).data, shift: payload.shift } }
+                              : e,
+                          ),
+                        );
+                      } catch (_) {
+                        // ignore
+                      }
+                    };
+                  } catch (_) {
+                    // ignore
+                  }
+
+                  changes.push({ id, type: "replace", item });
+                }
+                // if not changed, skip emitting a replace
               } else {
                 const item = { ...(m as any) } as any;
                 // Ensure newly added edges are selectable by default unless caller explicitly disabled it.
@@ -2788,6 +2860,7 @@ const KnowledgeCanvas: React.FC = () => {
         currentLayout={currentLayout}
         layoutEnabled={layoutEnabled}
         onToggleLayoutEnabled={handleToggleLayoutEnabled}
+        canvasActions={canvasActions}
         availableEntities={allEntities}
       />
       {showLegend ? (

@@ -2095,6 +2095,44 @@ export class RDFManager {
   }
 
   /**
+   * Emit subject-level change notifications for every subject found in the specified graph.
+   *
+   * Convenience wrapper that collects all unique subject IRIs from the given named graph
+   * (defaults to "urn:vg:data") and delegates to triggerSubjectUpdate which performs
+   * blacklist filtering and authoritative per-subject snapshot building.
+   *
+   * Returns a Promise that resolves after triggerSubjectUpdate completes.
+   */
+  public async emitAllSubjects(graphName: string = "urn:vg:data"): Promise<void> {
+    try {
+      if (!graphName) return;
+      const g = namedNode(String(graphName));
+      const allQuads = this.store.getQuads(null, null, null, g) || [];
+
+      // Collect unique subject IRIs and ensure the resulting array is strongly typed as string[]
+      const rawSubjects = (allQuads || []).map((q: any) =>
+        q && q.subject && (q.subject as any).value
+          ? String((q.subject as any).value)
+          : null,
+      );
+      const subjects = Array.from(new Set(rawSubjects.filter((s): s is string => !!s)));
+
+      if (!Array.isArray(subjects) || subjects.length === 0) return;
+      await this.triggerSubjectUpdate(subjects as string[]);
+    } catch (err) {
+      try {
+        if (typeof fallback === "function")
+          fallback("rdf.emitAllSubjects.failed", {
+            graphName,
+            error: String(err),
+          });
+      } catch (_) {
+        /* ignore */
+      }
+    }
+  }
+
+  /**
    * updateNode - convenience helper to update node-level information (annotationProperties, rdfTypes)
    * Backwards-compatible helper used by tests and some callers. Applies idempotent adds (and optional removes)
    * into urn:vg:data using applyBatch or addTriple as available on this manager.

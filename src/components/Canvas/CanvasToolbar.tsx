@@ -76,6 +76,8 @@ interface CanvasToolbarProps {
   onOpenLinkEditor?: (id?: string | null) => void;
   // Callback invoked when the user confirms clearing the canvas data (UI-level clear).
   onClearData?: () => void;
+  // Optional canvas actions forwarded from KnowledgeCanvas so the toolbar can toggle the global loading UI.
+  canvasActions?: any;
   // New: allow CanvasToolbar to display programmatic layout application (control removed)
   availableEntities: Array<{
    iri: string;
@@ -86,7 +88,7 @@ interface CanvasToolbarProps {
   }>;
 }
 
-export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onExportSvg, onExportPng, onLoadFile, onClearData, viewMode, onViewModeChange, onLayoutChange, currentLayout = 'horizontal', layoutEnabled = false, onToggleLayoutEnabled, availableEntities }: CanvasToolbarProps) => {
+export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport, onExportSvg, onExportPng, onLoadFile, onClearData, canvasActions, viewMode, onViewModeChange, onLayoutChange, currentLayout = 'horizontal', layoutEnabled = false, onToggleLayoutEnabled, availableEntities }: CanvasToolbarProps) => {
   const [isAddNodeOpen, setIsAddNodeOpen] = useState(false);
   const [isLoadOntologyOpen, setIsLoadOntologyOpen] = useState(false);
   const [isLoadFileOpen, setIsLoadFileOpen] = useState(false);
@@ -274,10 +276,71 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   const handleLoadOntology = async () => {
     if (ontologyUrl.trim()) {
       try {
-        await loadOntology(ontologyUrl);
-        setOntologyUrl('');
+        // Show canvas progress modal immediately to match autoload UX
+        try {
+          try {
+            const setLoadingFn =
+              (canvasActions && typeof canvasActions.setLoading === "function")
+                ? (canvasActions.setLoading as any)
+                : (typeof window !== "undefined" && (window as any).__VG_SET_LOADING)
+                  ? (window as any).__VG_SET_LOADING
+                  : null;
+            if (typeof setLoadingFn === "function") setLoadingFn(true, 5, "Loading ontology...");
+          } catch (_) {
+            // ignore if canvas helper unavailable
+          }
+        } catch (_) {
+          // ignore if canvas helper unavailable
+        }
+
+        // Close the dialog immediately (same behavior as autoload)
         setIsLoadOntologyOpen(false);
-        toast.success('Ontology loaded');
+
+        // Start the load but do not await here to keep UI responsive.
+        // Update the canvas loading modal when the promise resolves/rejects.
+        (async () => {
+          try {
+            await loadOntology(ontologyUrl);
+            try {
+              const setLoadingFn =
+                (canvasActions && typeof canvasActions.setLoading === "function")
+                  ? (canvasActions.setLoading as any)
+                  : (typeof window !== "undefined" && (window as any).__VG_SET_LOADING)
+                    ? (window as any).__VG_SET_LOADING
+                    : null;
+              if (typeof setLoadingFn === "function") setLoadingFn(false, 100, "");
+            } catch (_) {
+              // ignore per-setter failures
+            }
+            setOntologyUrl('');
+            toast.success('Ontology loaded');
+          } catch (error: any) {
+            try {
+              const setLoadingFn =
+                (canvasActions && typeof canvasActions.setLoading === "function")
+                  ? (canvasActions.setLoading as any)
+                  : (typeof window !== "undefined" && (window as any).__VG_SET_LOADING)
+                    ? (window as any).__VG_SET_LOADING
+                    : null;
+              if (typeof setLoadingFn === "function") setLoadingFn(false, 0, "");
+            } catch (_) {
+              // ignore
+            }
+            try {
+              if (typeof fallback === "function") {
+                try {
+                  fallback('console.error', { args: [(error && error.message) ? error.message : String(error)] }, { level: 'error', captureStack: true });
+                } catch (_) { /* ignore */ }
+              }
+            } catch (_) { /* ignore */ }
+            console.error('Failed to load ontology:', error);
+            const msg = (error && error.message) ? error.message : String(error);
+            toast.error(`Failed to load ontology: ${msg}`, {
+              description: 'If this looks like a cross-origin or redirect issue, try pasting the RDF into "Paste RDF" below or upload the file. You can also use a proxy-hosted URL if available.'
+            });
+            // dialog remains closed (user can re-open to retry)
+          }
+        })();
       } catch (error: any) {
         try {
           if (typeof fallback === "function") {
@@ -288,12 +351,9 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
         } catch (_) { void 0; }
         console.error('Failed to load ontology:', error);
         const msg = (error && error.message) ? error.message : String(error);
-        // Keep the dialog open and show a helpful, actionable message to the user.
-        // Many CORS/redirect problems return HTML or are blocked by the browser — offer the Paste RDF fallback.
         toast.error(`Failed to load ontology: ${msg}`, {
           description: 'If this looks like a cross-origin or redirect issue, try pasting the RDF into "Paste RDF" below or upload the file. You can also use a proxy-hosted URL if available.'
         });
-        // keep the dialog open so the user can paste/upload RDF or try another URL
       }
     }
   };

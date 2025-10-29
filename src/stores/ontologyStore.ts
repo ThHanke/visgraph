@@ -240,7 +240,7 @@ interface OntologyStore {
   // Returns a Promise to allow async rdfManager implementations; tests call this as async.
   updateNode: (entityUri: string, updates: any) => Promise<void>;
 
-  loadOntology: (url: string) => Promise<void>;
+  loadOntology: (url: string, options?: { autoload?: boolean }) => Promise<void>;
   loadOntologyFromRDF: (
     rdfContent: string,
     onProgress?: (progress: number, message: string) => void,
@@ -404,8 +404,9 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     }
   },
 
-  loadOntology: async (url: string) => {
+  loadOntology: async (url: string, options?: { autoload?: boolean }) => {
     logCallGraph?.("loadOntology:start", url);
+    const autoload = !!(options && (options as any).autoload);
     try {
       const { rdfManager: mgr } = get();
 
@@ -562,6 +563,35 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         }
       } catch (_) {
         /* best-effort only */
+      }
+
+      // After a successful ontology load via loadOntology (explicit user request),
+      // re-emit subject-level notifications for the data graph so UI consumers
+      // receive updated subject events. Do NOT emit for autoloaded ontology loads.
+      try {
+        if (!autoload) {
+          try {
+            const mgrInst = get().rdfManager;
+            if (mgrInst && typeof (mgrInst as any).emitAllSubjects === "function") {
+              await (mgrInst as any).emitAllSubjects();
+            } else if (typeof rdfManager !== "undefined" && typeof (rdfManager as any).emitAllSubjects === "function") {
+              await (rdfManager as any).emitAllSubjects();
+            }
+          } catch (e) {
+            try {
+              if (typeof fallback === "function") {
+                fallback("ontology.emitAllSubjects.failed", {
+                  url: normRequestedUrl,
+                  error: String(e),
+                });
+              }
+            } catch (_) {
+              /* ignore */
+            }
+          }
+        }
+      } catch (_) {
+        /* ignore overall emit failures */
       }
 
       return;
@@ -807,7 +837,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           95 + Math.floor((i / toLoad.length) * 5),
           `Loading ${ontologyName || uri}...`,
         );
-        await get().loadOntology(uri);
+        await get().loadOntology(uri, { autoload: true });
       } catch (error: any) {
         try {
           fallback(
