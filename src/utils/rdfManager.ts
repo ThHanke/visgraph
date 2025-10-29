@@ -926,15 +926,15 @@ export class RDFManager {
               }
 
               // Emit directly to registered subject-change subscribers.
+              console.debug("[VG_DEBUG] rdfManager.finalizeLoad.emitSubjects", {
+                subs,
+                emitCount: Array.isArray(emitQuads) ? emitQuads.length : 0,
+              });
               for (const cb of Array.from(this.subjectChangeSubscribers)) {
                 try {
-                  try {
-                    (cb as any)(subs, emitQuads);
-                  } catch (_) {
-                    cb(subs);
-                  }
-                } catch (_) {
-                  /* ignore individual subscriber errors */
+                  (cb as any)(subs, emitQuads);
+                } catch (e) {
+                  console.error("[VG_ERROR] rdfManager.finalizeLoad.emitSubjects.failed", { error: String(e) });
                 }
               }
 

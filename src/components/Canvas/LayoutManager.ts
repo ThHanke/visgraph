@@ -151,7 +151,12 @@ export class LayoutManager {
                   try {
                     requestAnimationFrame(res);
                   } catch (_) {
-                    setTimeout(res, 16);
+                    // In non-browser/test environments schedule a microtask instead of a real timeout
+                    if (typeof window === "undefined") {
+                      Promise.resolve().then(res);
+                    } else {
+                      setTimeout(res, 16);
+                    }
                   }
                 });
               while (Date.now() - start < timeoutMs) {

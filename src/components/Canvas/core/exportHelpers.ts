@@ -19,7 +19,12 @@ export async function exportViewportSvgMinimal(): Promise<string> {
   const viewport = document.querySelector('.react-flow__viewport') as HTMLElement | null;
   if (!viewport) throw new Error('Viewport element ".react-flow__viewport" not found');
   // Small delay to allow any portalled renderer content to attach/paint.
-  await new Promise((r) => setTimeout(r, 2000));
+  if (typeof window === "undefined") {
+    // In non-browser/test environments, schedule a microtask instead of a real timeout
+    await Promise.resolve();
+  } else {
+    await new Promise((r) => setTimeout(r, 2000));
+  }
   const svgResult = await (htmlToImage as any).toSvg(viewport, { cacheBust: true });
   if (typeof svgResult !== "string") throw new Error("html-to-image.toSvg did not return a string");
   const prefix = "data:image/svg+xml;charset=utf-8,";
@@ -35,7 +40,12 @@ export async function exportViewportPngMinimal(scale = 2): Promise<string> {
   const viewport = document.querySelector('.react-flow__viewport') as HTMLElement | null;
   if (!viewport) throw new Error('Viewport element ".react-flow__viewport" not found');
   // Small delay to allow any portalled renderer content to attach/paint.
-  await new Promise((r) => setTimeout(r, 2000));
+  if (typeof window === "undefined") {
+    // In non-browser/test environments, schedule a microtask instead of a real timeout
+    await Promise.resolve();
+  } else {
+    await new Promise((r) => setTimeout(r, 2000));
+  }
   const dataUrl = await (htmlToImage as any).toPng(viewport, { cacheBust: true, pixelRatio: scale });
   if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/png")) throw new Error("html-to-image.toPng did not return a PNG data URL");
   return dataUrl;

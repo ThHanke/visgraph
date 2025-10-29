@@ -469,6 +469,61 @@ const KnowledgeCanvas: React.FC = () => {
   }, [ontologiesVersion]);
 
   const initialMapRef = useRef(true);
+  // Mounted ref to help guard async callbacks that may run after unmount.
+  const mountedRef = useRef<boolean>(true);
+
+  // Track timeouts scheduled by this component so they can be cleared on unmount.
+  // Some timers are created in many callbacks (double-click guards, deferred layout, etc.)
+  // and can fire after the component unmounts during tests — causing "document" errors.
+  // Use setTrackedTimeout(...) instead of setTimeout(...) where appropriate.
+  const timeoutsRef = useRef<number[]>([]);
+  const setTrackedTimeout = useCallback((fn: any, delay = 0) => {
+    try {
+      if (typeof window === "undefined") {
+        // In non-browser test envs, preserve async ordering by scheduling as microtask.
+        Promise.resolve().then(fn);
+        return -1;
+      }
+      const id = window.setTimeout(fn, delay);
+      try {
+        timeoutsRef.current.push(id);
+      } catch (_) {
+        // ignore tracking failures
+      }
+      return id;
+    } catch (_) {
+      try {
+        Promise.resolve().then(fn);
+      } catch (_) {
+        /* ignore */
+      }
+      return -1;
+    }
+  }, []);
+
+  const clearAllTrackedTimeouts = useCallback(() => {
+    try {
+      for (const id of timeoutsRef.current || []) {
+        try {
+          window.clearTimeout(id);
+        } catch (_) {}
+      }
+      timeoutsRef.current = [];
+    } catch (_) {
+      /* ignore */
+    }
+  }, []);
+
+  // Ensure all tracked timers are cleared when the component unmounts.
+  useEffect(() => {
+    return () => {
+      try {
+        clearAllTrackedTimeouts();
+      } catch (_) {
+        /* ignore */
+      }
+    };
+  }, [clearAllTrackedTimeouts]);
 
   // In-process mapper wrapper kept for compatibility with earlier worker-based
   // experiments. For now we run the pure mapper synchronously on the main thread.
@@ -567,6 +622,15 @@ const KnowledgeCanvas: React.FC = () => {
           (config && config.currentLayout) ||
           lm.suggestOptimalLayout();
         appliedLayoutType = layoutType;
+        // Debug: announce layout start so we can trace when layouts are computed and why.
+        try {
+          console.debug("[VG_DEBUG] canvas.layout.start", {
+            layoutType,
+            candidateNodeCount: Array.isArray(candidateNodes) ? candidateNodes.length : 0,
+            candidateEdgeCount: Array.isArray(candidateEdges) ? candidateEdges.length : 0,
+            force,
+          });
+        } catch (_) { /* ignore debug failures */ }
 
         // Ask the layout manager to compute node change objects for the provided nodes/edges.
         const nodeChanges = await lm.applyLayout(
@@ -646,7 +710,7 @@ const KnowledgeCanvas: React.FC = () => {
             try {
               requestAnimationFrame(resolve);
             } catch (_) {
-              setTimeout(resolve, 16);
+              setTrackedTimeout(resolve, 16);
             }
           });
         // Await two frames to allow React and ReactFlow to apply changes.
@@ -823,7 +887,7 @@ const KnowledgeCanvas: React.FC = () => {
         });
         toast.success("Knowledge graph loaded successfully");
 
-        setTimeout(() => {
+        setTrackedTimeout(() => {
           void doLayout(nodes, edges, true);
         }, 300);
         void doLayout(nodes, edges, true);
@@ -934,6 +998,9 @@ const KnowledgeCanvas: React.FC = () => {
 
     let mounted = true;
     let debounceTimer: number | null = null;
+    // Use the component-level tracked timeout helper so timers are tracked in a single place
+    // and cleared on unmount. This avoids per-effect local arrays that are easy to miss.
+    const setTrackedTimeoutLocal = (fn: any, delay = 0) => setTrackedTimeout(fn, delay);
     // If a mapping run returns an empty result while we still have a previous snapshot,
     // it's likely a transient race. We schedule a single quick retry and skip applying
     // the empty result to avoid clearing the canvas unexpectedly.
@@ -1011,52 +1078,81 @@ const KnowledgeCanvas: React.FC = () => {
       mappingInProgressRef.current = true;
 
       // Apply mapper output via centralized helper (nodes + edges)
-      applyDiagrammChange(mappedNodes, mappedEdges);
+      await applyDiagrammChange(mappedNodes, mappedEdges);
 
       // Signal mapping completion for tests
       if (typeof window !== "undefined")
         (window as any).__VG_LAST_MAPPING_RUN = Date.now();
 
       console.debug("canvas.rebuild.end");
-
-      // Schedule layout and queued-apply processing on next tick (ensures state flushed)
-      setTimeout(async () => {
+      // Snapshot RF nodes for test inspection (best-effort).
+      try {
+        if (typeof window !== "undefined" && reactFlowInstance && reactFlowInstance.current && typeof (reactFlowInstance.current as any).getNodes === "function") {
+          (window as any).__VG_LAST_NODES = (reactFlowInstance.current as any).getNodes();
+        }
+      } catch (_) {}
+      
+      // Finalize mapping immediately (ensure React updates are enqueued and then run layout).
+      // Avoid scheduling another tracked timeout here to reduce races; we already awaited
+      // applyDiagrammChange which waits a tracked microtask so React has queued state updates.
+      try {
+        if (!mountedRef.current) return;
         mappingInProgressRef.current = false;
 
-        const mergedNodes = Array.isArray(mappedNodes)
-          ? mappedNodes
-          : nodes || [];
-        const mergedEdges = Array.isArray(mappedEdges)
-          ? mappedEdges
-          : edges || [];
+        const mergedNodes = Array.isArray(mappedNodes) ? mappedNodes : nodes || [];
+        const mergedEdges = Array.isArray(mappedEdges) ? mappedEdges : edges || [];
+
+        // Prefer live React Flow runtime nodes/edges if available so LayoutManager can observe measurements.
+        const rfInst = reactFlowInstance && reactFlowInstance.current;
+        const nodesForLayout =
+          rfInst && typeof (rfInst as any).getNodes === "function"
+            ? (rfInst as any).getNodes()
+            : mergedNodes;
+        const edgesForLayout =
+          rfInst && typeof (rfInst as any).getEdges === "function"
+            ? (rfInst as any).getEdges()
+            : mergedEdges;
 
         // If loader requested a forced layout for the next mapping, honor it first.
         if (forceLayoutNextMappingRef.current) {
+          try {
+            console.debug("[VG_DEBUG] canvas.layout.forced.flag.detected", {
+              mergedNodesCount: Array.isArray(nodesForLayout) ? nodesForLayout.length : 0,
+              mergedEdgesCount: Array.isArray(edgesForLayout) ? edgesForLayout.length : 0,
+            });
+          } catch (_) { /* ignore */ }
           forceLayoutNextMappingRef.current = false;
-          await doLayout(mergedNodes, mergedEdges, true);
+          await doLayout(nodesForLayout as any, edgesForLayout as any, true);
+          try {
+            console.debug("[VG_DEBUG] canvas.layout.forced.run.completed", { time: Date.now() });
+          } catch (_) { /* ignore */ }
           // Give React Flow a moment to apply node changes, then fit the view so the user sees the graph.
-          await new Promise((r) => setTimeout(r, 50));
+          try {
+            await new Promise((r) => setTrackedTimeout(r, 50));
+          } catch (_) { /* ignore */ }
+          if (!mountedRef.current) return;
 
-          const inst = reactFlowInstance && reactFlowInstance.current;
-          if (inst && typeof (inst as any).fitView === "function") {
-            (inst as any).fitView({ padding: 0.1 });
+          const inst = rfInst;
+          if (mountedRef.current && inst && typeof (inst as any).fitView === "function") {
+            try { (inst as any).fitView({ padding: 0.1 }); } catch (_) { /* ignore */ }
           }
         } else {
           // Otherwise run layout if autoApplyLayout is enabled
-          const autoLayoutEnabled = !!(
-            config && (config as any).autoApplyLayout
-          );
+          const autoLayoutEnabled = !!(config && (config as any).autoApplyLayout);
           if (autoLayoutEnabled) {
-            await doLayout(mergedNodes, mergedEdges, true);
+            await doLayout(nodesForLayout as any, edgesForLayout as any, true);
           }
         }
 
         // Honor any manual Apply that was queued while mapping was in progress
         if (applyRequestedRef.current) {
           applyRequestedRef.current = false;
-          await doLayout(mergedNodes, mergedEdges, true);
+          await doLayout(nodesForLayout as any, edgesForLayout as any, true);
         }
-      }, 0);
+      } catch (err) {
+        // ignore finalization errors to avoid breaking mapping caller
+        console.debug("[VG_DEBUG] mapping.finalize.error", err);
+      }
     };
 
     if (!initialMapRef.current) {
@@ -1067,7 +1163,7 @@ const KnowledgeCanvas: React.FC = () => {
 
     const scheduleRunMapping = () => {
       if (debounceTimer) window.clearTimeout(debounceTimer);
-      debounceTimer = window.setTimeout(() => {
+      debounceTimer = setTrackedTimeout(() => {
         runMapping();
         debounceTimer = null;
       }, 100);
@@ -1119,62 +1215,71 @@ const KnowledgeCanvas: React.FC = () => {
             (mappedEdges || []).map((e: any) => [String(e.id), e]),
           );
 
-          applyDiagrammChange(mappedNodes, mappedEdges);
+          await applyDiagrammChange(mappedNodes, mappedEdges);
 
           // Signal mapping completion for tests
           if (typeof window !== "undefined")
             (window as any).__VG_LAST_MAPPING_RUN = Date.now();
 
           console.debug("canvas.rebuild.end");
-
-          // Schedule layout against the merged mapper output (next tick so state flushes).
-          setTimeout(async () => {
-            try {
-              const mergedNodes = Array.isArray(mappedNodes)
-                ? mappedNodes
-                : nodes || [];
-              const mergedEdges = Array.isArray(mappedEdges)
-                ? mappedEdges
-                : edges || [];
-
-              if (forceLayoutNextMappingRef.current) {
-                forceLayoutNextMappingRef.current = false;
-                try {
-                  await doLayout(mergedNodes, mergedEdges, true);
-                  await new Promise((r) => setTimeout(r, 50));
-                  const inst =
-                    reactFlowInstance && reactFlowInstance.current;
-                  if (inst && typeof (inst as any).fitView === "function") {
-                    (inst as any).fitView({ padding: 0.1 });
-                  }
-                } catch {
-                  // ignore
-                }
-              } else {
-                const autoLayoutEnabled = !!(
-                  config && (config as any).autoApplyLayout
-                );
-                if (autoLayoutEnabled) {
-                  try {
-                    await doLayout(mergedNodes, mergedEdges, true);
-                  } catch {
-                    // ignore
-                  }
-                }
-              }
-
-              if (applyRequestedRef.current) {
-                applyRequestedRef.current = false;
-                try {
-                  await doLayout(mergedNodes, mergedEdges, true);
-                } catch {
-                  // ignore
-                }
-              }
-            } catch {
-              // ignore
+          // Snapshot RF nodes for test inspection (best-effort).
+          try {
+            if (typeof window !== "undefined" && reactFlowInstance && reactFlowInstance.current && typeof (reactFlowInstance.current as any).getNodes === "function") {
+              (window as any).__VG_LAST_NODES = (reactFlowInstance.current as any).getNodes();
             }
-          }, 0);
+          } catch (_) {}
+
+          // Finalize mapping immediately (ensure React updates are enqueued and then run layout).
+          try {
+            if (!mountedRef.current) return;
+            const mergedNodes = Array.isArray(mappedNodes) ? mappedNodes : nodes || [];
+            const mergedEdges = Array.isArray(mappedEdges) ? mappedEdges : edges || [];
+
+            const rfInst = reactFlowInstance && reactFlowInstance.current;
+            const nodesForLayout =
+              rfInst && typeof (rfInst as any).getNodes === "function"
+                ? (rfInst as any).getNodes()
+                : mergedNodes;
+            const edgesForLayout =
+              rfInst && typeof (rfInst as any).getEdges === "function"
+                ? (rfInst as any).getEdges()
+                : mergedEdges;
+
+            if (forceLayoutNextMappingRef.current) {
+              forceLayoutNextMappingRef.current = false;
+              try {
+                await doLayout(nodesForLayout as any, edgesForLayout as any, true);
+                await new Promise((r) => setTrackedTimeout(r, 50));
+                if (!mountedRef.current) return;
+                const inst = rfInst;
+                if (mountedRef.current && inst && typeof (inst as any).fitView === "function") {
+                  try { (inst as any).fitView({ padding: 0.1 }); } catch (_) { /* ignore */ }
+                }
+              } catch {
+                // ignore
+              }
+            } else {
+              const autoLayoutEnabled = !!(config && (config as any).autoApplyLayout);
+              if (autoLayoutEnabled) {
+                try {
+                  await doLayout(nodesForLayout as any, edgesForLayout as any, true);
+                } catch {
+                  // ignore
+                }
+              }
+            }
+
+            if (applyRequestedRef.current) {
+              applyRequestedRef.current = false;
+              try {
+                await doLayout(nodesForLayout as any, edgesForLayout as any, true);
+              } catch {
+                // ignore
+              }
+            }
+          } catch {
+            // ignore
+          }
 
           return;
         } catch (err) {
@@ -1246,12 +1351,23 @@ const KnowledgeCanvas: React.FC = () => {
 
     return () => {
       mounted = false;
+      mountedRef.current = false;
       if (debounceTimer) {
-        window.clearTimeout(debounceTimer);
+        try {
+          window.clearTimeout(debounceTimer);
+        } catch (_) {}
         debounceTimer = null;
       }
+      // Clear any tracked timeouts scheduled via the component-level tracker
+      try {
+        clearAllTrackedTimeouts();
+      } catch (_) {
+        // ignore clearing failures
+      }
       if (typeof mgr.offSubjectsChange === "function" && subjectsCallback) {
-        mgr.offSubjectsChange(subjectsCallback as any);
+        try {
+          mgr.offSubjectsChange(subjectsCallback as any);
+        } catch (_) {}
       }
     };
   }, [
@@ -1276,9 +1392,9 @@ const KnowledgeCanvas: React.FC = () => {
     if (Array.isArray(pending) && pending.length > 0) {
       void Promise.resolve().then(async () => {
         for (const req of pending.splice(0)) {
-          try {
+            try {
             await doLayout(nodes, edges, true);
-            await new Promise((r) => setTimeout(r, 200));
+            await new Promise((r) => setTrackedTimeout(r, 200));
             req.resolve(true);
           } catch (err) {
             req.resolve(false);
@@ -1290,7 +1406,7 @@ const KnowledgeCanvas: React.FC = () => {
     (window as any).__VG_APPLY_LAYOUT = async (layoutKey?: string) => {
       try {
         await doLayout(nodes, edges, true);
-        await new Promise((r) => setTimeout(r, 200));
+        await new Promise((r) => setTrackedTimeout(r, 200));
         return true;
       } catch {
         return false;
@@ -1811,7 +1927,7 @@ const KnowledgeCanvas: React.FC = () => {
 
       // Short suppress guard to avoid selection-change races opening other editors.
       suppressSelectionRef.current = true;
-      setTimeout(() => {
+      setTrackedTimeout(() => {
         suppressSelectionRef.current = false;
       }, 0);
 
@@ -2148,7 +2264,7 @@ const KnowledgeCanvas: React.FC = () => {
       // when the user finishes dragging a node. This mirrors the double-click guard
       // and avoids the editor opening on mouse-up after drag.
       suppressSelectionRef.current = true;
-      setTimeout(() => {
+      setTrackedTimeout(() => {
         suppressSelectionRef.current = false;
       }, 0);
 
@@ -2201,7 +2317,7 @@ const KnowledgeCanvas: React.FC = () => {
       event?.stopPropagation && event.stopPropagation();
 
       suppressSelectionRef.current = true;
-      setTimeout(() => {
+      setTrackedTimeout(() => {
         suppressSelectionRef.current = false;
       }, 0);
 
@@ -2497,7 +2613,7 @@ const KnowledgeCanvas: React.FC = () => {
   // mapper-provided positions for newly added nodes. Placeholders for missing
   // edge endpoints are also created automatically.
   const applyDiagrammChange = useCallback(
-    (incomingNodes?: RFNode<NodeData>[], incomingEdges?: RFEdge<LinkData>[]) => {
+    async (incomingNodes?: RFNode<NodeData>[], incomingEdges?: RFEdge<LinkData>[]) => {
       const inNodes = Array.isArray(incomingNodes) ? incomingNodes : [];
       const inEdges = Array.isArray(incomingEdges) ? incomingEdges : [];
 
@@ -2784,6 +2900,20 @@ const KnowledgeCanvas: React.FC = () => {
           if (changes.length === 0) return prevArr;
           return applyEdgeChanges(changes as any, prevArr);
         });
+      }
+
+      // Allow callers to await one tracked microtask so React has queued state updates
+      // before layout/finalization runs. Use the component-level setTrackedTimeout so
+      // timers are tracked and cleared on unmount in tests.
+      try {
+        if (typeof setTrackedTimeout === "function") {
+          await new Promise((res) => setTrackedTimeout(res, 0));
+        } else {
+          await Promise.resolve();
+        }
+      } catch (_) {
+        // ignore microtask scheduling failures
+        await Promise.resolve();
       }
     },
     [setNodes, setEdges],

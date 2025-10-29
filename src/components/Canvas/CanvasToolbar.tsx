@@ -55,6 +55,21 @@ import { ConfigurationPanel } from './ConfigurationPanel';
 import { Popover, PopoverTrigger, PopoverContent } from '../ui/popover';
 import { toast } from 'sonner';
 
+const runAsync = (fn: any, delay = 0) => {
+  if (delay === 0) {
+    try {
+      Promise.resolve().then(fn);
+      return -1;
+    } catch (_) {
+      if (typeof window !== 'undefined') return window.setTimeout(fn, 0 as any);
+      return -1;
+    }
+  }
+  if (typeof window !== 'undefined') return window.setTimeout(fn, delay as any);
+  try { Promise.resolve().then(fn); } catch (_) { /* ignore */ }
+  return -1;
+};
+
 interface CanvasToolbarProps {
   onAddNode: (payload: any) => void;
   onToggleLegend: () => void;
@@ -197,7 +212,12 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   const explicitLoaded = (loadedList || []).filter((o: any) => {
     try {
       const s = (o && (o.source as any)) || "";
-      return String(s) === "requested" || String(s) === "fetched";
+      // Only consider entries that were explicitly requested or fetched AND are not marked as failed.
+      // This prevents failed autoload placeholders (CORS/network/parse failures) from being counted as loaded.
+      const isSourceOk = String(s) === "requested" || String(s) === "fetched";
+      const status = (o && (o as any).loadStatus) || undefined;
+      const isNotFailed = String(status || "") !== "fail";
+      return isSourceOk && isNotFailed;
     } catch {
       return false;
     }
@@ -740,7 +760,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
               className="flex items-center gap-2 px-2 py-1 bg-card/80 border border-border rounded-md"
               onPointerUp={() => {
                 {
-                  setTimeout(() => {
+                  runAsync(() => {
                     try {
                       const v = tempLayoutSpacing;
                       setLayoutSpacing(v);
@@ -752,7 +772,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
               }}
               onTouchEnd={() => {
                 {
-                  setTimeout(() => {
+                  runAsync(() => {
                     try {
                       const v = tempLayoutSpacing;
                       setLayoutSpacing(v);
@@ -764,7 +784,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
               }}
               onMouseUp={() => {
                 {
-                  setTimeout(() => {
+                  runAsync(() => {
                     try {
                       const v = tempLayoutSpacing;
                       setLayoutSpacing(v);

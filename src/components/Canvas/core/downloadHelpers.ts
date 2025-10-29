@@ -17,10 +17,15 @@ function triggerDownloadUrl(url: string, filename: string) {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  // Revoke object URLs should be handled by caller when appropriate; revoke after a short delay to allow download
-  setTimeout(() => {
-    { URL.revokeObjectURL(url); }
-  }, 3000);
+  // Revoke object URLs should be handled by caller when appropriate; revoke after a short delay to allow download.
+  // In test/non-browser environments prefer microtask scheduling to avoid global timers firing after teardown.
+  if (typeof window === "undefined") {
+    try { Promise.resolve().then(() => { URL.revokeObjectURL(url); }); } catch (_) { /* ignore */ }
+  } else {
+    setTimeout(() => {
+      try { URL.revokeObjectURL(url); } catch (_) { /* ignore */ }
+    }, 3000);
+  }
 }
 
 export async function exportSvgFull(opts?: { filename?: string }): Promise<void> {
