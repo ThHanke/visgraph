@@ -1326,7 +1326,22 @@ export class RDFManager {
     });
 
     // Normalise to text first to avoid streaming differences between Node and browsers.
-    const txt = await res.text();
+    // Use streaming helper so callers can get progress and the streaming logic is centralized.
+    // Errors from fetch/stream are intentionally surfaced (not swallowed).
+    const { responseToText } = await import("./fetchStream").catch(() => ({ responseToText: undefined as any }));
+    let txt: string;
+    if (typeof responseToText === "function") {
+      try {
+        txt = await responseToText(res);
+      } catch (err) {
+        // Surface parse/fetch errors clearly so devs can inspect them in console
+        console.error("[VG_RDF] responseToText failed for", url, err);
+        throw err;
+      }
+    } else {
+      // Fallback: environment where helper couldn't be imported — use built-in text()
+      txt = await res.text();
+    }
 
     // If the fetched content clearly looks like Turtle (or the content-type explicitly indicates Turtle),
     // prefer the in-memory N3 parser path which accepts a string and does not require Node Readable streams.

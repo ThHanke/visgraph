@@ -853,14 +853,18 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         try {
           if (typeof (get().discoverReferencedOntologies) === "function") {
             try {
+              // Run discovery asynchronously to avoid blocking the UI/startup flow.
+              // Previously this used `load: "sync"` which awaited completion and could
+              // block the main thread for slow network loads. Switching to async
+              // lets discovery run in the background and improves responsiveness.
               await (get().discoverReferencedOntologies as any)({
-                load: "sync",
+                load: "async",
                 timeoutMs: 10000,
                 graphName: "urn:vg:data",
                 onProgress: options?.onProgress,
               });
             } catch (e) {
-              console.debug("[VG_DEBUG] discoverReferencedOntologies (sync) failed", e);
+              console.debug("[VG_DEBUG] discoverReferencedOntologies (async) failed", e);
             }
           }
         } catch (e) {
@@ -1372,6 +1376,79 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     const concurrency = typeof opts.concurrency === "number" ? opts.concurrency : 6;
     const onProgress = typeof opts.onProgress === "function" ? opts.onProgress : undefined;
 
+    // Lightweight module-scoped timing helper for discovery (gated).
+    // Mirrors the canvas helper but kept local to avoid cross-module imports.
+    const initGlobalDebugLogs = () => {
+      try {
+        if (typeof window === "undefined") return;
+        if (!(window as any).__VG_BLOCKING_LOGS) {
+          (window as any).__VG_BLOCKING_LOGS = [];
+          (window as any).__VG_DUMP_BLOCKING_LOGS = () =>
+            (window as any).__VG_BLOCKING_LOGS.slice();
+          (window as any).__VG_CLEAR_BLOCKING_LOGS = () => {
+            (window as any).__VG_BLOCKING_LOGS = [];
+          };
+        }
+      } catch (_) {
+        /* ignore */
+      }
+    };
+
+    const vgDebugEnabledModule = () => {
+      try {
+        if (typeof window !== "undefined" && (window as any).__VG_DEBUG_TIMINGS) return true;
+        const cfg = useAppConfigStore.getState && useAppConfigStore.getState();
+        return !!(cfg && (cfg as any).debugAll);
+      } catch {
+        return false;
+      }
+    };
+
+    const vgMeasureModule = (name: string, meta: any = {}) => {
+      if (!vgDebugEnabledModule()) return { end: (_?: any) => {} };
+      initGlobalDebugLogs();
+      const now =
+        typeof performance !== "undefined" && performance.now
+          ? performance.now()
+          : Date.now();
+      let finished = false;
+      return {
+        end: (resultMeta: any = {}) => {
+          if (finished) return;
+          finished = true;
+          try {
+            const end =
+              typeof performance !== "undefined" && performance.now
+                ? performance.now()
+                : Date.now();
+            const entry = {
+              name,
+              durationMs: Math.max(0, end - now),
+              ts: Date.now(),
+              meta: { ...(meta || {}), ...(resultMeta || {}) },
+            };
+            try {
+              if (typeof console !== "undefined" && console.debug) {
+                console.debug("[VG_TIMING]", entry);
+              }
+            } catch (_) {}
+            try {
+              if (typeof window !== "undefined" && (window as any).__VG_BLOCKING_LOGS) {
+                const buf = (window as any).__VG_BLOCKING_LOGS;
+                buf.push(entry);
+                if (Array.isArray(buf) && buf.length > 200) buf.shift();
+              }
+            } catch (_) {}
+          } catch (_) {
+            // ignore
+          }
+        },
+      };
+    };
+
+    // start a module-scoped measurement for discoverReferencedOntologies (no-op when disabled)
+    const vgM = vgMeasureModule("discoverReferencedOntologies", { graphName, loadMode, timeoutMs, concurrency });
+
     // Immediate invocation trace so callers can see the discovery ran
     try {
       console.debug("[VG_DEBUG] discoverReferencedOntologies.invoked", { graphName, loadMode, timeoutMs, concurrency });
@@ -1392,11 +1469,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     try {
       const mgr = get().rdfManager;
       if (!mgr || typeof (mgr as any).getStore !== "function") {
+        try { vgM && typeof vgM.end === "function" && vgM.end({ reason: "no_mgr" }); } catch (_) {}
         return { candidates: [] as string[] };
       }
 
       const store = (mgr as any).getStore();
       if (!store || typeof store.getQuads !== "function") {
+        try { vgM && typeof vgM.end === "function" && vgM.end({ reason: "no_store" }); } catch (_) {}
         return { candidates: [] as string[] };
       }
 
@@ -1405,8 +1484,10 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       const OWL_IMPORTS = "http://www.w3.org/2002/07/owl#imports";
       const g = namedNode(String(graphName || "urn:vg:data"));
 
-      const ontQuads = store.getQuads(null, namedNode(RDF_TYPE), namedNode(OWL_ONTOLOGY), g) || [];
-      const importQuads = store.getQuads(null, namedNode(OWL_IMPORTS), null, g) || [];
+      // Search for ontology/import triples across all graphs so discovery picks up
+      // imports regardless of whether they were inserted into urn:vg:data, urn:vg:ontologies, or other graphs.
+      const ontQuads = store.getQuads(null, namedNode(RDF_TYPE), namedNode(OWL_ONTOLOGY), null) || [];
+      const importQuads = store.getQuads(null, namedNode(OWL_IMPORTS), null, null) || [];
 
       const candidateSet = new Set<string>();
 
@@ -1465,8 +1546,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           if (!/^https?:\/\//i.test(norm)) continue;
           if (disabledNorm.has(norm)) continue;
           if (alreadyLoadedNorm.has(norm)) continue;
-          // exclude well-known ontology root URLs and blacklisted core URIs
-          if (wellKnownKeys.has(norm)) continue;
+          // exclude blacklisted core URIs
           let skip = false;
           for (const b of Array.from(blacklistedUris)) {
             if (norm.startsWith(b)) {
@@ -1485,124 +1565,119 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         console.debug("[VG_DEBUG] discoverReferencedOntologies.candidates", { graph: graphName, candidates });
       } catch (_) { /* ignore logging failures */ }
 
-      if (candidates.length === 0) return { candidates };
+      if (candidates.length === 0) {
+        try { vgM && typeof vgM.end === "function" && vgM.end({ reason: "no_candidates", candidateCount: 0 }); } catch (_) {}
+        return { candidates };
+      }
 
       if (loadMode === false) {
+        try { vgM && typeof vgM.end === "function" && vgM.end({ reason: "loadMode_false", candidateCount: candidates.length }); } catch (_) {}
         return { candidates };
       }
 
       if (loadMode === "async") {
-        try {
-          // Start per-URL loads and return a promise that resolves when all have settled.
-          const perUrlPromises = (candidates || []).map(async (url) => {
-            const sample = {
-              // try to find a sample quad that referenced this URL for debugging
-              sampleQuad: undefined as any,
-            };
-            try {
-              // find sample quad
-              for (const q of [...ontQuads, ...importQuads]) {
-                try {
-                  const subj = q && q.subject && (q.subject as any).value ? String((q.subject as any).value) : "";
-                  const obj = q && q.object && (q.object as any).value ? String((q.object as any).value) : "";
-                  if (String(subj) === String(url) || String(obj) === String(url)) {
-                    sample.sampleQuad = {
-                      subject: subj,
-                      predicate: q && q.predicate && (q.predicate as any).value ? String((q.predicate as any).value) : "",
-                      object: obj,
-                    };
-                    break;
+        // Schedule background loads for each candidate (fire-and-forget) so discovery
+        // does not block the UI. Use requestIdleCallback where available and stagger
+        // starts so the browser has a chance to finish rendering/close modals.
+        const scheduleBackgroundLoad = (fn: () => void, delayMs = 100) => {
+          try {
+            if (typeof window !== "undefined" && typeof (window as any).requestIdleCallback === "function") {
+              // Use requestIdleCallback to run when the browser is idle (non-blocking).
+              (window as any).requestIdleCallback(
+                () => {
+                  try {
+                    fn();
+                  } catch (_) {
+                    /* ignore per-task errors */
                   }
-                } catch (_) { /* ignore per-quad */ }
-              }
+                },
+                { timeout: 1000 },
+              );
+              return;
+            }
+          } catch (_) {
+            // fallthrough to setTimeout fallback
+          }
 
-              console.debug("[VG_DEBUG] discoverReferencedOntologies.load.start", { graph: graphName, url, sample: sample.sampleQuad });
-              // Use the authoritative load result from loadOntology rather than probing the store.
+          try {
+            setTimeout(() => {
+              try {
+                fn();
+              } catch (_) {
+                /* ignore per-task errors */
+              }
+            }, delayMs);
+          } catch (_) {
+            /* ignore scheduling failures */
+          }
+        };
+
+        try {
+          let idx = 0;
+          for (const url of candidates) {
+            const delay = 150 * idx++;
+            scheduleBackgroundLoad(async () => {
               try {
                 const loadRes = await get().loadOntology(url, { autoload: true });
                 if (loadRes && (loadRes as any).success === true) {
-                  // Successful load; canonicalUrl may be provided by the loader.
-                  const usedUrl = (loadRes as any).canonicalUrl || (loadRes as any).url || url;
-                  const norm = (function (u: string) {
-                    try { return new URL(String(u)).toString(); } catch { return String(u).trim().replace(/\/+$/, ""); }
-                  })(usedUrl);
-                  console.debug("[VG_DEBUG] discoverReferencedOntologies.load.ok", { graph: graphName, url, result: loadRes, sample: sample.sampleQuad });
-                  return { url, status: "ok" as const };
+                  try {
+                    console.debug("[VG_DEBUG] discoverReferencedOntologies.load.ok (background)", {
+                      graph: graphName,
+                      url,
+                      result: loadRes,
+                    });
+                  } catch (_) { /* ignore */ }
+
+                  // After a successful autoload, request the RDF manager to emit subject-level notifications
+                  // so the canvas mapping pipeline sees the newly inserted triples and updates nodes/edges.
+                  try {
+                    const mgrInst = get().rdfManager;
+                    if (mgrInst && typeof (mgrInst as any).emitAllSubjects === "function") {
+                      // fire-and-forget but keep a debug trace on failure
+                      (mgrInst as any).emitAllSubjects().catch((e: any) => {
+                        try {
+                          console.debug("[VG_DEBUG] emitAllSubjects (background) failed", { graph: graphName, url, error: String(e) });
+                        } catch (_) { /* ignore */ }
+                      });
+                    }
+                  } catch (e) {
+                    try {
+                      console.debug("[VG_DEBUG] emitAllSubjects invocation failed", { graph: graphName, url, error: String(e) });
+                    } catch (_) { /* ignore */ }
+                  }
                 } else {
                   const errMsg = loadRes && (loadRes as any).error ? String((loadRes as any).error) : "Unknown load failure";
                   try {
-                    console.error("[VG_ERROR] discoverReferencedOntologies.load.fail", { graph: graphName, url, error: errMsg, result: loadRes, sample: sample.sampleQuad });
-                  } catch (_) { /* ignore */ }
-                  // loadOntology already records failed placeholders in the store; just return failure here.
-                  return { url, status: "fail" as const, error: errMsg };
-                }
-              } catch (e: any) {
-                const errMsg = e && e.message ? e.message : String(e);
-                try {
-                  console.error("[VG_ERROR] discoverReferencedOntologies.load.exception", { graph: graphName, url, error: errMsg, sample: sample.sampleQuad });
-                } catch (_) { /* ignore */ }
-                return { url, status: "fail" as const, error: errMsg };
-              }
-            } catch (err: any) {
-              const errMsg = err && err.message ? err.message : String(err);
-              try {
-                console.error("[VG_ERROR] discoverReferencedOntologies.load.fail", {
-                  graph: graphName,
-                  url,
-                  error: errMsg,
-                  stack: err && err.stack ? err.stack : undefined,
-                  sample: sample.sampleQuad,
-                });
-              } catch (_) { /* ignore logging failures */ }
-              return { url, status: "fail" as const, error: errMsg };
-            }
-          });
-
-          const settled = await Promise.all(perUrlPromises);
-
-          // Summarize results
-            // Rebuild structured results from the settled responses so we can show explicit names and errors.
-            const succeeded = (settled || []).filter((r) => r.status === "ok").map((r) => r.url);
-            const failedEntries = (settled || []).filter((r) => r.status === "fail");
-
-            try {
-              console.debug("[VG_DEBUG] discoverReferencedOntologies.async.results", { graph: graphName, results: settled });
-              if (typeof window !== "undefined") {
-                try {
-                  if (succeeded.length > 0) {
-                    const names = succeeded.map((u) => deriveOntologyName(String(u || "")));
-                    toast.success(`Successfully autoloaded ${succeeded.length} ontology(ies): ${names.join(", ")}`);
-                  }
-                  if (Array.isArray(failedEntries) && failedEntries.length > 0) {
-                    const failedMsgs = failedEntries.map((f) => {
-                      try {
-                        const name = deriveOntologyName(String(f.url || ""));
-                        const err = f.error ? String(f.error) : "unknown error";
-                        return `${name} (${err})`;
-                      } catch (_) {
-                        return String(f.url || "");
-                      }
+                    console.error("[VG_ERROR] discoverReferencedOntologies.load.fail (background)", {
+                      graph: graphName,
+                      url,
+                      error: errMsg,
+                      result: loadRes,
                     });
-                    toast.error(`Autoload failures (${failedEntries.length}): ${failedMsgs.join("; ")}`);
-                  }
-                } catch (_) {
-                  /* ignore toast failures */
+                  } catch (_) { /* ignore */ }
                 }
+              } catch (err) {
+                try {
+                  console.error("[VG_ERROR] discoverReferencedOntologies.load.exception (background)", {
+                    graph: graphName,
+                    url,
+                    error: String(err),
+                  });
+                } catch (_) { /* ignore */ }
               }
-            } catch (_) {
-              /* ignore toast/log failures */
-            }
-
-          return { candidates, results: settled };
-          } catch (e: any) {
-            try {
-              console.error("[VG_ERROR] discoverReferencedOntologies.async.failed", { graph: graphName, error: String(e) });
-              if (typeof window !== "undefined") {
-                try { toast.error("Failed to autoload referenced ontologies"); } catch (_) { /* ignore */ }
-              }
-            } catch (_) { /* ignore */ }
-            return { candidates };
+            }, delay);
           }
+        } catch (e) {
+          try {
+            console.error("[VG_ERROR] discoverReferencedOntologies.async.schedule.failed", { graph: graphName, error: String(e) });
+          } catch (_) { /* ignore */ }
+        }
+
+        try {
+          vgM && typeof vgM.end === "function" && vgM.end({ reason: "scheduled", scheduledCount: candidates.length });
+        } catch (_) { /* ignore */ }
+
+        return { candidates };
       }
 
       // loadMode === "sync" - load sequentially (bounded concurrency could be added later)
@@ -1638,6 +1713,21 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           // Present explicit success/failure lists with human-friendly ontology names.
           const succeeded = (results || []).filter((r) => r.status === "ok").map((r) => r.url);
           const failedEntries = (results || []).filter((r) => r.status === "fail");
+
+          // If any ontologies were loaded synchronously, re-emit subject-level events
+          // so the canvas mapping pipeline picks up ontology-provided terms.
+          try {
+            if (Array.isArray(succeeded) && succeeded.length > 0) {
+              try {
+                const mgrInst = get().rdfManager || (typeof rdfManager !== "undefined" ? rdfManager : null);
+                if (mgrInst && typeof (mgrInst as any).emitAllSubjects === "function") {
+                  await (mgrInst as any).emitAllSubjects();
+                }
+              } catch (e) {
+                try { console.debug("[VG_DEBUG] discoverReferencedOntologies.emitAllSubjects.failed.sync", e); } catch (_) { /* ignore */ }
+              }
+            }
+          } catch (_) { /* ignore overall emit failures */ }
           console.debug("[VG_DEBUG] discoverReferencedOntologies.sync.results", { graph: graphName, results });
           if (typeof window !== "undefined") {
             try {
@@ -1661,12 +1751,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           }
         } catch (_) { /* ignore toast/log failures */ }
 
+      try { vgM && typeof vgM.end === "function" && vgM.end({ reason: "sync_complete", resultsCount: results.length }); } catch (_) {}
       return { candidates, results };
     } catch (error) {
+      try { vgM && typeof vgM.end === "function" && vgM.end({ reason: "exception", error: String(error) }); } catch (_) {}
       try { return { candidates: [] as string[] }; } catch (_) { return { candidates: [] as string[] }; }
     }
   },
-
   getRdfManager: () => {
     const { rdfManager } = get();
     return rdfManager;

@@ -244,6 +244,81 @@ const KnowledgeCanvas: React.FC = () => {
   const setShowLegend = useAppConfigStore((s) => s.setShowLegend);
   const setPersistedViewMode = useAppConfigStore((s) => s.setViewMode);
 
+  // Lightweight timing instrumentation helper (gated, low-overhead).
+  // Exposes vgMeasure(name, meta) -> { end(obj?) } which logs to console.debug and
+  // appends entries to window.__VG_BLOCKING_LOGS (capped) for programmatic inspection.
+  // Enabled when app config.debugAll is true or global window.__VG_DEBUG_TIMINGS is truthy.
+  const initGlobalDebugLogs = () => {
+    try {
+      if (typeof window === "undefined") return;
+      if (!(window as any).__VG_BLOCKING_LOGS) {
+        (window as any).__VG_BLOCKING_LOGS = [];
+        (window as any).__VG_DUMP_BLOCKING_LOGS = () =>
+          (window as any).__VG_BLOCKING_LOGS.slice();
+        (window as any).__VG_CLEAR_BLOCKING_LOGS = () => {
+          (window as any).__VG_BLOCKING_LOGS = [];
+        };
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  };
+
+  const vgDebugEnabled = () => {
+    try {
+      if (typeof window !== "undefined" && (window as any).__VG_DEBUG_TIMINGS)
+        return true;
+      return !!(config && (config as any).debugAll);
+    } catch {
+      return false;
+    }
+  };
+
+  const vgMeasure = (name: string, meta: any = {}) => {
+    // No-op measurement when debugging disabled to avoid runtime overhead.
+    if (!vgDebugEnabled()) {
+      return { end: (_?: any) => {} };
+    }
+    initGlobalDebugLogs();
+    const now =
+      typeof performance !== "undefined" && performance.now
+        ? performance.now()
+        : Date.now();
+    let finished = false;
+    return {
+      end: (resultMeta: any = {}) => {
+        if (finished) return;
+        finished = true;
+        try {
+          const end =
+            typeof performance !== "undefined" && performance.now
+              ? performance.now()
+              : Date.now();
+          const entry = {
+            name,
+            durationMs: Math.max(0, end - now),
+            ts: Date.now(),
+            meta: { ...(meta || {}), ...(resultMeta || {}) },
+          };
+          try {
+            if (typeof console !== "undefined" && console.debug) {
+              console.debug("[VG_TIMING]", entry);
+            }
+          } catch (_) {}
+          try {
+            if (typeof window !== "undefined" && (window as any).__VG_BLOCKING_LOGS) {
+              const buf = (window as any).__VG_BLOCKING_LOGS;
+              buf.push(entry);
+              if (Array.isArray(buf) && buf.length > 200) buf.shift();
+            }
+          } catch (_) {}
+        } catch (_) {
+          // ignore
+        }
+      },
+    };
+  };
+
   const [viewMode, setViewMode] = useState(config.viewMode);
   const [showLegend, setShowLegendState] = useState(config.showLegend);
   const [currentLayout, setCurrentLayoutState] = useState(config.currentLayout);
@@ -530,7 +605,26 @@ const KnowledgeCanvas: React.FC = () => {
   // Keeping this wrapper lets us later reintroduce a worker without changing
   // translateQuadsToDiagram call sites.
   const mapQuadsWithWorker = async (quads: any[], opts: any) => {
-    return mapQuadsToDiagram(quads, opts);
+    // Measure the worker/in-process mapping call when debug enabled.
+    try {
+      const m = typeof vgMeasure === "function" ? vgMeasure("mapQuadsWithWorker", { quadCount: Array.isArray(quads) ? quads.length : 0 }) : { end: () => {} };
+      try {
+        const res = await mapQuadsToDiagram(quads, opts);
+        try {
+          m.end({
+            mappedNodeCount: res && Array.isArray(res.nodes) ? res.nodes.length : 0,
+            mappedEdgeCount: res && Array.isArray(res.edges) ? res.edges.length : 0,
+          });
+        } catch (_) {}
+        return res;
+      } catch (err) {
+        try { m.end({ error: true }); } catch (_) {}
+        throw err;
+      }
+    } catch (e) {
+      // Fallback: call mapper directly in case instrumentation fails
+      return mapQuadsToDiagram(quads, opts);
+    }
   };
   const loadTriggerRef = useRef(false);
   const loadFitRef = useRef(false);
@@ -588,61 +682,65 @@ const KnowledgeCanvas: React.FC = () => {
         return;
       }
 
-      const lm = layoutManagerRef.current;
-      if (!lm) return;
-      // If we have a live React Flow instance, wire it into the LayoutManager so
-      // the manager can read runtime measurement metadata (e.g. __rf.width/height).
-      if (
-        reactFlowInstance &&
-        reactFlowInstance.current &&
-        typeof lm.setDiagram === "function"
-      ) {
-        lm.setDiagram(reactFlowInstance.current);
-      }
+    const lm = layoutManagerRef.current;
+    if (!lm) return;
+    // If we have a live React Flow instance, wire it into the LayoutManager so
+    // the manager can read runtime measurement metadata (e.g. __rf.width/height).
+    if (
+      reactFlowInstance &&
+      reactFlowInstance.current &&
+      typeof lm.setDiagram === "function"
+    ) {
+      lm.setDiagram(reactFlowInstance.current);
+    }
 
-      const fingerprintParts: string[] = [];
-      for (const n of candidateNodes || []) {
-        const id = String(n.id);
-        const px = n.position ? Math.round((n.position as any).x) : 0;
-        const py = n.position ? Math.round((n.position as any).y) : 0;
-        fingerprintParts.push(`${id}|${px}|${py}`);
-      }
-      for (const e of candidateEdges || []) {
-        fingerprintParts.push(`E:${String(e.id)}`);
-      }
-      const fingerprint = fingerprintParts.join(";");
+    const fingerprintParts: string[] = [];
+    for (const n of candidateNodes || []) {
+      const id = String(n.id);
+      const px = n.position ? Math.round((n.position as any).x) : 0;
+      const py = n.position ? Math.round((n.position as any).y) : 0;
+      fingerprintParts.push(`${id}|${px}|${py}`);
+    }
+    for (const e of candidateEdges || []) {
+      fingerprintParts.push(`E:${String(e.id)}`);
+    }
+    const fingerprint = fingerprintParts.join(";");
 
-      if (!force && lastLayoutFingerprintRef.current === fingerprint) return;
+    if (!force && lastLayoutFingerprintRef.current === fingerprint) return;
 
-      layoutInProgressRef.current = true;
-      let appliedLayoutType: string | undefined = undefined;
+    layoutInProgressRef.current = true;
+    let appliedLayoutType: string | undefined = undefined;
+    // Instrument layout timing
+    const vgLayoutMeasure = typeof vgMeasure === "function" ? vgMeasure("doLayout", { candidateNodeCount: Array.isArray(candidateNodes) ? candidateNodes.length : 0, candidateEdgeCount: Array.isArray(candidateEdges) ? candidateEdges.length : 0 }) : { end: () => {} };
+    try {
+      const layoutType =
+        layoutTypeOverride ||
+        (config && config.currentLayout) ||
+        lm.suggestOptimalLayout();
+      appliedLayoutType = layoutType;
+      // Debug: announce layout start so we can trace when layouts are computed and why.
       try {
-        const layoutType =
-          layoutTypeOverride ||
-          (config && config.currentLayout) ||
-          lm.suggestOptimalLayout();
-        appliedLayoutType = layoutType;
-        // Debug: announce layout start so we can trace when layouts are computed and why.
-        try {
-          console.debug("[VG_DEBUG] canvas.layout.start", {
-            layoutType,
-            candidateNodeCount: Array.isArray(candidateNodes) ? candidateNodes.length : 0,
-            candidateEdgeCount: Array.isArray(candidateEdges) ? candidateEdges.length : 0,
-            force,
-          });
-        } catch (_) { /* ignore debug failures */ }
+        console.debug("[VG_DEBUG] canvas.layout.start", {
+          layoutType,
+          candidateNodeCount: Array.isArray(candidateNodes) ? candidateNodes.length : 0,
+          candidateEdgeCount: Array.isArray(candidateEdges) ? candidateEdges.length : 0,
+          force,
+        });
+      } catch (_) { /* ignore debug failures */ }
 
-        // Ask the layout manager to compute node change objects for the provided nodes/edges.
-        const nodeChanges = await lm.applyLayout(
-          layoutType as any,
-          {
-            nodeSpacing: (config && (config.layoutSpacing as any)) || undefined,
-          },
-          {
-            nodes: candidateNodes || [],
-            edges: candidateEdges || [],
-          },
-        );
+      // Ask the layout manager to compute node change objects for the provided nodes/edges.
+      const applyLayoutMeasure = typeof vgMeasure === "function" ? vgMeasure("lm.applyLayout", { layoutType, candidateNodeCount: Array.isArray(candidateNodes) ? candidateNodes.length : 0, candidateEdgeCount: Array.isArray(candidateEdges) ? candidateEdges.length : 0 }) : { end: () => {} };
+      const nodeChanges = await lm.applyLayout(
+        layoutType as any,
+        {
+          nodeSpacing: (config && (config.layoutSpacing as any)) || undefined,
+        },
+        {
+          nodes: candidateNodes || [],
+          edges: candidateEdges || [],
+        },
+      );
+      try { applyLayoutMeasure.end({ nodeChangeCount: Array.isArray(nodeChanges) ? nodeChanges.length : 0 }); } catch (_) {}
 
         // Apply layout results to React Flow state via applyNodeChanges so RF runtime metadata is preserved.
         if (Array.isArray(nodeChanges) && nodeChanges.length > 0) {
@@ -715,14 +813,17 @@ const KnowledgeCanvas: React.FC = () => {
           });
         // Await two frames to allow React and ReactFlow to apply changes.
         // eslint-disable-next-line no-await-in-loop
+        const rafMeasure = typeof vgMeasure === "function" ? vgMeasure("doLayout.raf_waits", {}) : { end: () => {} };
         await raf();
         // eslint-disable-next-line no-await-in-loop
         await raf();
+        try { rafMeasure.end({}); } catch (_) {}
         {
           console.debug("canvas.layout.apply.completed", appliedLayoutType);
         }
         lastLayoutFingerprintRef.current = fingerprint;
         layoutInProgressRef.current = false;
+        try { vgLayoutMeasure.end({ appliedLayoutType }); } catch (_) {}
       }
     },
     [layoutEnabled, config],
@@ -1015,40 +1116,49 @@ const KnowledgeCanvas: React.FC = () => {
     const pendingSubjects: Set<string> = new Set<string>();
 
     const translateQuadsToDiagram = async (quads: any[]) => {
-      let registry: any = undefined;
-      if (
-        typeof useOntologyStore === "function" &&
-        typeof (useOntologyStore as any).getState === "function"
-      ) {
-        registry = (useOntologyStore as any).getState().namespaceRegistry;
+      const m = typeof vgMeasure === "function" ? vgMeasure("translateQuadsToDiagram", { count: Array.isArray(quads) ? quads.length : 0 }) : { end: () => {} };
+      try {
+        let registry: any = undefined;
+        if (
+          typeof useOntologyStore === "function" &&
+          typeof (useOntologyStore as any).getState === "function"
+        ) {
+          registry = (useOntologyStore as any).getState().namespaceRegistry;
+        }
+        console.debug("[VG_DEBUG] translateQuadsToDiagram.input", {
+          count: Array.isArray(quads) ? quads.length : 0,
+          sample: Array.isArray(quads) ? quads.slice(0, 10) : quads,
+        });
+
+        // Read live availableProperties from the ontology store at mapping time to avoid
+        // stale memoization races where reconcile updates may not yet have propagated.
+        const liveAvailableProps =
+          (useOntologyStore as any).getState && (useOntologyStore as any).getState().availableProperties
+            ? (useOntologyStore as any).getState().availableProperties
+            : availableProperties;
+        const opts = {
+          predicateKind: predicateClassifier,
+          availableProperties: Array.isArray(liveAvailableProps) ? (liveAvailableProps as any[]).slice() : [],
+          availableClasses: availableClasses,
+          registry,
+          palette: palette as any,
+        } as any;
+
+        // Prefer worker offload; fallback to in-process mapper on failure.
+        const res = await mapQuadsWithWorker(quads, opts);
+        try { m.end({ mappedNodeCount: res && Array.isArray(res.nodes) ? res.nodes.length : 0, mappedEdgeCount: res && Array.isArray(res.edges) ? res.edges.length : 0 }); } catch (_) {}
+        return res;
+      } catch (err) {
+        try { m.end({ error: true }); } catch (_) {}
+        throw err;
       }
-      console.debug("[VG_DEBUG] translateQuadsToDiagram.input", {
-        count: Array.isArray(quads) ? quads.length : 0,
-        sample: Array.isArray(quads) ? quads.slice(0, 10) : quads,
-      });
-
-      // Read live availableProperties from the ontology store at mapping time to avoid
-      // stale memoization races where reconcile updates may not yet have propagated.
-      const liveAvailableProps =
-        (useOntologyStore as any).getState && (useOntologyStore as any).getState().availableProperties
-          ? (useOntologyStore as any).getState().availableProperties
-          : availableProperties;
-      const opts = {
-        predicateKind: predicateClassifier,
-        availableProperties: Array.isArray(liveAvailableProps) ? (liveAvailableProps as any[]).slice() : [],
-        availableClasses: availableClasses,
-        registry,
-        palette: palette as any,
-      } as any;
-
-      // Prefer worker offload; fallback to in-process mapper on failure.
-      const res = await mapQuadsWithWorker(quads, opts);
-      return res;
     };
 
     const runMapping = async () => {
       if (!mounted) return;
       if (!pendingQuads || pendingQuads.length === 0) return;
+
+      const runM = typeof vgMeasure === "function" ? vgMeasure("runMapping", { queuedQuadCount: pendingQuads.length }) : { end: () => {} };
 
       // Atomically consume and clear the pending buffer so each mapping run
       // processes only the quads that were present when the run started.
@@ -1068,7 +1178,13 @@ const KnowledgeCanvas: React.FC = () => {
 
       // Minimal, deterministic mapping: translate quads and apply mapper output
       // directly using React Flow's applyNodeChanges/applyEdgeChanges helper.
-      const diagram = await translateQuadsToDiagram(dataQuads);
+      let diagram;
+      try {
+        diagram = await translateQuadsToDiagram(dataQuads);
+      } catch (err) {
+        try { runM.end({ error: true }); } catch (_) {}
+        throw err;
+      }
       const mappedNodes: RFNode<NodeData>[] = diagram && diagram.nodes;
       const mappedEdges: RFEdge<LinkData>[] = diagram && diagram.edges;
 
@@ -1078,7 +1194,13 @@ const KnowledgeCanvas: React.FC = () => {
       mappingInProgressRef.current = true;
 
       // Apply mapper output via centralized helper (nodes + edges)
-      await applyDiagrammChange(mappedNodes, mappedEdges);
+      try {
+        await applyDiagrammChange(mappedNodes, mappedEdges);
+      } catch (err) {
+        // ensure we still end measurement
+        try { runM.end({ error: true }); } catch (_) {}
+        throw err;
+      }
 
       // Signal mapping completion for tests
       if (typeof window !== "undefined")
@@ -1091,12 +1213,15 @@ const KnowledgeCanvas: React.FC = () => {
           (window as any).__VG_LAST_NODES = (reactFlowInstance.current as any).getNodes();
         }
       } catch (_) {}
-      
+
       // Finalize mapping immediately (ensure React updates are enqueued and then run layout).
       // Avoid scheduling another tracked timeout here to reduce races; we already awaited
       // applyDiagrammChange which waits a tracked microtask so React has queued state updates.
       try {
-        if (!mountedRef.current) return;
+        if (!mountedRef.current) {
+          try { runM.end({ reason: "unmounted" }); } catch (_) {}
+          return;
+        }
         mappingInProgressRef.current = false;
 
         const mergedNodes = Array.isArray(mappedNodes) ? mappedNodes : nodes || [];
@@ -1130,7 +1255,10 @@ const KnowledgeCanvas: React.FC = () => {
           try {
             await new Promise((r) => setTrackedTimeout(r, 50));
           } catch (_) { /* ignore */ }
-          if (!mountedRef.current) return;
+          if (!mountedRef.current) {
+            try { runM.end({ reason: "post-forced-layout.unmounted" }); } catch (_) {}
+            return;
+          }
 
           const inst = rfInst;
           if (mountedRef.current && inst && typeof (inst as any).fitView === "function") {
@@ -1149,9 +1277,11 @@ const KnowledgeCanvas: React.FC = () => {
           applyRequestedRef.current = false;
           await doLayout(nodesForLayout as any, edgesForLayout as any, true);
         }
+        try { runM.end({ mappedNodes: Array.isArray(mappedNodes) ? mappedNodes.length : 0, mappedEdges: Array.isArray(mappedEdges) ? mappedEdges.length : 0 }); } catch (_) {}
       } catch (err) {
         // ignore finalization errors to avoid breaking mapping caller
         console.debug("[VG_DEBUG] mapping.finalize.error", err);
+        try { runM.end({ error: true }); } catch (_) {}
       }
     };
 
@@ -1173,6 +1303,13 @@ const KnowledgeCanvas: React.FC = () => {
       subs?: string[] | undefined,
       quads?: any[] | undefined,
     ) => {
+      const incomingSubjects = Array.isArray(subs)
+        ? subs.map((s) => String(s))
+        : [];
+      const scount = Array.isArray(incomingSubjects) ? incomingSubjects.length : 0;
+      const qcount = Array.isArray(quads) ? quads.length : 0;
+      const subM = typeof vgMeasure === "function" ? vgMeasure("subjectsCallback", { subjectCount: scount, quadCount: qcount }) : { end: () => {} };
+
       console.debug("[VG_DEBUG] rdfManager.onSubjectsChange", {
         subjects: Array.isArray(subs) ? subs.slice() : subs,
         quads: Array.isArray(quads)
@@ -1187,9 +1324,6 @@ const KnowledgeCanvas: React.FC = () => {
       });
 
       // Normalize incoming subjects
-      const incomingSubjects = Array.isArray(subs)
-        ? subs.map((s) => String(s))
-        : [];
       if (incomingSubjects.length > 0) {
         for (const s of incomingSubjects) {
           {
@@ -1231,7 +1365,10 @@ const KnowledgeCanvas: React.FC = () => {
 
           // Finalize mapping immediately (ensure React updates are enqueued and then run layout).
           try {
-            if (!mountedRef.current) return;
+            if (!mountedRef.current) {
+              try { subM.end({ reason: "unmounted" }); } catch (_) {}
+              return;
+            }
             const mergedNodes = Array.isArray(mappedNodes) ? mappedNodes : nodes || [];
             const mergedEdges = Array.isArray(mappedEdges) ? mappedEdges : edges || [];
 
@@ -1250,7 +1387,10 @@ const KnowledgeCanvas: React.FC = () => {
               try {
                 await doLayout(nodesForLayout as any, edgesForLayout as any, true);
                 await new Promise((r) => setTrackedTimeout(r, 50));
-                if (!mountedRef.current) return;
+                if (!mountedRef.current) {
+                  try { subM.end({ reason: "post-forced-layout.unmounted" }); } catch (_) {}
+                  return;
+                }
                 const inst = rfInst;
                 if (mountedRef.current && inst && typeof (inst as any).fitView === "function") {
                   try { (inst as any).fitView({ padding: 0.1 }); } catch (_) { /* ignore */ }
@@ -1281,11 +1421,13 @@ const KnowledgeCanvas: React.FC = () => {
             // ignore
           }
 
+          try { subM.end({ mappedNodes: Array.isArray(mappedNodes) ? mappedNodes.length : 0, mappedEdges: Array.isArray(mappedEdges) ? mappedEdges.length : 0 }); } catch (_) {}
           return;
         } catch (err) {
           console.debug("[VG_DEBUG] subjectsCallback.directMappingFailed", {
             err,
           });
+          try { subM.end({ error: true }); } catch (_) {}
           // fallthrough to queued mapping path below
         }
       }
@@ -1295,6 +1437,7 @@ const KnowledgeCanvas: React.FC = () => {
         for (const q of quads) pendingQuads.push(q);
       }
       scheduleRunMapping();
+      try { subM.end({ queued: true, queuedQuadCount: qcount }); } catch (_) {}
     };
 
     // Subscribe to subject-level incremental notifications when available.
@@ -2617,8 +2760,11 @@ const KnowledgeCanvas: React.FC = () => {
       const inNodes = Array.isArray(incomingNodes) ? incomingNodes : [];
       const inEdges = Array.isArray(incomingEdges) ? incomingEdges : [];
 
+      const measure = typeof vgMeasure === "function" ? vgMeasure("applyDiagrammChange", { nodeCount: inNodes.length, edgeCount: inEdges.length }) : { end: () => {} };
+
       // Apply node changes first so placeholders/new nodes exist before edges are applied.
       if (inNodes.length > 0 || inEdges.length > 0) {
+        const nodePhaseMeasure = typeof vgMeasure === "function" ? vgMeasure("applyDiagrammChange.nodes", { nodeCount: inNodes.length }) : { end: () => {} };
         setNodes((prev = []) => {
           const prevArr = prev || [];
           const prevById = new Map((prevArr || []).map((n: any) => [String(n.id), n]));
@@ -2731,13 +2877,18 @@ const KnowledgeCanvas: React.FC = () => {
             }
           }
 
-          if (changes.length === 0) return prevArr;
+          if (changes.length === 0) {
+            try { nodePhaseMeasure.end({ applied: false }); } catch (_) {}
+            return prevArr;
+          }
+          try { nodePhaseMeasure.end({ applied: true, changeCount: changes.length }); } catch (_) {}
           return applyNodeChanges(changes as any, prevArr);
         });
       }
 
       // Apply edge changes after nodes so placeholders and new nodes exist.
       if (inEdges.length > 0) {
+        const edgePhaseMeasure = typeof vgMeasure === "function" ? vgMeasure("applyDiagrammChange.edges", { edgeCount: inEdges.length }) : { end: () => {} };
         setEdges((prev = []) => {
           const prevArr = prev || [];
           const prevById = new Map(prevArr.map((e: any) => [String(e.id), e]));
@@ -2900,6 +3051,7 @@ const KnowledgeCanvas: React.FC = () => {
           if (changes.length === 0) return prevArr;
           return applyEdgeChanges(changes as any, prevArr);
         });
+        try { edgePhaseMeasure.end({ applied: true }); } catch (_) {}
       }
 
       // Allow callers to await one tracked microtask so React has queued state updates
@@ -2907,7 +3059,9 @@ const KnowledgeCanvas: React.FC = () => {
       // timers are tracked and cleared on unmount in tests.
       try {
         if (typeof setTrackedTimeout === "function") {
+          const microtaskMeasure = typeof vgMeasure === "function" ? vgMeasure("applyDiagrammChange.microtask_wait", {}) : { end: () => {} };
           await new Promise((res) => setTrackedTimeout(res, 0));
+          try { microtaskMeasure.end({}); } catch (_) {}
         } else {
           await Promise.resolve();
         }
@@ -2915,6 +3069,7 @@ const KnowledgeCanvas: React.FC = () => {
         // ignore microtask scheduling failures
         await Promise.resolve();
       }
+      try { measure.end({ nodes: inNodes.length, edges: inEdges.length }); } catch (_) {}
     },
     [setNodes, setEdges],
   );
