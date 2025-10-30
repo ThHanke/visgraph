@@ -605,8 +605,22 @@ const KnowledgeCanvas: React.FC = () => {
   // Keeping this wrapper lets us later reintroduce a worker without changing
   // translateQuadsToDiagram call sites.
   const mapQuadsWithWorker = async (quads: any[], opts: any) => {
-    // Measure the worker/in-process mapping call when debug enabled.
+    // Lightweight blocking debug instrumentation (low overhead when disabled).
+    // Logs start/end and records durations into window.__VG_BLOCKING_LOGS for post-mortem inspection.
+    const startTime =
+      typeof performance !== "undefined" && performance.now
+        ? performance.now()
+        : Date.now();
     try {
+      try {
+        if (typeof console !== "undefined" && console.debug) {
+          console.debug("[VG_BLOCK] mapQuadsWithWorker.start", {
+            quadCount: Array.isArray(quads) ? quads.length : 0,
+            ts: startTime,
+          });
+        }
+      } catch (_) {}
+
       const m = typeof vgMeasure === "function" ? vgMeasure("mapQuadsWithWorker", { quadCount: Array.isArray(quads) ? quads.length : 0 }) : { end: () => {} };
       try {
         const res = await mapQuadsToDiagram(quads, opts);
@@ -616,14 +630,77 @@ const KnowledgeCanvas: React.FC = () => {
             mappedEdgeCount: res && Array.isArray(res.edges) ? res.edges.length : 0,
           });
         } catch (_) {}
+        try {
+          const endTime =
+            typeof performance !== "undefined" && performance.now
+              ? performance.now()
+              : Date.now();
+          const duration = Number((endTime - startTime).toFixed(2));
+          try {
+            console.debug("[VG_BLOCK] mapQuadsWithWorker.end", { durationMs: duration });
+          } catch (_) {}
+          try {
+            if (typeof window !== "undefined" && (window as any).__VG_BLOCKING_LOGS) {
+              (window as any).__VG_BLOCKING_LOGS.push({
+                name: "mapQuadsWithWorker",
+                durationMs: duration,
+                quadCount: Array.isArray(quads) ? quads.length : 0,
+                ts: Date.now(),
+              });
+            }
+          } catch (_) {}
+        } catch (_) {}
         return res;
       } catch (err) {
         try { m.end({ error: true }); } catch (_) {}
+        try {
+          const errEnd =
+            typeof performance !== "undefined" && performance.now
+              ? performance.now()
+              : Date.now();
+          const duration = Number((errEnd - startTime).toFixed(2));
+          try { console.debug("[VG_BLOCK] mapQuadsWithWorker.error", { durationMs: duration, err }); } catch (_) {}
+          try {
+            if (typeof window !== "undefined" && (window as any).__VG_BLOCKING_LOGS) {
+              (window as any).__VG_BLOCKING_LOGS.push({
+                name: "mapQuadsWithWorker",
+                durationMs: duration,
+                error: String(err),
+                ts: Date.now(),
+              });
+            }
+          } catch (_) {}
+        } catch (_) {}
         throw err;
       }
     } catch (e) {
       // Fallback: call mapper directly in case instrumentation fails
-      return mapQuadsToDiagram(quads, opts);
+      try {
+        const fallbackStart =
+          typeof performance !== "undefined" && performance.now
+            ? performance.now()
+            : Date.now();
+        const result = await mapQuadsToDiagram(quads, opts);
+        const fallbackEnd =
+          typeof performance !== "undefined" && performance.now
+            ? performance.now()
+            : Date.now();
+        try {
+          const dur = Number((fallbackEnd - fallbackStart).toFixed(2));
+          console.debug("[VG_BLOCK] mapQuadsWithWorker.fallback", { durationMs: dur });
+          if (typeof window !== "undefined" && (window as any).__VG_BLOCKING_LOGS) {
+            (window as any).__VG_BLOCKING_LOGS.push({
+              name: "mapQuadsWithWorker.fallback",
+              durationMs: dur,
+              ts: Date.now(),
+            });
+          }
+        } catch (_) {}
+        return result;
+      } catch (_) {
+        // If even fallback fails, rethrow
+        throw e;
+      }
     }
   };
   const loadTriggerRef = useRef(false);
@@ -964,34 +1041,49 @@ const KnowledgeCanvas: React.FC = () => {
       try {
         let text: string;
         if (file.type === "url" || typeof file === "string" || file.url) {
+          // Delegate fetch+parse to loadKnowledgeGraph which centralizes URL handling.
           const url = file.url || file;
-          canvasActions.setLoading(true, 10, "Fetching from URL...");
-          const response = await fetch(url);
-          if (!response.ok)
-            throw new Error(`Failed to fetch: ${response.statusText}`);
-          text = await response.text();
+          canvasActions.setLoading(true, 10, "Loading from URL...");
+          try {
+            // loadKnowledgeGraph accepts a URL and will fetch/parse via rdfManager.
+            await loadKnowledgeGraph(String(url), {
+              onProgress: (progress: number, message: string) => {
+                try {
+                  canvasActions.setLoading(true, Math.max(progress, 30), message);
+                } catch (_) { /* ignore canvas update failures */ }
+              },
+              timeout: 30000,
+            });
+            // Signal success to follow the same path as the file/text branch.
+            toast.success("Knowledge graph loaded successfully");
+          } catch (err) {
+            // Re-throw so outer handler deals with error reporting
+            throw err;
+          }
         } else {
+          // Inline file content -> read and parse via existing loadKnowledgeGraph path
           text = await file.text();
-        }
-        canvasActions.setLoading(true, 30, "Parsing RDF...");
-
-        loadTriggerRef.current = true;
-        loadFitRef.current = true;
-
-        // Ensure the next mapping run performs layout for this user-initiated load
-        forceLayoutNextMappingRef.current = true;
-
-        await loadKnowledgeGraph(text, {
-          onProgress: (progress: number, message: string) => {
-            canvasActions.setLoading(true, Math.max(progress, 30), message);
-          },
-        });
-        toast.success("Knowledge graph loaded successfully");
-
-        setTrackedTimeout(() => {
+          canvasActions.setLoading(true, 30, "Parsing RDF...");
+ 
+          loadTriggerRef.current = true;
+          loadFitRef.current = true;
+ 
+          // Ensure the next mapping run performs layout for this user-initiated load
+          forceLayoutNextMappingRef.current = true;
+ 
+          await loadKnowledgeGraph(text, {
+            onProgress: (progress: number, message: string) => {
+              canvasActions.setLoading(true, Math.max(progress, 30), message);
+            },
+            timeout: 30000,
+          });
+          toast.success("Knowledge graph loaded successfully");
+ 
+          setTrackedTimeout(() => {
+            void doLayout(nodes, edges, true);
+          }, 300);
           void doLayout(nodes, edges, true);
-        }, 300);
-        void doLayout(nodes, edges, true);
+        }
       } finally {
         canvasActions.setLoading(false, 0, "");
       }

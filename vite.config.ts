@@ -6,6 +6,7 @@ import tailwind from "@tailwindcss/vite";
 import path from "path";
 import fs from "fs";
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
+import commonjs from '@rollup/plugin-commonjs'
 
 // Vite dev server proxy helper:
 // We expose a small dev-only endpoint at /__external?url=<encoded-url>
@@ -50,7 +51,16 @@ export default defineConfig(({ mode }) => ({
       include: ['process', 'stream', 'buffer'],
       globals: { global: true, process: true, Buffer: true },
     }),
+    // Handle CJS modules required by some parser/runtime packages when bundling workers
+    commonjs(),
   ],
+
+  // Pre-bundle rdf-parse and core Comunica pieces so worker build resolves them reliably.
+  // Add additional entries here if runtime errors mention missing modules.
+  optimizeDeps: {
+    include: ['rdf-parse', '@comunica/core'],
+  },
+
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

@@ -16,6 +16,10 @@ import { rdfParser } from "rdf-parse";
 import { rdfSerializer } from "rdf-serialize";
 import type * as RDF from "@rdfjs/types";
 
+// Batch size used when draining/ingesting parsed quads to avoid blocking the main thread.
+// Keep in sync with worker batch sizes.
+const BATCH_SIZE = 1000;
+
 const { namedNode, literal, quad, blankNode, defaultGraph } = DataFactory;
 
 /**
@@ -1293,10 +1297,9 @@ export class RDFManager {
             const c = new AbortController();
             const id = setTimeout(() => c.abort(), to);
             try {
-              // return await fetch(t, { signal: c.signal, headers: { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" } });
               return await fetch(t, {
                 signal: c.signal,
-                headers: { Accept: "text/turtle" },
+                headers: { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" },
               });
             } finally {
               clearTimeout(id);
@@ -1309,11 +1312,152 @@ export class RDFManager {
       timeoutMs,
     });
 
-    // Fetch the resource once and trust Content-Type for rdf-parse
-    const res = await doFetchImpl(url, timeoutMs, { minimal: false });
+    // Attempt to perform the network reading in a background worker (fetch-only).
+    // If worker creation fails or streaming not available, fall back to doFetchImpl.
+    let res: any = null;
+    let workerInst: Worker | null = null;
+    try {
+      let workerSupported = false;
+      try {
+        // Worker support check (try constructing URL; may throw in some environments)
+        // Use Vite/ESM worker URL pattern
+        const workerUrl = new URL("../workers/fetchOnly.worker.ts", import.meta.url);
+        try {
+          workerInst = new Worker(workerUrl as any, { type: "module" });
+          workerSupported = true;
+        } catch (_) {
+          workerInst = null;
+          workerSupported = false;
+        }
+      } catch (_) {
+        workerInst = null;
+        workerSupported = false;
+      }
+
+      if (workerSupported && workerInst) {
+        // Build a ReadableStream that is fed by worker messages
+        const id = `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`;
+        let startResolved = false;
+        let startInfo: { contentType?: string | null; status?: number; statusText?: string } = {};
+        const pendingChunks: ArrayBuffer[] = [];
+        let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controllerRef = controller;
+            workerInst!.onmessage = (ev: MessageEvent) => {
+              const m = ev.data || {};
+              if (!m || m.id !== id) return;
+              try {
+                if (m.type === "start") {
+                  // Mutate the existing startInfo object so the Response headers shim can read updated values.
+                  try {
+                    (startInfo as any).contentType = m.contentType || null;
+                    (startInfo as any).status = m.status;
+                    (startInfo as any).statusText = m.statusText;
+                  } catch (_) {
+                    // ensure we don't throw from the handler
+                    (startInfo as any).contentType = (startInfo as any).contentType || null;
+                  }
+                  startResolved = true;
+                  // Flush any pending chunks that arrived before start was processed
+                  while (pendingChunks.length > 0) {
+                    try {
+                      const b = pendingChunks.shift()!;
+                      controller.enqueue(new Uint8Array(b));
+                    } catch (_) { /* ignore per-chunk */ }
+                  }
+                } else if (m.type === "chunk") {
+                  try {
+                    const buf = m.buffer as ArrayBuffer;
+                    if (!startResolved) {
+                      pendingChunks.push(buf);
+                    } else {
+                      controller.enqueue(new Uint8Array(buf));
+                    }
+                  } catch (e) {
+                    try { controller.error(e); } catch (_) {}
+                  }
+                } else if (m.type === "end") {
+                  try { controller.close(); } catch (_) {}
+                } else if (m.type === "error") {
+                  try { controller.error(new Error(String(m.message || "worker fetch error"))); } catch (_) {}
+                }
+              } catch (_) {
+                try { controller.error(new Error("worker message handling failed")); } catch (_) {}
+              }
+            };
+            // Kick off fetch in worker (fire-and-forget; messages will arrive)
+            try {
+              // Provide a conservative Accept header preferring Turtle so servers
+              // that rely on content negotiation return an RDF serialization.
+              workerInst!.postMessage({
+                type: "fetchUrl",
+                id,
+                url,
+                timeoutMs,
+                headers: { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" },
+              });
+            } catch (e) {
+              try { controller.error(e); } catch (_) {}
+            }
+          },
+          cancel() {
+            try {
+              if (workerInst) {
+                try { workerInst.terminate(); } catch (_) {}
+                workerInst = null;
+              }
+            } catch (_) {}
+          },
+        });
+
+        // Construct a Response-like object from the stream so the existing parser paths can consume it.
+        // Note: headers may be absent — parser will attempt detection heuristics.
+        res = new Response(stream);
+        // Attach a small shim so headers.get('content-type') reads startInfo when available.
+        try {
+          const origHeadersGet = (res as Response).headers.get.bind((res as Response).headers);
+          Object.defineProperty((res as any), "__vg_start_info", { value: startInfo, writable: true });
+          const shimHeaders = {
+            get(k: string) {
+              try {
+                if (k && k.toLowerCase() === "content-type") {
+                  const s = (res as any).__vg_start_info && (res as any).__vg_start_info.contentType;
+                  if (s) return s;
+                }
+              } catch (_) {}
+              try { return origHeadersGet(k); } catch (_) { return null; }
+            },
+          };
+          // @ts-ignore - replace headers accessor for downstream consumers
+          (res as any).headers = shimHeaders;
+        } catch (_) {
+          // non-critical if shim fails
+        }
+      }
+    } catch (err) {
+      try {
+        if (workerInst) {
+          try { workerInst.terminate(); } catch (_) {}
+          workerInst = null;
+        }
+      } catch (_) {}
+      res = null;
+    }
+
+    // Fallback: worker not available or stream creation failed — use normal fetch wrapper
+    if (!res) {
+      const fallbackRes = await doFetchImpl(url, timeoutMs, { minimal: false });
+      res = fallbackRes;
+    }
+
     if (!res) throw new Error(`No response for ${url}`);
-    if (!res.ok) {
-      console.warn(`[VG_RDF] HTTP ${res.status} ${res.statusText} for ${url}`);
+    try {
+      if (!res.ok) {
+        console.warn(`[VG_RDF] HTTP ${res.status} ${res.statusText} for ${url}`);
+      }
+    } catch (_) {
+      // ignore
     }
     const contentTypeHeader =
       (res.headers && res.headers.get
@@ -1345,12 +1489,177 @@ export class RDFManager {
 
     // If the fetched content clearly looks like Turtle (or the content-type explicitly indicates Turtle),
     // prefer the in-memory N3 parser path which accepts a string and does not require Node Readable streams.
+    // Default to text/turtle when server did not provide a content-type header, but first attempt simple
+    // content sniffing for common formats (e.g. JSON-LD) to avoid mis-classifying payloads.
     const mimeType = contentTypeHeader
-      ? contentTypeHeader.split(";")[0].trim() || null
-      : null;
+      ? contentTypeHeader.split(";")[0].trim() || "text/turtle"
+      : "text/turtle";
 
-    // const prefersTurtle = mimeType === "text/turtle" || mimeType === "text/n3" || looksLikeRdfLocal(txt);
-    const prefersTurtle = mimeType === "text/turtle" || mimeType === "text/n3";
+    // Basic content sniffing: detect JSON-LD objects/arrays containing @id/@context markers.
+    let detectedMime = mimeType;
+    try {
+      if (!contentTypeHeader && typeof txt === "string") {
+        const leading = txt.slice(0, 512);
+        const looksLikeJson = /^\s*[\[\{]/.test(leading) && /"@id"|"@context"/.test(leading);
+        if (looksLikeJson) {
+          detectedMime = "application/ld+json";
+        }
+      }
+    } catch (_) {
+      // ignore sniffing failures and keep mimeType
+      void 0;
+    }
+
+    const prefersTurtle = detectedMime === "text/turtle" || detectedMime === "text/n3";
+
+    // If payload is large (heuristic) or caller explicitly requested worker use, use parser-in-worker.
+    // This offloads parsing CPU to a worker and streams parsed quad batches back to the main thread.
+    // Worker path uses src/workers/parseRdf.worker.ts and a simple ACK-based backpressure protocol.
+    const workerThreshold = 200000; // characters
+    const useWorker =
+      (options && (options as any).useWorker) ||
+      (typeof txt === "string" && txt.length > workerThreshold);
+
+    if (!prefersTurtle && useWorker) {
+      try {
+        console.info("[VG_RDF] using parser worker for large/complex payload", { url, len: txt.length });
+        const workerUrl = new URL("../workers/parseRdf.worker.ts", import.meta.url);
+        let w: Worker | null = null;
+        try {
+          w = new Worker(workerUrl as any, { type: "module" });
+        } catch (errWorker) {
+          w = null;
+        }
+        if (!w) {
+          console.info("[VG_RDF] worker not available, falling back to main-thread parse");
+        } else {
+          const loadId = `wl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`;
+          const addedQuads: Quad[] = [];
+          const collectedPrefixes: Record<string, any> = {};
+          // Target graph term used for batch insert fallback when incoming plain quad has no explicit graph
+          const targetGraph = namedNode(String(graphName || "urn:vg:data"));
+          let resolved = false;
+
+          const cleanupWorker = () => {
+            try {
+              if (w) {
+                try { w.terminate(); } catch (_) {}
+                w = null;
+              }
+            } catch (_) {
+              /* ignore */
+            }
+          };
+
+          // Promise that resolves when worker reports end (or error)
+          const workerPromise = new Promise<void>((resolve, reject) => {
+            try {
+              if (!w) return reject(new Error("worker spawn failed"));
+              w.onmessage = async (ev: MessageEvent) => {
+                const m = ev.data || {};
+                if (!m || !m.type) return;
+                try {
+                  if (m.type === "start") {
+                    // worker reports contentType/status
+                    try {
+                      if (m.contentType) detectedMime = String(m.contentType);
+                    } catch (_) {}
+                  } else if (m.type === "prefix" && m.prefixes) {
+                    try {
+                      Object.assign(collectedPrefixes, m.prefixes || {});
+                    } catch (_) {}
+                  } else if (m.type === "quads" && Array.isArray(m.quads)) {
+                    try {
+                      // Ingest plain quads into store on main thread
+                      const plain = m.quads as any[];
+                      for (const pq of plain) {
+                        try {
+                          const sTerm = /^_:/.test(String(pq.s || "")) ? blankNode(String(pq.s).replace(/^_:/, "")) : namedNode(String(pq.s));
+                          const pTerm = namedNode(String(pq.p));
+                          let oTerm: any = null;
+                          try {
+                            if (pq.o && pq.o.t === "iri") oTerm = namedNode(String(pq.o.v));
+                            else if (pq.o && pq.o.t === "bnode") oTerm = blankNode(String(pq.o.v));
+                            else if (pq.o && pq.o.t === "lit") {
+                              if (pq.o.dt) oTerm = literal(String(pq.o.v), namedNode(String(pq.o.dt)));
+                              else if (pq.o.ln) oTerm = literal(String(pq.o.v), String(pq.o.ln));
+                              else oTerm = literal(String(pq.o.v));
+                            } else oTerm = literal(String((pq.o && pq.o.v) || ""));
+                          } catch (_) {
+                            oTerm = literal(String((pq.o && pq.o.v) || ""));
+                          }
+                          const gTerm = pq.g ? namedNode(String(pq.g)) : targetGraph;
+                          const toAdd = quad(sTerm, pTerm, oTerm, gTerm);
+                          try {
+                            this.addQuadToStore(toAdd, gTerm, addedQuads);
+                          } catch (_) {
+                            try { this.store.addQuad(toAdd); addedQuads.push(toAdd); } catch (_) {}
+                          }
+                        } catch (errQuad) {
+                          /* ignore per-quad errors */
+                        }
+                      }
+
+                      // ACK back to worker so it can continue
+                      try {
+                        w.postMessage({ type: "ack", id: String(m.id || loadId) });
+                      } catch (_) {}
+                    } catch (_) { /* ignore batch processing errors */ }
+                  } else if (m.type === "end") {
+                    try {
+                      // finalize load: apply prefixes + reconcile + notify
+                      (async () => {
+                        try {
+                          await (this as any).finalizeLoad(addedQuads, collectedPrefixes || {}, loadId);
+                        } catch (e) {
+                          try { console.error("[VG_RDF] worker finalize failed", e); } catch (_) {}
+                        } finally {
+                          resolved = true;
+                          try { resolve(); } catch (_) {}
+                          cleanupWorker();
+                        }
+                      })();
+                    } catch (e) {
+                      try { reject(e); } catch (_) {}
+                      cleanupWorker();
+                    }
+                  } else if (m.type === "error") {
+                    try { reject(new Error(String(m.message || "worker error"))); } catch (_) {}
+                    cleanupWorker();
+                  }
+                } catch (innerErr) {
+                  try { reject(innerErr); } catch (_) {}
+                  cleanupWorker();
+                }
+              };
+
+              // Start worker parsing (send text to parse)
+              try {
+                w.postMessage({ type: "parseText", id: loadId, text: txt, mime: detectedMime });
+              } catch (errPost) {
+                try { reject(errPost); } catch (_) {}
+                cleanupWorker();
+              }
+            } catch (outerErr) {
+              try { reject(outerErr); } catch (_) {}
+              cleanupWorker();
+            }
+          });
+
+          try {
+            await workerPromise;
+            return;
+          } catch (errWorker) {
+            // worker failed — fall back to main-thread parse
+            console.warn("[VG_RDF] parser worker failed, falling back", errWorker);
+            cleanupWorker();
+          }
+        }
+      } catch (err) {
+        // Fall through to main-thread parsing on any worker orchestration errors
+        console.info("[VG_RDF] parser-worker orchestration failed, fallback to main-thread", { error: String(err).slice(0,200) });
+      }
+    }
 
     if (prefersTurtle) {
       try {
@@ -1384,21 +1693,36 @@ export class RDFManager {
       contentType: contentTypeHeader,
       url,
     });
-    try {
-      const quadStream = rdfParser.parse(inputStream, {
-        contentType: contentTypeHeader || undefined,
-        baseIRI: url,
-      });
-      return await this.loadQuadsToDiagram(
-        quadStream,
-        graphName || "urn:vg:data",
-      );
-    } catch (err) {
-      // parse/serialize via mimetype failed — retry using filename/baseIRI heuristics
-      console.info("[VG_RDF] parse-by-mimetype:failed, retrying by filename", {
-        url,
-        error: String(err).slice(0, 500),
-      });
+      try {
+        // Use the resolved detectedMime (sniffed or provided) so rdf-parse receives the most
+        // accurate contentType available. Fall back to mimeType if detection failed.
+        try {
+          const quadStream = rdfParser.parse(inputStream, {
+            contentType: (typeof (detectedMime) !== "undefined" && detectedMime) ? detectedMime : (mimeType || undefined),
+            baseIRI: url,
+          });
+          return await this.loadQuadsToDiagram(
+            quadStream,
+            graphName || "urn:vg:data",
+          );
+        } catch (err) {
+          // If rdf-parse fails specifically due to missing contentType/path, fall back to the
+          // N3 string-based parser path which is safer in ambiguous cases. Otherwise rethrow.
+          const message = String(err && (err as any).message ? (err as any).message : err);
+          if (message.includes("Missing 'contentType' or 'path' option") || message.includes("Missing \"contentType\" or \"path\" option")) {
+            console.info("[VG_RDF] rdf-parse missing contentType/path — falling back to string parser", { url, error: message });
+            // Fall back: parse the fetched text via the existing fast N3 path
+            return await this.loadRDFIntoGraph(txt, graphName || "urn:vg:data", "text/turtle");
+          }
+          // Not the specific missing option error — rethrow to be handled by outer fallback logic.
+          throw err;
+        }
+      } catch (err) {
+        // parse/serialize via mimetype failed — retry using filename/baseIRI heuristics
+        console.info("[VG_RDF] parse-by-mimetype:failed, retrying by filename", {
+          url,
+          error: String(err).slice(0, 500),
+        });
 
       // Re-create a fresh Node-style Readable for retry (streams are single-use)
       const inputStream2 =
@@ -1408,10 +1732,16 @@ export class RDFManager {
         path: url,
         baseIRI: url,
       });
-      const quadStream2 = rdfParser.parse(inputStream2, {
-        path: url,
-        baseIRI: url,
-      });
+
+      // Defensive: only pass a `path` option to rdfParser when the URL contains a file extension.
+      // Some URLs end with a trailing slash (no extension) and rdf-parse will error when asked
+      // to detect a format from an extension that doesn't exist. Prefer passing `baseIRI` only
+      // and allow rdf-parse to sniff content when no extension is available.
+      const hasExt = /\.[a-z0-9]{1,8}(?:[?#]|$)/i.test(String(url || ""));
+      const parseOpts: any = { baseIRI: url };
+      if (hasExt) parseOpts.path = url;
+
+      const quadStream2 = rdfParser.parse(inputStream2, parseOpts);
       // Delegate to existing loader which handles store insertion, namespaces, notifications
       return await this.loadQuadsToDiagram(
         quadStream2,
@@ -2942,33 +3272,74 @@ export class RDFManager {
       const prefixes: Record<string, any> = {};
       const addedQuads: any[] = [];
 
+      // Buffered onData handler: collect incoming quads into a buffer and drain them in batches
+      // using requestIdleCallback (fallback to setTimeout) to avoid blocking the main thread.
+      const incomingBuffer: any[] = [];
+      let draining = false;
+      const yieldFn = (fn: () => void) => {
+        try {
+          if (typeof (globalThis as any).requestIdleCallback === "function") {
+            (globalThis as any).requestIdleCallback(() => fn());
+          } else {
+            setTimeout(fn, 0);
+          }
+        } catch (_) {
+          setTimeout(fn, 0);
+        }
+      };
+
+      const drainBuffer = async (): Promise<void> => {
+        if (draining) return;
+        draining = true;
+        try {
+          while (incomingBuffer.length > 0) {
+            // Take one batch
+            const batch = incomingBuffer.splice(0, BATCH_SIZE);
+            try {
+              for (const q of batch) {
+                try {
+                  const subj = q && q.subject ? q.subject : null;
+                  const pred = q && q.predicate ? q.predicate : null;
+                  const obj = q && q.object ? q.object : null;
+                  if (!subj || !pred || !obj) continue;
+                  const toAdd = quad(subj, pred, obj, g);
+                  try {
+                    this.addQuadToStore(toAdd, g, addedQuads);
+                  } catch (_) {
+                    try {
+                      this.store.addQuad(toAdd);
+                      addedQuads.push(toAdd);
+                    } catch (_) {
+                      /* ignore per-quad add failure */
+                    }
+                  }
+                } catch (_) {
+                  /* ignore per-quad */
+                }
+              }
+            } catch (_) {
+              /* ignore batch-level errors */
+            }
+            // Yield to the browser before continuing with the next batch
+            await new Promise<void>((res) => yieldFn(res));
+          }
+        } finally {
+          draining = false;
+        }
+      };
+
       const onData = (q: any) => {
         try {
-          // Some quad streams provide full quad objects; ensure we add under the target graph.
-          const subj = q && q.subject ? q.subject : null;
-          const pred = q && q.predicate ? q.predicate : null;
-          const obj = q && q.object ? q.object : null;
-          if (!subj || !pred || !obj) return;
-          const toAdd = quad(subj, pred, obj, g);
-          try {
-            // Delegate to helper to keep add/buffer behavior consistent with string parser path
-            this.addQuadToStore(toAdd, g, addedQuads);
-          } catch (_) {
-            // Best-effort add when helper fails
-            try {
-              this.store.addQuad(toAdd);
-              addedQuads.push(toAdd);
-            } catch (_) {
-              /* ignore */
-            }
+          // Buffer the quad for asynchronous batch insertion
+          incomingBuffer.push(q);
+          // If buffer reached threshold, schedule a drain
+          if (incomingBuffer.length >= BATCH_SIZE) {
+            // Start draining asynchronously (no await here)
+            void drainBuffer();
           }
         } catch (err) {
-          // swallow per-quad errors but surface if needed via debug
           try {
-            console.debug(
-              "[VG_RDF] loadQuadsToDiagram.data.error",
-              String(err).slice(0, 200),
-            );
+            console.debug("[VG_RDF] loadQuadsToDiagram.buffer.error", String(err).slice(0, 200));
           } catch (_) {
             /* ignore */
           }
