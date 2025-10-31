@@ -267,7 +267,7 @@
 }
 
 .react-flow__panel.bottom {
-	bottom: 50px !important;
+  /* bottom: 50px !important; */
 }
 
 .react-flow__attribution {

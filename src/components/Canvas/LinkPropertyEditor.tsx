@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { DataFactory } from 'n3';
 const { namedNode, quad } = DataFactory;
+import { useCanvasState } from '../../hooks/useCanvasState';
 import { Button } from '../ui/button';
 import EntityAutoComplete from '../ui/EntityAutoComplete';
 import { Label } from '../ui/label';
@@ -56,6 +57,7 @@ export const LinkPropertyEditor = ({
     linkData?.data?.propertyType ||
     linkData?.propertyType ||
     '';
+  const { actions: canvasActions } = useCanvasState();
 
   // Read suggestions directly from the store each render (no snapshots).
   const availableProperties = useOntologyStore((s) => s.availableProperties);
@@ -138,8 +140,12 @@ export const LinkPropertyEditor = ({
   }, [open, linkData, selectedProperty, displayValue, sourceNode, targetNode]);
 
   const handleSave = async () => {
+    try { canvasActions.setLoading(true, 0, "Saving connection..."); } catch (_) {}
     const uriToSave = selectedProperty || displayValue;
-    if (!uriToSave) return;
+    if (!uriToSave) {
+      try { canvasActions.setLoading(false, 0, ""); } catch (_) {}
+      return;
+    }
 
     // Resolve manager + subject/object IRIs (endpoints must come from props)
     const mgrState = useOntologyStore.getState();
@@ -190,11 +196,16 @@ export const LinkPropertyEditor = ({
     // Notify parent; canvas mapping will pick up the change via RDF manager
     const property = (computedAllObjectProperties || []).find((p) => String(p.iri || '') === String(uriToSave));
     onSave(uriToSave, property?.label || uriToSave);
+    try { canvasActions.setLoading(false, 0, ""); } catch (_) {}
     onOpenChange(false);
   };
 
   const handleDelete = async () => {
-    if (!confirm('Delete this connection? This will remove the corresponding triple from the data graph.')) return;
+    try { canvasActions.setLoading(true, 0, "Deleting connection..."); } catch (_) {}
+    if (!confirm('Delete this connection? This will remove the corresponding triple from the data graph.')) {
+      try { canvasActions.setLoading(false, 0, ""); } catch (_) {}
+      return;
+    }
 
     // Mirror handleSave's robust manager resolution: prefer store-provided manager, fall back to a global rdfManager helper.
     const mgrState = useOntologyStore.getState();
@@ -235,6 +246,7 @@ export const LinkPropertyEditor = ({
     }
 
     // Close dialog after deletion so UI does not remain open
+    try { canvasActions.setLoading(false, 0, ""); } catch (_) {}
     { if (typeof onOpenChange === 'function') onOpenChange(false); }
   };
 

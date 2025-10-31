@@ -582,6 +582,15 @@ export class RDFManager {
    */
   public async triggerSubjectUpdate(subjectIris: string[]): Promise<void> {
     try {
+      // Special debug marker for triggerSubjectUpdate invocations so we can trace explicit triggers
+      try {
+        console.debug("[VG_DEBUG_SPECIAL] triggerSubjectUpdate.called", {
+          requestedCount: Array.isArray(subjectIris) ? subjectIris.length : 0,
+          time: Date.now(),
+        });
+      } catch (_) {
+        /* ignore logging failures */
+      }
       if (!Array.isArray(subjectIris) || subjectIris.length === 0) return;
 
       const subjects: string[] = [];
@@ -1526,8 +1535,21 @@ export class RDFManager {
         const workerUrl = new URL("../workers/parseRdf.worker.ts", import.meta.url);
         let w: Worker | null = null;
         try {
+          // Instrument: log worker URL attempt so we can diagnose worker resolution issues.
+          try { console.debug("[VG_RDF] spawnWorker.attempt", { workerUrl: String(workerUrl) }); } catch (_) {}
           w = new Worker(workerUrl as any, { type: "module" });
+          try { console.debug("[VG_RDF] spawnWorker.success", { workerUrl: String(workerUrl) }); } catch (_) {}
+          // Attach an error handler so uncaught worker errors surface in the main thread console immediately.
+          try {
+            (w as any).onerror = (ev: any) => {
+              try { console.debug("[VG_RDF] worker.onerror", ev && (ev.message || ev)); } catch (_) {}
+            };
+            (w as any).onmessageerror = (ev: any) => {
+              try { console.debug("[VG_RDF] worker.onmessageerror", ev && ev); } catch (_) {}
+            };
+          } catch (_) {}
         } catch (errWorker) {
+          try { console.debug("[VG_RDF] spawnWorker.failed", { error: String(errWorker), workerUrl: String(workerUrl) }); } catch (_) {}
           w = null;
         }
         if (!w) {
@@ -1555,10 +1577,39 @@ export class RDFManager {
           const workerPromise = new Promise<void>((resolve, reject) => {
             try {
               if (!w) return reject(new Error("worker spawn failed"));
+              // instrumentation: watchdog + verbose worker message logging
+              let __vg_worker_seen = false;
+              const __vg_watchdog = setTimeout(() => {
+                if (!__vg_worker_seen) {
+                  try { console.warn("[VG_RDF] parser worker unresponsive - terminating and falling back"); } catch (_) {}
+                  try {
+                    if (w) {
+                      try { w.terminate(); } catch (_) { /* ignore */ }
+                      w = null;
+                    }
+                  } catch (_) {}
+                  try { reject(new Error("parser worker unresponsive")); } catch (_) {}
+                }
+              }, 7000);
+
               w.onmessage = async (ev: MessageEvent) => {
-                const m = ev.data || {};
-                if (!m || !m.type) return;
-                try {
+                // Mark worker as alive and clear watchdog as soon as any message arrives
+                try { __vg_worker_seen = true; clearTimeout(__vg_watchdog); } catch (_) {}
+              const m = ev.data || {};
+              try {
+                // Avoid logging the full worker payload (quads arrays can be very large).
+                // Log only small, useful metadata so console output doesn't slow parsing.
+                const lightweight = {
+                  type: (m && m.type) || null,
+                  id: (m && m.id) || null,
+                  seq: (m && (m as any).seq) || null,
+                  count: (m && typeof (m as any).count === "number") ? (m as any).count : (Array.isArray((m as any).quads) ? (m as any).quads.length : undefined),
+                  final: (m && (m as any).final) || false,
+                };
+                console.debug("[VG_RDF] worker.onmessage", lightweight);
+              } catch (_) {}
+              if (!m || !m.type) return;
+              try {
                   if (m.type === "start") {
                     // worker reports contentType/status
                     try {
@@ -1569,42 +1620,47 @@ export class RDFManager {
                       Object.assign(collectedPrefixes, m.prefixes || {});
                     } catch (_) {}
                   } else if (m.type === "quads" && Array.isArray(m.quads)) {
-                    try {
-                      // Ingest plain quads into store on main thread
-                      const plain = m.quads as any[];
-                      for (const pq of plain) {
-                        try {
-                          const sTerm = /^_:/.test(String(pq.s || "")) ? blankNode(String(pq.s).replace(/^_:/, "")) : namedNode(String(pq.s));
-                          const pTerm = namedNode(String(pq.p));
-                          let oTerm: any = null;
-                          try {
-                            if (pq.o && pq.o.t === "iri") oTerm = namedNode(String(pq.o.v));
-                            else if (pq.o && pq.o.t === "bnode") oTerm = blankNode(String(pq.o.v));
-                            else if (pq.o && pq.o.t === "lit") {
-                              if (pq.o.dt) oTerm = literal(String(pq.o.v), namedNode(String(pq.o.dt)));
-                              else if (pq.o.ln) oTerm = literal(String(pq.o.v), String(pq.o.ln));
-                              else oTerm = literal(String(pq.o.v));
-                            } else oTerm = literal(String((pq.o && pq.o.v) || ""));
-                          } catch (_) {
-                            oTerm = literal(String((pq.o && pq.o.v) || ""));
-                          }
-                          const gTerm = pq.g ? namedNode(String(pq.g)) : targetGraph;
-                          const toAdd = quad(sTerm, pTerm, oTerm, gTerm);
-                          try {
-                            this.addQuadToStore(toAdd, gTerm, addedQuads);
-                          } catch (_) {
-                            try { this.store.addQuad(toAdd); addedQuads.push(toAdd); } catch (_) {}
-                          }
-                        } catch (errQuad) {
-                          /* ignore per-quad errors */
-                        }
-                      }
-
-                      // ACK back to worker so it can continue
                       try {
-                        w.postMessage({ type: "ack", id: String(m.id || loadId) });
-                      } catch (_) {}
-                    } catch (_) { /* ignore batch processing errors */ }
+                        // Ingest plain quads into store on main thread
+                        const plain = m.quads as any[];
+                        for (const pq of plain) {
+                          try {
+                            const sTerm = /^_:/.test(String(pq.s || "")) ? blankNode(String(pq.s).replace(/^_:/, "")) : namedNode(String(pq.s));
+                            const pTerm = namedNode(String(pq.p));
+                            let oTerm: any = null;
+                            try {
+                              if (pq.o && pq.o.t === "iri") oTerm = namedNode(String(pq.o.v));
+                              else if (pq.o && pq.o.t === "bnode") oTerm = blankNode(String(pq.o.v));
+                              else if (pq.o && pq.o.t === "lit") {
+                                if (pq.o.dt) oTerm = literal(String(pq.o.v), namedNode(String(pq.o.dt)));
+                                else if (pq.o.ln) oTerm = literal(String(pq.o.v), String(pq.o.ln));
+                                else oTerm = literal(String(pq.o.v));
+                              } else oTerm = literal(String((pq.o && pq.o.v) || ""));
+                            } catch (e_inner) {
+                              try { console.debug("[VG_RDF] worker.quadTermParse.failed", String(e_inner)); } catch (_) {}
+                              oTerm = literal(String((pq.o && pq.o.v) || ""));
+                            }
+                            const gTerm = pq.g ? namedNode(String(pq.g)) : targetGraph;
+                            const toAdd = quad(sTerm, pTerm, oTerm, gTerm);
+                            try {
+                              this.addQuadToStore(toAdd, gTerm, addedQuads);
+                            } catch (_) {
+                              try { this.store.addQuad(toAdd); addedQuads.push(toAdd); } catch (_) {}
+                            }
+                          } catch (errQuad) {
+                            try { console.debug("[VG_RDF] worker.quad.ingest.failed", String(errQuad)); } catch (_) {}
+                          }
+                        }
+
+                        // ACK back to worker so it can continue
+                        try {
+                          w.postMessage({ type: "ack", id: String(m.id || loadId) });
+                        } catch (ackErr) {
+                          try { console.debug("[VG_RDF] worker.ack.failed", String(ackErr)); } catch (_) {}
+                        }
+                      } catch (batchErr) {
+                        try { console.debug("[VG_RDF] worker.batchProcessing.failed", String(batchErr)); } catch (_) {}
+                      }
                   } else if (m.type === "end") {
                     try {
                       // finalize load: apply prefixes + reconcile + notify
@@ -1635,6 +1691,8 @@ export class RDFManager {
 
               // Start worker parsing (send text to parse)
               try {
+                // Mark parsing as in-progress so subject-level notifications are deferred
+                try { (this as any).parsingInProgress = true; } catch (_) { /* ignore */ }
                 w.postMessage({ type: "parseText", id: loadId, text: txt, mime: detectedMime });
               } catch (errPost) {
                 try { reject(errPost); } catch (_) {}
@@ -2451,6 +2509,17 @@ export class RDFManager {
   public async emitAllSubjects(graphName: string = "urn:vg:data"): Promise<void> {
     try {
       if (!graphName) return;
+      // Special debug marker so developers can easily find emitAllSubjects calls in the browser console.
+      // Example: open http://localhost:8080/?rdfUrl=... and look for "[VG_DEBUG_SPECIAL] emitAllSubjects.triggered"
+      try {
+        console.debug("[VG_DEBUG_SPECIAL] emitAllSubjects.triggered", {
+          graphName,
+          bufferedSubjectsCount: Array.from((this as any).subjectChangeBuffer || []).length,
+          time: Date.now(),
+        });
+      } catch (_) {
+        /* ignore logging failures */
+      }
       const g = namedNode(String(graphName));
       const allQuads = this.store.getQuads(null, null, null, g) || [];
 

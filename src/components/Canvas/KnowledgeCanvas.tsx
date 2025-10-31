@@ -27,6 +27,7 @@ import { CanvasToolbar } from "./CanvasToolbar";
 import { ResizableNamespaceLegend } from "./ResizableNamespaceLegend";
 import { ReasoningIndicator } from "./ReasoningIndicator";
 import { ReasoningReportModal } from "./ReasoningReportModal";
+import ModalStatus from "./ModalStatus";
 import { Progress } from "../ui/progress";
 import type { ReactFlowInstance } from "@xyflow/react";
 import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
@@ -244,79 +245,10 @@ const KnowledgeCanvas: React.FC = () => {
   const setShowLegend = useAppConfigStore((s) => s.setShowLegend);
   const setPersistedViewMode = useAppConfigStore((s) => s.setViewMode);
 
-  // Lightweight timing instrumentation helper (gated, low-overhead).
-  // Exposes vgMeasure(name, meta) -> { end(obj?) } which logs to console.debug and
-  // appends entries to window.__VG_BLOCKING_LOGS (capped) for programmatic inspection.
-  // Enabled when app config.debugAll is true or global window.__VG_DEBUG_TIMINGS is truthy.
-  const initGlobalDebugLogs = () => {
-    try {
-      if (typeof window === "undefined") return;
-      if (!(window as any).__VG_BLOCKING_LOGS) {
-        (window as any).__VG_BLOCKING_LOGS = [];
-        (window as any).__VG_DUMP_BLOCKING_LOGS = () =>
-          (window as any).__VG_BLOCKING_LOGS.slice();
-        (window as any).__VG_CLEAR_BLOCKING_LOGS = () => {
-          (window as any).__VG_BLOCKING_LOGS = [];
-        };
-      }
-    } catch (_) {
-      /* ignore */
-    }
-  };
-
-  const vgDebugEnabled = () => {
-    try {
-      if (typeof window !== "undefined" && (window as any).__VG_DEBUG_TIMINGS)
-        return true;
-      return !!(config && (config as any).debugAll);
-    } catch {
-      return false;
-    }
-  };
-
+  // Timing instrumentation removed: replace with a zero-cost stub so all existing
+  // vgMeasure(...) call sites remain valid but produce no runtime overhead or globals.
   const vgMeasure = (name: string, meta: any = {}) => {
-    // No-op measurement when debugging disabled to avoid runtime overhead.
-    if (!vgDebugEnabled()) {
-      return { end: (_?: any) => {} };
-    }
-    initGlobalDebugLogs();
-    const now =
-      typeof performance !== "undefined" && performance.now
-        ? performance.now()
-        : Date.now();
-    let finished = false;
-    return {
-      end: (resultMeta: any = {}) => {
-        if (finished) return;
-        finished = true;
-        try {
-          const end =
-            typeof performance !== "undefined" && performance.now
-              ? performance.now()
-              : Date.now();
-          const entry = {
-            name,
-            durationMs: Math.max(0, end - now),
-            ts: Date.now(),
-            meta: { ...(meta || {}), ...(resultMeta || {}) },
-          };
-          try {
-            if (typeof console !== "undefined" && console.debug) {
-              console.debug("[VG_TIMING]", entry);
-            }
-          } catch (_) {}
-          try {
-            if (typeof window !== "undefined" && (window as any).__VG_BLOCKING_LOGS) {
-              const buf = (window as any).__VG_BLOCKING_LOGS;
-              buf.push(entry);
-              if (Array.isArray(buf) && buf.length > 200) buf.shift();
-            }
-          } catch (_) {}
-        } catch (_) {
-          // ignore
-        }
-      },
-    };
+    return { end: (_?: any) => {} };
   };
 
   const [viewMode, setViewMode] = useState(config.viewMode);
@@ -3243,21 +3175,9 @@ const KnowledgeCanvas: React.FC = () => {
       {showLegend ? (
         <ResizableNamespaceLegend onClose={() => handleToggleLegend()} />
       ) : null}
-      {canvasState.isLoading && (
-        <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-50 bg-card p-4 rounded-lg shadow-lg min-w-96 text-foreground">
-          <div className="space-y-2">
-            <div className="text-sm font-medium">
-              {canvasState.loadingMessage}
-            </div>
-            <Progress value={canvasState.loadingProgress} className="w-full" />
-            <div className="text-xs text-muted-foreground">
-              {canvasState.loadingProgress}%
-            </div>
-          </div>
-        </div>
-      )}
+      
 
-      <div className="w-full h-full">
+      <div className="w-full h-full pb-[5.5rem] md:pb-[4.5rem]">
           <ReactFlow
           nodes={safeNodes}
           edges={memoEdges}
@@ -3291,16 +3211,14 @@ const KnowledgeCanvas: React.FC = () => {
         </ReactFlow>
       </div>
 
-      <div className="fixed bottom-4 left-0 right-0 z-50 pointer-events-none">
-        <div className="flex items-center justify-end gap-6 pointer-events-auto w-full px-4">
-          <ReasoningIndicator
-            onOpenReport={() => canvasActions.toggleReasoningReport(true)}
-            onRunReason={() => {
-              void triggerReasoningStrict(nodes, edges, true);
-            }}
-          />
-        </div>
-      </div>
+      <ModalStatus>
+        <ReasoningIndicator
+          onOpenReport={() => canvasActions.toggleReasoningReport(true)}
+          onRunReason={() => {
+            void triggerReasoningStrict(nodes, edges, true);
+          }}
+        />
+      </ModalStatus>
 
       <ReasoningReportModal
         open={canvasState.showReasoningReport}

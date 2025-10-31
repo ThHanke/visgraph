@@ -11,9 +11,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
     return (
     <Sonner
       theme={theme as ToasterProps["theme"]}
-      // Move to bottom-right and ensure pointer events are enabled for interactions.
-      // Use a high z-index to avoid being occluded by other UI layers.
-      className="toaster group fixed bottom-4 right-4 z-[9999] pointer-events-auto"
+      // Place toaster centered at the bottom so it does not overlap the left-side spinner nor the right-side reasoning indicator.
+      // Keep pointer-events enabled so users can interact with toast actions.
+      className="toaster group fixed bottom-4 left-1/2 transform -translate-x-1/2 z-[9999] pointer-events-auto"
       toastOptions={{
         // Keep visual theming via classNames and increase default visibility time.
         duration: 8000,
