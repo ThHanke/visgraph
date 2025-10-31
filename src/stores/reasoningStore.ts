@@ -119,12 +119,90 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
 
     set({ currentReasoning: baseResult });
 
+    // Per-run diagnostics guard to avoid duplicate before/after logs in a single reasoning invocation.
+    let beforeLogged = false;
+    let afterLogged = false;
+
     try {
       // Snapshot "before" quads if a store is available
       const beforeQuads = Array.isArray(rdfStore?.getQuads ? rdfStore.getQuads(null, null, null, null) : []) ? rdfStore.getQuads(null, null, null, null) : [];
 
+      // Triple-count diagnostic (before): use rdfManager helper when available and log total + per-graph counts.
+      try {
+        const mod = await import("../utils/rdfManager");
+        if (mod && typeof mod.collectGraphCountsFromStore === "function") {
+          try {
+            const countsBefore = (mod && mod.rdfManager && typeof mod.rdfManager.getStore === "function")
+              ? mod.collectGraphCountsFromStore(mod.rdfManager.getStore())
+              : (rdfStore ? mod.collectGraphCountsFromStore(rdfStore) : {});
+            if (!beforeLogged) {
+              console.debug("[VG_DEBUG] reasoning.tripleCounts.before", {
+                totalBefore: Array.isArray(beforeQuads) ? beforeQuads.length : 0,
+                countsBefore,
+              });
+              beforeLogged = true;
+            }
+          } catch (_) { /* ignore per-collect errors */ }
+        }
+      } catch (_) { /* ignore import/diagnostic failures */ }
+      
+
+      // Diagnostic: collect graph counts before reasoning using rdfManager helper if available
+      try {
+        let graphCountsBefore: Record<string, number> = {};
+        try {
+          const mod = await import("../utils/rdfManager");
+          if (mod && typeof mod.collectGraphCountsFromStore === "function") {
+            graphCountsBefore = rdfStore ? mod.collectGraphCountsFromStore(rdfStore) : {};
+          }
+        } catch (_) {
+          // fallback: simple scan
+          try {
+            if (rdfStore && typeof rdfStore.getQuads === "function") {
+              const all = rdfStore.getQuads(null, null, null, null) || [];
+              for (const qq of all) {
+                try {
+                  const g = qq && qq.graph && qq.graph.value ? qq.graph.value : "default";
+                  graphCountsBefore[g] = (graphCountsBefore[g] || 0) + 1;
+                } catch (_) { /* per-quad */ }
+              }
+            }
+          } catch (_) { /* ignore */ }
+        }
+        try { console.debug("[VG_DEBUG] reasoning.graphCounts.before", { candidateBeforeCount: beforeQuads.length, graphCountsBefore }); } catch (_) {}
+      } catch (_) { /* ignore overall */ }
+
+      // Collect graph-level triple counts before reasoning (diagnostic). Use rdfManager API if available.
+      try {
+        let graphCountsBefore: Record<string, number> = {};
+        try {
+          const mod = await import("../utils/rdfManager");
+          if (mod && typeof mod.collectGraphCountsFromStore === "function") {
+            graphCountsBefore = rdfStore ? mod.collectGraphCountsFromStore(rdfStore) : {};
+          }
+        } catch (_) {
+          // Fall back to a simple scan if rdfManager diagnostics not present.
+          try {
+            if (rdfStore && typeof rdfStore.getQuads === "function") {
+              const all = rdfStore.getQuads(null, null, null, null) || [];
+              for (const qq of all) {
+                try {
+                  const g = qq && qq.graph && qq.graph.value ? qq.graph.value : "default";
+                  graphCountsBefore[g] = (graphCountsBefore[g] || 0) + 1;
+                } catch (_) { /* per-quad */ }
+              }
+            }
+          } catch (_) { /* ignore */ }
+        }
+        try { console.debug("[VG_DEBUG] reasoning.graphCounts.before", { candidateBeforeCount: beforeQuads.length, graphCountsBefore }); } catch (_) {}
+      } catch (_) { /* ignore overall */ }
+
       // Try to use the real N3 Reasoner if available
       let usedReasoner = false;
+      let tempStoreForReasoner: any = null;
+      // Track previous global logging flags so we can restore them after a temp-run.
+      let __vg_prev_write_logging: boolean = false;
+      let __vg_prev_window_flag: boolean = false;
       try {
         const n3mod: any = await import("n3");
         // Resolve canonical exports
@@ -183,18 +261,54 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
 
               if (typeof ReasonerImpl === "function") {
                 try {
-                  const reasoner = new ReasonerImpl(rdfStore);
+                  // Run the reasoner against a temporary N3 Store so its writes do not
+                  // go directly into the app's persistent store. This lets us capture
+                  // all generated quads and persist them atomically into urn:vg:inferred.
+                  const __vg_prev_write_logging = typeof (globalThis as any).__VG_RDF_WRITE_LOGGING_ENABLED !== "undefined" ? (globalThis as any).__VG_RDF_WRITE_LOGGING_ENABLED : false;
+                  const __vg_prev_window_flag = typeof window !== "undefined" ? !!((window as any).__VG_LOG_RDF_WRITES === true) : false;
+                  try {
+                    // Silence global per-store write logging while running the temp reasoner so its
+                    // writes do not trigger diagnostic subscribers or duplicate UI updates.
+                    try { (globalThis as any).__VG_RDF_WRITE_LOGGING_ENABLED = false; } catch (_) {}
+                    try { if (typeof window !== "undefined") (window as any).__VG_LOG_RDF_WRITES = false; } catch (_) {}
+                  } catch (_) {}
+                  tempStoreForReasoner = new StoreCls();
+
+                  // Copy authoritative store contents into tempStore so the reasoner
+                  // sees the current data when inferring.
+                  try {
+                    if (rdfStore && typeof rdfStore.getQuads === "function" && tempStoreForReasoner && typeof tempStoreForReasoner.addQuad === "function") {
+                      const existing = rdfStore.getQuads(null, null, null, null) || [];
+                      for (const q of existing) {
+                        try {
+                          tempStoreForReasoner.addQuad(q);
+                        } catch (_) {
+                          /* ignore per-quad copy failures */
+                        }
+                      }
+                    }
+                  } catch (_) {
+                    /* ignore copy errors - reasoner will run with empty tempStore if copy fails */
+                  }
+
+                  const reasoner = new ReasonerImpl(tempStoreForReasoner);
                   if (typeof reasoner.reason === "function") {
-                    reasoner.reason(rulesStore);
+                    const maybePromise = reasoner.reason(rulesStore);
+                    if (maybePromise && typeof maybePromise.then === "function") {
+                      await maybePromise;
+                    }
                     usedReasoner = true;
                   }
                 } catch (instErr) {
-                  // Construction failed; try fallback shapes (best-effort)
+                  // Construction failed; try fallback shapes (best-effort) using the temp store if available
                   try {
                     if (ReasonerCls && typeof ReasonerCls === "object" && typeof ReasonerCls.default === "function") {
-                      const reasoner = new ReasonerCls.default(rdfStore);
-                      if (typeof (reasoner as any).reason === 'function') {
-                        (reasoner as any).reason(rulesStore);
+                      const reasoner = new ReasonerCls.default(tempStoreForReasoner || rdfStore);
+                      if (typeof (reasoner as any).reason === "function") {
+                        const maybePromise = (reasoner as any).reason(rulesStore);
+                        if (maybePromise && typeof maybePromise.then === "function") {
+                          await maybePromise;
+                        }
                         usedReasoner = true;
                       }
                     }
@@ -214,8 +328,71 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
       }
 
 
-      // Snapshot "after" quads if a store is available and compute delta
-      const afterQuads = Array.isArray(rdfStore?.getQuads ? rdfStore.getQuads(null, null, null, null) : []) ? rdfStore.getQuads(null, null, null, null) : [];
+      // Snapshot "after" quads if a store is available and compute delta.
+      // Prefer the temp store the reasoner wrote into (if present); otherwise use the authoritative rdfStore.
+      const afterQuads = (() => {
+        try {
+          const s = tempStoreForReasoner || rdfStore;
+          if (!s || typeof s.getQuads !== "function") return [];
+          const a = s.getQuads(null, null, null, null) || [];
+          return Array.isArray(a) ? a : [];
+        } catch (_) {
+          return [];
+        }
+      })();
+
+      // Triple-count diagnostic (after): use rdfManager helper when available and log total + per-graph counts.
+      try {
+        const mod = await import("../utils/rdfManager");
+        if (mod && typeof mod.collectGraphCountsFromStore === "function") {
+          try {
+            const countsAfter = (mod && mod.rdfManager && typeof mod.rdfManager.getStore === "function")
+              ? mod.collectGraphCountsFromStore(mod.rdfManager.getStore())
+              : (rdfStore ? mod.collectGraphCountsFromStore(rdfStore) : {});
+            console.debug("[VG_DEBUG] reasoning.tripleCounts.after", {
+              totalAfter: Array.isArray(afterQuads) ? afterQuads.length : 0,
+              countsAfter,
+            });
+          } catch (_) { /* ignore per-collect errors */ }
+        }
+      } catch (_) { /* ignore import/diagnostic failures */ }
+      // Triple-count diagnostic after reasoning: call rdfManager helper when available.
+      try {
+        const mod = await import("../utils/rdfManager");
+        if (mod && typeof mod.collectGraphCountsFromStore === "function") {
+          try {
+            const countsAfter = (mod && mod.rdfManager && typeof mod.rdfManager.getStore === "function")
+              ? mod.collectGraphCountsFromStore(mod.rdfManager.getStore())
+              : (rdfStore ? mod.collectGraphCountsFromStore(rdfStore) : {});
+            try { console.debug("[VG_DEBUG] reasoning.tripleCounts.after", { totalAfter: Array.isArray(afterQuads) ? afterQuads.length : 0, countsAfter }); } catch (_) {}
+          } catch (_) { /* ignore per-collect */ }
+        }
+      } catch (_) { /* ignore import/diagnostic failures */ }
+
+      // Diagnostic: collect graph counts after reasoning using rdfManager helper if available
+      try {
+        let graphCountsAfter: Record<string, number> = {};
+        try {
+          const mod = await import("../utils/rdfManager");
+          if (mod && typeof mod.collectGraphCountsFromStore === "function") {
+            graphCountsAfter = rdfStore ? mod.collectGraphCountsFromStore(rdfStore) : {};
+          }
+        } catch (_) {
+          // fallback: simple scan
+          try {
+            if (rdfStore && typeof rdfStore.getQuads === "function") {
+              const all = rdfStore.getQuads(null, null, null, null) || [];
+              for (const qq of all) {
+                try {
+                  const g = qq && qq.graph && qq.graph.value ? qq.graph.value : "default";
+                  graphCountsAfter[g] = (graphCountsAfter[g] || 0) + 1;
+                } catch (_) { /* per-quad */ }
+              }
+            }
+          } catch (_) { /* ignore */ }
+        }
+        try { console.debug("[VG_DEBUG] reasoning.graphCounts.after", { candidateAfterCount: afterQuads.length, graphCountsAfter }); } catch (_) {}
+      } catch (_) { /* ignore overall */ }
       const beforeMap = new Map<string, any>();
       for (const q of beforeQuads || []) beforeMap.set(quadKey(q), q);
       const added: any[] = [];
@@ -236,28 +413,101 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
       // report a stable inferred-triple set (urn:vg:inferred).
       try {
         const inferredGraph = namedNode("urn:vg:inferred");
-        const isN3Store = rdfStore && typeof rdfStore.getQuads === "function" && typeof rdfStore.addQuad === "function";
+        // Build Term-shaped adds for the manager
+        const addsForManager: any[] = [];
         for (const aq of added) {
           try {
-            const subj = aq.subject;
-            const pred = aq.predicate;
-            const obj = aq.object;
-            // Skip if already present in inferred graph
-            const exists = isN3Store
-              ? ((rdfStore.getQuads(subj, pred, obj, inferredGraph) || []).length > 0)
-              : false;
-            if (!exists) {
-              if (isN3Store) {
-                rdfStore.addQuad(DataFactory.quad(subj, pred, obj, inferredGraph));
-              } else if (rdfStore && typeof rdfStore.addQuad === "function") {
-                rdfStore.addQuad(DataFactory.quad(subj, pred, obj, inferredGraph));
-              }
-            }
-          } catch (_) { /* per-item */ }
+            addsForManager.push({ subject: aq.subject, predicate: aq.predicate, object: aq.object });
+          } catch (_) { /* ignore per-item */ }
         }
-      } catch (e) {
+
+        // Try to use the rdfManager.applyBatch API if available so the manager
+        // uses the canonical store instance and emits a single notify.
+        try {
+          const mod = await import("../utils/rdfManager");
+          const mgr = mod && mod.rdfManager ? mod.rdfManager : null;
+          if (mgr && typeof mgr.applyBatch === "function") {
+            await mgr.applyBatch({ removes: [], adds: addsForManager }, String(inferredGraph.value));
+            // Post-apply verification: query authoritative manager store counts (ensure inferred graph appears)
+            try {
+              const verifiedStore = mgr.getStore ? mgr.getStore() : rdfStore;
+              try {
+                const counts = (await import("../utils/rdfManager")).collectGraphCountsFromStore(verifiedStore);
+                try {
+                  // Log the authoritative inferred-graph count specifically and a single persisted marker.
+                  console.debug("[VG_DEBUG] reasoning.inferred.persisted", {
+                    inferredCount: counts && counts["urn:vg:inferred"] ? counts["urn:vg:inferred"] : 0,
+                    counts,
+                  });
+                } catch (_) {}
+              } catch (_) {}
+            } catch (_) {}
+          } else {
+            // Fallback: direct store writes
+            const isN3Store = rdfStore && typeof rdfStore.getQuads === "function" && typeof rdfStore.addQuad === "function";
+            for (const aq of added) {
+              try {
+                const subj = aq.subject;
+                const pred = aq.predicate;
+                const obj = aq.object;
+                const exists = isN3Store
+                  ? ((rdfStore.getQuads(subj, pred, obj, inferredGraph) || []).length > 0)
+                  : false;
+                if (!exists) {
+                  if (isN3Store) {
+                    rdfStore.addQuad(DataFactory.quad(subj, pred, obj, inferredGraph));
+                  } else if (rdfStore && typeof rdfStore.addQuad === "function") {
+                    rdfStore.addQuad(DataFactory.quad(subj, pred, obj, inferredGraph));
+                  }
+                }
+              } catch (_) { /* per-item */ }
+            }
+            // Post-apply verification for fallback path
+            try {
+              const mod = await import("../utils/rdfManager");
+              const verified = mod && mod.rdfManager && typeof mod.rdfManager.getStore === "function" ? mod.rdfManager.getStore() : rdfStore;
+              const counts = mod.collectGraphCountsFromStore(verified);
+              try {
+                console.debug("[VG_DEBUG] reasoning.inferred.persisted", {
+                  inferredCount: counts && counts["urn:vg:inferred"] ? counts["urn:vg:inferred"] : 0,
+                  counts,
+                });
+              } catch (_) {}
+            } catch (_) {}
+          }
+        } catch (e) {
+          // Final fallback: attempt direct writes
+          try {
+            const isN3Store = rdfStore && typeof rdfStore.getQuads === "function" && typeof rdfStore.addQuad === "function";
+            for (const aq of added) {
+              try {
+                if (isN3Store) {
+                  rdfStore.addQuad(DataFactory.quad(aq.subject, aq.predicate, aq.object, inferredGraph));
+                } else if (rdfStore && typeof rdfStore.addQuad === "function") {
+                  rdfStore.addQuad(DataFactory.quad(aq.subject, aq.predicate, aq.object, inferredGraph));
+                }
+              } catch (_) { /* per-item */ }
+            }
+          } catch (_) {
+            /* ignore final fallback errors */
+          }
+        }
+        } catch (e) {
         console.debug("[VG_DEBUG] persisting inferred quads failed", __vg_safe(e));
       }
+
+      // Cleanup: ensure temporary reasoner store does not remain subscribed or referenced.
+      try {
+        // Restore prior write-logging flags (if any) so normal diagnostics state is preserved.
+        try {
+          if (typeof globalThis !== "undefined") (globalThis as any).__VG_RDF_WRITE_LOGGING_ENABLED = Boolean(__vg_prev_write_logging);
+        } catch (_) {}
+        try {
+          if (typeof window !== "undefined") (window as any).__VG_LOG_RDF_WRITES = Boolean(__vg_prev_window_flag);
+        } catch (_) {}
+      } catch (_) {}
+
+      try { tempStoreForReasoner = null; } catch (_) {}
 
       // Build warnings/errors from SHACL-style ValidationResult triples in urn:vg:inferred
       const generatedWarnings: ReasoningWarning[] = [];

@@ -39,11 +39,13 @@ initTheme();
  {
    // Seed window flag from persisted config
    const cfg = (useAppConfigStore as any).getState().config;
-   try { (window as any).__VG_DEBUG__ = Boolean(cfg && cfg.debugAll); } catch (_) { void 0; }
+   // Force-enable VG debug gates for diagnostics during this investigation.
+   // NOTE: This is a temporary diagnostic change — revert once debugging is complete.
+   try { (window as any).__VG_DEBUG__ = true; } catch (_) { void 0; }
 
    // Also seed common debug-related flags so older helpers read a consistent value.
-   try { (window as any).__VG_LOG_RDF_WRITES = Boolean(cfg && cfg.debugAll); } catch (_) { void 0; }
-   try { (window as any).__VG_DEBUG_STACKS__ = Boolean(cfg && cfg.debugAll); } catch (_) { void 0; }
+   try { (window as any).__VG_LOG_RDF_WRITES = true; } catch (_) { void 0; }
+   try { (window as any).__VG_DEBUG_STACKS__ = true; } catch (_) { void 0; }
 
    // Helper used by wrappers to determine whether VG_* messages should be emitted.
    const isVgMessage = (args: any[]) => {
@@ -64,7 +66,7 @@ initTheme();
          try {
            // If it's a VG_* message, gate on the master debug flag; otherwise always log.
            if (isVgMessage(args)) {
-             const enabled = !!((useAppConfigStore as any).getState().config?.debugAll);
+             const enabled = !!((useAppConfigStore as any).getState().config?.debugAll) || !!(window as any).__VG_DEBUG__;
              if (enabled) orig(...args);
            } else {
              orig(...args);

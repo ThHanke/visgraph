@@ -22,6 +22,119 @@ const BATCH_SIZE = 1000;
 
 const { namedNode, literal, quad, blankNode, defaultGraph } = DataFactory;
 
+/*
+  Global N3 Store prototype hook
+  ------------------------------
+  Patch N3's Store.prototype.addQuad / removeQuad once at module initialization
+  so that any codepath which obtains an N3 Store instance (reasoner, parser worker,
+  direct store usage) is observed. This emits a single compact diagnostic
+  "[VG_DEBUG] n3Store.write" after each successful add/remove when the existing
+  runtime debug gate is enabled.
+
+  The patch is intentionally:
+  - idempotent (checks __vg_store_hook_installed)
+  - defensive (wraps in try/catch and performs non-critical read-only getQuads)
+  - non-mutating (does not change stored quads; calls original methods first)
+*/
+try {
+  if (typeof Store !== "undefined" && !(Store as any).__vg_store_hook_installed) {
+    (Store as any).__vg_store_hook_installed = true;
+    const __origAdd = (Store.prototype as any).addQuad;
+    const __origRemove = (Store.prototype as any).removeQuad;
+
+    // Use function() so `this` is the concrete store instance
+    (Store.prototype as any).addQuad = function (...args: any[]) {
+      // call original first so behavior is unchanged
+      const result = (() => {
+        try {
+          return __origAdd.apply(this, args);
+        } catch (e) {
+          // If original throws, rethrow after diagnostics suppressed
+          throw e;
+        }
+      })();
+
+      try {
+        // Gate emission by existing runtime debug flags so no new config is required
+        const enabled =
+          typeof window !== "undefined" &&
+          (!!((window as any).__VG_LOG_RDF_WRITES === true || (window as any).__VG_DEBUG__));
+        if (!enabled) return result;
+
+        try {
+          // Build compact graph counts (fast, in-memory)
+          const all = (typeof this.getQuads === "function") ? (this.getQuads(null, null, null, null) || []) : [];
+          const graphCounts: Record<string, number> = {};
+          for (const qq of all) {
+            try {
+              const g = qq && qq.graph && (qq.graph as any).value ? (qq.graph as any).value : "default";
+              graphCounts[g] = (graphCounts[g] || 0) + 1;
+            } catch (_) { /* ignore per-quad */ }
+          }
+
+          // Small preview of the quad that triggered the write
+          const q = args && args[0] ? args[0] : null;
+          const preview = q && q.subject ? {
+            s: q.subject && q.subject.value ? String(q.subject.value) : null,
+            p: q.predicate && q.predicate.value ? String(q.predicate.value) : null,
+            o: q.object && q.object.value ? String(q.object.value) : null
+          } : null;
+
+          // write logging removed per request (use collectGraphCountsFromStore/store APIs on demand)
+        } catch (_) {
+          /* ignore logging errors */
+        }
+      } catch (_) {
+        /* ignore top-level */
+      }
+
+      return result;
+    };
+
+    (Store.prototype as any).removeQuad = function (...args: any[]) {
+      const result = (() => {
+        try {
+          return __origRemove.apply(this, args);
+        } catch (e) {
+          throw e;
+        }
+      })();
+
+      try {
+        const enabled =
+          typeof window !== "undefined" &&
+          (!!((window as any).__VG_LOG_RDF_WRITES === true || (window as any).__VG_DEBUG__));
+        if (!enabled) return result;
+
+        try {
+          const all = (typeof this.getQuads === "function") ? (this.getQuads(null, null, null, null) || []) : [];
+          const graphCounts: Record<string, number> = {};
+          for (const qq of all) {
+            try {
+              const g = qq && qq.graph && (qq.graph as any).value ? (qq.graph as any).value : "default";
+              graphCounts[g] = (graphCounts[g] || 0) + 1;
+            } catch (_) { /* ignore per-quad */ }
+          }
+          const q = args && args[0] ? args[0] : null;
+          const preview = q && q.subject ? {
+            s: q.subject && q.subject.value ? String(q.subject.value) : null,
+            p: q.predicate && q.predicate.value ? String(q.predicate.value) : null,
+            o: q.object && q.object.value ? String(q.object.value) : null
+          } : null;
+
+          // write logging removed per request (use collectGraphCountsFromStore/store APIs on demand)
+        } catch (_) {
+          /* ignore logging errors */
+        }
+      } catch (_) { /* ignore top-level */ }
+
+      return result;
+    };
+  }
+} catch (_) {
+  /* fail silently — diagnostics must not break app logic */
+}
+
 /**
  * Helper: create a Node-style Readable from fetched content (string, ArrayBuffer or Uint8Array).
  *
@@ -135,6 +248,9 @@ export class RDFManager {
 
   // Change notification
   private changeCounter = 0;
+  // Keep an explicit triple count so any direct store writes (or parser worker ingest)
+  // can update a stable metric consumers can read immediately after writes.
+  private tripleCount = 0;
   private changeSubscribers = new Set<(count: number) => void>();
 
   // Subject-level change notification (emits unique subject IRIs that were affected).
@@ -377,64 +493,44 @@ export class RDFManager {
         const origAdd = this.store.addQuad.bind(this.store);
         const origRemove = this.store.removeQuad.bind(this.store);
 
+        // Install a lightweight store-level wrapper that performs the essential
+        // bookkeeping (tripleCount, subject buffering, notifyChange) and funnels a
+        // single diagnostic emission through emitWriteGraphCounts. The emission itself
+        // is gated inside emitWriteGraphCounts so enabling logging remains controlled
+        // by the existing runtime/app flags.
         this.store.addQuad = ((q: Quad) => {
+          // Delegate to original add
+          const res = origAdd(q);
           try {
-            // Log minimal quad info and stack to help identify caller
-            console.debug(
-              "[VG_RDF_WRITE] addQuad",
-              (q as any)?.subject?.value,
-              (q as any)?.predicate?.value,
-              (q as any)?.object?.value,
-            );
-            try {
-              const st = new Error().stack || "";
-              // remove the leading "Error:" line for cleaner logs
-              console.debug(
-                "[VG_RDF_WRITE_STACK]",
-                st.replace(/^Error:\\s*/, ""),
-              );
-            } catch (_) {
-              /* ignore stack formatting failures */
+            // Keep explicit triple count in sync for direct store.addQuad callers.
+            try { (this as any).tripleCount = ((this as any).tripleCount || 0) + 1; } catch (_) { /* ignore */ }
+          } catch (_) { /* ignore count errors */ }
+          try {
+            if (typeof (this as any).bufferSubjectFromQuad === "function") {
+              try { (this as any).bufferSubjectFromQuad(q); } catch (_) { /* ignore */ }
             }
-          } catch (_) {
-            /* ignore logging failures */
-          }
-          return origAdd(q);
+          } catch (_) { /* ignore */ }
+          try {
+            if (typeof (this as any).notifyChange === "function") {
+              try { (this as any).notifyChange({ kind: "direct-store-add" }); } catch (_) { /* ignore */ }
+            }
+          } catch (_) { /* ignore */ }
+
+          // Emit a single unified diagnostic (emission gated internally).
+          try { if (typeof (this as any).emitWriteGraphCounts === "function") (this as any).emitWriteGraphCounts("add", q); } catch (_) {}
+
+          return res;
         }) as any;
 
         this.store.removeQuad = ((q: Quad) => {
           try {
-            console.debug(
-              "[VG_RDF_WRITE] removeQuad",
-              (q as any)?.subject?.value,
-              (q as any)?.predicate?.value,
-              (q as any)?.object?.value,
-            );
-            try {
-              const st = new Error().stack || "";
-              console.debug(
-                "[VG_RDF_REMOVE_STACK]",
-                st.replace(/^Error:\\s*/, ""),
-              );
-            } catch (_) {
-              /* ignore stack formatting failures */
-            }
-          } catch (_) {
-            /* ignore */
-          }
-          // Buffer the removed quad so subject-level subscribers receive this removal.
-          try {
             if ((this as any).bufferSubjectFromQuad) {
-              try {
-                (this as any).bufferSubjectFromQuad(q);
-              } catch (_) {
-                /* ignore buffering failures */
-              }
+              try { (this as any).bufferSubjectFromQuad(q); } catch (_) { /* ignore */ }
             }
-          } catch (_) {
-            /* ignore buffering failures */
-          }
-          return origRemove(q);
+          } catch (_) { /* ignore */ }
+          const res = origRemove(q);
+          try { if (typeof (this as any).emitWriteGraphCounts === "function") (this as any).emitWriteGraphCounts("remove", q); } catch (_) {}
+          return res;
         }) as any;
       } catch (err) {
         try {
@@ -479,10 +575,8 @@ export class RDFManager {
         if (devMode) {
           (window as any).__VG_LOG_RDF_WRITES = true;
         }
-        // install tracing if requested
-        if ((window as any).__VG_LOG_RDF_WRITES === true) {
-          enableWriteTracing();
-        }
+        // install store-level write hook (logging gated inside emitWriteGraphCounts)
+        enableWriteTracing();
         // Expose a runtime helper so you can enable tracing from the console:
         // window.__VG_ENABLE_RDF_WRITE_LOGGING && window.__VG_ENABLE_RDF_WRITE_LOGGING()
         (window as any).__VG_ENABLE_RDF_ENABLE_RDF_WRITE_LOGGING =
@@ -806,11 +900,16 @@ export class RDFManager {
       if (!exists) {
         this.store.addQuad(toAdd);
         try {
+          // Update the explicit triple count so consumers relying on counts observe the new triples.
+          try { (this as any).tripleCount = ((this as any).tripleCount || 0) + 1; } catch (_) { /* ignore */ }
+        } catch (_) { /* ignore count errors */ }
+        try {
           this.bufferSubjectFromQuad(toAdd);
         } catch (_) {
           /* ignore */
         }
         if (Array.isArray(addedQuads)) addedQuads.push(toAdd);
+
       }
     } catch (_) {
       try {
@@ -988,22 +1087,7 @@ export class RDFManager {
             /* ignore per-quad counting failures */
           }
         }
-        try {
-          debugLog("rdf.load.batchCounts", {
-            id: loadId || "unknown",
-            graphCounts,
-          });
-        } catch (_) {
-          void 0;
-        }
-        try {
-          console.debug("[VG_DEBUG] rdf.load.batchCounts", {
-            id: loadId || "unknown",
-            graphCounts,
-          });
-        } catch (_) {
-          void 0;
-        }
+        // per-load batchCounts logging removed — use collectGraphCountsFromStore(store) on demand for diagnostics
       } catch (_) {
         /* ignore */
       }
@@ -1105,19 +1189,7 @@ export class RDFManager {
             /* ignore per-quad counting failures */
           }
         }
-        try {
-          debugLog("rdf.load.batchCounts", { id: _vg_loadId, graphCounts });
-        } catch (_) {
-          void 0;
-        }
-        try {
-          console.debug("[VG_DEBUG] rdf.load.batchCounts", {
-            id: _vg_loadId,
-            graphCounts,
-          });
-        } catch (_) {
-          void 0;
-        }
+        // per-load batchCounts logging removed — use collectGraphCountsFromStore(store) on demand for diagnostics
       }
 
       resolveFn();
@@ -2491,6 +2563,48 @@ export class RDFManager {
   }
 
   /**
+   * Unified helper: emit a compact write-diagnostic after any write action.
+   * - action: short string describing the cause (e.g. "add", "remove", "addWorkerBatch")
+   * - sample: optional quad or term-like sample for quick inspection (kept small)
+   *
+   * This is gated by the existing runtime debug flags so it follows the app config.
+   */
+  private emitWriteGraphCounts(action: string, sample?: any) {
+    try {
+      if (typeof window === "undefined") return;
+      const enabled = !!((window as any).__VG_LOG_RDF_WRITES === true || (window as any).__VG_DEBUG__);
+      if (!enabled) return;
+        // write logging disabled (use collectGraphCountsFromStore(store) explicitly when needed)
+        return;
+      } catch (_) {
+        /* ignore top-level */
+      }
+  }
+
+  /**
+   * Return counts grouped by graph name (string -> number).
+   * Graph name is the NamedNode.value or "default" for default graph.
+   * This is a fast in-memory scan of the N3 store and intended for diagnostic use only.
+   */
+  public getGraphCounts(): Record<string, number> {
+    try {
+      const all = this.store.getQuads(null, null, null, null) || [];
+      const graphCounts: Record<string, number> = {};
+      for (const q of all) {
+        try {
+          const g = q && q.graph && (q.graph as any).value ? (q.graph as any).value : "default";
+          graphCounts[g] = (graphCounts[g] || 0) + 1;
+        } catch (_) {
+          /* ignore per-quad */
+        }
+      }
+      return graphCounts;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /**
    * Get the store instance for direct access
    */
   getStore(): Store {
@@ -3537,3 +3651,57 @@ export class RDFManager {
 }
 
 export const rdfManager = new RDFManager();
+
+// Ensure we do NOT enable persistent automatic store write logging by default.
+// Some earlier debug runs enabled window flags which caused noisy per-write logs.
+// Disable those flags by default so write-logging only occurs when explicitly enabled.
+try {
+  if (typeof window !== "undefined") {
+    try { (window as any).__VG_LOG_RDF_WRITES = false; } catch (_) {}
+    try { (window as any).__VG_DEBUG__ = !!(window as any).__VG_DEBUG__; } catch (_) {}
+  }
+  (globalThis as any).__VG_RDF_WRITE_LOGGING_ENABLED = false;
+} catch (_) { /* ignore */ }
+
+// Expose a small explicit API so developers can opt-in to write-logging and
+// collect graph counts on demand. This keeps the runtime quiet unless debug
+// is intentionally enabled.
+export function enableN3StoreWriteLogging(enable: boolean = true) {
+  try {
+    (globalThis as any).__VG_RDF_WRITE_LOGGING_ENABLED = !!enable;
+    if (typeof window !== "undefined") {
+      (window as any).__VG_LOG_RDF_WRITES = !!enable;
+    }
+    return !!enable;
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * Collect per-graph triple counts from any N3 Store-like instance.
+ * Returns a simple Record<string, number> mapping graph IRI (or 'default') to counts.
+ * This is safe to call on demand and is intended as the single API for diagnostics.
+ */
+export function collectGraphCountsFromStore(store: any): Record<string, number> {
+  try {
+    if (!store || typeof store.getQuads !== "function") return { "urn:vg:inferred": 0 };
+    const all = store.getQuads(null, null, null, null) || [];
+    const graphCounts: Record<string, number> = {};
+    for (const q of all) {
+      try {
+        const g = q && q.graph && (q.graph as any).value ? (q.graph as any).value : "default";
+        graphCounts[g] = (graphCounts[g] || 0) + 1;
+      } catch (_) { /* ignore per-quad */ }
+    }
+    // Ensure inferred graph key is always present for diagnostics (zero when absent)
+    try {
+      if (!Object.prototype.hasOwnProperty.call(graphCounts, "urn:vg:inferred")) {
+        graphCounts["urn:vg:inferred"] = 0;
+      }
+    } catch (_) { /* ignore */ }
+    return graphCounts;
+  } catch (_) {
+    return { "urn:vg:inferred": 0 };
+  }
+}

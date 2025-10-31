@@ -1,0 +1,44 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>.
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
+@prefix owl: <http://www.w3.org/2002/07/owl#>.
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+@prefix dc: <http://purl.org/dc/elements/1.1/>.
+@prefix grddl: <http://www.w3.org/2003/g/data-view#>.
+@prefix xml: <http://www.w3.org/XML/1998/namespace>.
+@prefix : <https://w3id.org/pmd/co/test/shape7/>.
+@prefix pmdco: <https://w3id.org/pmd/co/>.
+@prefix obo: <http://purl.obolibrary.org/obo/>.
+
+<https://w3id.org/pmd/co/test/shape7> a owl:Ontology;
+    owl:imports <https://w3id.org/pmd/co/>.
+:chemical_composition_quality a owl:NamedIndividual, pmdco:PMD_0000551;
+    rdfs:label "chemical_composition_quality"@en;
+    obo:RO_0000059 :chemical_composition_specification.
+:chemical_composition_specification a owl:NamedIndividual, pmdco:PMD_0020004;
+    rdfs:label "chemical_composition_specification 1"@en;
+    pmdco:PMD_0060000 :scalar_value_specification_C, :scalar_value_specification_Fe.
+:scalar_value_specification_C a owl:NamedIndividual, obo:IAO_0000030;
+    obo:IAO_0000039 "%";
+    pmdco:PMD_0000006 0.8.
+:scalar_value_specification_Fe a owl:NamedIndividual, obo:IAO_0000030;
+    obo:IAO_0000039 "%";
+    pmdco:PMD_0000006 99.2.
+:mass_proportion_carbon a owl:NamedIndividual, pmdco:PMD_0020102;
+    rdfs:label "mass_proportion_carbon"@en;
+    obo:RO_0000059 :scalar_value_specification_C.
+:mass_proportion_iron a owl:NamedIndividual, pmdco:PMD_0020102;
+    rdfs:label "mass_proportion_iron"@en;
+    obo:RO_0000059 :scalar_value_specification_Fe.
+:portion_of_carbon a owl:NamedIndividual, pmdco:PMD_0020025;
+    rdfs:label "portion of carbon"@en;
+    obo:RO_0000086 :mass_proportion_carbon.
+:portion_of_iron a owl:NamedIndividual, pmdco:PMD_0020025;
+    rdfs:label "portion_of_iron"@en;
+    obo:RO_0000086 :mass_proportion_iron.
+:portion_of_steel a owl:NamedIndividual, pmdco:PMD_0000639;
+    rdfs:label "portion_of_steel"@en;
+    obo:BFO_0000051 :portion_of_carbon, :portion_of_iron;
+    obo:RO_0000086 :chemical_composition_quality, :mass_proportion_carbon, :mass_proportion_iron.
+:steel_sheet a owl:NamedIndividual, obo:BFO_0000030;
+    rdfs:label "steel_sheet"@en;
+    owl:sameAs :portion_of_steel.

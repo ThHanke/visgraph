@@ -54,6 +54,19 @@ export function mapQuadsToDiagram(
     palette?: Record<string,string> | undefined;
   }
 ) {
+  // Diagnostic: log a small sample of incoming quads with their graph terms so we can
+  // trace which named graph the mapper is receiving quads from (e.g. urn:vg:data vs urn:vg:inferred).
+  try {
+    if (typeof console !== "undefined" && console.debug) {
+      const sample = Array.isArray(quads) ? quads.slice(0, 10).map((q: any) => ({
+        s: q && q.subject && q.subject.value ? String(q.subject.value) : null,
+        p: q && q.predicate && q.predicate.value ? String(q.predicate.value) : null,
+        o: q && q.object && q.object.value ? String(q.object.value) : null,
+        g: q && q.graph && (q.graph.value || q.graph.id || (typeof q.graph === "string" ? q.graph : undefined)) ? String(q.graph.value || q.graph.id || q.graph) : null,
+      })) : [];
+      console.debug("[VG_DEBUG] mapQuadsToDiagram.input.sample", { count: Array.isArray(quads) ? quads.length : 0, sample });
+    }
+  } catch (_) { /* ignore diag failures */ }
   // Small helpers to detect term kinds robustly across N3 and POJO shapes.
   const isNamedOrBlank = (obj: any) => {
     try {
