@@ -31,12 +31,7 @@ export async function responseToText(
       done = !!d;
       if (value && value.length) {
         total += value.length;
-        try {
-          result += decoder.decode(value, { stream: !done });
-        } catch (err) {
-          // if decoding fails, rethrow
-          throw err;
-        }
+        result += decoder.decode(value, { stream: !done });
         if (typeof onProgress === "function") {
           try {
             onProgress(total);

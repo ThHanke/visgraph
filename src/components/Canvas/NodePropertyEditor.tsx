@@ -165,7 +165,7 @@ export const NodePropertyEditor = ({
         // 2) explicit p.type that starts with "@" (legacy language marker) -> display as xsd:string with lang populated
         // 3) explicit p.type or objectTerm.datatype value -> use that datatype (prefixed for display when possible)
         // 4) fallback -> xsd:string
-        let objTypeRaw =
+        const objTypeRaw =
           (p && p.type) ||
           (p && p.objectTerm && p.objectTerm.datatype && p.objectTerm.datatype.value)
             ? String((p && p.type) || (p && p.objectTerm && p.objectTerm.datatype && p.objectTerm.datatype.value) || "")

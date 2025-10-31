@@ -44,33 +44,28 @@ export async function doFetch(target: string, timeout: number, opts?: { minimal?
 
   // Use fetchText helper which returns { text, contentType, status, statusText }
   const timeoutMs = Number(timeout || 15000);
-  try {
-    const result = await fetchTextFn(String(target), { timeoutMs, accept: !minimal ? undefined : "*/*" });
-    const ok = typeof result.status === "number" ? result.status >= 200 && result.status < 300 : true;
-    const contentType = result.contentType || null;
-    // Build a minimal Response-like object
-    const fakeResponse: any = {
-      ok,
-      status: result.status || 200,
-      statusText: result.statusText || "",
-      headers: {
-        get: (k: string) => {
-          if (!k) return null;
-          if (k.toLowerCase() === "content-type") return contentType;
-          return null;
-        },
+  const result = await fetchTextFn(String(target), { timeoutMs, accept: !minimal ? undefined : "*/*" });
+  const ok = typeof result.status === "number" ? result.status >= 200 && result.status < 300 : true;
+  const contentType = result.contentType || null;
+  // Build a minimal Response-like object
+  const fakeResponse: any = {
+    ok,
+    status: result.status || 200,
+    statusText: result.statusText || "",
+    headers: {
+      get: (k: string) => {
+        if (!k) return null;
+        if (k.toLowerCase() === "content-type") return contentType;
+        return null;
       },
-      // provide text() for compatibility; some callers may use body.getReader but
-      // responseToText will call text() when body is not available.
-      text: async () => {
-        return result.text || "";
-      },
-      // keep the raw parsed text for advanced callers (not standard Response)
-      _vg_text: result.text,
-    };
-    return fakeResponse;
-  } catch (err) {
-    // Surface the error so callers can log/handle it (do not swallow).
-    throw err;
-  }
+    },
+    // provide text() for compatibility; some callers may use body.getReader but
+    // responseToText will call text() when body is not available.
+    text: async () => {
+      return result.text || "";
+    },
+    // keep the raw parsed text for advanced callers (not standard Response)
+    _vg_text: result.text,
+  };
+  return fakeResponse;
 }

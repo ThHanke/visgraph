@@ -42,13 +42,8 @@ describe("rdfManager.emitAllSubjects - includes quads from all graphs", () => {
 
       // Insert directly into the store so emitAllSubjects can read authoritative snapshots
       const store = rdfManager.getStore();
-      try {
-        store.addQuad(ontTriple);
-        store.addQuad(dataTriple);
-      } catch (e) {
-        // best-effort insert failures should fail the test
-        throw e;
-      }
+      store.addQuad(ontTriple);
+      store.addQuad(dataTriple);
 
       const calls: Array<{ subjects: string[]; quads?: any[] }> = [];
       const handler = (subjects: string[], quads?: any[]) => {

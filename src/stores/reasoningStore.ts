@@ -121,7 +121,7 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
 
     // Per-run diagnostics guard to avoid duplicate before/after logs in a single reasoning invocation.
     let beforeLogged = false;
-    let afterLogged = false;
+    const afterLogged = false;
 
     try {
       // Snapshot "before" quads if a store is available
@@ -201,8 +201,8 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
       let usedReasoner = false;
       let tempStoreForReasoner: any = null;
       // Track previous global logging flags so we can restore them after a temp-run.
-      let __vg_prev_write_logging: boolean = false;
-      let __vg_prev_window_flag: boolean = false;
+      const __vg_prev_write_logging: boolean = false;
+      const __vg_prev_window_flag: boolean = false;
       try {
         const n3mod: any = await import("n3");
         // Resolve canonical exports

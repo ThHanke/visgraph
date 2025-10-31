@@ -45,14 +45,7 @@ try {
     // Use function() so `this` is the concrete store instance
     (Store.prototype as any).addQuad = function (...args: any[]) {
       // call original first so behavior is unchanged
-      const result = (() => {
-        try {
-          return __origAdd.apply(this, args);
-        } catch (e) {
-          // If original throws, rethrow after diagnostics suppressed
-          throw e;
-        }
-      })();
+      const result = __origAdd.apply(this, args);
 
       try {
         // Gate emission by existing runtime debug flags so no new config is required
@@ -92,13 +85,7 @@ try {
     };
 
     (Store.prototype as any).removeQuad = function (...args: any[]) {
-      const result = (() => {
-        try {
-          return __origRemove.apply(this, args);
-        } catch (e) {
-          throw e;
-        }
-      })();
+      const result = __origRemove.apply(this, args);
 
       try {
         const enabled =
@@ -1419,7 +1406,7 @@ export class RDFManager {
         // Build a ReadableStream that is fed by worker messages
         const id = `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`;
         let startResolved = false;
-        let startInfo: { contentType?: string | null; status?: number; statusText?: string } = {};
+        const startInfo: { contentType?: string | null; status?: number; statusText?: string } = {};
         const pendingChunks: ArrayBuffer[] = [];
         let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
         const stream = new ReadableStream<Uint8Array>({
@@ -1510,7 +1497,6 @@ export class RDFManager {
               try { return origHeadersGet(k); } catch (_) { return null; }
             },
           };
-          // @ts-ignore - replace headers accessor for downstream consumers
           (res as any).headers = shimHeaders;
         } catch (_) {
           // non-critical if shim fails
@@ -1581,7 +1567,7 @@ export class RDFManager {
     try {
       if (!contentTypeHeader && typeof txt === "string") {
         const leading = txt.slice(0, 512);
-        const looksLikeJson = /^\s*[\[\{]/.test(leading) && /"@id"|"@context"/.test(leading);
+        const looksLikeJson = /^\s*[[{]/.test(leading) && /"@id"|"@context"/.test(leading);
         if (looksLikeJson) {
           detectedMime = "application/ld+json";
         }
@@ -3021,7 +3007,7 @@ export class RDFManager {
           if (/^_:/i.test(s)) return blankNode(String(s).replace(/^_:/, ""));
           if (isObject) {
             // treat any scheme-like string as NamedNode
-            return /^[a-z][a-z0-9+.\-]*:/i.test(s) ? namedNode(s) : literal(s);
+            return /^[a-z][a-z0-9+.-]*:/i.test(s) ? namedNode(s) : literal(s);
           }
           return namedNode(s);
         } catch (_) {
@@ -3073,7 +3059,7 @@ export class RDFManager {
                 try { this.store.removeQuad(q); } catch (_) { void 0; }
               }
               matched = found.length > 0;
-            } else if (/^[a-z][a-z0-9+.\-]*:/i.test(sObj)) {
+            } else if (/^[a-z][a-z0-9+.-]*:/i.test(sObj)) {
               const nn = namedNode(sObj);
               const found = this.store.getQuads(subj, pred, nn as any, g) || [];
               for (const q of found) {
@@ -3132,9 +3118,9 @@ export class RDFManager {
           } else {
             const sObj = String(a.object);
             try {
-              if (/^_:/i.test(sObj)) obj = blankNode(sObj.replace(/^_:/, ""));
-              else if (/^[a-z][a-z0-9+.\-]*:/i.test(sObj)) obj = namedNode(sObj);
-              else obj = literal(sObj);
+                if (/^_:/i.test(sObj)) obj = blankNode(sObj.replace(/^_:/, ""));
+                else if (/^[a-z][a-z0-9+.-]*:/i.test(sObj)) obj = namedNode(sObj);
+                else obj = literal(sObj);
             } catch (_) {
               obj = literal(sObj);
             }
