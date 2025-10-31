@@ -153,7 +153,7 @@ export default defineConfig(({ mode }) => ({
             if (/\.(nt)$/i.test(pathname)) return 'application/n-triples';
             if (/\.(rdf|xml)$/i.test(pathname)) return 'application/rdf+xml';
             if (/\.(jsonld|json)$/i.test(pathname)) return 'application/ld+json';
-          } catch (_) {}
+          } catch (_) {/* noop */}
           return null;
         })();
 

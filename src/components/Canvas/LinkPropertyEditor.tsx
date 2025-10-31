@@ -140,10 +140,10 @@ export const LinkPropertyEditor = ({
   }, [open, linkData, selectedProperty, displayValue, sourceNode, targetNode]);
 
   const handleSave = async () => {
-    try { canvasActions.setLoading(true, 0, "Saving connection..."); } catch (_) {}
+    try { canvasActions.setLoading(true, 0, "Saving connection..."); } catch (_) {/* noop */}
     const uriToSave = selectedProperty || displayValue;
     if (!uriToSave) {
-      try { canvasActions.setLoading(false, 0, ""); } catch (_) {}
+      try { canvasActions.setLoading(false, 0, ""); } catch (_) {/* noop */}
       return;
     }
 
@@ -196,14 +196,14 @@ export const LinkPropertyEditor = ({
     // Notify parent; canvas mapping will pick up the change via RDF manager
     const property = (computedAllObjectProperties || []).find((p) => String(p.iri || '') === String(uriToSave));
     onSave(uriToSave, property?.label || uriToSave);
-    try { canvasActions.setLoading(false, 0, ""); } catch (_) {}
+    try { canvasActions.setLoading(false, 0, ""); } catch (_) {/* noop */}
     onOpenChange(false);
   };
 
   const handleDelete = async () => {
-    try { canvasActions.setLoading(true, 0, "Deleting connection..."); } catch (_) {}
+    try { canvasActions.setLoading(true, 0, "Deleting connection..."); } catch (_) {/* noop */}
     if (!confirm('Delete this connection? This will remove the corresponding triple from the data graph.')) {
-      try { canvasActions.setLoading(false, 0, ""); } catch (_) {}
+      try { canvasActions.setLoading(false, 0, ""); } catch (_) {/* noop */}
       return;
     }
 
@@ -246,7 +246,7 @@ export const LinkPropertyEditor = ({
     }
 
     // Close dialog after deletion so UI does not remain open
-    try { canvasActions.setLoading(false, 0, ""); } catch (_) {}
+    try { canvasActions.setLoading(false, 0, ""); } catch (_) {/* noop */}
     { if (typeof onOpenChange === 'function') onOpenChange(false); }
   };
 

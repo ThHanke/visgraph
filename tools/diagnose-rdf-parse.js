@@ -96,7 +96,7 @@
         console.log("Parsed 100 quads, stopping early.");
         try {
           if (typeof quadStream.pause === "function") quadStream.pause();
-        } catch (_) {}
+        } catch (_) {/* noop */}
       }
     });
     quadStream.on("prefix", (p, iri) => {

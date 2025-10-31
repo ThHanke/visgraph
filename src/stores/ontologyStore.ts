@@ -510,7 +510,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                   updated = true;
                   return { ...o, loadStatus: "fail", loadError: String(err && err.message ? err.message : String(err)) };
                 }
-              } catch (_) {}
+              } catch (_) {/* noop */}
               return o;
             });
             if (!updated) {
@@ -555,7 +555,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                 if (urlsEquivalent(o.url, norm)) {
                   return { ...o, loadStatus: "ok", loadError: undefined };
                 }
-              } catch (_) {}
+              } catch (_) {/* noop */}
               return o;
             });
             return {

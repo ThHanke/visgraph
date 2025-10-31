@@ -39,7 +39,7 @@ describe("reasoning (app integration) with LengthMeasurement ttl", () => {
         // clear manager state for deterministic run (best-effort)
         try {
           if (typeof rdfMgr.clear === "function") rdfMgr.clear();
-        } catch (_) {}
+        } catch (_) {/* noop */}
 
         // Ensure app config explicitly requests owl-rl.n3 ruleset and enables autoload to mimic app startup
         try {
@@ -157,7 +157,7 @@ describe("reasoning (app integration) with LengthMeasurement ttl", () => {
           const dataBefore = (rdfStore.getQuads(null, null, null, namedNode("urn:vg:data")) || []).length;
           const ontBefore = (rdfStore.getQuads(null, null, null, namedNode("urn:vg:ontologies")) || []).length;
           console.debug("[TEST] triple counts before reasoning", { totalBefore, dataBefore, ontBefore });
-        } catch (_) {}
+        } catch (_) {/* noop */}
 
         // Invoke the existing reasoning pipeline (real app code)
         // Wait for ontology graph population before running reasoning. Some referenced ontologies may take time to load.
@@ -213,7 +213,7 @@ describe("reasoning (app integration) with LengthMeasurement ttl", () => {
         // restore original fetch
         try {
           (globalThis as any).fetch = origFetch;
-        } catch (_) {}
+        } catch (_) {/* noop */}
 
         // Count persisted inferred triples
         const inferredCount = (rdfStore.getQuads(null, null, null, namedNode("urn:vg:inferred")) || []).length;
@@ -234,11 +234,11 @@ describe("reasoning (app integration) with LengthMeasurement ttl", () => {
         try {
           const totalAfter = (rdfStore.getQuads(null, null, null, null) || []).length;
           console.debug("[TEST] triple counts after reasoning", { totalAfter });
-        } catch (_) {}
+        } catch (_) {/* noop */}
       } finally {
         try {
           (globalThis as any).requestIdleCallback = origRIC;
-        } catch (_) {}
+        } catch (_) {/* noop */}
       }
     },
     120000,

@@ -169,7 +169,7 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
             }
           } catch (_) { /* ignore */ }
         }
-        try { console.debug("[VG_DEBUG] reasoning.graphCounts.before", { candidateBeforeCount: beforeQuads.length, graphCountsBefore }); } catch (_) {}
+        try { console.debug("[VG_DEBUG] reasoning.graphCounts.before", { candidateBeforeCount: beforeQuads.length, graphCountsBefore }); } catch (_) {/* noop */}
       } catch (_) { /* ignore overall */ }
 
       // Collect graph-level triple counts before reasoning (diagnostic). Use rdfManager API if available.
@@ -194,7 +194,7 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
             }
           } catch (_) { /* ignore */ }
         }
-        try { console.debug("[VG_DEBUG] reasoning.graphCounts.before", { candidateBeforeCount: beforeQuads.length, graphCountsBefore }); } catch (_) {}
+        try { console.debug("[VG_DEBUG] reasoning.graphCounts.before", { candidateBeforeCount: beforeQuads.length, graphCountsBefore }); } catch (_) {/* noop */}
       } catch (_) { /* ignore overall */ }
 
       // Try to use the real N3 Reasoner if available
@@ -269,9 +269,9 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
                   try {
                     // Silence global per-store write logging while running the temp reasoner so its
                     // writes do not trigger diagnostic subscribers or duplicate UI updates.
-                    try { (globalThis as any).__VG_RDF_WRITE_LOGGING_ENABLED = false; } catch (_) {}
-                    try { if (typeof window !== "undefined") (window as any).__VG_LOG_RDF_WRITES = false; } catch (_) {}
-                  } catch (_) {}
+                    try { (globalThis as any).__VG_RDF_WRITE_LOGGING_ENABLED = false; } catch (_) {/* noop */}
+                    try { if (typeof window !== "undefined") (window as any).__VG_LOG_RDF_WRITES = false; } catch (_) {/* noop */}
+                  } catch (_) {/* noop */}
                   tempStoreForReasoner = new StoreCls();
 
                   // Copy authoritative store contents into tempStore so the reasoner
@@ -364,7 +364,7 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
             const countsAfter = (mod && mod.rdfManager && typeof mod.rdfManager.getStore === "function")
               ? mod.collectGraphCountsFromStore(mod.rdfManager.getStore())
               : (rdfStore ? mod.collectGraphCountsFromStore(rdfStore) : {});
-            try { console.debug("[VG_DEBUG] reasoning.tripleCounts.after", { totalAfter: Array.isArray(afterQuads) ? afterQuads.length : 0, countsAfter }); } catch (_) {}
+            try { console.debug("[VG_DEBUG] reasoning.tripleCounts.after", { totalAfter: Array.isArray(afterQuads) ? afterQuads.length : 0, countsAfter }); } catch (_) {/* noop */}
           } catch (_) { /* ignore per-collect */ }
         }
       } catch (_) { /* ignore import/diagnostic failures */ }
@@ -391,7 +391,7 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
             }
           } catch (_) { /* ignore */ }
         }
-        try { console.debug("[VG_DEBUG] reasoning.graphCounts.after", { candidateAfterCount: afterQuads.length, graphCountsAfter }); } catch (_) {}
+        try { console.debug("[VG_DEBUG] reasoning.graphCounts.after", { candidateAfterCount: afterQuads.length, graphCountsAfter }); } catch (_) {/* noop */}
       } catch (_) { /* ignore overall */ }
       const beforeMap = new Map<string, any>();
       for (const q of beforeQuads || []) beforeMap.set(quadKey(q), q);
@@ -439,9 +439,9 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
                     inferredCount: counts && counts["urn:vg:inferred"] ? counts["urn:vg:inferred"] : 0,
                     counts,
                   });
-                } catch (_) {}
-              } catch (_) {}
-            } catch (_) {}
+                } catch (_) {/* noop */}
+              } catch (_) {/* noop */}
+            } catch (_) {/* noop */}
           } else {
             // Fallback: direct store writes
             const isN3Store = rdfStore && typeof rdfStore.getQuads === "function" && typeof rdfStore.addQuad === "function";
@@ -472,8 +472,8 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
                   inferredCount: counts && counts["urn:vg:inferred"] ? counts["urn:vg:inferred"] : 0,
                   counts,
                 });
-              } catch (_) {}
-            } catch (_) {}
+              } catch (_) {/* noop */}
+            } catch (_) {/* noop */}
           }
         } catch (e) {
           // Final fallback: attempt direct writes
@@ -501,13 +501,13 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
         // Restore prior write-logging flags (if any) so normal diagnostics state is preserved.
         try {
           if (typeof globalThis !== "undefined") (globalThis as any).__VG_RDF_WRITE_LOGGING_ENABLED = Boolean(__vg_prev_write_logging);
-        } catch (_) {}
+        } catch (_) {/* noop */}
         try {
           if (typeof window !== "undefined") (window as any).__VG_LOG_RDF_WRITES = Boolean(__vg_prev_window_flag);
-        } catch (_) {}
-      } catch (_) {}
+        } catch (_) {/* noop */}
+      } catch (_) {/* noop */}
 
-      try { tempStoreForReasoner = null; } catch (_) {}
+      try { tempStoreForReasoner = null; } catch (_) {/* noop */}
 
       // Build warnings/errors from SHACL-style ValidationResult triples in urn:vg:inferred
       const generatedWarnings: ReasoningWarning[] = [];

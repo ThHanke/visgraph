@@ -13,7 +13,7 @@ describe("discoverReferencedOntologies (async) triggers both ontology-driven and
     // Shim requestIdleCallback to run tasks immediately (test environment may not have it)
     const origRIC = (globalThis as any).requestIdleCallback;
     (globalThis as any).requestIdleCallback = (fn: any) => {
-      try { fn(); } catch (_) {}
+      try { fn(); } catch (_) {/* noop */}
     };
 
     try {
@@ -111,7 +111,7 @@ describe("discoverReferencedOntologies (async) triggers both ontology-driven and
       expect(Array.isArray(calledWith[0])).toBe(true);
     } finally {
       // Restore requestIdleCallback
-      try { (globalThis as any).requestIdleCallback = origRIC; } catch (_) {}
+      try { (globalThis as any).requestIdleCallback = origRIC; } catch (_) {/* noop */}
       // Restore original store state (best-effort)
       try {
         storeApi.setState({
@@ -119,7 +119,7 @@ describe("discoverReferencedOntologies (async) triggers both ontology-driven and
           loadedOntologies: original.loadedOntologies || [],
           loadOntology: original.loadOntology,
         });
-      } catch (_) {}
+      } catch (_) {/* noop */}
     }
   }, { timeout: 20000 });
 });

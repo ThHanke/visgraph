@@ -517,7 +517,7 @@ export class RDFManager {
           } catch (_) { /* ignore */ }
 
           // Emit a single unified diagnostic (emission gated internally).
-          try { if (typeof (this as any).emitWriteGraphCounts === "function") (this as any).emitWriteGraphCounts("add", q); } catch (_) {}
+          try { if (typeof (this as any).emitWriteGraphCounts === "function") (this as any).emitWriteGraphCounts("add", q); } catch (_) {/* noop */}
 
           return res;
         }) as any;
@@ -529,7 +529,7 @@ export class RDFManager {
             }
           } catch (_) { /* ignore */ }
           const res = origRemove(q);
-          try { if (typeof (this as any).emitWriteGraphCounts === "function") (this as any).emitWriteGraphCounts("remove", q); } catch (_) {}
+          try { if (typeof (this as any).emitWriteGraphCounts === "function") (this as any).emitWriteGraphCounts("remove", q); } catch (_) {/* noop */}
           return res;
         }) as any;
       } catch (err) {
@@ -1456,15 +1456,15 @@ export class RDFManager {
                       controller.enqueue(new Uint8Array(buf));
                     }
                   } catch (e) {
-                    try { controller.error(e); } catch (_) {}
+                    try { controller.error(e); } catch (_) {/* noop */}
                   }
                 } else if (m.type === "end") {
-                  try { controller.close(); } catch (_) {}
+                  try { controller.close(); } catch (_) {/* noop */}
                 } else if (m.type === "error") {
-                  try { controller.error(new Error(String(m.message || "worker fetch error"))); } catch (_) {}
+                  try { controller.error(new Error(String(m.message || "worker fetch error"))); } catch (_) {/* noop */}
                 }
               } catch (_) {
-                try { controller.error(new Error("worker message handling failed")); } catch (_) {}
+                try { controller.error(new Error("worker message handling failed")); } catch (_) {/* noop */}
               }
             };
             // Kick off fetch in worker (fire-and-forget; messages will arrive)
@@ -1479,16 +1479,16 @@ export class RDFManager {
                 headers: { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" },
               });
             } catch (e) {
-              try { controller.error(e); } catch (_) {}
+              try { controller.error(e); } catch (_) {/* noop */}
             }
           },
           cancel() {
             try {
               if (workerInst) {
-                try { workerInst.terminate(); } catch (_) {}
+                try { workerInst.terminate(); } catch (_) {/* noop */}
                 workerInst = null;
               }
-            } catch (_) {}
+            } catch (_) {/* noop */}
           },
         });
 
@@ -1506,7 +1506,7 @@ export class RDFManager {
                   const s = (res as any).__vg_start_info && (res as any).__vg_start_info.contentType;
                   if (s) return s;
                 }
-              } catch (_) {}
+              } catch (_) {/* noop */}
               try { return origHeadersGet(k); } catch (_) { return null; }
             },
           };
@@ -1519,10 +1519,10 @@ export class RDFManager {
     } catch (err) {
       try {
         if (workerInst) {
-          try { workerInst.terminate(); } catch (_) {}
+          try { workerInst.terminate(); } catch (_) {/* noop */}
           workerInst = null;
         }
-      } catch (_) {}
+      } catch (_) {/* noop */}
       res = null;
     }
 
@@ -1608,20 +1608,20 @@ export class RDFManager {
         let w: Worker | null = null;
         try {
           // Instrument: log worker URL attempt so we can diagnose worker resolution issues.
-          try { console.debug("[VG_RDF] spawnWorker.attempt", { workerUrl: String(workerUrl) }); } catch (_) {}
+          try { console.debug("[VG_RDF] spawnWorker.attempt", { workerUrl: String(workerUrl) }); } catch (_) {/* noop */}
           w = new Worker(workerUrl as any, { type: "module" });
-          try { console.debug("[VG_RDF] spawnWorker.success", { workerUrl: String(workerUrl) }); } catch (_) {}
+          try { console.debug("[VG_RDF] spawnWorker.success", { workerUrl: String(workerUrl) }); } catch (_) {/* noop */}
           // Attach an error handler so uncaught worker errors surface in the main thread console immediately.
           try {
             (w as any).onerror = (ev: any) => {
-              try { console.debug("[VG_RDF] worker.onerror", ev && (ev.message || ev)); } catch (_) {}
+              try { console.debug("[VG_RDF] worker.onerror", ev && (ev.message || ev)); } catch (_) {/* noop */}
             };
             (w as any).onmessageerror = (ev: any) => {
-              try { console.debug("[VG_RDF] worker.onmessageerror", ev && ev); } catch (_) {}
+              try { console.debug("[VG_RDF] worker.onmessageerror", ev && ev); } catch (_) {/* noop */}
             };
-          } catch (_) {}
+          } catch (_) {/* noop */}
         } catch (errWorker) {
-          try { console.debug("[VG_RDF] spawnWorker.failed", { error: String(errWorker), workerUrl: String(workerUrl) }); } catch (_) {}
+          try { console.debug("[VG_RDF] spawnWorker.failed", { error: String(errWorker), workerUrl: String(workerUrl) }); } catch (_) {/* noop */}
           w = null;
         }
         if (!w) {
@@ -1637,7 +1637,7 @@ export class RDFManager {
           const cleanupWorker = () => {
             try {
               if (w) {
-                try { w.terminate(); } catch (_) {}
+                try { w.terminate(); } catch (_) {/* noop */}
                 w = null;
               }
             } catch (_) {
@@ -1653,20 +1653,20 @@ export class RDFManager {
               let __vg_worker_seen = false;
               const __vg_watchdog = setTimeout(() => {
                 if (!__vg_worker_seen) {
-                  try { console.warn("[VG_RDF] parser worker unresponsive - terminating and falling back"); } catch (_) {}
+                  try { console.warn("[VG_RDF] parser worker unresponsive - terminating and falling back"); } catch (_) {/* noop */}
                   try {
                     if (w) {
                       try { w.terminate(); } catch (_) { /* ignore */ }
                       w = null;
                     }
-                  } catch (_) {}
-                  try { reject(new Error("parser worker unresponsive")); } catch (_) {}
+                  } catch (_) {/* noop */}
+                  try { reject(new Error("parser worker unresponsive")); } catch (_) {/* noop */}
                 }
               }, 7000);
 
               w.onmessage = async (ev: MessageEvent) => {
                 // Mark worker as alive and clear watchdog as soon as any message arrives
-                try { __vg_worker_seen = true; clearTimeout(__vg_watchdog); } catch (_) {}
+                try { __vg_worker_seen = true; clearTimeout(__vg_watchdog); } catch (_) {/* noop */}
               const m = ev.data || {};
               try {
                 // Avoid logging the full worker payload (quads arrays can be very large).
@@ -1679,18 +1679,18 @@ export class RDFManager {
                   final: (m && (m as any).final) || false,
                 };
                 console.debug("[VG_RDF] worker.onmessage", lightweight);
-              } catch (_) {}
+              } catch (_) {/* noop */}
               if (!m || !m.type) return;
               try {
                   if (m.type === "start") {
                     // worker reports contentType/status
                     try {
                       if (m.contentType) detectedMime = String(m.contentType);
-                    } catch (_) {}
+                    } catch (_) {/* noop */}
                   } else if (m.type === "prefix" && m.prefixes) {
                     try {
                       Object.assign(collectedPrefixes, m.prefixes || {});
-                    } catch (_) {}
+                    } catch (_) {/* noop */}
                   } else if (m.type === "quads" && Array.isArray(m.quads)) {
                       try {
                         // Ingest plain quads into store on main thread
@@ -1709,7 +1709,7 @@ export class RDFManager {
                                 else oTerm = literal(String(pq.o.v));
                               } else oTerm = literal(String((pq.o && pq.o.v) || ""));
                             } catch (e_inner) {
-                              try { console.debug("[VG_RDF] worker.quadTermParse.failed", String(e_inner)); } catch (_) {}
+                              try { console.debug("[VG_RDF] worker.quadTermParse.failed", String(e_inner)); } catch (_) {/* noop */}
                               oTerm = literal(String((pq.o && pq.o.v) || ""));
                             }
                             const gTerm = pq.g ? namedNode(String(pq.g)) : targetGraph;
@@ -1717,10 +1717,10 @@ export class RDFManager {
                             try {
                               this.addQuadToStore(toAdd, gTerm, addedQuads);
                             } catch (_) {
-                              try { this.store.addQuad(toAdd); addedQuads.push(toAdd); } catch (_) {}
+                              try { this.store.addQuad(toAdd); addedQuads.push(toAdd); } catch (_) {/* noop */}
                             }
                           } catch (errQuad) {
-                            try { console.debug("[VG_RDF] worker.quad.ingest.failed", String(errQuad)); } catch (_) {}
+                            try { console.debug("[VG_RDF] worker.quad.ingest.failed", String(errQuad)); } catch (_) {/* noop */}
                           }
                         }
 
@@ -1728,10 +1728,10 @@ export class RDFManager {
                         try {
                           w.postMessage({ type: "ack", id: String(m.id || loadId) });
                         } catch (ackErr) {
-                          try { console.debug("[VG_RDF] worker.ack.failed", String(ackErr)); } catch (_) {}
+                          try { console.debug("[VG_RDF] worker.ack.failed", String(ackErr)); } catch (_) {/* noop */}
                         }
                       } catch (batchErr) {
-                        try { console.debug("[VG_RDF] worker.batchProcessing.failed", String(batchErr)); } catch (_) {}
+                        try { console.debug("[VG_RDF] worker.batchProcessing.failed", String(batchErr)); } catch (_) {/* noop */}
                       }
                   } else if (m.type === "end") {
                     try {
@@ -1740,23 +1740,23 @@ export class RDFManager {
                         try {
                           await (this as any).finalizeLoad(addedQuads, collectedPrefixes || {}, loadId);
                         } catch (e) {
-                          try { console.error("[VG_RDF] worker finalize failed", e); } catch (_) {}
+                          try { console.error("[VG_RDF] worker finalize failed", e); } catch (_) {/* noop */}
                         } finally {
                           resolved = true;
-                          try { resolve(); } catch (_) {}
+                          try { resolve(); } catch (_) {/* noop */}
                           cleanupWorker();
                         }
                       })();
                     } catch (e) {
-                      try { reject(e); } catch (_) {}
+                      try { reject(e); } catch (_) {/* noop */}
                       cleanupWorker();
                     }
                   } else if (m.type === "error") {
-                    try { reject(new Error(String(m.message || "worker error"))); } catch (_) {}
+                    try { reject(new Error(String(m.message || "worker error"))); } catch (_) {/* noop */}
                     cleanupWorker();
                   }
                 } catch (innerErr) {
-                  try { reject(innerErr); } catch (_) {}
+                  try { reject(innerErr); } catch (_) {/* noop */}
                   cleanupWorker();
                 }
               };
@@ -1767,11 +1767,11 @@ export class RDFManager {
                 try { (this as any).parsingInProgress = true; } catch (_) { /* ignore */ }
                 w.postMessage({ type: "parseText", id: loadId, text: txt, mime: detectedMime });
               } catch (errPost) {
-                try { reject(errPost); } catch (_) {}
+                try { reject(errPost); } catch (_) {/* noop */}
                 cleanupWorker();
               }
             } catch (outerErr) {
-              try { reject(outerErr); } catch (_) {}
+              try { reject(outerErr); } catch (_) {/* noop */}
               cleanupWorker();
             }
           });
@@ -3657,8 +3657,8 @@ export const rdfManager = new RDFManager();
 // Disable those flags by default so write-logging only occurs when explicitly enabled.
 try {
   if (typeof window !== "undefined") {
-    try { (window as any).__VG_LOG_RDF_WRITES = false; } catch (_) {}
-    try { (window as any).__VG_DEBUG__ = !!(window as any).__VG_DEBUG__; } catch (_) {}
+    try { (window as any).__VG_LOG_RDF_WRITES = false; } catch (_) {/* noop */}
+    try { (window as any).__VG_DEBUG__ = !!(window as any).__VG_DEBUG__; } catch (_) {/* noop */}
   }
   (globalThis as any).__VG_RDF_WRITE_LOGGING_ENABLED = false;
 } catch (_) { /* ignore */ }

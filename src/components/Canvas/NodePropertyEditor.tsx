@@ -290,12 +290,12 @@ export const NodePropertyEditor = ({
   const handleSave = async (e?: React.MouseEvent) => {
     if (e) { e.preventDefault(); e.stopPropagation(); }
     try {
-      try { canvasActions.setLoading(true, 0, "Saving node..."); } catch (_) {}
-    } catch (_) {}
+      try { canvasActions.setLoading(true, 0, "Saving node..."); } catch (_) {/* noop */}
+    } catch (_) {/* noop */}
 
     // Validate properties: no empty keys
     if (properties.some(p => !p.key || !p.key.trim())) {
-      try { canvasActions.setLoading(false, 0, ""); } catch (_) {}
+      try { canvasActions.setLoading(false, 0, ""); } catch (_) {/* noop */}
       throw new Error("Please provide property names for all annotation properties (no empty keys).");
     }
 
@@ -309,7 +309,7 @@ export const NodePropertyEditor = ({
       generatedBlank = true;
     }
     if (!subjIri) {
-      try { canvasActions.setLoading(false, 0, ""); } catch (_) {}
+      try { canvasActions.setLoading(false, 0, ""); } catch (_) {/* noop */}
       throw new Error("Node IRI missing; cannot persist node properties.");
     }
 
@@ -320,7 +320,7 @@ export const NodePropertyEditor = ({
       : (mgrState as any).rdfManager;
 
     if (!mgr || typeof (mgr as any).applyBatch !== "function") {
-      try { canvasActions.setLoading(false, 0, ""); } catch (_) {}
+      try { canvasActions.setLoading(false, 0, ""); } catch (_) {/* noop */}
       throw new Error("RDF manager unavailable or does not support applyBatch; cannot persist node properties.");
     }
 
@@ -429,7 +429,7 @@ export const NodePropertyEditor = ({
       await (mgr as any).applyBatch({ removes: removesPrepared, adds: addsPrepared }, "urn:vg:data");
     } catch (err) {
       try { console.warn("NodePropertyEditor.applyBatch.failed", err); } catch (_) { void 0; }
-      try { canvasActions.setLoading(false, 0, ""); } catch (_) {}
+      try { canvasActions.setLoading(false, 0, ""); } catch (_) {/* noop */}
       throw err;
     }
 
@@ -463,7 +463,7 @@ export const NodePropertyEditor = ({
     // Update initial snapshots so subsequent edits compute diffs relative to latest saved state
     { initialPropertiesRef.current = (properties || []).map(p => ({ ...p })); }
     { initialRdfTypesRef.current = (currentTypes || []).slice(); }
-    try { canvasActions.setLoading(false, 0, ""); } catch (_) {}
+    try { canvasActions.setLoading(false, 0, ""); } catch (_) {/* noop */}
   };
 
   // Delete: remove triples with subject OR object equal to nodeIri from urn:vg:data (writes only).

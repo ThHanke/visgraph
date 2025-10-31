@@ -10,15 +10,15 @@ describe("rdfManager.emitAllSubjects - includes quads from all graphs", () => {
       // Clean environment
       try {
         rdfManager.removeGraph("urn:vg:data");
-      } catch (_) {}
+      } catch (_) {/* noop */}
       try {
         rdfManager.removeGraph("urn:vg:ontologies");
-      } catch (_) {}
+      } catch (_) {/* noop */}
 
       // Disable blacklist so test IRIs are not filtered
       try {
         rdfManager.setBlacklist([], []);
-      } catch (_) {}
+      } catch (_) {/* noop */}
 
       const subj = "http://example.test/Entity1";
       const ontG = namedNode("urn:vg:ontologies");

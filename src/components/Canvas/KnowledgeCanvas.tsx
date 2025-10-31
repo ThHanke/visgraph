@@ -513,7 +513,7 @@ const KnowledgeCanvas: React.FC = () => {
       for (const id of timeoutsRef.current || []) {
         try {
           window.clearTimeout(id);
-        } catch (_) {}
+        } catch (_) {/* noop */}
       }
       timeoutsRef.current = [];
     } catch (_) {
@@ -551,7 +551,7 @@ const KnowledgeCanvas: React.FC = () => {
             ts: startTime,
           });
         }
-      } catch (_) {}
+      } catch (_) {/* noop */}
 
       const m = typeof vgMeasure === "function" ? vgMeasure("mapQuadsWithWorker", { quadCount: Array.isArray(quads) ? quads.length : 0 }) : { end: () => {} };
       try {
@@ -561,7 +561,7 @@ const KnowledgeCanvas: React.FC = () => {
             mappedNodeCount: res && Array.isArray(res.nodes) ? res.nodes.length : 0,
             mappedEdgeCount: res && Array.isArray(res.edges) ? res.edges.length : 0,
           });
-        } catch (_) {}
+        } catch (_) {/* noop */}
         try {
           const endTime =
             typeof performance !== "undefined" && performance.now
@@ -570,7 +570,7 @@ const KnowledgeCanvas: React.FC = () => {
           const duration = Number((endTime - startTime).toFixed(2));
           try {
             console.debug("[VG_BLOCK] mapQuadsWithWorker.end", { durationMs: duration });
-          } catch (_) {}
+          } catch (_) {/* noop */}
           try {
             if (typeof window !== "undefined" && (window as any).__VG_BLOCKING_LOGS) {
               (window as any).__VG_BLOCKING_LOGS.push({
@@ -580,18 +580,18 @@ const KnowledgeCanvas: React.FC = () => {
                 ts: Date.now(),
               });
             }
-          } catch (_) {}
-        } catch (_) {}
+          } catch (_) {/* noop */}
+        } catch (_) {/* noop */}
         return res;
       } catch (err) {
-        try { m.end({ error: true }); } catch (_) {}
+        try { m.end({ error: true }); } catch (_) {/* noop */}
         try {
           const errEnd =
             typeof performance !== "undefined" && performance.now
               ? performance.now()
               : Date.now();
           const duration = Number((errEnd - startTime).toFixed(2));
-          try { console.debug("[VG_BLOCK] mapQuadsWithWorker.error", { durationMs: duration, err }); } catch (_) {}
+          try { console.debug("[VG_BLOCK] mapQuadsWithWorker.error", { durationMs: duration, err }); } catch (_) {/* noop */}
           try {
             if (typeof window !== "undefined" && (window as any).__VG_BLOCKING_LOGS) {
               (window as any).__VG_BLOCKING_LOGS.push({
@@ -601,8 +601,8 @@ const KnowledgeCanvas: React.FC = () => {
                 ts: Date.now(),
               });
             }
-          } catch (_) {}
-        } catch (_) {}
+          } catch (_) {/* noop */}
+        } catch (_) {/* noop */}
         throw err;
       }
     } catch (e) {
@@ -627,7 +627,7 @@ const KnowledgeCanvas: React.FC = () => {
               ts: Date.now(),
             });
           }
-        } catch (_) {}
+        } catch (_) {/* noop */}
         return result;
       } catch (_) {
         // If even fallback fails, rethrow
@@ -749,7 +749,7 @@ const KnowledgeCanvas: React.FC = () => {
           edges: candidateEdges || [],
         },
       );
-      try { applyLayoutMeasure.end({ nodeChangeCount: Array.isArray(nodeChanges) ? nodeChanges.length : 0 }); } catch (_) {}
+      try { applyLayoutMeasure.end({ nodeChangeCount: Array.isArray(nodeChanges) ? nodeChanges.length : 0 }); } catch (_) {/* noop */}
 
         // Apply layout results to React Flow state via applyNodeChanges so RF runtime metadata is preserved.
         if (Array.isArray(nodeChanges) && nodeChanges.length > 0) {
@@ -826,13 +826,13 @@ const KnowledgeCanvas: React.FC = () => {
         await raf();
         // eslint-disable-next-line no-await-in-loop
         await raf();
-        try { rafMeasure.end({}); } catch (_) {}
+        try { rafMeasure.end({}); } catch (_) {/* noop */}
         {
           console.debug("canvas.layout.apply.completed", appliedLayoutType);
         }
         lastLayoutFingerprintRef.current = fingerprint;
         layoutInProgressRef.current = false;
-        try { vgLayoutMeasure.end({ appliedLayoutType }); } catch (_) {}
+        try { vgLayoutMeasure.end({ appliedLayoutType }); } catch (_) {/* noop */}
       }
     },
     [layoutEnabled, config],
@@ -1170,10 +1170,10 @@ const KnowledgeCanvas: React.FC = () => {
 
         // Prefer worker offload; fallback to in-process mapper on failure.
         const res = await mapQuadsWithWorker(quads, opts);
-        try { m.end({ mappedNodeCount: res && Array.isArray(res.nodes) ? res.nodes.length : 0, mappedEdgeCount: res && Array.isArray(res.edges) ? res.edges.length : 0 }); } catch (_) {}
+        try { m.end({ mappedNodeCount: res && Array.isArray(res.nodes) ? res.nodes.length : 0, mappedEdgeCount: res && Array.isArray(res.edges) ? res.edges.length : 0 }); } catch (_) {/* noop */}
         return res;
       } catch (err) {
-        try { m.end({ error: true }); } catch (_) {}
+        try { m.end({ error: true }); } catch (_) {/* noop */}
         throw err;
       }
     };
@@ -1206,7 +1206,7 @@ const KnowledgeCanvas: React.FC = () => {
       try {
         diagram = await translateQuadsToDiagram(dataQuads);
       } catch (err) {
-        try { runM.end({ error: true }); } catch (_) {}
+        try { runM.end({ error: true }); } catch (_) {/* noop */}
         throw err;
       }
       const mappedNodes: RFNode<NodeData>[] = diagram && diagram.nodes;
@@ -1222,7 +1222,7 @@ const KnowledgeCanvas: React.FC = () => {
         await applyDiagrammChange(mappedNodes, mappedEdges);
       } catch (err) {
         // ensure we still end measurement
-        try { runM.end({ error: true }); } catch (_) {}
+        try { runM.end({ error: true }); } catch (_) {/* noop */}
         throw err;
       }
 
@@ -1236,14 +1236,14 @@ const KnowledgeCanvas: React.FC = () => {
         if (typeof window !== "undefined" && reactFlowInstance && reactFlowInstance.current && typeof (reactFlowInstance.current as any).getNodes === "function") {
           (window as any).__VG_LAST_NODES = (reactFlowInstance.current as any).getNodes();
         }
-      } catch (_) {}
+      } catch (_) {/* noop */}
 
       // Finalize mapping immediately (ensure React updates are enqueued and then run layout).
       // Avoid scheduling another tracked timeout here to reduce races; we already awaited
       // applyDiagrammChange which waits a tracked microtask so React has queued state updates.
       try {
         if (!mountedRef.current) {
-          try { runM.end({ reason: "unmounted" }); } catch (_) {}
+          try { runM.end({ reason: "unmounted" }); } catch (_) {/* noop */}
           return;
         }
         mappingInProgressRef.current = false;
@@ -1280,7 +1280,7 @@ const KnowledgeCanvas: React.FC = () => {
             await new Promise((r) => setTrackedTimeout(r, 50));
           } catch (_) { /* ignore */ }
           if (!mountedRef.current) {
-            try { runM.end({ reason: "post-forced-layout.unmounted" }); } catch (_) {}
+            try { runM.end({ reason: "post-forced-layout.unmounted" }); } catch (_) {/* noop */}
             return;
           }
 
@@ -1301,11 +1301,11 @@ const KnowledgeCanvas: React.FC = () => {
           applyRequestedRef.current = false;
           await doLayout(nodesForLayout as any, edgesForLayout as any, true);
         }
-        try { runM.end({ mappedNodes: Array.isArray(mappedNodes) ? mappedNodes.length : 0, mappedEdges: Array.isArray(mappedEdges) ? mappedEdges.length : 0 }); } catch (_) {}
+        try { runM.end({ mappedNodes: Array.isArray(mappedNodes) ? mappedNodes.length : 0, mappedEdges: Array.isArray(mappedEdges) ? mappedEdges.length : 0 }); } catch (_) {/* noop */}
       } catch (err) {
         // ignore finalization errors to avoid breaking mapping caller
         console.debug("[VG_DEBUG] mapping.finalize.error", err);
-        try { runM.end({ error: true }); } catch (_) {}
+        try { runM.end({ error: true }); } catch (_) {/* noop */}
       }
     };
 
@@ -1385,12 +1385,12 @@ const KnowledgeCanvas: React.FC = () => {
             if (typeof window !== "undefined" && reactFlowInstance && reactFlowInstance.current && typeof (reactFlowInstance.current as any).getNodes === "function") {
               (window as any).__VG_LAST_NODES = (reactFlowInstance.current as any).getNodes();
             }
-          } catch (_) {}
+          } catch (_) {/* noop */}
 
           // Finalize mapping immediately (ensure React updates are enqueued and then run layout).
           try {
             if (!mountedRef.current) {
-              try { subM.end({ reason: "unmounted" }); } catch (_) {}
+              try { subM.end({ reason: "unmounted" }); } catch (_) {/* noop */}
               return;
             }
             const mergedNodes = Array.isArray(mappedNodes) ? mappedNodes : nodes || [];
@@ -1412,7 +1412,7 @@ const KnowledgeCanvas: React.FC = () => {
                 await doLayout(nodesForLayout as any, edgesForLayout as any, true);
                 await new Promise((r) => setTrackedTimeout(r, 50));
                 if (!mountedRef.current) {
-                  try { subM.end({ reason: "post-forced-layout.unmounted" }); } catch (_) {}
+                  try { subM.end({ reason: "post-forced-layout.unmounted" }); } catch (_) {/* noop */}
                   return;
                 }
                 const inst = rfInst;
@@ -1445,13 +1445,13 @@ const KnowledgeCanvas: React.FC = () => {
             // ignore
           }
 
-          try { subM.end({ mappedNodes: Array.isArray(mappedNodes) ? mappedNodes.length : 0, mappedEdges: Array.isArray(mappedEdges) ? mappedEdges.length : 0 }); } catch (_) {}
+          try { subM.end({ mappedNodes: Array.isArray(mappedNodes) ? mappedNodes.length : 0, mappedEdges: Array.isArray(mappedEdges) ? mappedEdges.length : 0 }); } catch (_) {/* noop */}
           return;
         } catch (err) {
           console.debug("[VG_DEBUG] subjectsCallback.directMappingFailed", {
             err,
           });
-          try { subM.end({ error: true }); } catch (_) {}
+          try { subM.end({ error: true }); } catch (_) {/* noop */}
           // fallthrough to queued mapping path below
         }
       }
@@ -1461,7 +1461,7 @@ const KnowledgeCanvas: React.FC = () => {
         for (const q of quads) pendingQuads.push(q);
       }
       scheduleRunMapping();
-      try { subM.end({ queued: true, queuedQuadCount: qcount }); } catch (_) {}
+      try { subM.end({ queued: true, queuedQuadCount: qcount }); } catch (_) {/* noop */}
     };
 
     // Subscribe to subject-level incremental notifications when available.
@@ -1522,7 +1522,7 @@ const KnowledgeCanvas: React.FC = () => {
       if (debounceTimer) {
         try {
           window.clearTimeout(debounceTimer);
-        } catch (_) {}
+        } catch (_) {/* noop */}
         debounceTimer = null;
       }
       // Clear any tracked timeouts scheduled via the component-level tracker
@@ -1534,7 +1534,7 @@ const KnowledgeCanvas: React.FC = () => {
       if (typeof mgr.offSubjectsChange === "function" && subjectsCallback) {
         try {
           mgr.offSubjectsChange(subjectsCallback as any);
-        } catch (_) {}
+        } catch (_) {/* noop */}
       }
     };
   }, [
@@ -2260,10 +2260,10 @@ const KnowledgeCanvas: React.FC = () => {
                 if (typeof (ev as any).stopImmediatePropagation === "function") {
                   (ev as any).stopImmediatePropagation();
                 }
-              } catch (_) {}
+              } catch (_) {/* noop */}
               try {
                 if (typeof (ev as any).stopPropagation === "function") (ev as any).stopPropagation();
-              } catch (_) {}
+              } catch (_) {/* noop */}
               // avoid preventDefault to not interfere with native behaviors
             }
           } catch (_) {
@@ -2281,10 +2281,10 @@ const KnowledgeCanvas: React.FC = () => {
           // Fallback older signature (capture boolean)
           try {
             (window as any).addEventListener("pointerup", handler as any, true);
-          } catch (_) {}
+          } catch (_) {/* noop */}
           try {
             (window as any).addEventListener("mouseup", handler as any, true);
-          } catch (_) {}
+          } catch (_) {/* noop */}
         }
       } catch (_) {
         // ignore registration failures
@@ -2366,15 +2366,15 @@ const KnowledgeCanvas: React.FC = () => {
               try {
                 if (typeof (ev as any).stopImmediatePropagation === "function")
                   (ev as any).stopImmediatePropagation();
-              } catch (_) {}
+              } catch (_) {/* noop */}
               try {
                 if (typeof (ev as any).stopPropagation === "function")
                   (ev as any).stopPropagation();
-              } catch (_) {}
+              } catch (_) {/* noop */}
               try {
                 if (typeof (ev as any).preventDefault === "function")
                   (ev as any).preventDefault();
-              } catch (_) {}
+              } catch (_) {/* noop */}
             }
           } catch (_) {
             // ignore
@@ -2385,7 +2385,7 @@ const KnowledgeCanvas: React.FC = () => {
         } catch (_) {
           try {
             (window as any).addEventListener("click", stopClick as any, true);
-          } catch (_) {}
+          } catch (_) {/* noop */}
         }
       } catch (_) {
         // ignore
@@ -2400,14 +2400,14 @@ const KnowledgeCanvas: React.FC = () => {
           } catch (_) {
             try {
               (window as any).removeEventListener("pointerup", h as any, { capture: true } as any);
-            } catch (_) {}
+            } catch (_) {/* noop */}
           }
           try {
             window.removeEventListener("mouseup", h as any, true);
           } catch (_) {
             try {
               (window as any).removeEventListener("mouseup", h as any, { capture: true } as any);
-            } catch (_) {}
+            } catch (_) {/* noop */}
           }
           nodeDragMouseUpHandlerRef.current = null;
         }
@@ -2902,10 +2902,10 @@ const KnowledgeCanvas: React.FC = () => {
           }
 
           if (changes.length === 0) {
-            try { nodePhaseMeasure.end({ applied: false }); } catch (_) {}
+            try { nodePhaseMeasure.end({ applied: false }); } catch (_) {/* noop */}
             return prevArr;
           }
-          try { nodePhaseMeasure.end({ applied: true, changeCount: changes.length }); } catch (_) {}
+          try { nodePhaseMeasure.end({ applied: true, changeCount: changes.length }); } catch (_) {/* noop */}
           return applyNodeChanges(changes as any, prevArr);
         });
       }
@@ -3075,7 +3075,7 @@ const KnowledgeCanvas: React.FC = () => {
           if (changes.length === 0) return prevArr;
           return applyEdgeChanges(changes as any, prevArr);
         });
-        try { edgePhaseMeasure.end({ applied: true }); } catch (_) {}
+        try { edgePhaseMeasure.end({ applied: true }); } catch (_) {/* noop */}
       }
 
       // Allow callers to await one tracked microtask so React has queued state updates
@@ -3085,7 +3085,7 @@ const KnowledgeCanvas: React.FC = () => {
         if (typeof setTrackedTimeout === "function") {
           const microtaskMeasure = typeof vgMeasure === "function" ? vgMeasure("applyDiagrammChange.microtask_wait", {}) : { end: () => {} };
           await new Promise((res) => setTrackedTimeout(res, 0));
-          try { microtaskMeasure.end({}); } catch (_) {}
+          try { microtaskMeasure.end({}); } catch (_) {/* noop */}
         } else {
           await Promise.resolve();
         }
@@ -3093,7 +3093,7 @@ const KnowledgeCanvas: React.FC = () => {
         // ignore microtask scheduling failures
         await Promise.resolve();
       }
-      try { measure.end({ nodes: inNodes.length, edges: inEdges.length }); } catch (_) {}
+      try { measure.end({ nodes: inNodes.length, edges: inEdges.length }); } catch (_) {/* noop */}
     },
     [setNodes, setEdges],
   );

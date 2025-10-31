@@ -314,7 +314,7 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
           const dyp = projected.y - startProj.y;
           dist2Proj = dxp * dxp + dyp * dyp;
         }
-      } catch (_) {}
+      } catch (_) {/* noop */}
 
       const triggered =
         (!draggingRef.current &&
@@ -329,7 +329,7 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
             (dataTyped as any).onSelectEdge(id);
           }
           selectionRef.current = true;
-        } catch (_) {}
+        } catch (_) {/* noop */}
       }
 
       if (draggingRef.current) {
@@ -350,9 +350,9 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
       if (lastPointerIdRef.current === e.pointerId) {
         try {
           (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-        } catch (_) {}
+        } catch (_) {/* noop */}
       }
-    } catch (_) {}
+    } catch (_) {/* noop */}
 
     if (draggingRef.current) {
       // End drag but do not freeze the control as an absolute position. Instead,
