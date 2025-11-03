@@ -1,10 +1,12 @@
-// Full-featured parsing worker (rdf-parse bundled attempt)
-// - Attempts to run rdf-parse inside the worker for full format coverage (JSON-LD, RDF/XML, Turtle, etc.)
-// - If rdf-parse import or runtime mediation fails, falls back to N3.Parser for Turtle only and posts an error
-//   so the main thread can fall back to its own parser when appropriate.
-//
-// This worker removes non-informative try/catch wrappers so runtime failures are surfaced
-// via postMessage({ type: "error", ... }) instead of being swallowed silently.
+// Stream-first parsing worker for browser environment.
+// Minimal, no fallbacks, no try/catch - failures surface directly.
+// Relies on bundler-provided polyfills (readable-stream, stream-browserify, buffer, process).
+
+import { Buffer } from 'buffer';
+(globalThis as any).Buffer = Buffer;
+import process from 'process';
+(globalThis as any).process = process;
+import { Readable } from 'readable-stream';
 
 const BATCH_SIZE = 1000;
 
@@ -28,9 +30,6 @@ self.addEventListener("message", (ev: MessageEvent) => {
   } else if (msg.type === "parseUrl") {
     const id = String(msg.id || `p-${Date.now().toString(36).slice(2, 8)}`);
     fetchAndParseUrl(id, String(msg.url || ""), msg.timeoutMs, msg.headers || {});
-  } else if (msg.type === "parseText") {
-    const id = String(msg.id || `p-${Date.now().toString(36).slice(2, 8)}`);
-    parseTextAndEmit(id, String(msg.text || ""), msg.mime, msg.baseIRI);
   }
 });
 
@@ -67,350 +66,161 @@ function waitForAck(id: string) {
   });
 }
 
-// Core parse logic: prefer rdf-parse inside worker for full parity.
-// - Accepts text and optional mime/baseIRI.
-// - Emits prefix/context events and batched quads, respects ACK backpressure.
-// - If rdf-parse cannot be used, falls back to N3.Parser for Turtle.
-async function parseTextAndEmit(id: string, text: string, mime?: string, baseIRI?: string) {
+async function fetchAndParseUrl(id: string, url: string, timeoutMs?: number, headers?: any) {
   if (!id) return;
 
-  // Announce worker parse start / heartbeat so main thread watchdogs see activity quickly.
+  // Heartbeat / ready
   (self as any).postMessage({ type: "ready", id });
 
-  // Quick guard: if caller already indicates HTML (or the supplied text looks like HTML)
-  // bail out early with a clear error so the main thread can handle the failure and
-  // avoid confusing rdf-parse/stream errors that arise when parsing HTML.
-  try {
-    const mimeHint = typeof mime === "string" && mime ? String(mime).split(";")[0].trim().toLowerCase() : "";
-    const snippet = typeof text === "string" ? String(text).slice(0, 512) : "";
-    const looksLikeHtmlBySniff =
-      /^\s*<!doctype\s+/i.test(snippet) ||
-      /^\s*<html\b/i.test(snippet) ||
-      /^\s*<\!DOCTYPE html/i.test(snippet) ||
-      /^\s*<script\b/i.test(snippet);
-    const looksLikeHtmlByMime = /^text\/html/i.test(mimeHint) || mimeHint === "application/xhtml+xml";
-
-    if (looksLikeHtmlByMime || looksLikeHtmlBySniff) {
-      try {
-        (self as any).postMessage({
-          type: "error",
-          id,
-          message: "Worker: content appears to be HTML; refusing to parse.",
-        });
-      } catch (_) { /* ignore postMessage failures */ }
-      return;
-    }
-  } catch (_) {
-    /* ignore guard failures and continue to heartbeat to remain visible */
-  }
-
-  // Start a lightweight heartbeat so the main thread can observe liveliness during long parses.
-  let __vg_hb_interval: any = null;
-  __vg_hb_interval = setInterval(() => {
-    try {
-      (self as any).postMessage({ type: "hb", id });
-    } catch (e) {
-      /* ignored */
-    }
-  }, 2000);
-
-  // Normalize content type
-  let mimeToUse: string | undefined = undefined;
-  if (typeof mime === "string" && mime) mimeToUse = String(mime).split(";")[0].trim() || undefined;
-
-  // Try rdf-parse first (full-featured). Use dynamic import so bundler can include it in worker bundle.
-  try {
-    const rdfPkg = await import("rdf-parse");
-    if (rdfPkg) {
-      // Resolve parser entry flexibly
-      let rdfParser: any = null;
-      if (typeof (rdfPkg as any).parse === "function") rdfParser = rdfPkg;
-      else if ((rdfPkg as any).rdfParser && typeof (rdfPkg as any).rdfParser.parse === "function")
-        rdfParser = (rdfPkg as any).rdfParser;
-      else if ((rdfPkg as any).default && typeof (rdfPkg as any).default.parse === "function")
-        rdfParser = (rdfPkg as any).default;
-
-      if (!rdfParser) {
-        // Unexpected shape — notify main and fall back to N3
-        (self as any).postMessage({
-          type: "error",
-          id,
-          message: "Worker: rdf-parse import succeeded but parser entry missing - falling back to N3",
-        });
-      } else {
-        // Build a Node-style Readable stream from the text for rdf-parse
-        let input: any = null;
-        const streamMod = await import("stream");
-        const bufferMod = await import("buffer");
-        const Readable = streamMod && (streamMod.Readable || (streamMod.default && streamMod.default.Readable))
-          ? (streamMod.Readable || (streamMod.default && streamMod.default.Readable))
-          : null;
-        const BufferImpl =
-          (bufferMod && (bufferMod.Buffer || (bufferMod.default && bufferMod.default.Buffer)))
-            ? (bufferMod.Buffer || (bufferMod.default && bufferMod.default.Buffer))
-            : (globalThis as any).Buffer;
-        if (Readable && BufferImpl && typeof Readable.from === "function") {
-          input = Readable.from([BufferImpl.from(text, "utf8")]);
-        } else {
-          // last-resort: WHATWG stream (Response.body)
-          input = (new Response(text)).body as any;
-        }
-
-        const opts: any = {};
-        if (mimeToUse) opts.contentType = mimeToUse;
-        if (typeof baseIRI === "string" && baseIRI) opts.path = baseIRI;
-
-        // Ensure we always hand rdf-parse a Node-style Readable (emitter-style with .on)
-        // Some environments provide WHATWG ReadableStream (getReader) or a plain Buffer.
-        // Wrap those into a minimal Node-emitter-compatible shim so Comunica/rdf-parse
-        // (which expects action.data.on) works reliably in the worker.
-        function toNodeReadable(candidate: any) {
-          // Already a Node-style emitter (has .on) — pass through
-          if (candidate && typeof candidate.on === "function") return candidate;
-
-          // Buffer or ArrayBuffer/Uint8Array -> emit single data + end
-          try {
-            if (candidate && (candidate instanceof ArrayBuffer || ArrayBuffer.isView(candidate) || (candidate && candidate.constructor && candidate.constructor.name === 'Buffer'))) {
-              const buf = (candidate instanceof ArrayBuffer) ? new Uint8Array(candidate) : (ArrayBuffer.isView(candidate) ? new Uint8Array((candidate as any).buffer || candidate) : candidate);
-              const listeners: Record<string, ((...args: any[]) => void)[]> = { data: [], end: [], error: [] };
-              const emu: any = {
-                on(event: string, cb: (...args: any[]) => void) {
-                  if (!listeners[event]) listeners[event] = [];
-                  listeners[event].push(cb);
-                  return this;
-                },
-                addListener(event: string, cb: (...args: any[]) => void) { return this.on(event, cb); },
-                removeListener(event: string, cb: (...args: any[]) => void) {
-                  if (!listeners[event]) return this;
-                  const i = listeners[event].indexOf(cb);
-                  if (i >= 0) listeners[event].splice(i, 1);
-                  return this;
-                },
-                pause() { /* noop */ },
-                resume() { /* noop */ },
-                pipe() { return this; }
-              };
-              // Emit asynchronously so consumers can attach handlers
-              setTimeout(() => {
-                const ds = listeners['data'] || [];
-                for (const cb of ds.slice()) { try { cb(buf); } catch (_) { /* noop */ } }
-                const es = listeners['end'] || [];
-                for (const cb of es.slice()) { try { cb(); } catch (_) { /* noop */ } }
-              }, 0);
-              return emu;
-            }
-          } catch (_) { /* fall through */ }
-
-          // WHATWG ReadableStream -> reader-based emulation
-          try {
-            if (candidate && typeof candidate.getReader === "function") {
-              const readersListeners: Record<string, ((...args: any[]) => void)[]> = { data: [], end: [], error: [] };
-              const emu: any = {
-                on(event: string, cb: (...args: any[]) => void) {
-                  if (!readersListeners[event]) readersListeners[event] = [];
-                  readersListeners[event].push(cb);
-                  return this;
-                },
-                addListener(event: string, cb: (...args: any[]) => void) { return this.on(event, cb); },
-                removeListener(event: string, cb: (...args: any[]) => void) {
-                  if (!readersListeners[event]) return this;
-                  const i = readersListeners[event].indexOf(cb);
-                  if (i >= 0) readersListeners[event].splice(i, 1);
-                  return this;
-                },
-                pause() { /* noop */ },
-                resume() { /* noop */ },
-                pipe() { return this; }
-              };
-              (async () => {
-                try {
-                  const reader = (candidate as ReadableStream<Uint8Array>).getReader();
-                  while (true) {
-                    const { value, done } = await reader.read();
-                    if (done) break;
-                    const ds = readersListeners['data'] || [];
-                    for (const cb of ds.slice()) { try { cb(value); } catch (_) { /* noop */ } }
-                  }
-                  const es = readersListeners['end'] || [];
-                  for (const cb of es.slice()) { try { cb(); } catch (_) { /* noop */ } }
-                } catch (err) {
-                  const ers = readersListeners['error'] || [];
-                  for (const cb of ers.slice()) { try { cb(err); } catch (_) { /* noop */ } }
-                }
-              })();
-              return emu;
-            }
-          } catch (_) { /* fall through */ }
-
-          // Fallback: if candidate is a Response-like with .body (WHATWG) try to use getReader
-          try {
-            if (candidate && candidate.body && typeof candidate.body.getReader === "function") {
-              return toNodeReadable(candidate.body);
-            }
-          } catch (_) { /* ignore */ }
-
-          // Last resort: create a shim that emits an empty end
-          return {
-            on() { return this; },
-            addListener() { return this; },
-            removeListener() { return this; },
-            pause() { /* noop */ },
-            resume() { /* noop */ },
-            pipe() { return this; }
-          };
-        }
-
-        const nodeInput = toNodeReadable(input);
-
-        // Debug: report the shape of the input handed to rdf-parse so we can confirm
-        // whether action.data will be an emitter in Comunica/rdf-parse.
-        try {
-          (self as any).postMessage({
-            type: "debug",
-            id,
-            phase: "pre-parse.input.shape",
-            hasOn: !!(nodeInput && typeof (nodeInput as any).on === "function"),
-            hasGetReader: !!(nodeInput && typeof (nodeInput as any).getReader === "function"),
-            nodeInputType: Object.prototype.toString.call(nodeInput).slice(8, -1),
-          });
-        } catch (_) { /* noop */ }
-
-        const quadStream = (rdfParser as any).parse(nodeInput, opts);
-        if (!quadStream || typeof quadStream.on !== "function") {
-          (self as any).postMessage({ type: "error", id, message: "rdf-parse returned non-stream value (post-parse check)" });
-          throw new Error("rdf-parse returned non-stream value");
-        }
-
-        // Collector buffer
-        const buffer: any[] = [];
-        let seenPrefixes: any = {};
-        let ended = false;
-
-        quadStream.on("data", async (q: any) => {
-          if (cancelled.has(id)) return;
-          buffer.push(q);
-          if (buffer.length >= BATCH_SIZE) {
-            const batch = buffer.splice(0, BATCH_SIZE);
-            const plain = batch.map((q2: any) => ({
-              s: String(q2.subject && q2.subject.value ? q2.subject.value : q2.subject),
-              p: String(q2.predicate && q2.predicate.value ? q2.predicate.value : q2.predicate),
-              o: plainFromTerm(q2.object),
-              g: q2.graph && q2.graph.value ? String(q2.graph.value) : undefined,
-            })) as PlainQuad[];
-          (self as any).postMessage({ type: "quads", id, quads: plain, final: false });
-          await waitForAck(id);
-        }
-      });
-
-        quadStream.on("prefix", (p: string, iri: any) => {
-          seenPrefixes = seenPrefixes || {};
-          seenPrefixes[p] = iri;
-          (self as any).postMessage({ type: "prefix", id, prefixes: { [p]: iri } });
-        });
-
-        quadStream.on("context", (ctx: any) => {
-          (self as any).postMessage({ type: "context", id, context: ctx });
-        });
-
-        quadStream.on("end", async () => {
-          if (ended) return;
-          ended = true;
-          if (buffer.length > 0) {
-            const plain = buffer.splice(0, buffer.length).map((q2: any) => ({
-              s: String(q2.subject && q2.subject.value ? q2.subject.value : q2.subject),
-              p: String(q2.predicate && q2.predicate.value ? q2.predicate.value : q2.predicate),
-              o: plainFromTerm(q2.object),
-              g: q2.graph && q2.graph.value ? String(q2.graph.value) : undefined,
-            })) as PlainQuad[];
-            // final batch
-            (self as any).postMessage({ type: "quads", id, quads: plain, final: true });
-            await waitForAck(id);
-            (self as any).postMessage({ type: "end", id });
-          } else {
-            (self as any).postMessage({ type: "end", id });
-          }
-        });
-
-        quadStream.on("error", (err: any) => {
-          (self as any).postMessage({ type: "error", id, message: String(err) });
-        });
-
-        // Successfully handed off to rdf-parse in-worker
-        return;
-      }
-    }
-  } catch (err) {
-    // dynamic import or runtime error: report and fall back to N3
-    (self as any).postMessage({ type: "error", id, message: "Worker rdf-parse error: " + String(err) });
-  }
-
-  // N3 fallback (Turtle only)
-  try {
-    const N3 = await import("n3");
-    if (!N3 || typeof N3.Parser !== "function") {
-      (self as any).postMessage({ type: "error", id, message: "Worker: no N3 parser available" });
-      return;
-    }
-    const Parser = N3.Parser;
-    const p = new Parser();
-    const collected: any[] = [];
-    let parsedPrefixes: any = null;
-
-    p.parse(text, (err: any, quad: any, prefixes: any) => {
-      if (err) {
-        (self as any).postMessage({ type: "error", id, message: String(err) });
-        return;
-      }
-      if (quad) collected.push(quad);
-      else if (prefixes && typeof prefixes === "object") parsedPrefixes = prefixes;
-    });
-
-    if (parsedPrefixes) {
-      (self as any).postMessage({ type: "prefix", id, prefixes: parsedPrefixes });
-    }
-
-    for (let i = 0; i < collected.length; i += BATCH_SIZE) {
-      if (cancelled.has(id)) break;
-      const batch = collected.slice(i, i + BATCH_SIZE);
-      const isLast = i + BATCH_SIZE >= collected.length;
-      const plain = batch.map((q: any) => ({
-        s: String(q.subject && q.subject.value ? q.subject.value : q.subject),
-        p: String(q.predicate && q.predicate.value ? q.predicate.value : q.predicate),
-        o: plainFromTerm(q.object),
-        g: q.graph && q.graph.value ? String(q.graph.value) : undefined,
-      })) as PlainQuad[];
-      (self as any).postMessage({ type: "quads", id, quads: plain, final: isLast });
-      await waitForAck(id);
-    }
-
-    (self as any).postMessage({ type: "end", id });
-    return;
-  } catch (err) {
-    (self as any).postMessage({ type: "error", id, message: "Worker parse failed: " + String(err) });
-    return;
-  }
-}
-
-async function fetchAndParseUrl(id: string, url: string, timeoutMs?: number, headers?: any) {
   const ctrl = new AbortController();
   const to = typeof timeoutMs === "number" ? timeoutMs : 15000;
-  const tH = setTimeout(() => { if (ctrl && typeof (ctrl as any).abort === "function") (ctrl as any).abort(); }, to);
+  const tH = setTimeout(() => { ctrl.abort(); }, to);
 
-  try {
-    const init: any = {
-      signal: ctrl.signal,
-      redirect: "follow",
-      headers: headers || { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" },
-    };
-    const resp = await fetch(url, init);
-    clearTimeout(tH);
-    const contentType = resp.headers && typeof resp.headers.get === "function" ? resp.headers.get("content-type") : null;
-    (self as any).postMessage({ type: "start", id, contentType, status: resp.status, statusText: resp.statusText });
-    const text = await resp.text();
-    await parseTextAndEmit(id, text, contentType || undefined, url);
-    (self as any).postMessage({ type: "end", id });
-  } catch (err) {
-    clearTimeout(tH);
-    (self as any).postMessage({ type: "error", id, message: String(err) });
+  const init: any = {
+    signal: ctrl.signal,
+    redirect: "follow",
+    headers: headers || { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" },
+  };
+
+  const resp = await fetch(url, init);
+  clearTimeout(tH);
+
+  const contentType = resp.headers && typeof resp.headers.get === "function" ? resp.headers.get("content-type") : null;
+  (self as any).postMessage({ type: "start", id, contentType, status: resp.status, statusText: resp.statusText });
+
+  const body = resp.body as any;
+
+  let nodeReadable: any;
+  if (body && typeof body.on === "function") {
+    nodeReadable = body;
+  } else {
+    // Convert WHATWG ReadableStream to Node-style Readable using readable-stream polyfill
+    nodeReadable = Readable.from(body as any);
   }
+
+  // Build parse options carefully:
+  // - Only pass contentType when it's a media type rdf-parse understands.
+  // - Otherwise provide a `path` (filename) so rdf-parse can detect format from the filename/extension.
+  const opts: any = {};
+  const ctRaw = contentType ? String(contentType).split(";")[0].trim().toLowerCase() : null;
+  let supportedMedia = new Set<string>([
+    "text/turtle",
+    "text/n3",
+    "application/n-triples",
+    "application/n-quads",
+    "application/rdf+xml",
+    "application/ld+json",
+    "application/trig",
+    "application/turtle",
+    "application/n3"
+  ]);
+
+  if (ctRaw && supportedMedia.has(ctRaw)) {
+    opts.contentType = ctRaw;
+    opts.path = url;
+  } else {
+    // Derive a filename for rdf-parse to inspect: prefer content-disposition, then URL path segment.
+    try {
+      let filename: string | null = null;
+      if (resp.headers && typeof resp.headers.get === "function") {
+        const cd = resp.headers.get("content-disposition");
+        if (cd) {
+          // filename*=UTF-8''... or filename="..."
+          const mStar = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(cd);
+          const m = /filename\s*=\s*"?([^";]+)"?/i.exec(cd);
+          if (mStar && mStar[1]) {
+            try { filename = decodeURIComponent(mStar[1]); } catch (_) { filename = mStar[1]; }
+          } else if (m && m[1]) {
+            filename = m[1];
+          }
+        }
+      }
+      if (!filename) {
+        try {
+          const u = new URL(url);
+          const seg = u.pathname.split("/").filter(Boolean).pop();
+          if (seg && /\.[a-z0-9]{1,8}(?:[?#]|$)/i.test(seg)) filename = seg;
+        } catch (_) {
+          /* ignore URL parse failures */
+        }
+      }
+      opts.path = filename || url;
+    } catch (_) {
+      opts.path = url;
+    }
+  }
+
+  const rdfPkg: any = await import("rdf-parse");
+  let rdfParser: any = null;
+  if (typeof rdfPkg.parse === "function") rdfParser = rdfPkg;
+  else if (rdfPkg.rdfParser && typeof rdfPkg.rdfParser.parse === "function") rdfParser = rdfPkg.rdfParser;
+  else if (rdfPkg.default && typeof rdfPkg.default.parse === "function") rdfParser = rdfPkg.default;
+
+  // Prefer to derive supported content types from rdf-parse itself when available.
+  try {
+    if (rdfParser && typeof rdfParser.getContentTypes === "function") {
+      try {
+        const types = await rdfParser.getContentTypes();
+        try { console.log("[VG_RDF_WORKER] rdf-parse supported content types:", types); } catch (_) { /* ignore */ }
+        if (Array.isArray(types) && types.length > 0) {
+          supportedMedia = new Set(types.map((t: any) => String(t).toLowerCase()));
+        }
+      } catch (_) {
+        /* ignore getContentTypes failures and keep static list */
+      }
+    }
+  } catch (_) {
+    /* ignore */
+  }
+
+  const quadStream = rdfParser.parse(nodeReadable, opts);
+
+  const buffer: any[] = [];
+  let ended = false;
+
+  quadStream.on("data", async (q: any) => {
+    if (cancelled.has(id)) return;
+    buffer.push(q);
+    if (buffer.length >= BATCH_SIZE) {
+      const batch = buffer.splice(0, BATCH_SIZE);
+      const plain = batch.map((q2: any) => ({
+        s: String(q2.subject && q2.subject.value ? q2.subject.value : q2.subject),
+        p: String(q2.predicate && q2.predicate.value ? q2.predicate.value : q2.predicate),
+        o: plainFromTerm(q2.object),
+        g: q2.graph && q2.graph.value ? String(q2.graph.value) : undefined,
+      })) as PlainQuad[];
+      (self as any).postMessage({ type: "quads", id, quads: plain, final: false });
+      await waitForAck(id);
+    }
+  });
+
+  quadStream.on("prefix", (p: string, iri: any) => {
+    (self as any).postMessage({ type: "prefix", id, prefixes: { [p]: iri } });
+  });
+
+  quadStream.on("context", (ctx: any) => {
+    (self as any).postMessage({ type: "context", id, context: ctx });
+  });
+
+  quadStream.on("end", async () => {
+    if (ended) return;
+    ended = true;
+    if (buffer.length > 0) {
+      const plain = buffer.splice(0, buffer.length).map((q2: any) => ({
+        s: String(q2.subject && q2.subject.value ? q2.subject.value : q2.subject),
+        p: String(q2.predicate && q2.predicate.value ? q2.predicate.value : q2.predicate),
+        o: plainFromTerm(q2.object),
+        g: q2.graph && q2.graph.value ? String(q2.graph.value) : undefined,
+      })) as PlainQuad[];
+      (self as any).postMessage({ type: "quads", id, quads: plain, final: true });
+      await waitForAck(id);
+      (self as any).postMessage({ type: "end", id });
+    } else {
+      (self as any).postMessage({ type: "end", id });
+    }
+  });
+
+  quadStream.on("error", (err: any) => {
+    (self as any).postMessage({ type: "error", id, message: String(err) });
+  });
 }

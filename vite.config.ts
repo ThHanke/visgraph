@@ -5,7 +5,6 @@ import react from "@vitejs/plugin-react-swc";
 import tailwind from "@tailwindcss/vite";
 import path from "path";
 import fs from "fs";
-import { nodePolyfills } from 'vite-plugin-node-polyfills'
 
 // Vite dev server proxy helper:
 // We expose a small dev-only endpoint at /__external?url=<encoded-url>
@@ -43,24 +42,26 @@ export default defineConfig(({ mode }) => ({
       allow: [path.resolve(__dirname)]
     }
   },
-  plugins: [
+    plugins: [
     react(),
     tailwind(),
-    nodePolyfills({
-      include: ['process', 'stream', 'buffer'],
-      globals: { global: true, process: true, Buffer: true },
-    }),
   ],
-  resolve: {
+    resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      process: 'process/browser',
-      // Force patched readable-stream fork in production builds
-      'readable-stream': 'readable-stream-patched',
+      // Map the exact "process/browser" import first so Vite replaces that exact path
+      // rather than matching the shorter "process" prefix and appending segments.
+      "process/browser": path.resolve(__dirname, "node_modules", "process", "browser.js"),
+      // Then map plain "process" to the same browser shim file (safe fallback).
+      process: path.resolve(__dirname, "node_modules", "process", "browser.js"),
+      // Force patched readable-stream fork in production builds (absolute)
+      // Point to the package root so sub-path imports (e.g. "readable-stream/lib/...") resolve correctly.
+      "readable-stream": path.resolve(__dirname, "node_modules", "readable-stream-patched"),
       // Ensure stream and buffer polyfills resolve to browser-compatible packages so
       // client code can access stream.Readable and Buffer at runtime (not externalized).
-      stream: 'stream-browserify',
-      buffer: 'buffer',
+      stream: path.resolve(__dirname, "node_modules", "stream-browserify", "index.js"),
+      buffer: path.resolve(__dirname, "node_modules", "buffer", "index.js"),
+      "buffer/": path.resolve(__dirname, "node_modules", "buffer", "index.js"),
     },
   },
 
@@ -97,7 +98,7 @@ export default defineConfig(({ mode }) => ({
                 // Ensure we don't collide with an existing entry
                 if (!bundle[newName]) {
                   // Preserve the emitted chunk under a new file name
-                  // @ts-ignore - mutating bundle in generateBundle hook
+                  // mutating bundle in generateBundle hook (intentional)
                   bundle[newName] = { ...chunk, fileName: newName };
                 }
                 renameMap.set(fileName, newName);
@@ -140,7 +141,7 @@ export default defineConfig(({ mode }) => ({
         if (req.url && req.url.endsWith('.ts')) {
           res.setHeader('Content-Type', 'application/javascript');
         }
-      } catch (e) { /* noop */ }
+      } catch (e) { void 0; }
       return next();
     });
   },
@@ -172,7 +173,7 @@ export default defineConfig(({ mode }) => ({
           // Some servers map .ts to non-JS MIME types; workers must be served as JS.
           res.setHeader('Content-Type', 'application/javascript');
         }
-      } catch (e) { /* noop */ }
+      } catch (e) { void 0; }
       return next();
     });
 
@@ -192,6 +193,7 @@ export default defineConfig(({ mode }) => ({
         }
       } catch (e) {
         // fall through to next handler
+        void 0;
       }
       return next();
     });
