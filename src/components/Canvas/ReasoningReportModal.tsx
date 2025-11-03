@@ -28,31 +28,20 @@ const InferredTriplesTable = () => {
   const [pageItems, setPageItems] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
 
-  // Fetch the page items lazily from the rdfManager's store
+  // Fetch the page items lazily from the rdfManager's indexed API
   const fetchPage = async (p: number, ps: number) => {
     try {
       setLoading(true);
-      // Use rdfManager.getStore().getQuads with graphName string - rdfManager wraps getQuads to accept strings
-      const store = rdfManager.getStore();
-      const all = (store && typeof store.getQuads === 'function')
-        ? (store.getQuads(null, null, null, 'urn:vg:inferred') || [])
-        : [];
-      const serialized = (all || []).map((q: any) => {
-        try {
-          const subj = q.subject && (q.subject as any).value ? String((q.subject as any).value) : String(q.subject || '');
-          const pred = q.predicate && (q.predicate as any).value ? String((q.predicate as any).value) : String(q.predicate || '');
-          const obj = q.object && (q.object as any).value ? String((q.object as any).value) : String(q.object || '');
-          const g = q.graph && (q.graph as any).value ? String((q.graph as any).value) : (q.g ? String(q.g) : undefined);
-          return { subject: subj, predicate: pred, object: obj, graph: g };
-        } catch (_) {
-          return null;
-        }
-      }).filter((x) => x);
-      const totalCount = serialized.length;
-      setTotal(totalCount);
-      const start = (p - 1) * ps;
-      const slice = serialized.slice(start, start + ps);
-      setPageItems(slice);
+      try {
+        const offset = Math.max(0, (p - 1) * ps);
+        const res = await rdfManager.fetchQuadsPage('urn:vg:inferred', offset, ps, { serialize: true });
+        setTotal(res && typeof res.total === 'number' ? res.total : 0);
+        setPageItems(Array.isArray(res.items) ? res.items : []);
+      } catch (innerErr) {
+        console.error("rdfManager.fetchQuadsPage failed", innerErr);
+        setPageItems([]);
+        setTotal(0);
+      }
     } catch (e) {
       console.error("Failed to fetch inferred triples page", e);
       setPageItems([]);

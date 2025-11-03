@@ -257,6 +257,17 @@ export class RDFManager {
   // Buffer quads per subject to allow emitting the actual triples involved in a subject-level change.
   private subjectQuadBuffer: Map<string, Quad[]> = new Map();
 
+  // Lightweight per-graph index to support fast paginated reads without materializing
+  // all quads on every page request. Populated incrementally as quads are added/removed.
+  // Structure: Map<graphName, { keys: string[]; map: Map<key, Quad>; tombstones: Set<key>; tombstoneCount: number; lastCompact: number }>
+  private _graphIndex: Map<string, {
+    keys: string[];
+    map: Map<string, Quad>;
+    tombstones: Set<string>;
+    tombstoneCount: number;
+    lastCompact: number;
+  }> = new Map();
+
   // Blacklist configuration: prefixes and absolute namespace URIs that should be
   // ignored when emitting subject-level change notifications. Default set below
   // matches common RDF/OWL core vocabularies so they don't create canvas nodes.
@@ -2069,6 +2080,10 @@ export class RDFManager {
           } catch (_) {
             /* ignore */
           }
+          try {
+            // Keep index in sync (best-effort)
+            try { this.indexRemove(graphName, q); } catch (_) { /* ignore */ }
+          } catch (_) { /* ignore */ }
           this.store.removeQuad(q);
         } catch (_) {
           try {
@@ -2385,6 +2400,171 @@ export class RDFManager {
    */
   getStore(): Store {
     return this.store;
+  }
+
+  // ---------- Lightweight per-graph index helpers ----------
+  // Create a stable, unique string key for a quad (used by the per-graph index)
+  private quadKey(q: Quad | { subject?: any; predicate?: any; object?: any; graph?: any }): string {
+    try {
+      const s = q && (q as any).subject && (q as any).subject.value ? String((q as any).subject.value) : String((q as any).subject || "");
+      const p = q && (q as any).predicate && (q as any).predicate.value ? String((q as any).predicate.value) : String((q as any).predicate || "");
+      const o = q && (q as any).object && (q as any).object.value ? String((q as any).object.value) : String((q as any).object || "");
+      const g = q && (q as any).graph && (q as any).graph.value ? String((q as any).graph.value) : String((q as any).graph || "");
+      return `${s}|${p}|${o}|${g}`;
+    } catch (_) {
+      return String(Math.random()).slice(2);
+    }
+  }
+
+  // Ensure an index exists for the named graph. If absent, build it lazily from the store.
+  private ensureIndexForGraph(graphName: string) {
+    try {
+      if (!graphName) return;
+      if (this._graphIndex.has(graphName)) return;
+      const gTerm = namedNode(String(graphName));
+      const quads = this.store.getQuads(null, null, null, gTerm) || [];
+      const keys: string[] = [];
+      const map = new Map<string, Quad>();
+      for (const q of quads) {
+        try {
+          const k = this.quadKey(q);
+          if (!map.has(k)) {
+            map.set(k, q);
+            keys.push(k);
+          }
+        } catch (_) { /* ignore per-quad */ }
+      }
+      this._graphIndex.set(graphName, {
+        keys,
+        map,
+        tombstones: new Set(),
+        tombstoneCount: 0,
+        lastCompact: Date.now(),
+      });
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  // Add a quad to the per-graph index (called after successful store.addQuad)
+  private indexAdd(graphName: string, q: Quad) {
+    try {
+      if (!graphName || !q) return;
+      this.ensureIndexForGraph(graphName);
+      const idx = this._graphIndex.get(graphName);
+      if (!idx) return;
+      const k = this.quadKey(q);
+      if (idx.map.has(k)) return;
+      idx.map.set(k, q);
+      idx.keys.push(k);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  // Remove a quad from the per-graph index (mark tombstone / decrement count)
+  private indexRemove(graphName: string, q: Quad) {
+    try {
+      if (!graphName || !q) return;
+      const idx = this._graphIndex.get(graphName);
+      if (!idx) return;
+      const k = this.quadKey(q);
+      if (!idx.map.has(k)) return;
+      idx.map.delete(k);
+      if (!idx.tombstones.has(k)) {
+        idx.tombstones.add(k);
+        idx.tombstoneCount = (idx.tombstoneCount || 0) + 1;
+      }
+      // Periodic compaction: if too many tombstones, rebuild the keys array
+      try {
+        const THRESHOLD_RATIO = 0.10; // 10%
+        if (idx.tombstoneCount > 1000 || (idx.tombstoneCount / Math.max(1, idx.keys.length)) > THRESHOLD_RATIO) {
+          const newKeys: string[] = [];
+          for (const key of idx.keys) {
+            if (!idx.tombstones.has(key)) newKeys.push(key);
+          }
+          idx.keys = newKeys;
+          idx.tombstones.clear();
+          idx.tombstoneCount = 0;
+          idx.lastCompact = Date.now();
+        }
+      } catch (_) { /* ignore compaction errors */ }
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  /**
+   * Fetch a page of quads from a named graph using the internal index for performance.
+   *
+   * Options:
+   *  - serialize (default true) : return plain string triples {subject,predicate,object,graph}
+   *  - fields: optional projection
+   *  - filter: simple exact-match filters (subject/predicate/object) - best-effort (may scan keys)
+   */
+  public async fetchQuadsPage(
+    graphName: string,
+    offset: number,
+    limit: number,
+    options?: { serialize?: boolean; fields?: ("subject"|"predicate"|"object"|"graph")[]; filter?: { subject?: string; predicate?: string; object?: string } }
+  ): Promise<{ total: number; offset: number; limit: number; items: any[] }> {
+    try {
+      if (!graphName) return { total: 0, offset: 0, limit: 0, items: [] };
+      const serialize = options && typeof options.serialize === "boolean" ? !!options.serialize : true;
+      const filter = options && options.filter ? options.filter : undefined;
+
+      // Ensure index exists (lazy build)
+      this.ensureIndexForGraph(graphName);
+      const idx = this._graphIndex.get(graphName);
+      if (!idx) {
+        return { total: 0, offset, limit, items: [] };
+      }
+
+      // If a filter is provided we need to scan keys and collect matching items.
+      if (filter && (filter.subject || filter.predicate || filter.object)) {
+        const matched: any[] = [];
+        for (const k of idx.keys) {
+          if (idx.tombstones.has(k)) continue;
+          const q = idx.map.get(k);
+          if (!q) continue;
+          try {
+            if (filter.subject && String((q.subject as any).value || q.subject || "") !== String(filter.subject)) continue;
+            if (filter.predicate && String((q.predicate as any).value || q.predicate || "") !== String(filter.predicate)) continue;
+            if (filter.object && String((q.object as any).value || q.object || "") !== String(filter.object)) continue;
+            matched.push(q);
+          } catch (_) { /* ignore */ }
+          if (matched.length >= offset + limit) break;
+        }
+        const total = matched.length;
+        const slice = matched.slice(offset, offset + limit);
+        const items = serialize ? slice.map((q: any) => ({ subject: q.subject && q.subject.value ? String(q.subject.value) : String(q.subject || ""), predicate: q.predicate && q.predicate.value ? String(q.predicate.value) : String(q.predicate || ""), object: q.object && q.object.value ? String(q.object.value) : String(q.object || ""), graph: q.graph && q.graph.value ? String(q.graph.value) : String(q.graph || "") })) : slice;
+        return { total, offset, limit, items };
+      }
+
+      // Normal path: stable keys available; compute total and slice directly.
+      const total = Math.max(0, idx.keys.length - idx.tombstoneCount);
+      // Clamp offset
+      const off = Math.max(0, offset || 0);
+      const result: any[] = [];
+      let collected = 0;
+      let position = 0;
+      // Fast-forward to offset by iterating keys but skipping tombstones without allocating all quads.
+      for (let i = 0; i < idx.keys.length && collected < offset + limit; i++) {
+        const k = idx.keys[i];
+        if (idx.tombstones.has(k)) continue;
+        if (position < off) { position++; continue; }
+        const q = idx.map.get(k);
+        if (!q) continue;
+        result.push(q);
+        collected++;
+      }
+
+      const items = serialize ? result.map((q: any) => ({ subject: q.subject && q.subject.value ? String(q.subject.value) : String(q.subject || ""), predicate: q.predicate && q.predicate.value ? String(q.predicate.value) : String(q.predicate || ""), object: q.object && q.object.value ? String(q.object.value) : String(q.object || ""), graph: q.graph && q.graph.value ? String(q.graph.value) : String(q.graph || "") })) : result;
+      return { total, offset: off, limit, items };
+    } catch (e) {
+      try { fallback("rdf.fetchQuadsPage.failed", { graphName, offset, limit, error: String(e) }); } catch(_) { /* ignore */ }
+      return { total: 0, offset, limit, items: [] };
+    }
   }
 
   /**

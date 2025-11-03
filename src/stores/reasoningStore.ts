@@ -525,19 +525,11 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
         console.debug("[VG_DEBUG] persisting inferred quads failed", __vg_safe(e));
       }
 
-      // Build serialized inferredQuads for UI consumption (plain objects).
-      const inferredQuadsSerialized: { subject: string; predicate: string; object: string; graph?: string }[] = [];
-      try {
-        for (const aq of (added || [])) {
-          try {
-            const subj = aq && aq.subject && aq.subject.value ? String(aq.subject.value) : (aq && aq.subject ? String(aq.subject) : "");
-            const pred = aq && aq.predicate && aq.predicate.value ? String(aq.predicate.value) : (aq && aq.predicate ? String(aq.predicate) : "");
-            const obj = aq && aq.object && aq.object.value ? String(aq.object.value) : (aq && aq.object ? String(aq.object) : "");
-            const g = (aq && aq.graph && aq.graph.value) ? String(aq.graph.value) : (aq && (aq.g ? String(aq.g) : (aq.graph ? String(aq.graph) : undefined)));
-            inferredQuadsSerialized.push({ subject: subj, predicate: pred, object: obj, graph: g });
-          } catch (_) { /* per-item */ }
-        }
-      } catch (_) { /* ignore overall */ }
+      // Do not eagerly serialize all inferred quads into the ReasoningResult.
+      // The UI now queries the rdfManager for paginated inferred triples on demand
+      // (rdfManager.fetchQuadsPage). Avoid building large arrays here to prevent
+      // main-thread blocking for large inferred graphs.
+      // inferredQuadsSerialized intentionally omitted.
 
       // Cleanup: ensure temporary reasoner store does not remain subscribed or referenced.
       try {
@@ -717,7 +709,6 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
           severity: (w as any).severity || "warning",
         })) as ReasoningWarning[]),
         // Plain serialized inferred quads for UI tables
-        inferredQuads: inferredQuadsSerialized,
         inferences,
       };
 
