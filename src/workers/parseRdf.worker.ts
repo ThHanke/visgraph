@@ -4,7 +4,7 @@
 
 import { Buffer } from 'buffer';
 (globalThis as any).Buffer = Buffer;
-import process from 'process';
+import process from 'process/browser';
 (globalThis as any).process = process;
 import { Readable } from 'readable-stream';
 
