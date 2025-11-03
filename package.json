@@ -91,6 +91,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
+    "@playwright/test": "^1.56.1",
     "@tailwindcss/vite": "^4.1.14",
     "@testing-library/user-event": "^14.4.3",
     "@types/node": "^22.16.5",
@@ -101,7 +102,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^15.15.0",
-    "playwright": "^1.55.0",
+    "playwright": "^1.56.1",
     "socket.io": "^4.7.2",
     "socket.io-client": "^4.7.2",
     "typescript": "^5.8.3",

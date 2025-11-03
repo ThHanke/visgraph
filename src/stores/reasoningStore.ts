@@ -4,6 +4,8 @@ const { namedNode } = DataFactory;
 import { WELL_KNOWN } from "../utils/wellKnownOntologies";
 import { useAppConfigStore } from "./appConfigStore";
 
+let reasoningWorker: any = null;
+
 /**
  * Reasoning store
  *
@@ -38,6 +40,8 @@ interface ReasoningResult {
   errors: ReasoningError[];
   warnings: ReasoningWarning[];
   inferences: Inference[];
+  // Plain serialized inferred quads (subject/predicate/object/graph) for UI tables.
+  inferredQuads?: { subject: string; predicate: string; object: string; graph?: string }[];
 }
 
 interface ReasoningError {
@@ -119,13 +123,23 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
 
     set({ currentReasoning: baseResult });
 
+    // Per-run reasoning state used by worker/local paths
+    let usedReasoner = false;
+    let tempStoreForReasoner: any = null;
+    let __vg_prev_write_logging: boolean = false;
+    let __vg_prev_window_flag: boolean = false;
+
     // Per-run diagnostics guard to avoid duplicate before/after logs in a single reasoning invocation.
     let beforeLogged = false;
     const afterLogged = false;
 
     try {
-      // Snapshot "before" quads if a store is available
-      const beforeQuads = Array.isArray(rdfStore?.getQuads ? rdfStore.getQuads(null, null, null, null) : []) ? rdfStore.getQuads(null, null, null, null) : [];
+      // Snapshot "before" quads if a store is available. Support both raw N3 Store
+      // instances and manager-like objects that expose getStore().
+      const _beforeStore = rdfStore && typeof rdfStore.getStore === "function" ? rdfStore.getStore() : rdfStore;
+      const beforeQuads = (_beforeStore && typeof _beforeStore.getQuads === "function")
+        ? (_beforeStore.getQuads(null, null, null, null) || [])
+        : [];
 
       // Triple-count diagnostic (before): use rdfManager helper when available and log total + per-graph counts.
       try {
@@ -197,134 +211,149 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
         try { console.debug("[VG_DEBUG] reasoning.graphCounts.before", { candidateBeforeCount: beforeQuads.length, graphCountsBefore }); } catch (_) {/* noop */}
       } catch (_) { /* ignore overall */ }
 
-      // Try to use the real N3 Reasoner if available
-      let usedReasoner = false;
-      let tempStoreForReasoner: any = null;
-      // Track previous global logging flags so we can restore them after a temp-run.
-      const __vg_prev_write_logging: boolean = false;
-      const __vg_prev_window_flag: boolean = false;
+      // Worker-only reasoning path: send snapshot & ruleset names to the worker and await its result.
+      // This enforces a single reasoning path: the worker is authoritative for rule fetching, parsing and reasoning.
       try {
-        const n3mod: any = await import("n3");
-        // Resolve canonical exports
-        const ParserCls = n3mod.Parser || (n3mod.default && n3mod.default.Parser);
-        const StoreCls = n3mod.Store || (n3mod.default && n3mod.default.Store);
-        const ReasonerCls = n3mod.Reasoner || (n3mod.default && n3mod.default.Reasoner) || n3mod.N3Reasoner || (n3mod.default && n3mod.default.N3Reasoner) || null;
+        // Determine ruleset names from config
+        const selected = (useAppConfigStore.getState().config && Array.isArray(useAppConfigStore.getState().config.reasoningRulesets))
+          ? useAppConfigStore.getState().config.reasoningRulesets
+          : [];
+        const rulesets: string[] = Array.isArray(selected) ? selected : [];
 
-        if (ParserCls && StoreCls && ReasonerCls && typeof fetch === "function") {
-          // Attempt to load the selected rulesets from public assets (can be multiple)
-          try {
-            const selected = (useAppConfigStore.getState().config && Array.isArray(useAppConfigStore.getState().config.reasoningRulesets))
-              ? useAppConfigStore.getState().config.reasoningRulesets
-              : [];
-            let combinedParsed: any[] = [];
-
-            if (Array.isArray(selected) && selected.length > 0) {
-              const parser = new ParserCls({ format: "text/n3" });
-              for (const name of selected) {
-                try {
-                  const resp = await fetch(`/reasoning-rules/${name}`);
-                  const text = resp && resp.ok ? await resp.text() : "";
-                  if (text && text.trim().length > 0) {
-                    try {
-                      const parsed = parser.parse(text);
-                      if (Array.isArray(parsed)) combinedParsed = combinedParsed.concat(parsed);
-                    } catch (pe) {
-                      console.debug("[VG_DEBUG] parsing ruleset failed", name, __vg_safe(pe));
-                    }
-                  }
-                } catch (fe) {
-                  console.debug("[VG_DEBUG] fetching ruleset failed", name, __vg_safe(fe));
-                }
-              }
-            } else {
-              // Backward-compatible: try the old default file if nothing configured
+        // Serialize current authoritative store snapshot in chunks to avoid blocking the main thread.
+        const snapshot: any[] = [];
+        try {
+          const srcStore = rdfStore && typeof rdfStore.getStore === "function" ? rdfStore.getStore() : rdfStore;
+          const existing = srcStore && typeof srcStore.getQuads === "function" ? srcStore.getQuads(null, null, null, null) || [] : [];
+          const CHUNK = 200;
+          for (let i = 0; i < existing.length; i += CHUNK) {
+            const slice = existing.slice(i, i + CHUNK);
+            for (const q of slice) {
               try {
-                const resp = await fetch("/reasoning-rules/best-practice.n3");
-                const rulesText = resp && resp.ok ? await resp.text() : "";
-                if (rulesText && rulesText.trim().length > 0) {
-                  const parser = new ParserCls({ format: "text/n3" });
-                  combinedParsed = parser.parse(rulesText);
-                }
-              } catch (e) {
-                /* ignore */
-              }
-            }
-
-            if (combinedParsed.length > 0) {
-              const rulesStore = new StoreCls(combinedParsed);
-
-              // Resolve constructor shape
-              let ReasonerImpl: any = ReasonerCls;
-              if (typeof ReasonerImpl !== "function" && ReasonerImpl && typeof ReasonerImpl.default === "function") {
-                ReasonerImpl = ReasonerImpl.default;
-              }
-
-              if (typeof ReasonerImpl === "function") {
-                try {
-                  // Run the reasoner against a temporary N3 Store so its writes do not
-                  // go directly into the app's persistent store. This lets us capture
-                  // all generated quads and persist them atomically into urn:vg:inferred.
-                  const __vg_prev_write_logging = typeof (globalThis as any).__VG_RDF_WRITE_LOGGING_ENABLED !== "undefined" ? (globalThis as any).__VG_RDF_WRITE_LOGGING_ENABLED : false;
-                  const __vg_prev_window_flag = typeof window !== "undefined" ? !!((window as any).__VG_LOG_RDF_WRITES === true) : false;
-                  try {
-                    // Silence global per-store write logging while running the temp reasoner so its
-                    // writes do not trigger diagnostic subscribers or duplicate UI updates.
-                    try { (globalThis as any).__VG_RDF_WRITE_LOGGING_ENABLED = false; } catch (_) {/* noop */}
-                    try { if (typeof window !== "undefined") (window as any).__VG_LOG_RDF_WRITES = false; } catch (_) {/* noop */}
-                  } catch (_) {/* noop */}
-                  tempStoreForReasoner = new StoreCls();
-
-                  // Copy authoritative store contents into tempStore so the reasoner
-                  // sees the current data when inferring.
-                  try {
-                    if (rdfStore && typeof rdfStore.getQuads === "function" && tempStoreForReasoner && typeof tempStoreForReasoner.addQuad === "function") {
-                      const existing = rdfStore.getQuads(null, null, null, null) || [];
-                      for (const q of existing) {
-                        try {
-                          tempStoreForReasoner.addQuad(q);
-                        } catch (_) {
-                          /* ignore per-quad copy failures */
-                        }
-                      }
-                    }
-                  } catch (_) {
-                    /* ignore copy errors - reasoner will run with empty tempStore if copy fails */
-                  }
-
-                  const reasoner = new ReasonerImpl(tempStoreForReasoner);
-                  if (typeof reasoner.reason === "function") {
-                    const maybePromise = reasoner.reason(rulesStore);
-                    if (maybePromise && typeof maybePromise.then === "function") {
-                      await maybePromise;
-                    }
-                    usedReasoner = true;
-                  }
-                } catch (instErr) {
-                  // Construction failed; try fallback shapes (best-effort) using the temp store if available
-                  try {
-                    if (ReasonerCls && typeof ReasonerCls === "object" && typeof ReasonerCls.default === "function") {
-                      const reasoner = new ReasonerCls.default(tempStoreForReasoner || rdfStore);
-                      if (typeof (reasoner as any).reason === "function") {
-                        const maybePromise = (reasoner as any).reason(rulesStore);
-                        if (maybePromise && typeof maybePromise.then === "function") {
-                          await maybePromise;
-                        }
-                        usedReasoner = true;
-                      }
-                    }
-                  } catch (e) {
-                    console.warn("[VG_DEBUG] Reasoner instantiation failed:", __vg_safe(instErr), __vg_safe(e));
+                const subj = q.subject && (q.subject as any).value ? String((q.subject as any).value) : "";
+                const pred = q.predicate && (q.predicate as any).value ? String((q.predicate as any).value) : "";
+                const objTerm = (q as any).object;
+                let obj: any = { t: "lit", v: "" };
+                if (objTerm) {
+                  if (objTerm.termType === "NamedNode") obj = { t: "iri", v: String(objTerm.value) };
+                  else if (objTerm.termType === "BlankNode") obj = { t: "bnode", v: String(objTerm.value) };
+                  else if (objTerm.termType === "Literal") {
+                    const dt = objTerm.datatype && objTerm.datatype.value ? String(objTerm.datatype.value) : undefined;
+                    const ln = objTerm.language || undefined;
+                    obj = { t: "lit", v: String(objTerm.value), dt, ln };
+                  } else {
+                    obj = { t: "lit", v: String(objTerm.value || "") };
                   }
                 }
-              }
+                const g = q.graph && (q.graph as any).value ? String((q.graph as any).value) : undefined;
+                snapshot.push({ s: subj, p: pred, o: obj, g });
+              } catch (_) { /* per-quad */ }
             }
-          } catch (e) {
-            console.debug("[VG_DEBUG] Failed to load/run rules with N3 Reasoner", __vg_safe(e));
+            // yield to event loop
+            // eslint-disable-next-line no-await-in-loop
+            await Promise.resolve();
           }
+        } catch (_) { /* ignore snapshot errors */ }
+        try { console.debug("[VG_DEBUG] reasoner.snapshot.serialized", { snapshotLength: snapshot.length }); } catch (_) { /* noop */ }
+        try { console.debug("[VG_DEBUG] reasoner.rules.requested", { rulesetsLength: Array.isArray(rulesets) ? rulesets.length : 0 }); } catch (_) { /* noop */ }
+
+        if (typeof window !== "undefined" && typeof (globalThis as any).Worker !== "undefined") {
+          try {
+            const workerUrl = new URL("../workers/reasoner.worker.ts", import.meta.url);
+            try { if (reasoningWorker && typeof reasoningWorker.terminate === "function") { reasoningWorker.terminate(); } } catch (_) { /* ignore */ }
+            reasoningWorker = new Worker(workerUrl as any, { type: "module" });
+            const w = reasoningWorker;
+
+            let __vg_worker_error: any = null;
+            const workerResult: any = await new Promise((resolve, reject) => {
+              const tH = setTimeout(() => {
+                try { w.terminate(); } catch (_) { /* noop */ } finally { try { reasoningWorker = null; } catch (_) { /* noop */ } }
+                reject(new Error("reasoner worker timeout"));
+              }, 120000);
+
+              const onMessage = (ev: MessageEvent) => {
+                const m = ev && ev.data ? ev.data : {};
+                if (!m || m.id !== id) return;
+                // stage messages: surface as debug
+                if (m.type === "stage") {
+                  try { console.debug("[VG_DEBUG_STAGE]", m.stage, m); } catch (_) {}
+                  return;
+                }
+                if (m.type === "result") {
+                  try { clearTimeout(tH); w.removeEventListener("message", onMessage as any); } catch (_) {}
+                  resolve(m.afterQuads || []);
+                } else if (m.type === "error") {
+                  try {
+                    console.error("[VG_ERROR] reasoner.worker.error", m);
+                    __vg_worker_error = m;
+                  } catch (_) {}
+                  // keep waiting for a 'result' or terminal error
+                } else if (m.type === "cancelled") {
+                  try { clearTimeout(tH); w.removeEventListener("message", onMessage as any); } catch (_) {}
+                  reject(new Error("reasoner worker cancelled"));
+                }
+              };
+              w.addEventListener("message", onMessage as any);
+              try {
+                w.postMessage({ type: "run", id, quads: snapshot, rules: rulesets });
+              } catch (postErr) {
+                try { clearTimeout(tH); w.removeEventListener("message", onMessage as any); } catch (_) {}
+                try { w.terminate(); } catch (_) {}
+                reject(postErr);
+              }
+            });
+
+            try { console.debug("[VG_DEBUG] reasoner.worker.result.length", { workerResultLength: Array.isArray(workerResult) ? workerResult.length : 0 }); } catch (_) { /* noop */ }
+            if (__vg_worker_error) {
+              try { console.error("[VG_ERROR] reasoner.worker.reported_issues", __vg_worker_error); } catch (_) {}
+            }
+
+            // Convert worker result into a tempStoreForReasoner so later code can compute the delta
+            try {
+              tempStoreForReasoner = { getQuads: () => {
+                try {
+                  const arr: any[] = [];
+                  for (const sq of workerResult || []) {
+                    try {
+                      const s = /^_:/.test(String(sq.s || "")) ? DataFactory.blankNode(String(sq.s).replace(/^_:/, "")) : DataFactory.namedNode(String(sq.s || ""));
+                      const p = DataFactory.namedNode(String(sq.p || ""));
+                      let o: any = DataFactory.literal(String((sq.o && sq.o.v) || ""));
+                      if (sq.o && sq.o.t === "iri") o = DataFactory.namedNode(String(sq.o.v));
+                      else if (sq.o && sq.o.t === "bnode") o = DataFactory.blankNode(String(sq.o.v));
+                      else if (sq.o && sq.o.t === "lit") {
+                        if (sq.o.dt) o = DataFactory.literal(String(sq.o.v), DataFactory.namedNode(String(sq.o.dt)));
+                        else if (sq.o.ln) o = DataFactory.literal(String(sq.o.v), String(sq.o.ln));
+                        else o = DataFactory.literal(String(sq.o.v));
+                      }
+                      const g = sq.g ? DataFactory.namedNode(String(sq.g)) : undefined;
+                      arr.push(DataFactory.quad(s, p, o, g));
+                    } catch (_) { /* per-quad */ }
+                  }
+                  return arr;
+                } catch (_) { return []; }
+              } };
+              // We'll compute added quads by comparing beforeQuads and serialized after quads below.
+              usedReasoner = true;
+            } catch (_) { /* ignore */ } finally {
+              try { w.terminate(); } catch (_) { /* noop */ }
+            }
+          } catch (workerErr) {
+            console.debug("[VG_DEBUG] reasoner worker failed", String(workerErr).slice(0,200));
+            // Worker failed — enforce worker-only behavior: surface error by throwing so caller sets error result
+            throw workerErr;
+          }
+        } else {
+          // No browser Worker available — enforce worker-only reasoning.
+          // Previously a main-thread fallback ran here for Node tests; that fallback
+          // is intentionally removed to ensure deterministic, worker-based reasoning.
+          try { console.error("[VG_ERROR] reasoner: Worker unavailable; reasoning requires a browser Worker"); } catch (_) { /* noop */ }
+          throw new Error("Reasoner requires a browser Worker; none available in this environment");
         }
       } catch (e) {
-        // dynamic import failed or not present; we'll fallback below
-        console.debug("[VG_DEBUG] dynamic import of n3 failed or not available:", __vg_safe(e));
+        try { console.error("[VG_ERROR] worker-only reasoning encountered unexpected error", __vg_safe(e)); } catch (_) {}
+        // Worker-only mode enforced — rethrow so the outer handler returns an error result
+        // instead of allowing a main-thread fallback to run.
+        throw e;
       }
 
 
@@ -332,7 +361,7 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
       // Prefer the temp store the reasoner wrote into (if present); otherwise use the authoritative rdfStore.
       const afterQuads = (() => {
         try {
-          const s = tempStoreForReasoner || rdfStore;
+          const s = tempStoreForReasoner || (rdfStore && typeof rdfStore.getStore === "function" ? rdfStore.getStore() : rdfStore);
           if (!s || typeof s.getQuads !== "function") return [];
           const a = s.getQuads(null, null, null, null) || [];
           return Array.isArray(a) ? a : [];
@@ -495,6 +524,20 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
         } catch (e) {
         console.debug("[VG_DEBUG] persisting inferred quads failed", __vg_safe(e));
       }
+
+      // Build serialized inferredQuads for UI consumption (plain objects).
+      const inferredQuadsSerialized: { subject: string; predicate: string; object: string; graph?: string }[] = [];
+      try {
+        for (const aq of (added || [])) {
+          try {
+            const subj = aq && aq.subject && aq.subject.value ? String(aq.subject.value) : (aq && aq.subject ? String(aq.subject) : "");
+            const pred = aq && aq.predicate && aq.predicate.value ? String(aq.predicate.value) : (aq && aq.predicate ? String(aq.predicate) : "");
+            const obj = aq && aq.object && aq.object.value ? String(aq.object.value) : (aq && aq.object ? String(aq.object) : "");
+            const g = (aq && aq.graph && aq.graph.value) ? String(aq.graph.value) : (aq && (aq.g ? String(aq.g) : (aq.graph ? String(aq.graph) : undefined)));
+            inferredQuadsSerialized.push({ subject: subj, predicate: pred, object: obj, graph: g });
+          } catch (_) { /* per-item */ }
+        }
+      } catch (_) { /* ignore overall */ }
 
       // Cleanup: ensure temporary reasoner store does not remain subscribed or referenced.
       try {
@@ -664,13 +707,17 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
           rule: w.rule,
           severity: "critical" as const,
         })) as ReasoningError[],
-        warnings: (generatedWarnings || []).filter((w) => String((w as any).severity) !== "critical").map((w) => ({
+        // Include only SHACL-derived warnings here. Inferred triples are reported
+        // separately in the `inferences` array and the UI renders them in their own tab.
+        warnings: ((generatedWarnings || []).filter((w) => String((w as any).severity) !== "critical").map((w) => ({
           nodeId: w.nodeId,
           edgeId: w.edgeId,
           message: w.message,
           rule: w.rule,
           severity: (w as any).severity || "warning",
-        })) as ReasoningWarning[],
+        })) as ReasoningWarning[]),
+        // Plain serialized inferred quads for UI tables
+        inferredQuads: inferredQuadsSerialized,
         inferences,
       };
 

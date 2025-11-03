@@ -762,7 +762,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         );
       }
 
-      
+
     } catch (error: any) {
       ((...__vg_args) => {
         try {
@@ -821,13 +821,18 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         // Delegate fetch + parse + store insertion to rdfManager; it will handle formats and prefix merging.
         await (mgrInstance as any).loadRDFFromUrl(source, "urn:vg:data", { timeoutMs: timeout });
         // (mgrInstance as any).addNamespace(":", String(source));
- 
+
         // Intentionally do NOT request a canvas layout here.
         // Layout must be driven by the canvas' own one-shot flag (forceLayoutNextMappingRef)
         // which is set by the caller that initiated a data-graph load (e.g. onLoadFile or startup rdfUrl).
         // Calling the global layout trigger here caused races that prevented the canvas from
         // honouring the original flag-based layout scheduling.
- 
+
+        // Ensure the canvas is requested to force layout on next mapping run for explicit data-graph loads.
+        if (typeof window !== "undefined" && typeof (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING === "function") {
+          (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING();
+        }
+
         // After manager insertion, request the RDF manager to emit subject-level notifications
         // so the canvas sees the newly inserted data and can schedule the mapping run itself.
         try {
@@ -838,16 +843,11 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             await (rdfManager as any).emitAllSubjects();
           }
         } catch (_) { /* ignore emit failures - mapping will still occur via other signals */ }
- 
+
         // After manager insertion, perform the authoritative fat-map rebuild once.
         // Use the store's updateFatMap (full rebuild) to preserve existing behavior.
         // await get().updateFatMap();
- 
-        // Ensure the canvas is requested to force layout on next mapping run for explicit data-graph loads.
-        if (typeof window !== "undefined" && typeof (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING === "function") {
-          (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING();
-        }
- 
+
         options?.onProgress?.(100, "RDF loaded");
         // Attempt to discover and synchronously load referenced ontologies for URL loads (startup/rdfUrl)
         try {
@@ -884,6 +884,10 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       options?.onProgress?.(100, "RDF loaded");
       // After loading inline RDF into the data graph, request subject-level emissions so the canvas
       // mapping pipeline receives the newly inserted quads and can trigger mapping + layout as requested.
+      // Request the canvas to force layout on next mapping run for this explicit inline data load.
+      if (typeof window !== "undefined" && typeof (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING === "function") {
+        (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING();
+      }
       try {
         const mgrInstEmit = get().rdfManager;
         if (mgrInstEmit && typeof (mgrInstEmit as any).emitAllSubjects === "function") {
@@ -892,10 +896,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           try { await (rdfManager as any).emitAllSubjects(); } catch (_) { /* ignore */ }
         }
       } catch (_) { /* ignore overall emit failures */ }
-      // Request the canvas to force layout on next mapping run for this explicit inline data load.
-      if (typeof window !== "undefined" && typeof (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING === "function") {
-        (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING();
-      }
       // Discover referenced ontologies and load them asynchronously for inline loads (do not block)
       try {
         if (typeof (get().discoverReferencedOntologies) === "function") {
@@ -1357,9 +1357,9 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       });
     } catch (_) { /* ignore logging failures */ }
 
-      
 
-      
+
+
   },
 
   discoverReferencedOntologies: async (options?: {
@@ -1698,9 +1698,9 @@ async function buildFatMap(rdfMgr?: any): Promise<void> {
       }
     }
 
-      
 
-  
+
+
 }
 
 /**

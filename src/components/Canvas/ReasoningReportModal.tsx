@@ -1,4 +1,5 @@
-import { memo } from 'react';
+import { memo, useState, useMemo, useEffect } from 'react';
+import { rdfManager } from '../../utils/rdfManager';
 import {
   Dialog,
   DialogContent,
@@ -14,6 +15,195 @@ import { Separator } from '../ui/separator';
 import { AlertTriangle, CheckCircle, XCircle, Lightbulb, Clock } from 'lucide-react';
 import { useReasoningStore } from '../../stores/reasoningStore';
 
+/**
+ * Lazy paginated table for inferred triples.
+ * Fetches only the current page from the authoritative inferred graph (urn:vg:inferred)
+ * when the page or pageSize changes.
+ */
+const InferredTriplesTable = () => {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [selected, setSelected] = useState<Record<number, boolean>>({});
+  const [loading, setLoading] = useState(false);
+  const [pageItems, setPageItems] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+
+  // Fetch the page items lazily from the rdfManager's store
+  const fetchPage = async (p: number, ps: number) => {
+    try {
+      setLoading(true);
+      // Use rdfManager.getStore().getQuads with graphName string - rdfManager wraps getQuads to accept strings
+      const store = rdfManager.getStore();
+      const all = (store && typeof store.getQuads === 'function')
+        ? (store.getQuads(null, null, null, 'urn:vg:inferred') || [])
+        : [];
+      const serialized = (all || []).map((q: any) => {
+        try {
+          const subj = q.subject && (q.subject as any).value ? String((q.subject as any).value) : String(q.subject || '');
+          const pred = q.predicate && (q.predicate as any).value ? String((q.predicate as any).value) : String(q.predicate || '');
+          const obj = q.object && (q.object as any).value ? String((q.object as any).value) : String(q.object || '');
+          const g = q.graph && (q.graph as any).value ? String((q.graph as any).value) : (q.g ? String(q.g) : undefined);
+          return { subject: subj, predicate: pred, object: obj, graph: g };
+        } catch (_) {
+          return null;
+        }
+      }).filter((x) => x);
+      const totalCount = serialized.length;
+      setTotal(totalCount);
+      const start = (p - 1) * ps;
+      const slice = serialized.slice(start, start + ps);
+      setPageItems(slice);
+    } catch (e) {
+      console.error("Failed to fetch inferred triples page", e);
+      setPageItems([]);
+      setTotal(0);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // load initial page
+    void fetchPage(page, pageSize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize]);
+
+  useEffect(() => {
+    // if total changes and page is out of range, clamp
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    if (page > totalPages) setPage(totalPages);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  const toggleSelect = (idx: number) => {
+    setSelected((s) => ({ ...s, [idx]: !s[idx] }));
+  };
+
+  const promoteSelected = async () => {
+    try {
+      const selectedIndices = Object.keys(selected)
+        .map((k) => parseInt(k, 10))
+        .filter((i) => selected[i]);
+      if (selectedIndices.length === 0) {
+        window.alert("No triples selected for promotion.");
+        return;
+      }
+      if (!window.confirm(`Promote ${selectedIndices.length} inferred triple(s) into urn:vg:data?`)) return;
+
+      const adds: any[] = [];
+      for (const si of selectedIndices) {
+        const q = pageItems[si];
+        if (!q) continue;
+        adds.push({ subject: q.subject, predicate: q.predicate, object: q.object });
+      }
+
+      // Persist into data graph and emit subject updates so canvas remaps
+      await rdfManager.applyBatch({ removes: [], adds }, "urn:vg:data");
+      try { await rdfManager.emitAllSubjects("urn:vg:data"); } catch (_) { /* ignore */ }
+      window.alert(`Promoted ${adds.length} triples into urn:vg:data`);
+      // clear selection
+      setSelected({});
+      // refresh current page to reflect potential changes
+      void fetchPage(page, pageSize);
+    } catch (e) {
+      console.error("Promote failed", e);
+      window.alert("Promotion failed (see console).");
+    }
+  };
+
+  const copyTriple = async (q: any) => {
+    try {
+      const t = `${q.subject} ${q.predicate} ${q.object}`;
+      if (navigator && (navigator as any).clipboard && typeof (navigator as any).clipboard.writeText === "function") {
+        await (navigator as any).clipboard.writeText(t);
+        window.alert("Copied triple to clipboard");
+      } else {
+        window.prompt("Copy the triple below", t);
+      }
+    } catch (e) {
+      console.error("copy failed", e);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <button className="btn" onClick={() => {
+            // select all on current page (local indices)
+            const newSel = { ...selected };
+            pageItems.forEach((_, i) => { newSel[i] = true; });
+            setSelected(newSel);
+          }}>Select page</button>
+          <button className="btn" onClick={() => setSelected({})}>Clear</button>
+          <button className="btn btn-primary" onClick={promoteSelected}>Promote selected</button>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-sm">Page size</label>
+          <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        {loading ? (
+          <div className="text-center py-8 text-muted-foreground">Loading inferred triples...</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Subject</th>
+                <th>Predicate</th>
+                <th>Object</th>
+                <th>Graph</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {pageItems.map((q, i) => {
+                const globalIndex = (page - 1) * pageSize + i;
+                return (
+                  <tr key={globalIndex} className="border-b">
+                    <td>
+                      <input type="checkbox" checked={!!selected[i]} onChange={() => toggleSelect(i)} />
+                    </td>
+                    <td className="font-mono break-all">{q.subject}</td>
+                    <td className="font-mono break-all">{q.predicate}</td>
+                    <td className="font-mono break-all">{q.object}</td>
+                    <td className="text-xs text-muted-foreground">{q.graph}</td>
+                    <td className="text-right">
+                      <button className="btn btn-ghost" onClick={() => copyTriple(q)}>Copy</button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {pageItems.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={6} className="text-center text-muted-foreground py-8">No inferred triples on this page.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between mt-2">
+        <div className="text-sm">Showing page {page} of {totalPages} — {total} triples</div>
+        <div className="flex items-center gap-2">
+          <button className="btn" onClick={() => { setPage((p) => Math.max(1, p-1)); }} disabled={page <= 1}>Prev</button>
+          <button className="btn" onClick={() => { setPage((p) => Math.min(totalPages, p+1)); }} disabled={page >= totalPages}>Next</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 interface ReasoningReportModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -25,7 +215,7 @@ export const ReasoningReportModal = memo(({ open, onOpenChange }: ReasoningRepor
   if (!currentReasoning) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-4xl max-h-[90vh] max-w-[min(90vw,64rem)] overflow-y-auto text-foreground">
+        <DialogContent className="max-w-4xl max-h-[90vh] max-w-[min(90vw,64rem)] overflow-y-auto text-foreground p-6 bg-white rounded-lg shadow-lg">
           <DialogHeader>
             <DialogTitle>Reasoning Report</DialogTitle>
             <DialogDescription>
@@ -38,6 +228,10 @@ export const ReasoningReportModal = memo(({ open, onOpenChange }: ReasoningRepor
   }
 
   const { errors, warnings, inferences, status, duration, timestamp } = currentReasoning;
+
+  // Determine inferred count via authoritative rdfManager (prefer authoritative store)
+  const graphCounts = rdfManager.getGraphCounts();
+  const inferredCount = graphCounts && graphCounts['urn:vg:inferred'] ? graphCounts['urn:vg:inferred'] : 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -153,6 +347,32 @@ export const ReasoningReportModal = memo(({ open, onOpenChange }: ReasoningRepor
                 </CardContent>
               </Card>
             )}
+
+            {/* Quick preview of top warnings/messages so users see issues immediately in Summary */}
+            {(warnings && warnings.length > 0) && (
+              <Card className="border-warning/10 bg-warning/5">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-warning" />
+                    Inference / Validation Messages (preview)
+                    <Badge variant="secondary" className="ml-auto">{warnings.length}</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {warnings.slice(0, 5).map((w, i) => (
+                      <div key={i} className="text-sm">
+                        <div className="font-medium">{w.rule}</div>
+                        <div className="text-xs text-muted-foreground break-words">{w.message}</div>
+                      </div>
+                    ))}
+                    {warnings.length > 5 && (
+                      <div className="text-xs text-muted-foreground">Showing 5 of {warnings.length} messages. See Warnings tab for full list.</div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           <TabsContent value="errors">
@@ -223,30 +443,21 @@ export const ReasoningReportModal = memo(({ open, onOpenChange }: ReasoningRepor
           <TabsContent value="inferences">
             <ScrollArea className="h-[400px]">
               <div className="space-y-3">
-                {inferences.length === 0 ? (
-                  <div className="text-center text-muted-foreground py-8">
-                    No new inferences derived from the knowledge graph.
-                  </div>
-                ) : (
-                  inferences.map((inference, index) => (
-                    <Card key={index} className="border-primary/20">
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm flex items-center gap-2">
-                          <Lightbulb className="w-4 h-4 text-primary" />
-                          <span className="capitalize">{inference.type} Inference</span>
-                          <Badge variant="outline" className="ml-auto">
-                            {Math.round(inference.confidence * 100)}%
-                          </Badge>
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="font-mono text-sm bg-muted p-2 rounded">
-                          {inference.subject} {inference.predicate} {inference.object}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))
-                )}
+                {/* Removed the Inferences (summary) preview card per request; keep inferences tab focused on table */}
+                {/* Inferred triples table (derived from urn:vg:inferred) */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <span>Inferred Triples</span>
+                      <Badge variant="outline" className="ml-auto">
+                        {inferredCount}
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <InferredTriplesTable />
+                  </CardContent>
+                </Card>
               </div>
             </ScrollArea>
           </TabsContent>

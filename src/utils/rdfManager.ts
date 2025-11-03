@@ -610,6 +610,21 @@ export class RDFManager {
 
   private notifyChange(meta?: any) {
     try {
+      // When persisting inferred quads (or performing other internal bulk writes)
+      // we may want to suppress subject-level notifications to avoid re-triggering
+      // mapping/reasoning loops. Callers (for example: the reasoning store) can
+      // set the global flag __VG_REASONING_PERSIST_IN_PROGRESS to true while they
+      // write inferred triples; here we honor that flag and skip invoking subscribers.
+      try {
+        if ((globalThis as any).__VG_REASONING_PERSIST_IN_PROGRESS) {
+          // Update the counter for diagnostics but avoid invoking subscribers.
+          this.changeCounter += 1;
+          return;
+        }
+      } catch (_) {
+        // ignore global flag read failures and proceed with normal notifications
+      }
+
       this.changeCounter += 1;
       for (const cb of Array.from(this.changeSubscribers)) {
         try {
@@ -660,6 +675,17 @@ export class RDFManager {
    */
   public async triggerSubjectUpdate(subjectIris: string[]): Promise<void> {
     try {
+      // If the reasoner is persisting inferred triples, skip emitting subject updates
+      // to avoid creating a feedback loop where reasoning writes -> notifications -> reasoning runs.
+      try {
+        if ((globalThis as any).__VG_REASONING_PERSIST_IN_PROGRESS) {
+          try { console.debug("[VG_DEBUG] triggerSubjectUpdate.skipped_due_to_persist", { requestedCount: Array.isArray(subjectIris) ? subjectIris.length : 0, time: Date.now() }); } catch (_) { /* noop */ }
+          return;
+        }
+      } catch (_) {
+        /* ignore global flag read failures */
+      }
+
       // Special debug marker for triggerSubjectUpdate invocations so we can trace explicit triggers
       try {
         console.debug("[VG_DEBUG_SPECIAL] triggerSubjectUpdate.called", {
@@ -911,6 +937,7 @@ export class RDFManager {
     addedQuads: Quad[],
     prefixes?: Record<string, any>,
     loadId?: string,
+    graphName?: string,
   ): Promise<void> {
     try {
       // Capture raw parsed prefixes for inspection instead of merging them.
@@ -958,8 +985,31 @@ export class RDFManager {
       } catch (_) {
         /* ignore */
       }
-      // Pass the normalized object-shape map to applyParsedNamespaces (new shape)
-      this.applyParsedNamespaces(normalizedPrefixMap);
+      // Only merge parsed namespaces when the incoming load targeted the authoritative data graph (urn:vg:data).
+      // Other named-graph loads (ontologies, inferred, etc.) may contain prefixes that should not be merged.
+      try {
+        if (String(graphName || "").includes("urn:vg:data")) {
+          this.applyParsedNamespaces(normalizedPrefixMap);
+        } else {
+          // Persist raw parsed prefixes for diagnostics but skip merging for non-data graphs.
+          try {
+            (window as any).__VG_RAW_PARSED_PREFIXES =
+              (window as any).__VG_RAW_PARSED_PREFIXES || [];
+            (window as any).__VG_RAW_PARSED_PREFIXES.push({
+              id: loadId || null,
+              raw: prefixes,
+              normalized: normalizedPrefixMap,
+              time: Date.now(),
+              note: "skipped-merge-non-data-graph",
+              graphName: graphName || null,
+            });
+          } catch (_) {
+            /* ignore */
+          }
+        }
+      } catch (_) {
+        /* ignore */
+      }
 
       try {
         if (Array.isArray(addedQuads) && addedQuads.length > 0) {
@@ -1197,9 +1247,42 @@ export class RDFManager {
 
       if (looksLikeXml) {
         // Create a Node-style readable and hand off to rdf-parse which understands RDF/XML and others.
-        const inputStream =
-          (await createNodeReadableFromText(rdfContent)) ||
-          (new Response(rdfContent).body as any);
+        // Prefer a Node-style readable for rdf-parse. createNodeReadableFromText will
+        // return a Node Readable in Node-like environments; if it returns a WHATWG
+        // ReadableStream, convert to a Node Readable when possible (Node 17+ Readable.fromWeb).
+        let inputStream: any = await createNodeReadableFromText(rdfContent);
+        if (!inputStream) {
+          const maybeBody = (new Response(rdfContent).body as any);
+          // If Node supports Readable.fromWeb, convert WHATWG ReadableStream to Node Readable.
+          try {
+            if (maybeBody && typeof maybeBody.getReader === "function") {
+              const _stream = await import("stream").catch(() => null);
+              const Readable = _stream ? (_stream as any).Readable : undefined;
+              if (Readable && typeof (Readable as any).fromWeb === "function") {
+                inputStream = (Readable as any).fromWeb(maybeBody);
+              } else {
+                // fallback to reading whole text and creating a Readable.from([Buffer])
+                const _buf = await import("buffer").catch(() => null);
+                const BufferImpl = _buf ? (_buf as any).Buffer : (globalThis as any).Buffer;
+                if (BufferImpl) {
+                  const _stream2 = await import("stream").catch(() => null);
+                  const Readable2 = _stream2 ? (_stream2 as any).Readable : undefined;
+                  if (Readable2 && typeof (Readable2 as any).from === "function") {
+                    inputStream = (Readable2 as any).from([BufferImpl.from(String(rdfContent))]);
+                  } else {
+                    inputStream = maybeBody;
+                  }
+                } else {
+                  inputStream = maybeBody;
+                }
+              }
+            } else {
+              inputStream = maybeBody;
+            }
+          } catch (_) {
+            inputStream = (new Response(rdfContent).body as any);
+          }
+        }
         // Let rdf-parse infer content-type from provided mimeType or use RDF/XML as a sensible default.
         const quadStream = rdfParser.parse(inputStream, {
           contentType: mimeType || "application/rdf+xml",
@@ -1214,9 +1297,39 @@ export class RDFManager {
       this.parser.parse(rdfContent, async (error, quadItem, prefixes) => {
         if (error) {
           // Attempt rdf-parse fallback once for non-turtle inputs provided as text.
-          const inputStream =
-            (await createNodeReadableFromText(rdfContent)) ||
-            (new Response(rdfContent).body as any);
+          // Prefer Node-style readable where possible; convert WHATWG streams to Node streams
+          let inputStream: any = await createNodeReadableFromText(rdfContent);
+          if (!inputStream) {
+            const maybeBody = (new Response(rdfContent).body as any);
+            try {
+              if (maybeBody && typeof maybeBody.getReader === "function") {
+                const _stream = await import("stream").catch(() => null);
+                const Readable = _stream ? (_stream as any).Readable : undefined;
+                if (Readable && typeof (Readable as any).fromWeb === "function") {
+                  inputStream = (Readable as any).fromWeb(maybeBody);
+                } else {
+                  const _buf = await import("buffer").catch(() => null);
+                  const BufferImpl = _buf ? (_buf as any).Buffer : (globalThis as any).Buffer;
+                  if (BufferImpl) {
+                    const _stream2 = await import("stream").catch(() => null);
+                    const Readable2 = _stream2 ? (_stream2 as any).Readable : undefined;
+                    if (Readable2 && typeof (Readable2 as any).from === "function") {
+                      inputStream = (Readable2 as any).from([BufferImpl.from(String(rdfContent))]);
+                    } else {
+                      inputStream = maybeBody;
+                    }
+                  } else {
+                    inputStream = maybeBody;
+                  }
+                }
+              } else {
+                inputStream = maybeBody;
+              }
+            } catch (_) {
+              inputStream = (new Response(rdfContent).body as any);
+            }
+          }
+
           try {
             const quadStream = rdfParser.parse(inputStream, {
               contentType: mimeType || undefined,
@@ -1283,7 +1396,7 @@ export class RDFManager {
           }
           (async () => {
             try {
-              await (this as any).finalizeLoad(addedQuads, prefixes, _vg_loadId);
+              await (this as any).finalizeLoad(addedQuads, prefixes, _vg_loadId, graphName);
             } catch (e) {
               try {
                 rejectFn(e);
@@ -1348,11 +1461,29 @@ export class RDFManager {
     public async loadRDFFromUrl(
       url: string,
       graphName?: string,
-      options?: { timeoutMs?: number },
+      options?: { timeoutMs?: number; useWorker?: boolean },
     ): Promise<void> {
       if (!url) throw new Error("loadRDFFromUrl requires a url");
       // Use a long default timeout for large ontologies (configurable per-call)
       const timeoutMs = options?.timeoutMs ?? 120000;
+      // Allow callers/tests to explicitly disable worker usage (main-thread parse fallback).
+      const useWorker = options && typeof options.useWorker === "boolean" ? !!options.useWorker : true;
+
+      // If caller requests no worker, perform a main-thread fetch + parse path.
+      if (!useWorker) {
+        try {
+          const fetcher = typeof fetch === "function" ? fetch : undefined;
+          if (!fetcher) throw new Error("fetch not available for main-thread loadRDFFromUrl");
+          const resp = await fetcher(url);
+          if (!resp || typeof resp.text !== "function") throw new Error("fetch failed in loadRDFFromUrl main-thread path");
+          const txt = await resp.text();
+          await this.loadRDFIntoGraph(txt, graphName, undefined, url);
+          return;
+        } catch (err) {
+          // Surface fetch/parse errors to caller
+          throw err;
+        }
+      }
 
     console.debug("[VG_RDF] loadRDFFromUrl (worker-only) start", {
       url,
@@ -1365,8 +1496,45 @@ export class RDFManager {
     const collectedPrefixes: Record<string, any> = {};
     const targetGraph = namedNode(String(graphName || "urn:vg:data"));
 
-    const workerUrl = new URL("../workers/parseRdf.worker.ts", import.meta.url);
-    const w = new Worker(workerUrl as any, { type: "module" });
+    // Prefer worker parsing, but fall back to a main-thread fetch+parse when Worker is unavailable
+    // (e.g. Node test environments). This keeps tests deterministic without a browser worker.
+    let w: any = null;
+    if (typeof Worker === "undefined" || typeof (globalThis as any).Worker === "undefined") {
+      try {
+        const fetcher = typeof fetch === "function" ? fetch : undefined;
+        if (!fetcher) {
+          throw new Error("Worker unavailable and fetch is not defined for main-thread fallback");
+        }
+        const resp = await fetcher(url);
+        if (!resp || typeof resp.text !== "function") {
+          throw new Error("Failed to fetch RDF for main-thread fallback");
+        }
+        const txt = await resp.text();
+
+        // Try to create a Node Readable and parse with rdfParser (preferred for rdf-xml and node parsers)
+        try {
+          const { Readable } = await import("stream");
+          const _buf = await import("buffer");
+          const BufferImpl = (_buf && _buf.Buffer) || (globalThis as any).Buffer;
+          if (!Readable || !BufferImpl) throw new Error("Node stream/buffer not available");
+
+          const rs = Readable.from([BufferImpl.from(String(txt))]);
+          const quadStream = rdfParser.parse(rs as any, { path: url, contentType: undefined });
+          await this.loadQuadsToDiagram(quadStream, graphName || "urn:vg:data");
+          return;
+        } catch (nodeStreamErr) {
+          // As a safe fallback, use the existing string-based loader which detects format and parses on main thread.
+          await this.loadRDFIntoGraph(txt, graphName, undefined, url);
+          return;
+        }
+      } catch (err) {
+        // If fallback fails, surface the error to callers.
+        throw err;
+      }
+    } else {
+      const workerUrl = new URL("../workers/parseRdf.worker.ts", import.meta.url);
+      w = new Worker(workerUrl as any, { type: "module" });
+    }
 
     return new Promise<void>((resolve, reject) => {
       const tH = setTimeout(() => {
@@ -1449,14 +1617,14 @@ export class RDFManager {
           } catch (_) { /* ignore */ }
           try {
             (async () => {
-              try {
-                await (this as any).finalizeLoad(addedQuads, collectedPrefixes || {}, loadId);
-              } catch (e) {
-                try { console.error("[VG_RDF] worker finalize failed", e); } catch (_) { /* ignore */ }
-                reject(e);
-                return;
-              }
-              resolve();
+            try {
+            await (this as any).finalizeLoad(addedQuads, collectedPrefixes || {}, loadId, graphName);
+          } catch (e) {
+            try { console.error("[VG_RDF] worker finalize failed", e); } catch (_) { /* ignore */ }
+            reject(e);
+            return;
+          }
+          resolve();
             })();
           } catch (e) {
             reject(e);
@@ -3195,8 +3363,8 @@ export class RDFManager {
         try {
           cleanup();
           // Finalize via shared helper (applies prefixes, runs reconcile, notifies, schedules flush)
-          try {
-            await (this as any).finalizeLoad(addedQuads, prefixes);
+            try {
+            await (this as any).finalizeLoad(addedQuads, prefixes, undefined, graphName);
           } catch (e) {
             try {
               fallback("rdf.loadQuadsToDiagram.reconcile_failed", {
