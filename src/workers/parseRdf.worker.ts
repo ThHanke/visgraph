@@ -77,6 +77,33 @@ async function parseTextAndEmit(id: string, text: string, mime?: string, baseIRI
   // Announce worker parse start / heartbeat so main thread watchdogs see activity quickly.
   (self as any).postMessage({ type: "ready", id });
 
+  // Quick guard: if caller already indicates HTML (or the supplied text looks like HTML)
+  // bail out early with a clear error so the main thread can handle the failure and
+  // avoid confusing rdf-parse/stream errors that arise when parsing HTML.
+  try {
+    const mimeHint = typeof mime === "string" && mime ? String(mime).split(";")[0].trim().toLowerCase() : "";
+    const snippet = typeof text === "string" ? String(text).slice(0, 512) : "";
+    const looksLikeHtmlBySniff =
+      /^\s*<!doctype\s+/i.test(snippet) ||
+      /^\s*<html\b/i.test(snippet) ||
+      /^\s*<\!DOCTYPE html/i.test(snippet) ||
+      /^\s*<script\b/i.test(snippet);
+    const looksLikeHtmlByMime = /^text\/html/i.test(mimeHint) || mimeHint === "application/xhtml+xml";
+
+    if (looksLikeHtmlByMime || looksLikeHtmlBySniff) {
+      try {
+        (self as any).postMessage({
+          type: "error",
+          id,
+          message: "Worker: content appears to be HTML; refusing to parse.",
+        });
+      } catch (_) { /* ignore postMessage failures */ }
+      return;
+    }
+  } catch (_) {
+    /* ignore guard failures and continue to heartbeat to remain visible */
+  }
+
   // Start a lightweight heartbeat so the main thread can observe liveliness during long parses.
   let __vg_hb_interval: any = null;
   __vg_hb_interval = setInterval(() => {
@@ -133,8 +160,124 @@ async function parseTextAndEmit(id: string, text: string, mime?: string, baseIRI
         if (mimeToUse) opts.contentType = mimeToUse;
         if (typeof baseIRI === "string" && baseIRI) opts.path = baseIRI;
 
-        const quadStream = (rdfParser as any).parse(input, opts);
+        // Ensure we always hand rdf-parse a Node-style Readable (emitter-style with .on)
+        // Some environments provide WHATWG ReadableStream (getReader) or a plain Buffer.
+        // Wrap those into a minimal Node-emitter-compatible shim so Comunica/rdf-parse
+        // (which expects action.data.on) works reliably in the worker.
+        function toNodeReadable(candidate: any) {
+          // Already a Node-style emitter (has .on) — pass through
+          if (candidate && typeof candidate.on === "function") return candidate;
+
+          // Buffer or ArrayBuffer/Uint8Array -> emit single data + end
+          try {
+            if (candidate && (candidate instanceof ArrayBuffer || ArrayBuffer.isView(candidate) || (candidate && candidate.constructor && candidate.constructor.name === 'Buffer'))) {
+              const buf = (candidate instanceof ArrayBuffer) ? new Uint8Array(candidate) : (ArrayBuffer.isView(candidate) ? new Uint8Array((candidate as any).buffer || candidate) : candidate);
+              const listeners: Record<string, ((...args: any[]) => void)[]> = { data: [], end: [], error: [] };
+              const emu: any = {
+                on(event: string, cb: (...args: any[]) => void) {
+                  if (!listeners[event]) listeners[event] = [];
+                  listeners[event].push(cb);
+                  return this;
+                },
+                addListener(event: string, cb: (...args: any[]) => void) { return this.on(event, cb); },
+                removeListener(event: string, cb: (...args: any[]) => void) {
+                  if (!listeners[event]) return this;
+                  const i = listeners[event].indexOf(cb);
+                  if (i >= 0) listeners[event].splice(i, 1);
+                  return this;
+                },
+                pause() { /* noop */ },
+                resume() { /* noop */ },
+                pipe() { return this; }
+              };
+              // Emit asynchronously so consumers can attach handlers
+              setTimeout(() => {
+                const ds = listeners['data'] || [];
+                for (const cb of ds.slice()) { try { cb(buf); } catch (_) { /* noop */ } }
+                const es = listeners['end'] || [];
+                for (const cb of es.slice()) { try { cb(); } catch (_) { /* noop */ } }
+              }, 0);
+              return emu;
+            }
+          } catch (_) { /* fall through */ }
+
+          // WHATWG ReadableStream -> reader-based emulation
+          try {
+            if (candidate && typeof candidate.getReader === "function") {
+              const readersListeners: Record<string, ((...args: any[]) => void)[]> = { data: [], end: [], error: [] };
+              const emu: any = {
+                on(event: string, cb: (...args: any[]) => void) {
+                  if (!readersListeners[event]) readersListeners[event] = [];
+                  readersListeners[event].push(cb);
+                  return this;
+                },
+                addListener(event: string, cb: (...args: any[]) => void) { return this.on(event, cb); },
+                removeListener(event: string, cb: (...args: any[]) => void) {
+                  if (!readersListeners[event]) return this;
+                  const i = readersListeners[event].indexOf(cb);
+                  if (i >= 0) readersListeners[event].splice(i, 1);
+                  return this;
+                },
+                pause() { /* noop */ },
+                resume() { /* noop */ },
+                pipe() { return this; }
+              };
+              (async () => {
+                try {
+                  const reader = (candidate as ReadableStream<Uint8Array>).getReader();
+                  while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    const ds = readersListeners['data'] || [];
+                    for (const cb of ds.slice()) { try { cb(value); } catch (_) { /* noop */ } }
+                  }
+                  const es = readersListeners['end'] || [];
+                  for (const cb of es.slice()) { try { cb(); } catch (_) { /* noop */ } }
+                } catch (err) {
+                  const ers = readersListeners['error'] || [];
+                  for (const cb of ers.slice()) { try { cb(err); } catch (_) { /* noop */ } }
+                }
+              })();
+              return emu;
+            }
+          } catch (_) { /* fall through */ }
+
+          // Fallback: if candidate is a Response-like with .body (WHATWG) try to use getReader
+          try {
+            if (candidate && candidate.body && typeof candidate.body.getReader === "function") {
+              return toNodeReadable(candidate.body);
+            }
+          } catch (_) { /* ignore */ }
+
+          // Last resort: create a shim that emits an empty end
+          return {
+            on() { return this; },
+            addListener() { return this; },
+            removeListener() { return this; },
+            pause() { /* noop */ },
+            resume() { /* noop */ },
+            pipe() { return this; }
+          };
+        }
+
+        const nodeInput = toNodeReadable(input);
+
+        // Debug: report the shape of the input handed to rdf-parse so we can confirm
+        // whether action.data will be an emitter in Comunica/rdf-parse.
+        try {
+          (self as any).postMessage({
+            type: "debug",
+            id,
+            phase: "pre-parse.input.shape",
+            hasOn: !!(nodeInput && typeof (nodeInput as any).on === "function"),
+            hasGetReader: !!(nodeInput && typeof (nodeInput as any).getReader === "function"),
+            nodeInputType: Object.prototype.toString.call(nodeInput).slice(8, -1),
+          });
+        } catch (_) { /* noop */ }
+
+        const quadStream = (rdfParser as any).parse(nodeInput, opts);
         if (!quadStream || typeof quadStream.on !== "function") {
+          (self as any).postMessage({ type: "error", id, message: "rdf-parse returned non-stream value (post-parse check)" });
           throw new Error("rdf-parse returned non-stream value");
         }
 

@@ -132,7 +132,21 @@ try {
 async function createNodeReadableFromText(
   content: string | ArrayBuffer | Uint8Array,
 ): Promise<any | undefined> {
-  {
+  // Safety: this helper only provides a Node-style Readable in Node-like runtimes.
+  // In browser environments (window available) we must NOT import Node builtins
+  // dynamically since that causes Vite to attempt to optimize polyfills into
+  // the client bundle (stream/browser shims) which can fail in dev and in preview.
+  // Returning undefined causes callers to fall back to WHATWG Response.body.
+  try {
+    if (typeof window !== "undefined") {
+      return undefined;
+    }
+  } catch (_) {
+    // If any unexpected error, fall back to undefined to avoid importing node-only modules.
+    return undefined;
+  }
+
+  try {
     const _streamMod = await import("stream").catch(
       () => ({ Readable: undefined }) as any,
     );
@@ -150,15 +164,9 @@ async function createNodeReadableFromText(
       typeof (Readable as any).from === "function" &&
       typeof BufferImpl !== "undefined"
     ) {
-      try {
-        const chunk =
-          typeof content === "string"
-            ? BufferImpl.from(content)
-            : (content as any);
-        return (Readable as any).from([chunk]);
-      } catch (_) {
-        // fall through to manual construction
-      }
+      const chunk =
+        typeof content === "string" ? BufferImpl.from(content) : (content as any);
+      return (Readable as any).from([chunk]);
     }
 
     // Manual construction: create a Readable, push the content, then push EOF.
@@ -167,21 +175,16 @@ async function createNodeReadableFromText(
       typeof Readable === "function" &&
       typeof BufferImpl !== "undefined"
     ) {
-      try {
-        const rs = new Readable();
-        rs.push(
-          typeof content === "string"
-            ? BufferImpl.from(content)
-            : (content as any),
-        );
-        rs.push(null);
-        return rs as any;
-      } catch (_) {
-        // fall through to undefined
-      }
+      const rs = new Readable();
+      rs.push(typeof content === "string" ? BufferImpl.from(content) : (content as any));
+      rs.push(null);
+      return rs as any;
     }
 
     // Not available in this environment
+    return undefined;
+  } catch (_) {
+    // Any failure importing node modules -> fall back to undefined (use browser streams)
     return undefined;
   }
 }
@@ -189,6 +192,7 @@ import { useAppConfigStore } from "../stores/appConfigStore";
 import { useOntologyStore } from "../stores/ontologyStore";
 import { WELL_KNOWN } from "../utils/wellKnownOntologies";
 import { debugLog, debug, fallback, incr } from "../utils/startupDebug";
+import { text } from "stream/consumers";
 
 /**
  * Manages RDF data with proper store operations
@@ -358,11 +362,8 @@ export class RDFManager {
           } catch (_) {
             void 0;
           }
-          // Also consider any ontology entries whose namespaces include this prefix and add their ontology keys/aliases
-          try {
-            const ontMap = (WELL_KNOWN && (WELL_KNOWN as any).ontologies) || {};
+          const ontMap = (WELL_KNOWN && (WELL_KNOWN as any).ontologies) || {};
             for (const [ontUrl, meta] of Object.entries(ontMap || {})) {
-              try {
                 const m = meta as any;
                 if (m && m.namespaces && m.namespaces[p]) {
                   uriCandidates.add(ontUrl);
@@ -370,13 +371,9 @@ export class RDFManager {
                     m.aliases.forEach((a: any) => uriCandidates.add(String(a)));
                   }
                 }
-              } catch (_) {
-                void 0;
-              }
+
             }
-          } catch (_) {
-            void 0;
-          }
+
         }
       });
 
@@ -787,7 +784,7 @@ export class RDFManager {
           // Use undefined to signal a full rebuild only when there are no per-subject snapshots.
           const reconcileArg = _storeSnapshots;
 
-          
+
           // After successful reconcile (or if none needed), clear buffered deltas and emit subscribers with authoritative quads.
           try {
             for (const s of subjects) {
@@ -1380,160 +1377,33 @@ export class RDFManager {
       timeoutMs,
     });
 
-    // Attempt to perform the network reading in a background worker (fetch-only).
-    // If worker creation fails or streaming not available, fall back to doFetchImpl.
-    let res: any = null;
-    let workerInst: Worker | null = null;
+    // Use centralized worker-only fetch implementation (doFetch). This replaces the previous
+    // inline worker orchestration and ensures a single, consistent handshake and debug path.
+    let res: any;
     try {
-      let workerSupported = false;
+      res = await doFetch(url, timeoutMs);
+    } catch (errDoFetch) {
+      try { console.warn("[VG_RDF] doFetch failed, falling back to window.fetch", String(errDoFetch)); } catch (_) { /* noop */ }
+      const c = new AbortController();
+      const id = setTimeout(() => c.abort(), timeoutMs);
       try {
-        // Worker support check (try constructing URL; may throw in some environments)
-        // Use Vite/ESM worker URL pattern
-        const workerUrl = new URL("../workers/fetchOnly.worker.ts", import.meta.url);
-        try {
-          workerInst = new Worker(workerUrl as any, { type: "module" });
-          workerSupported = true;
-        } catch (_) {
-          workerInst = null;
-          workerSupported = false;
-        }
-      } catch (_) {
-        workerInst = null;
-        workerSupported = false;
-      }
-
-      if (workerSupported && workerInst) {
-        // Build a ReadableStream that is fed by worker messages
-        const id = `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`;
-        let startResolved = false;
-        const startInfo: { contentType?: string | null; status?: number; statusText?: string } = {};
-        const pendingChunks: ArrayBuffer[] = [];
-        let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
-        const stream = new ReadableStream<Uint8Array>({
-          start(controller) {
-            controllerRef = controller;
-            workerInst!.onmessage = (ev: MessageEvent) => {
-              const m = ev.data || {};
-              if (!m || m.id !== id) return;
-              try {
-                if (m.type === "start") {
-                  // Mutate the existing startInfo object so the Response headers shim can read updated values.
-                  try {
-                    (startInfo as any).contentType = m.contentType || null;
-                    (startInfo as any).status = m.status;
-                    (startInfo as any).statusText = m.statusText;
-                  } catch (_) {
-                    // ensure we don't throw from the handler
-                    (startInfo as any).contentType = (startInfo as any).contentType || null;
-                  }
-                  startResolved = true;
-                  // Flush any pending chunks that arrived before start was processed
-                  while (pendingChunks.length > 0) {
-                    try {
-                      const b = pendingChunks.shift()!;
-                      controller.enqueue(new Uint8Array(b));
-                    } catch (_) { /* ignore per-chunk */ }
-                  }
-                } else if (m.type === "chunk") {
-                  try {
-                    const buf = m.buffer as ArrayBuffer;
-                    if (!startResolved) {
-                      pendingChunks.push(buf);
-                    } else {
-                      controller.enqueue(new Uint8Array(buf));
-                    }
-                  } catch (e) {
-                    try { controller.error(e); } catch (_) {/* noop */}
-                  }
-                } else if (m.type === "end") {
-                  try { controller.close(); } catch (_) {/* noop */}
-                } else if (m.type === "error") {
-                  try { controller.error(new Error(String(m.message || "worker fetch error"))); } catch (_) {/* noop */}
-                }
-              } catch (_) {
-                try { controller.error(new Error("worker message handling failed")); } catch (_) {/* noop */}
-              }
-            };
-            // Kick off fetch in worker (fire-and-forget; messages will arrive)
-            try {
-              // Provide a conservative Accept header preferring Turtle so servers
-              // that rely on content negotiation return an RDF serialization.
-              workerInst!.postMessage({
-                type: "fetchUrl",
-                id,
-                url,
-                timeoutMs,
-                headers: { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" },
-              });
-            } catch (e) {
-              try { controller.error(e); } catch (_) {/* noop */}
-            }
-          },
-          cancel() {
-            try {
-              if (workerInst) {
-                try { workerInst.terminate(); } catch (_) {/* noop */}
-                workerInst = null;
-              }
-            } catch (_) {/* noop */}
-          },
+        res = await fetch(url, {
+          signal: c.signal,
+          headers: { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" },
         });
-
-        // Construct a Response-like object from the stream so the existing parser paths can consume it.
-        // Note: headers may be absent — parser will attempt detection heuristics.
-        res = new Response(stream);
-        // Attach a small shim so headers.get('content-type') reads startInfo when available.
-        try {
-          const origHeadersGet = (res as Response).headers.get.bind((res as Response).headers);
-          Object.defineProperty((res as any), "__vg_start_info", { value: startInfo, writable: true });
-          const shimHeaders = {
-            get(k: string) {
-              try {
-                if (k && k.toLowerCase() === "content-type") {
-                  const s = (res as any).__vg_start_info && (res as any).__vg_start_info.contentType;
-                  if (s) return s;
-                }
-              } catch (_) {/* noop */}
-              try { return origHeadersGet(k); } catch (_) { return null; }
-            },
-          };
-          (res as any).headers = shimHeaders;
-        } catch (_) {
-          // non-critical if shim fails
-        }
+      } finally {
+        clearTimeout(id);
       }
-    } catch (err) {
-      try {
-        if (workerInst) {
-          try { workerInst.terminate(); } catch (_) {/* noop */}
-          workerInst = null;
-        }
-      } catch (_) {/* noop */}
-      res = null;
     }
 
-    // Fallback: worker not available or stream creation failed — use normal fetch wrapper
-    if (!res) {
-      const fallbackRes = await doFetchImpl(url, timeoutMs, { minimal: false });
-      res = fallbackRes;
-    }
-
-    if (!res) throw new Error(`No response for ${url}`);
-    try {
-      if (!res.ok) {
-        console.warn(`[VG_RDF] HTTP ${res.status} ${res.statusText} for ${url}`);
-      }
-    } catch (_) {
-      // ignore
-    }
     const contentTypeHeader =
       (res.headers && res.headers.get
         ? res.headers.get("content-type")
         : null) || null;
-    console.debug("[VG_RDF] fetched", {
+    console.debug("[VG_RDF] fetch result", {
       url,
       status: res.status,
-      contentType: contentTypeHeader,
+      res: res,
     });
 
     // Normalise to text first to avoid streaming differences between Node and browsers.
@@ -1579,35 +1449,91 @@ export class RDFManager {
 
     const prefersTurtle = detectedMime === "text/turtle" || detectedMime === "text/n3";
 
+    // Detect HTML early (content-type header or simple leading-sniff) and fail fast.
+    // This prevents HTML (e.g. GitHub wrapper pages or error pages) from being fed into rdf-parse
+    // or the parser worker which leads to confusing stream/IRI errors.
+    const looksLikeHtmlByContentType =
+      typeof contentTypeHeader === "string" && /text\/html/i.test(contentTypeHeader);
+    const leadingSnippet = typeof txt === "string" ? txt.slice(0, 512) : "";
+    const looksLikeHtmlBySniff =
+      /^\s*<!doctype\s+/i.test(leadingSnippet) ||
+      /^\s*<html\b/i.test(leadingSnippet) ||
+      /^\s*<\!DOCTYPE html/i.test(leadingSnippet) ||
+      /^\s*<script\b/i.test(leadingSnippet);
+
+    if (looksLikeHtmlByContentType || looksLikeHtmlBySniff) {
+      try {
+        console.warn("[VG_RDF] fetched content appears to be HTML; aborting parse", {
+          url,
+          contentType: contentTypeHeader,
+        });
+      } catch (_) { /* ignore logging failures */ }
+      throw new Error(
+        `Fetched content for ${url} appears to be HTML (content-type: ${contentTypeHeader || "unknown"}). Not an RDF payload.`,
+      );
+    }
+
     // If payload is large (heuristic) or caller explicitly requested worker use, use parser-in-worker.
     // This offloads parsing CPU to a worker and streams parsed quad batches back to the main thread.
     // Worker path uses src/workers/parseRdf.worker.ts and a simple ACK-based backpressure protocol.
-    const workerThreshold = 200000; // characters
-    const useWorker =
-      (options && (options as any).useWorker) ||
-      (typeof txt === "string" && txt.length > workerThreshold);
-
-    if (!prefersTurtle && useWorker) {
+    console.log(txt)
+    if (!prefersTurtle) {
       try {
         console.info("[VG_RDF] using parser worker for large/complex payload", { url, len: txt.length });
         const workerUrl = new URL("../workers/parseRdf.worker.ts", import.meta.url);
         let w: Worker | null = null;
         try {
           // Instrument: log worker URL attempt so we can diagnose worker resolution issues.
-          try { console.debug("[VG_RDF] spawnWorker.attempt", { workerUrl: String(workerUrl) }); } catch (_) {/* noop */}
-          w = new Worker(workerUrl as any, { type: "module" });
-          try { console.debug("[VG_RDF] spawnWorker.success", { workerUrl: String(workerUrl) }); } catch (_) {/* noop */}
-          // Attach an error handler so uncaught worker errors surface in the main thread console immediately.
+          try { console.debug("[VG_RDF] spawnWorker.attempt", { workerUrl: String(workerUrl) }); } catch (_) {/* noop */ }
+          try { console.debug("[VG_RDF] spawnWorker.workerUrl", String(workerUrl)); } catch (_) { /* noop */ }
+
+          // Construct the worker and capture synchronous throws separately so we can see exact failures.
           try {
-            (w as any).onerror = (ev: any) => {
-              try { console.debug("[VG_RDF] worker.onerror", ev && (ev.message || ev)); } catch (_) {/* noop */}
-            };
-            (w as any).onmessageerror = (ev: any) => {
-              try { console.debug("[VG_RDF] worker.onmessageerror", ev && ev); } catch (_) {/* noop */}
-            };
-          } catch (_) {/* noop */}
+            w = new Worker(workerUrl as any, { type: "module" });
+            try { console.debug("[VG_RDF] spawnWorker.success", { workerUrl: String(workerUrl) }); } catch (_) { /* noop */ }
+          } catch (syncErr) {
+            try { console.error("[VG_RDF] spawnWorker.syncThrow", String(syncErr), { workerUrl: String(workerUrl) }); } catch (_) { /* noop */ }
+            w = null;
+          }
+
+          // If we have a worker instance, attach verbose handlers to capture any errors/messages.
+          if (w) {
+            try {
+              (w as any).onerror = (ev: any) => {
+                try {
+                  const msg = ev && (ev.message || (ev.error && ev.error.message)) ? (ev.message || (ev.error && ev.error.message)) : undefined;
+                  const filename = ev && (ev.filename || (ev.error && ev.error.fileName)) ? (ev.filename || (ev.error && ev.error.fileName)) : undefined;
+                  const lineno = ev && (ev.lineno || (ev.error && ev.error.lineNumber)) ? (ev.lineno || (ev.error && ev.error.lineNumber)) : undefined;
+                  const colno = ev && (ev.colno || (ev.error && ev.error.columnNumber)) ? (ev.colno || (ev.error && ev.error.columnNumber)) : undefined;
+                  const stack = ev && ev.error && ev.error.stack ? ev.error.stack : undefined;
+                  console.error("[VG_RDF] worker.onerror", { message: msg, file: filename, line: lineno, col: colno, stack, event: ev });
+                } catch (_) {
+                  try { console.error("[VG_RDF] worker.onerror (fallback)", ev); } catch (_) { /* noop */ }
+                }
+              };
+            } catch (_) { /* noop */ }
+
+            try {
+              (w as any).onmessageerror = (ev: any) => {
+                try { console.error("[VG_RDF] worker.onmessageerror", ev); } catch (_) { /* noop */ }
+              };
+            } catch (_) { /* noop */ }
+
+            try {
+              (w as any).onmessage = (ev: MessageEvent) => {
+                const m = ev && ev.data ? ev.data : {};
+                try {
+                  // Surface any worker-posted error objects explicitly
+                  if (m && m.type === "error") {
+                    try { console.error("[VG_RDF] worker.postedError", m); } catch (_) { /* noop */ }
+                  }
+                  try { console.debug("[VG_RDF] worker.onmessage", { type: m && m.type, id: m && m.id, seq: m && (m as any).seq }); } catch (_) { /* noop */ }
+                } catch (_) { /* noop */ }
+              };
+            } catch (_) { /* noop */ }
+          }
         } catch (errWorker) {
-          try { console.debug("[VG_RDF] spawnWorker.failed", { error: String(errWorker), workerUrl: String(workerUrl) }); } catch (_) {/* noop */}
+          try { console.debug("[VG_RDF] spawnWorker.failed", { error: String(errWorker), workerUrl: String(workerUrl) }); } catch (_) {/* noop */ }
           w = null;
         }
         if (!w) {
@@ -1747,15 +1673,21 @@ export class RDFManager {
                 }
               };
 
-              // Start worker parsing (send text to parse)
-              try {
-                // Mark parsing as in-progress so subject-level notifications are deferred
-                try { (this as any).parsingInProgress = true; } catch (_) { /* ignore */ }
-                w.postMessage({ type: "parseText", id: loadId, text: txt, mime: detectedMime });
-              } catch (errPost) {
-                try { reject(errPost); } catch (_) {/* noop */}
-                cleanupWorker();
-              }
+                // Start worker parsing (send text to parse)
+                try {
+                  // Mark parsing as in-progress so subject-level notifications are deferred
+                  try { (this as any).parsingInProgress = true; } catch (_) { /* ignore */ }
+                  const parseMessage: any = { type: "parseText", id: loadId, text: txt, baseIRI: url };
+                  if (typeof detectedMime === "string" && !/^text\/plain/i.test(String(detectedMime))) {
+                    parseMessage.mime = detectedMime;
+                  }
+                  // Also include filename hint if present (url may contain a path/filename)
+                  parseMessage.filename = url;
+                  w.postMessage(parseMessage);
+                } catch (errPost) {
+                  try { reject(errPost); } catch (_) {/* noop */}
+                  cleanupWorker();
+                }
             } catch (outerErr) {
               try { reject(outerErr); } catch (_) {/* noop */}
               cleanupWorker();
@@ -1776,7 +1708,7 @@ export class RDFManager {
         console.info("[VG_RDF] parser-worker orchestration failed, fallback to main-thread", { error: String(err).slice(0,200) });
       }
     }
-
+    console.log(txt.length)
     if (prefersTurtle) {
       try {
         console.info(

@@ -6,7 +6,6 @@ import tailwind from "@tailwindcss/vite";
 import path from "path";
 import fs from "fs";
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
-import commonjs from '@rollup/plugin-commonjs'
 
 // Vite dev server proxy helper:
 // We expose a small dev-only endpoint at /__external?url=<encoded-url>
@@ -51,16 +50,7 @@ export default defineConfig(({ mode }) => ({
       include: ['process', 'stream', 'buffer'],
       globals: { global: true, process: true, Buffer: true },
     }),
-    // Handle CJS modules required by some parser/runtime packages when bundling workers
-    commonjs(),
   ],
-
-  // Pre-bundle rdf-parse and core Comunica pieces so worker build resolves them reliably.
-  // Add additional entries here if runtime errors mention missing modules.
-  optimizeDeps: {
-    include: ['rdf-parse', '@comunica/core'],
-  },
-
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -73,7 +63,88 @@ export default defineConfig(({ mode }) => ({
       buffer: 'buffer',
     },
   },
+
+  // Ensure Vite pre-bundles heavy RDF & stream-related dependencies so the dev server
+  // does not attempt to fetch dynamic /node_modules/.vite/deps/* assets at runtime.
+  // This reduces the chance of runtime 504 / corrupted responses for polyfills.
+  optimizeDeps: {
+    include: [
+      "rdf-parse",
+      "rdf-serialize",
+      "n3",
+      "rdfxml-streaming-parser",
+      "readable-stream-patched",
+      "streamify-string"
+    ]
+  },
+
   base: process.env.NODE_ENV === 'production' ? '/visgraph/' : '/',
+
+  // Ensure worker assets emitted with .js extension so servers serve them with correct JS MIME type.
+  // We rewrite emitted filenames during the Rollup generateBundle phase to replace .ts suffixes with .js.
+  build: {
+    rollupOptions: {
+      plugins: [
+        {
+          name: 'rename-ts-workers',
+          generateBundle(_options, bundle) {
+            // First pass: rename .ts entries to .js and record a mapping of old -> new names.
+            const renameMap = new Map();
+            for (const fileName of Object.keys(bundle)) {
+              if (fileName.endsWith('.ts')) {
+                const chunk = bundle[fileName];
+                const newName = fileName.replace(/\.ts$/, '.js');
+                // Ensure we don't collide with an existing entry
+                if (!bundle[newName]) {
+                  // Preserve the emitted chunk under a new file name
+                  // @ts-ignore - mutating bundle in generateBundle hook
+                  bundle[newName] = { ...chunk, fileName: newName };
+                }
+                renameMap.set(fileName, newName);
+                // Delete the original .ts entry
+                delete bundle[fileName];
+              }
+            }
+            // Second pass: update internal references in other chunks/assets so runtime
+            // code points to the renamed .js files (e.g. Worker URLs built from import.meta.url).
+            if (renameMap.size > 0) {
+              for (const [origName, newName] of renameMap.entries()) {
+                for (const otherName of Object.keys(bundle)) {
+                  const entry = bundle[otherName];
+                  // Update chunk JS code
+                  if (entry && entry.type === 'chunk' && typeof entry.code === 'string') {
+                    if (entry.code.includes(origName)) {
+                      entry.code = entry.code.split(origName).join(newName);
+                    }
+                  }
+                  // Update asset sources (e.g., injected HTML or CSS) if needed
+                  if (entry && entry.type === 'asset' && typeof entry.source === 'string') {
+                    if (entry.source.includes(origName)) {
+                      entry.source = entry.source.split(origName).join(newName);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+
+  // Preview server middleware: ensure .ts assets are served with JS MIME type
+  // so worker files built with .ts extension load correctly in the browser preview.
+  configurePreviewServer: (server: any) => {
+    server.middlewares.use((req: IncomingMessage & { url?: string }, res: ServerResponse, next: (err?: unknown) => void) => {
+      try {
+        if (req.url && req.url.endsWith('.ts')) {
+          res.setHeader('Content-Type', 'application/javascript');
+        }
+      } catch (e) { /* noop */ }
+      return next();
+    });
+  },
+
   // Development-only server hook to proxy arbitrary external URLs and serve a dev demo TTL.
   // The browser should call /__external?url=<ENCODED_URL> for proxied fetches.
   // Additionally, a dev-only endpoint /__vg_debug_ttl returns a small hard-coded Turtle
@@ -93,6 +164,17 @@ export default defineConfig(({ mode }) => ({
 
       :Caliper a iof-mat:MeasurementDevice .
     `;
+
+    // Ensure .ts assets are served with JS MIME type (fix worker MIME issue in preview)
+    server.middlewares.use((req: IncomingMessage & { url?: string }, res: ServerResponse, next: (err?: unknown) => void) => {
+      try {
+        if (req.url && req.url.endsWith('.ts')) {
+          // Some servers map .ts to non-JS MIME types; workers must be served as JS.
+          res.setHeader('Content-Type', 'application/javascript');
+        }
+      } catch (e) { /* noop */ }
+      return next();
+    });
 
     // Dev endpoint: return hard-coded TTL when the dev flag is enabled.
     server.middlewares.use((req: IncomingMessage & { url?: string }, res: ServerResponse, next: (err?: unknown) => void) => {
@@ -153,7 +235,7 @@ export default defineConfig(({ mode }) => ({
             if (/\.(nt)$/i.test(pathname)) return 'application/n-triples';
             if (/\.(rdf|xml)$/i.test(pathname)) return 'application/rdf+xml';
             if (/\.(jsonld|json)$/i.test(pathname)) return 'application/ld+json';
-          } catch (_) {/* noop */}
+          } catch (_) {}
           return null;
         })();
 

@@ -1,71 +1,93 @@
 /**
- * Centralized fetch helper for RDF/network requests.
+ * doFetch - main-thread fetch wrapper with timeout and sensible Accept header.
  *
- * Exports doFetch(target, timeout, opts) which:
- *  - Uses AbortController to enforce a timeout
- *  - Sends a conservative Accept header by default (suitable for RDF endpoints)
- *  - Supports a `minimal` option to perform a truly minimal fetch() with no custom headers
- *    (useful to avoid browser CORS preflight in some environments).
+ * Replaces the previous worker-first implementation with a simple window.fetch-based
+ * implementation to avoid bundling/worker resolution issues in production preview.
  *
- * Keep this file small and dependency-free so it can be reused from both rdfManager
- * and other places where a standardized fetch behaviour is desired.
+ * Signature:
+ *   doFetch(target: string, timeout: number, opts?: { minimal?: boolean, useWorker?: boolean })
+ *
+ * Returns a WHATWG Response (or a compatible object) so callers that consume
+ * response.body / response.text() continue to work unchanged.
+ *
+ * Behavior:
+ * - Uses global fetch if available.
+ * - Uses AbortController to enforce timeout.
+ * - Honors opts.minimal to reduce Accept header when requested.
+ * - On network failure in development, attempts a dev-server proxy fallback at /__external?url=...
+ *   so the dev server can proxy remote resources and avoid CORS issues.
  */
+export async function doFetch(target: string, timeout: number, opts?: { minimal?: boolean; useWorker?: boolean }): Promise<any> {
+  if (!target) throw new Error("doFetch requires a target URL");
 
-export async function doFetch(target: string, timeout: number, opts?: { minimal?: boolean }): Promise<any /* Promise resolves to a Response-like object */> {
-  // New implementation: delegate fetching to fetchStream.fetchText so we centralize
-  // timeout and streaming behavior. We return a minimal Response-like object that
-  // provides `.ok`, `.status`, `.statusText`, `.headers.get()` and `.text()`.
-  // This keeps existing callers that expect a Response-compatible shape working
-  // while using the unified fetch/stream helper.
+  const timeoutMs = typeof timeout === "number" ? timeout : 15000;
   const minimal = !!(opts && opts.minimal);
-  const fetchStreamModule = await import("./fetchStream").catch(() => ({ fetchText: undefined as any }));
-  const fetchTextFn = fetchStreamModule && fetchStreamModule.fetchText ? fetchStreamModule.fetchText : undefined;
 
-  if (typeof fetchTextFn !== "function") {
-    // Fallback to native fetch when helper unavailable
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-    try {
-      const init: RequestInit = {
-        signal: controller.signal,
-        redirect: "follow",
-      };
-      if (!minimal) {
-        init.headers = {
-          Accept: "text/turtle, application/rdf+xml, application/ld+json, */*",
-        } as any;
-      }
-      const res = await fetch(target, init);
-      return res;
-    } finally {
-      clearTimeout(timeoutId);
-    }
+  // Prefer global fetch (browser or node-with-global-fetch)
+  const fetchFn = typeof fetch === "function" ? fetch : (globalThis as any).fetch;
+
+  if (typeof fetchFn !== "function") {
+    throw new Error("Global fetch is not available in this runtime");
   }
 
-  // Use fetchText helper which returns { text, contentType, status, statusText }
-  const timeoutMs = Number(timeout || 15000);
-  const result = await fetchTextFn(String(target), { timeoutMs, accept: !minimal ? undefined : "*/*" });
-  const ok = typeof result.status === "number" ? result.status >= 200 && result.status < 300 : true;
-  const contentType = result.contentType || null;
-  // Build a minimal Response-like object
-  const fakeResponse: any = {
-    ok,
-    status: result.status || 200,
-    statusText: result.statusText || "",
-    headers: {
-      get: (k: string) => {
-        if (!k) return null;
-        if (k.toLowerCase() === "content-type") return contentType;
-        return null;
-      },
-    },
-    // provide text() for compatibility; some callers may use body.getReader but
-    // responseToText will call text() when body is not available.
-    text: async () => {
-      return result.text || "";
-    },
-    // keep the raw parsed text for advanced callers (not standard Response)
-    _vg_text: result.text,
-  };
-  return fakeResponse;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    try {
+      const res = await fetchFn(target, {
+        signal: controller.signal,
+        redirect: "follow",
+        headers: minimal
+          ? { Accept: "*/*" }
+          : { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" },
+      });
+      return res;
+    } catch (err) {
+      // If fetch failed and we're in a development browser session, try the dev proxy endpoint.
+      // This helps with CORS or dev-server proxy/transit issues.
+      try {
+        const isBrowser = typeof window !== "undefined";
+        const isDev =
+          (typeof (import.meta as any) !== "undefined" &&
+            !!((import.meta as any).env && (import.meta as any).env.DEV)) ||
+          (isBrowser && (window as any).__VITE_DEV_SERVER !== undefined) ||
+          (process && process.env && process.env.NODE_ENV === "development");
+
+        if (isBrowser && isDev) {
+          try {
+            // Clear previous timeout and create a fresh controller for the proxy attempt.
+            clearTimeout(timer);
+            const proxyController = new AbortController();
+            const proxyTimer = setTimeout(() => proxyController.abort(), timeoutMs);
+
+            // Build proxy URL relative to current origin so dev server handles it.
+            const proxyUrl = `/__external?url=${encodeURIComponent(String(target))}`;
+
+            try {
+              const pres = await fetchFn(proxyUrl, {
+                signal: proxyController.signal,
+                redirect: "follow",
+                headers: minimal
+                  ? { Accept: "*/*" }
+                  : { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" },
+              });
+              clearTimeout(proxyTimer);
+              return pres;
+            } finally {
+              clearTimeout(proxyTimer);
+            }
+          } catch (proxyErr) {
+            // swallow and rethrow original error below
+          }
+        }
+      } catch (_) {
+        // ignore detection errors
+      }
+      // rethrow original fetch error
+      throw err;
+    }
+  } finally {
+    clearTimeout(timer);
+  }
 }
