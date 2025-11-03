@@ -5,6 +5,7 @@ import path from "path";
 import { NodeGlobalsPolyfillPlugin } from "@esbuild-plugins/node-globals-polyfill";
 import { NodeModulesPolyfillPlugin } from "@esbuild-plugins/node-modules-polyfill";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
+import rollupNodePolyFill from "rollup-plugin-node-polyfills";
 
 export default defineConfig({
   // Minimal config for local development
@@ -61,4 +62,16 @@ export default defineConfig({
       ]
     }
   },
+
+  // Ensure Rollup (production build) includes node polyfills so emitted worker bundles
+  // run in browser workers without Node stdlib.
+  build: {
+    rollupOptions: {
+      plugins: [
+        // rollup-plugin-node-polyfills may have slightly different typings; cast to any
+        // so TypeScript does not error in this vite.config.ts file.
+        (rollupNodePolyFill() as any)
+      ]
+    }
+  }
 });
