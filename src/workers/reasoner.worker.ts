@@ -16,8 +16,9 @@
  *
  * The worker dynamically imports "n3" and attempts to instantiate the Reasoner.
  * This worker runs in browser module Worker context.
- */
-
+*/
+ 
+import './polyfills';
 import type { Quad } from "n3";
 
 type SerializedObject = { t: "iri" | "lit" | "bnode", v: string, dt?: string, ln?: string };

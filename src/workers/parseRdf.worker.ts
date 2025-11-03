@@ -1,7 +1,8 @@
-// Stream-first parsing worker for browser environment.
-// Minimal, no fallbacks, no try/catch - failures surface directly.
-// Relies on bundler-provided polyfills (readable-stream, stream-browserify, buffer, process).
+ // Stream-first parsing worker for browser environment.
+ // Minimal, no fallbacks, no try/catch - failures surface directly.
+ // Relies on bundler-provided polyfills (readable-stream, stream-browserify, buffer, process).
 
+import './polyfills';
 import { Buffer } from 'buffer';
 (globalThis as any).Buffer = Buffer;
 import process from 'process/browser';
