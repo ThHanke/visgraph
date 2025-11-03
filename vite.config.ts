@@ -4,6 +4,7 @@ import tailwind from "@tailwindcss/vite";
 import path from "path";
 import { NodeGlobalsPolyfillPlugin } from "@esbuild-plugins/node-globals-polyfill";
 import { NodeModulesPolyfillPlugin } from "@esbuild-plugins/node-modules-polyfill";
+import { nodePolyfills } from "vite-plugin-node-polyfills";
 
 export default defineConfig({
   // Minimal config for local development
@@ -13,6 +14,11 @@ export default defineConfig({
     allowedHosts: true,
   },
   plugins: [
+    // Provide Node stdlib polyfills to both dev and build (affects worker bundles too)
+    nodePolyfills({
+      // Whether to polyfill `node:` protocol imports, safe to enable
+      protocolImports: true,
+    }),
     react(),
     tailwind(),
   ],
@@ -20,15 +26,33 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
       // Browser-friendly shims for Node builtins used by workers/deps
-      process: "process/browser",
-      buffer: "buffer",
-      stream: "stream-browserify",
-      "readable-stream": "readable-stream-patched"
+      // Resolve to absolute paths so esbuild/vite do not rewrite imports to relative paths.
+      "process/browser": path.resolve(__dirname, "node_modules", "process", "browser.js"),
+      // Map plain "process" to the same browser shim (covers imports of "process")
+      process: path.resolve(__dirname, "node_modules", "process", "browser.js"),
+      // Handle imports like require('process/') used by some packages
+      "process/": path.resolve(__dirname, "node_modules", "process"),
+      buffer: path.resolve(__dirname, "node_modules", "buffer", "index.js"),
+      stream: path.resolve(__dirname, "node_modules", "stream-browserify", "index.js"),
+      "readable-stream": path.resolve(__dirname, "node_modules", "readable-stream-patched")
     },
   },
 
   // Ensure dev pre-bundling (esbuild) provides Node globals/polyfills where needed.
   optimizeDeps: {
+    // Force pre-bundling of node-like modules used by workers/deps so dev worker bundles
+    // include transformed ESM browser-compatible variants.
+    include: [
+      "buffer",
+      "process",
+      "process/browser",
+      "stream-browserify",
+      "readable-stream",
+      "readable-stream-patched",
+      "rdf-parse",
+      "rdf-serialize",
+      "streamify-string"
+    ],
     esbuildOptions: {
       define: { global: "globalThis" },
       plugins: [
