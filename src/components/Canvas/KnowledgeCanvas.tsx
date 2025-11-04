@@ -47,6 +47,7 @@ import { useCanvasState } from "../../hooks/useCanvasState";
 import { toast } from "sonner";
 import { LayoutManager } from "./LayoutManager";
 import { NodePropertyEditor } from "./NodePropertyEditor";
+import { projectClient } from "./core/viewportUtils";
 import * as LinkPropertyEditorModule from "./LinkPropertyEditor";
 const LinkPropertyEditor: any = (() => {
   const mod = LinkPropertyEditorModule as any;
@@ -3118,7 +3119,34 @@ const KnowledgeCanvas: React.FC = () => {
           if (!normalizedUri || !/^https?:\/\//i.test(normalizedUri)) return;
 
           const id = String(normalizedUri);
-          const startPos = { x: 100, y: 100 };
+
+          // compute viewport center robustly in canvas coordinates using shared helper
+          let startPos = { x: 100, y: 100 };
+          try {
+            const container = document.querySelector(".react-flow") as HTMLElement | null;
+            if (container) {
+              const rect = container.getBoundingClientRect();
+              const clientX = rect.left + rect.width / 2;
+              const clientY = rect.top + rect.height / 2;
+              const projected = projectClient(clientX, clientY);
+              if (projected && typeof projected.x === "number" && typeof projected.y === "number") {
+                startPos = { x: projected.x, y: projected.y };
+              }
+            } else if (typeof window !== "undefined") {
+              // Fallback to viewport center of the window if react-flow container not found
+              const projected = projectClient(window.innerWidth / 2, window.innerHeight / 2);
+              if (projected && typeof projected.x === "number" && typeof projected.y === "number") {
+                startPos = { x: projected.x, y: projected.y };
+              }
+            }
+          } catch (_) {
+            // ignore projection failures and fall back to default startPos
+          }
+
+          // Preserve any rdfTypes / classCandidate / annotationProperties passed from the editor payload
+          const rdfTypes = Array.isArray(payload && payload.rdfTypes) ? payload.rdfTypes.slice() : (payload && payload.classCandidate ? [payload.classCandidate] : []);
+          const namespace = payload?.namespace ? String(payload.namespace) : "";
+
           setNodes((nds) => [
             ...nds,
             {
@@ -3128,12 +3156,12 @@ const KnowledgeCanvas: React.FC = () => {
               data: {
                 key: id,
                 iri: normalizedUri,
-                rdfTypes: [],
+                rdfTypes: rdfTypes || [],
                 literalProperties: [],
-                annotationProperties: [],
+                annotationProperties: payload?.annotationProperties || [],
                 visible: true,
                 hasReasoningError: false,
-                namespace: "",
+                namespace,
                 label: normalizedUri,
               } as NodeData,
             },

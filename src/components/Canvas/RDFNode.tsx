@@ -100,9 +100,7 @@ function RDFNodeImpl(props: NodeProps) {
   const typePresentButNotLoaded =
     !nodeData.classType &&
     Array.isArray(nodeData.rdfTypes) &&
-    nodeData.rdfTypes.some(
-      (t) => Boolean(t) && !/NamedIndividual/i.test(String(t)),
-    );
+    nodeData.rdfTypes.some((t) => Boolean(t));
 
 
   const rootRef = useRef<HTMLDivElement | null>(null);

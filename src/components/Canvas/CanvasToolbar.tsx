@@ -521,7 +521,15 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
       <NodePropertyEditor
         open={isAddNodeOpen}
         onOpenChange={(v) => setIsAddNodeOpen(v)}
-        nodeData={{}} // empty => create flow; editor will generate blank node if left empty on save
+        // Do NOT prefill owl:NamedIndividual for A-Box here. Let the editor be empty and
+        // add the rdf:type triple only when the user saves the dialog.
+        nodeData={
+          viewMode === 'tbox'
+            ? { classType: 'http://www.w3.org/2002/07/owl#Class' }
+            : {}
+        }
+        // Instruct the editor to add owl:NamedIndividual on save for A-Box create flows.
+        addNamedIndividualOnSave={viewMode === 'abox'}
         onSave={(payload: any) => {
           try {
             if (payload && payload.iri) {

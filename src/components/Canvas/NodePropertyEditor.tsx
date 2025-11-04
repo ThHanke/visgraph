@@ -77,6 +77,8 @@ interface NodePropertyEditorProps {
   onDelete?: (iriOrId: string) => void;
   // optional list of available entities for the autocomplete (passed from canvas)
   availableEntities?: any[];
+  // When true and this is a create flow, ensure owl:NamedIndividual is added as an rdf:type on save
+  addNamedIndividualOnSave?: boolean;
 }
 
 /**
@@ -89,6 +91,7 @@ export const NodePropertyEditor = ({
   nodeData,
   onSave,
   onDelete,
+  addNamedIndividualOnSave = false,
 }: NodePropertyEditorProps) => {
   // Local form state
   const [nodeIri, setNodeIri] = useState<string>("");
@@ -135,8 +138,8 @@ export const NodePropertyEditor = ({
     setRdfTypesState(rdfTypes);
     // Capture the initial rdf.types snapshot so subsequent saves can compute removals.
     initialRdfTypesRef.current = Array.isArray(rdfTypes) ? rdfTypes.slice() : [];
-    // For UI selection show the first non-NamedIndividual meaningful class if present, otherwise empty
-    const chosen = (rdfTypes || []).find((t: any) => t && !String(t).includes("NamedIndividual")) || d.classType || d.displayType || "";
+    // For UI selection show the first rdf:type (or fall back to classType/displayType)
+    const chosen = (rdfTypes || []).length > 0 ? rdfTypes[0] : (d.classType || d.displayType || "");
     setNodeType(String(chosen || ""));
 
     // Annotation properties
@@ -329,6 +332,13 @@ export const NodePropertyEditor = ({
 
     // Compute rdf:type diffs (use rdfTypesState if present, otherwise use nodeType)
     const currentTypes = (Array.isArray(rdfTypesState) && rdfTypesState.length > 0) ? rdfTypesState.slice() : (nodeType ? [String(nodeType)] : []);
+    // If requested by caller, add owl:NamedIndividual for create flows without pre-setting it in the UI.
+    try {
+      const NI = "http://www.w3.org/2002/07/owl#NamedIndividual";
+      if (isCreate && addNamedIndividualOnSave) {
+        if (!currentTypes.includes(NI)) currentTypes.push(NI);
+      }
+    } catch (_) { /* ignore */ }
     const initialTypes = Array.isArray(initialRdfTypesRef.current) ? initialRdfTypesRef.current.slice() : [];
     const typesToAdd = currentTypes.filter((t) => t && !initialTypes.includes(t));
     const typesToRemove = initialTypes.filter((t) => t && !currentTypes.includes(t));
