@@ -26,8 +26,8 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
-        cache: 'npm'
+        node-version: 20
+        cache: npm
         
     - name: Install dependencies
       run: npm install
@@ -49,7 +49,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == refs/heads/main
     
     steps:
     - name: Deploy to GitHub Pages
