@@ -15,6 +15,7 @@ import { Store, Parser, Writer, Quad, DataFactory } from "n3";
 import { rdfParser } from "rdf-parse";
 import { rdfSerializer } from "rdf-serialize";
 import type * as RDF from "@rdfjs/types";
+import ParseWorker from "../workers/parseRdf.worker.ts?worker";
 
 // Batch size used when draining/ingesting parsed quads to avoid blocking the main thread.
 // Keep in sync with worker batch sizes.
@@ -1507,163 +1508,153 @@ export class RDFManager {
     const collectedPrefixes: Record<string, any> = {};
     const targetGraph = namedNode(String(graphName || "urn:vg:data"));
 
-    // Prefer worker parsing, but fall back to a main-thread fetch+parse when Worker is unavailable
-    // (e.g. Node test environments). This keeps tests deterministic without a browser worker.
-    let w: any = null;
-    if (typeof Worker === "undefined" || typeof (globalThis as any).Worker === "undefined") {
-      try {
-        const fetcher = typeof fetch === "function" ? fetch : undefined;
-        if (!fetcher) {
-          throw new Error("Worker unavailable and fetch is not defined for main-thread fallback");
-        }
-        const resp = await fetcher(url);
-        if (!resp || typeof resp.text !== "function") {
-          throw new Error("Failed to fetch RDF for main-thread fallback");
-        }
-        const txt = await resp.text();
-
-        // Try to create a Node Readable and parse with rdfParser (preferred for rdf-xml and node parsers)
-        try {
-          const { Readable } = await import("stream");
-          const _buf = await import("buffer");
-          const BufferImpl = (_buf && _buf.Buffer) || (globalThis as any).Buffer;
-          if (!Readable || !BufferImpl) throw new Error("Node stream/buffer not available");
-
-          const rs = Readable.from([BufferImpl.from(String(txt))]);
-          const quadStream = rdfParser.parse(rs as any, { path: url, contentType: undefined });
-          await this.loadQuadsToDiagram(quadStream, graphName || "urn:vg:data");
-          return;
-        } catch (nodeStreamErr) {
-          // As a safe fallback, use the existing string-based loader which detects format and parses on main thread.
-          await this.loadRDFIntoGraph(txt, graphName, undefined, url);
-          return;
-        }
-      } catch (err) {
-        // If fallback fails, surface the error to callers.
-        throw err;
-      }
-    } else {
-      const workerUrl = new URL("../workers/parseRdf.worker.ts", import.meta.url);
-      w = new Worker(workerUrl as any, { type: "module" });
-    }
+    // Use Vite ?worker import which returns a Worker constructor.
+    const w = new ParseWorker();
 
     return new Promise<void>((resolve, reject) => {
       const tH = setTimeout(() => {
-        try {
-          w.terminate();
-        } catch (_) { /* ignore */ }
+        w.terminate();
         reject(new Error("parser worker timeout"));
       }, timeoutMs);
 
       let seenAny = false;
 
-      const cleanupWorker = () => {
+      const onWorkerError = async (ev: ErrorEvent) => {
+        // Log full event object to aid diagnosis (some environments deliver sparse ErrorEvent)
         try {
-          w.removeEventListener("message", onMessage as any);
-        } catch (_) { /* ignore */ }
-        try { w.terminate(); } catch (_) { /* ignore */ }
+          console.error("[VG_RDF] worker.onerror (raw event)", ev);
+          console.error("[VG_RDF] worker.onerror (decoded)", {
+            id: loadId,
+            message: ev && ev.message,
+            filename: (ev as any).filename,
+            lineno: (ev as any).lineno,
+            colno: (ev as any).colno,
+            errorObj: ev && ev.error
+          });
+        } catch (_) { /* ignore logging errors */ }
+
+        // Tidy up worker resources
+        try { cleanupWorker(); } catch (_) { /* ignore */ }
         try { clearTimeout(tH); } catch (_) { /* ignore */ }
+        try { (this as any).parsingInProgress = false; } catch (_) { /* ignore */ }
+
+        // Fallback: attempt main-thread fetch+parse so production still works even when the worker fails.
+        try {
+          console.warn("[VG_RDF] worker failed — falling back to main-thread parse", { id: loadId, url });
+          const resp = await fetch(url);
+          if (!resp || typeof resp.text !== "function") {
+            throw new Error("fetch failed during worker fallback");
+          }
+          const txt = await resp.text();
+          await this.loadRDFIntoGraph(txt, graphName, undefined, url);
+          resolve();
+          return;
+        } catch (fallbackErr) {
+          try {
+            console.error("[VG_RDF] worker fallback failed", { id: loadId, error: String(fallbackErr) });
+          } catch (_) { /* ignore */ }
+          reject(new Error(`parser worker error: ${ev && ev.message ? ev.message : String(ev)}; fallback error: ${String(fallbackErr)}`));
+          return;
+        }
+      };
+
+      const onWorkerMessageError = (ev: MessageEvent) => {
+        console.error("[VG_RDF] worker.messageerror", { id: loadId, data: (ev as any).data });
+        cleanupWorker();
+        clearTimeout(tH);
+        (this as any).parsingInProgress = false;
+        reject(new Error("parser worker messageerror"));
+      };
+
+      const cleanupWorker = () => {
+        w.removeEventListener("message", onMessage as any);
+        w.removeEventListener("error", onWorkerError);
+        w.removeEventListener("messageerror", onWorkerMessageError);
+        w.terminate();
+        clearTimeout(tH);
       };
 
       const onMessage = async (ev: MessageEvent) => {
         const m = ev && ev.data ? ev.data : {};
-        try { seenAny = true; } catch (_) { /* noop */ }
+        seenAny = true;
 
         if (!m || !m.type) return;
 
         if (m.type === "start") {
           // worker indicates start; treat this as a liveness signal and clear the watchdog timer
-          try {
-            clearTimeout(tH);
-            if (m.contentType) {
-              console.debug("[VG_RDF] worker.start contentType", m.contentType);
-            }
-          } catch (_) { /* ignore */ }
+          clearTimeout(tH);
+          if (m.contentType) {
+            console.debug("[VG_RDF] worker.start contentType", m.contentType);
+          }
           return;
         }
 
         if (m.type === "prefix" && m.prefixes) {
-          try { Object.assign(collectedPrefixes, m.prefixes || {}); } catch (_) { /* ignore */ }
+          Object.assign(collectedPrefixes, m.prefixes || {});
           return;
         }
 
         if (m.type === "quads" && Array.isArray(m.quads)) {
-          try {
-            const plain = m.quads as any[];
-            for (const pq of plain) {
+          const plain = m.quads as any[];
+          for (const pq of plain) {
+            try {
+              const sTerm = /^_:/.test(String(pq.s || "")) ? blankNode(String(pq.s).replace(/^_:/, "")) : namedNode(String(pq.s));
+              const pTerm = namedNode(String(pq.p));
+              let oTerm: any = null;
+              if (pq.o && pq.o.t === "iri") oTerm = namedNode(String(pq.o.v));
+              else if (pq.o && pq.o.t === "bnode") oTerm = blankNode(String(pq.o.v));
+              else if (pq.o && pq.o.t === "lit") {
+                if (pq.o.dt) oTerm = literal(String(pq.o.v), namedNode(String(pq.o.dt)));
+                else if (pq.o.ln) oTerm = literal(String(pq.o.v), String(pq.o.ln));
+                else oTerm = literal(String(pq.o.v));
+              } else oTerm = literal(String((pq.o && pq.o.v) || ""));
+              const gTerm = pq.g ? namedNode(String(pq.g)) : targetGraph;
+              const toAdd = quad(sTerm, pTerm, oTerm, gTerm);
               try {
-                const sTerm = /^_:/.test(String(pq.s || "")) ? blankNode(String(pq.s).replace(/^_:/, "")) : namedNode(String(pq.s));
-                const pTerm = namedNode(String(pq.p));
-                let oTerm: any = null;
-                if (pq.o && pq.o.t === "iri") oTerm = namedNode(String(pq.o.v));
-                else if (pq.o && pq.o.t === "bnode") oTerm = blankNode(String(pq.o.v));
-                else if (pq.o && pq.o.t === "lit") {
-                  if (pq.o.dt) oTerm = literal(String(pq.o.v), namedNode(String(pq.o.dt)));
-                  else if (pq.o.ln) oTerm = literal(String(pq.o.v), String(pq.o.ln));
-                  else oTerm = literal(String(pq.o.v));
-                } else oTerm = literal(String((pq.o && pq.o.v) || ""));
-                const gTerm = pq.g ? namedNode(String(pq.g)) : targetGraph;
-                const toAdd = quad(sTerm, pTerm, oTerm, gTerm);
-                try {
-                  this.addQuadToStore(toAdd, gTerm, addedQuads);
-                } catch (_) {
-                  try { this.store.addQuad(toAdd); addedQuads.push(toAdd); } catch (_) { /* ignore */ }
-                }
+                this.addQuadToStore(toAdd, gTerm, addedQuads);
               } catch (_) {
-                /* ignore per-quad ingestion errors */
+                this.store.addQuad(toAdd); addedQuads.push(toAdd);
               }
+            } catch (_) {
+              // ignore per-quad ingestion errors
             }
-            // ACK to worker so it can continue
-            try { w.postMessage({ type: "ack", id: String(m.id || loadId) }); } catch (_) { /* ignore */ }
-          } catch (e) {
-            /* ignore batch processing errors */
           }
+          // ACK to worker so it can continue
+          w.postMessage({ type: "ack", id: String(m.id || loadId) });
           return;
         }
 
         if (m.type === "end") {
-          try {
-            cleanupWorker();
-            clearTimeout(tH);
-          } catch (_) { /* ignore */ }
-          try {
-            (async () => {
+          cleanupWorker();
+          clearTimeout(tH);
+          (async () => {
             try {
-            await (this as any).finalizeLoad(addedQuads, collectedPrefixes || {}, loadId, graphName);
-          } catch (e) {
-            try { console.error("[VG_RDF] worker finalize failed", e); } catch (_) { /* ignore */ }
-            reject(e);
-            return;
-          }
-          resolve();
-            })();
-          } catch (e) {
-            reject(e);
-          }
+              await (this as any).finalizeLoad(addedQuads, collectedPrefixes || {}, loadId, graphName);
+            } catch (e) {
+              console.error("[VG_RDF] worker finalize failed", e);
+              reject(e);
+              return;
+            }
+            resolve();
+          })();
           return;
         }
 
         if (m.type === "error") {
-          try { cleanupWorker(); clearTimeout(tH); } catch (_) { /* ignore */ }
-          try {
-            // Propagate only the worker-provided error text (string) to callers and clear parsing flag
-            const msgText = m && m.message ? String(m.message) : "worker error";
-            try { (this as any).parsingInProgress = false; } catch (_) { /* ignore */ }
-            reject(msgText);
-          } catch (_) { /* ignore */ }
+          cleanupWorker(); clearTimeout(tH);
+          const msgText = m && m.message ? String(m.message) : "worker error";
+          (this as any).parsingInProgress = false;
+          reject(msgText);
           return;
         }
       };
 
       w.addEventListener("message", onMessage as any);
+      w.addEventListener("error", onWorkerError);
+      w.addEventListener("messageerror", onWorkerMessageError);
 
       // Start worker fetching & parsing for the URL
-      try {
-        w.postMessage({ type: "parseUrl", id: loadId, url, timeoutMs, headers: { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" } });
-      } catch (err) {
-        try { cleanupWorker(); } catch (_) { /* ignore */ }
-        reject(err);
-      }
+      w.postMessage({ type: "parseUrl", id: loadId, url, timeoutMs, headers: { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" } });
     });
   }
 

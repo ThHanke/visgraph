@@ -5,6 +5,28 @@ import { createServer as createViteServer } from 'vite';
 import { Server as IOServer } from 'socket.io';
 
 const app = express();
+
+// Add headers for worker assets so cross-origin worker errors are not opaque
+// and so misdetected .ts worker files are still served as JS by the browser.
+//
+// - If a worker resource is requested under /visgraph/assets/*, set CORS so
+//   ErrorEvents are not opaque.
+// - If a worker asset path ends with ".ts" (leftover built filename), force the
+//   Content-Type to "application/javascript" so the browser will attempt to execute it.
+// This is a temporary server-side safeguard; the proper fix is to ensure built
+// assets are emitted with .js extension and served with the correct MIME.
+app.use((req, res, next) => {
+  if (req.method === 'GET' && req.originalUrl && req.originalUrl.startsWith('/visgraph/assets/')) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    // If the asset ends with .ts, some servers may wrongly detect a binary MIME.
+    // Force JS MIME type so the browser will try to execute the worker.
+    if (req.originalUrl.endsWith('.ts')) {
+      res.setHeader('Content-Type', 'application/javascript');
+    }
+  }
+  next();
+});
+
 const server = http.createServer(app);
 const PORT = process.env.PORT || 8080;
 
