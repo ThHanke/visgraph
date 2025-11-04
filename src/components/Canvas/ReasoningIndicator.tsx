@@ -85,7 +85,7 @@ export const ReasoningIndicator = memo(({ onOpenReport, onRunReason }: Reasoning
         onClick={onOpenReport}
         className={[
           typeof statusInfo.colorKey === 'string' ? STATUS_COLOR_MAP[statusInfo.colorKey] : '',
-          'border-2 backdrop-blur-sm shadow-lg',
+          'border-2 backdrop-blur-sm shadow-lg bg-card/80',
           statusInfo.pulse ? 'animate-pulse' : '',
           'hover:scale-105 transition-all duration-200',
         ].filter(Boolean).join(' ')}

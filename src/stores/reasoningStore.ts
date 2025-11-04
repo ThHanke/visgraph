@@ -3,6 +3,7 @@ import { DataFactory } from "n3";
 const { namedNode } = DataFactory;
 import { WELL_KNOWN } from "../utils/wellKnownOntologies";
 import { useAppConfigStore } from "./appConfigStore";
+import ReasonerWorker from "../workers/reasoner.worker.ts?worker";
 
 let reasoningWorker: any = null;
 
@@ -126,8 +127,8 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
     // Per-run reasoning state used by worker/local paths
     let usedReasoner = false;
     let tempStoreForReasoner: any = null;
-    let __vg_prev_write_logging: boolean = false;
-    let __vg_prev_window_flag: boolean = false;
+    const __vg_prev_write_logging: boolean = false;
+    const __vg_prev_window_flag: boolean = false;
 
     // Per-run diagnostics guard to avoid duplicate before/after logs in a single reasoning invocation.
     let beforeLogged = false;
@@ -259,9 +260,8 @@ export const useReasoningStore = create<ReasoningStore>((set, get) => ({
 
         if (typeof window !== "undefined" && typeof (globalThis as any).Worker !== "undefined") {
           try {
-            const workerUrl = new URL("../workers/reasoner.worker.ts", import.meta.url);
             try { if (reasoningWorker && typeof reasoningWorker.terminate === "function") { reasoningWorker.terminate(); } } catch (_) { /* ignore */ }
-            reasoningWorker = new Worker(workerUrl as any, { type: "module" });
+            reasoningWorker = new ReasonerWorker();
             const w = reasoningWorker;
 
             let __vg_worker_error: any = null;
