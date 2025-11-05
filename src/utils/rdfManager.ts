@@ -19,6 +19,7 @@ import type {
   PlainQuad,
   PlainQuadTerm,
 } from "./rdfManager.workerProtocol";
+import { useAppConfigStore } from "../stores/appConfigStore";
 
 export { RDFManagerImpl as RDFManager, enableN3StoreWriteLogging, collectGraphCountsFromStore };
 
@@ -550,6 +551,147 @@ const rdfManagerProxyHandler: ProxyHandler<RDFManagerImpl> = {
           }
         }
         await (target as any).triggerSubjectUpdate(subjects);
+      };
+    }
+
+    if (prop === "runReasoning") {
+      return async (options?: { rulesets?: string[] }) => {
+        if (workerEnabled && workerClient) {
+          const start = Date.now();
+          const id = `reasoning-${start.toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+          let configuredRulesets: string[] = [];
+          try {
+            if (
+              typeof useAppConfigStore !== "undefined" &&
+              (useAppConfigStore as any).getState
+            ) {
+              const st = (useAppConfigStore as any).getState();
+              if (st && st.config && Array.isArray(st.config.reasoningRulesets)) {
+                configuredRulesets = st.config.reasoningRulesets
+                  .map((r: any) => String(r))
+                  .filter((r: string) => r.length > 0);
+              }
+            }
+          } catch (_) {
+            configuredRulesets = [];
+          }
+
+          const requestedRulesets = Array.isArray(options?.rulesets)
+            ? options!.rulesets.map((r) => String(r)).filter((r) => r.length > 0)
+            : [];
+
+          const rulesets =
+            requestedRulesets.length > 0 ? requestedRulesets : configuredRulesets;
+
+          let baseUrl = "/";
+          try {
+            const maybe = (import.meta as any)?.env?.BASE_URL;
+            if (typeof maybe === "string" && maybe.length > 0) {
+              baseUrl = maybe;
+            }
+          } catch (_) {
+            try {
+              if (typeof window !== "undefined" && window.location) {
+                baseUrl = "/";
+              }
+            } catch (_) {
+              /* ignore */
+            }
+          }
+
+          const runStartMs = Date.now();
+          try {
+            const raw = (await workerClient.call("runReasoning", {
+              reasoningId: id,
+              rulesets,
+              baseUrl,
+              emitSubjects: true,
+            })) as any;
+
+            const warningsRaw = Array.isArray(raw?.warnings) ? raw.warnings : [];
+            const errorsRaw = Array.isArray(raw?.errors) ? raw.errors : [];
+            const inferencesRaw = Array.isArray(raw?.inferences) ? raw.inferences : [];
+
+            const safeWarnings: ReasoningWarning[] = warningsRaw.map((w: any) => ({
+              nodeId: w && w.nodeId ? String(w.nodeId) : undefined,
+              edgeId: w && w.edgeId ? String(w.edgeId) : undefined,
+              message: w && w.message ? String(w.message) : "",
+              rule: w && w.rule ? String(w.rule) : "rule",
+              severity: w && w.severity ? (w.severity as ReasoningWarning["severity"]) : undefined,
+            }));
+
+            const safeErrors: ReasoningError[] = errorsRaw.map((e: any) => ({
+              nodeId: e && e.nodeId ? String(e.nodeId) : undefined,
+              edgeId: e && e.edgeId ? String(e.edgeId) : undefined,
+              message: e && e.message ? String(e.message) : "",
+              rule: e && e.rule ? String(e.rule) : "rule",
+              severity:
+                e && e.severity === "error" ? "error" : ("critical" as ReasoningError["severity"]),
+            }));
+
+            const safeInferences: ReasoningInference[] = inferencesRaw
+              .map((inf: any) => {
+                const type =
+                  inf && (inf.type === "class" || inf.type === "relationship" || inf.type === "property")
+                    ? inf.type
+                    : "relationship";
+                const subject = inf && inf.subject ? String(inf.subject) : "";
+                const predicate = inf && inf.predicate ? String(inf.predicate) : "";
+                const object = inf && inf.object ? String(inf.object) : "";
+                const confidence =
+                  inf && typeof inf.confidence === "number" ? Number(inf.confidence) : 0.5;
+                return { type, subject, predicate, object, confidence };
+              })
+              .filter((inf: ReasoningInference) => inf.subject && inf.predicate);
+
+            const workerDuration =
+              typeof raw?.workerDurationMs === "number" ? Number(raw.workerDurationMs) : null;
+            const totalDuration = Date.now() - runStartMs;
+
+            const completed: ReasoningResult = {
+              id,
+              timestamp: typeof raw?.startedAt === "number" ? Number(raw.startedAt) : start,
+              status: "completed",
+              duration: totalDuration,
+              errors: safeErrors,
+              warnings: safeWarnings,
+              inferences: safeInferences,
+              meta: {
+                usedReasoner: Boolean(raw?.usedReasoner),
+                workerDurationMs: workerDuration ?? undefined,
+                totalDurationMs: totalDuration,
+                addedCount: typeof raw?.addedCount === "number" ? Number(raw.addedCount) : undefined,
+                ruleQuadCount:
+                  typeof raw?.ruleQuadCount === "number" ? Number(raw.ruleQuadCount) : undefined,
+              },
+            };
+
+            try {
+              const summary = {
+                id: completed.id,
+                status: completed.status,
+                durationMs: totalDuration,
+                workerDurationMs: workerDuration,
+                errorCount: completed.errors.length,
+                warningCount: completed.warnings.length,
+                inferenceCount: completed.inferences.length,
+                usedReasoner: completed.meta?.usedReasoner ?? null,
+                addedCount: completed.meta?.addedCount ?? null,
+              };
+              console.log("[VG_REASONING] completed reasoning run", summary);
+            } catch (_) {
+              /* ignore console errors */
+            }
+
+            return completed;
+          } catch (err) {
+            console.error("[rdfManager] worker runReasoning failed, falling back to local store", err);
+            // fall through to local execution below
+          }
+        }
+
+        return (target as any).runReasoning(options);
       };
     }
 

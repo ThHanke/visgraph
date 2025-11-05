@@ -84,6 +84,12 @@ export type RDFWorkerCommandPayloads = {
   getQuads: GetQuadsPayload;
   emitAllSubjects: EmitAllSubjectsPayload;
   triggerSubjects: TriggerSubjectsPayload;
+  runReasoning: {
+    reasoningId: string;
+    rulesets?: string[];
+    baseUrl?: string;
+    emitSubjects?: boolean;
+  };
 };
 
 export type RDFWorkerCommandName = keyof RDFWorkerCommandPayloads;

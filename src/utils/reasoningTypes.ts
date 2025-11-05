@@ -31,6 +31,11 @@ export interface ReasoningResult {
   warnings: ReasoningWarning[];
   inferences: ReasoningInference[];
   inferredQuads?: { subject: string; predicate: string; object: string; graph?: string }[];
-  meta?: { usedReasoner?: boolean };
+  meta?: {
+    usedReasoner?: boolean;
+    workerDurationMs?: number;
+    totalDurationMs?: number;
+    addedCount?: number;
+    ruleQuadCount?: number;
+  };
 }
-

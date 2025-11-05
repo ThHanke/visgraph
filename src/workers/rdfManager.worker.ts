@@ -3,7 +3,9 @@ import { Buffer } from "buffer";
 (globalThis as any).Buffer = Buffer;
 import rdfParsePkg from "rdf-parse";
 import * as N3 from "n3";
+import { Reasoner as N3ReasonerExplicit } from "n3";
 import type { RDFWorkerCommand } from "../utils/rdfManager.workerProtocol";
+import type { ReasoningResult } from "../utils/reasoningTypes";
 import { WELL_KNOWN } from "../utils/wellKnownOntologies";
 
 declare const self: any;
@@ -30,9 +32,10 @@ type AckMessage = { type: "ack"; id: string };
 type ReasoningRequest = {
   type: "runReasoning";
   id: string;
-  quads: PlainQuad[];
+  quads?: PlainQuad[];
   rulesets?: string[];
   baseUrl?: string;
+  emitSubjects?: boolean;
 };
 
 type ReasoningStageMessage = {
@@ -70,11 +73,15 @@ type ReasoningResultMessage = {
   type: "reasoningResult";
   id: string;
   durationMs: number;
-  added: PlainQuad[];
+  startedAt: number;
+  added?: PlainQuad[];
+  addedCount: number;
   warnings: ReasoningWarning[];
   errors: ReasoningError[];
   inferences: ReasoningInference[];
   usedReasoner: boolean;
+  workerDurationMs?: number;
+  ruleQuadCount?: number;
 };
 
 type ReasoningErrorMessage = {
@@ -82,6 +89,14 @@ type ReasoningErrorMessage = {
   id: string;
   message: string;
   stack?: string;
+};
+
+type RunReasoningOptions = {
+  mutateSharedStore?: boolean;
+  includeAdded?: boolean;
+  emitSubjects?: boolean;
+  emitChange?: boolean;
+  emitResultEvent?: boolean;
 };
 
 const pendingAcks = new Map<string, boolean>();
@@ -129,15 +144,26 @@ self.addEventListener("message", (event: MessageEvent<any>) => {
     return;
   }
   if (msg.type === "runReasoning") {
-    handleRunReasoning(msg).catch((err) => {
-      const errorMessage: ReasoningErrorMessage = {
-        type: "reasoningError",
-        id: msg.id,
-        message: String((err as Error).message || err),
-        stack: (err && (err as any).stack) ? String((err as any).stack) : undefined,
-      };
-      post(errorMessage);
-    });
+    const hasExternalQuads = Array.isArray(msg.quads) && msg.quads.length > 0;
+    handleRunReasoning(msg, {
+      mutateSharedStore: !hasExternalQuads,
+      includeAdded: hasExternalQuads,
+      emitSubjects: !hasExternalQuads,
+      emitChange: !hasExternalQuads,
+      emitResultEvent: false,
+    })
+      .then((result) => {
+        post(result);
+      })
+      .catch((err) => {
+        const errorMessage: ReasoningErrorMessage = {
+          type: "reasoningError",
+          id: msg.id,
+          message: String((err as Error).message || err),
+          stack: (err && (err as any).stack) ? String((err as any).stack) : undefined,
+        };
+        post(errorMessage);
+      });
   }
 });
 
@@ -208,6 +234,7 @@ function resolveN3() {
     (root && root.Reasoner) ||
     (root && root.N3Reasoner) ||
     (root && root.default && (root.default.Reasoner || root.default.N3Reasoner)) ||
+    N3ReasonerExplicit ||
     null;
   return { DataFactory, StoreCls, ParserCls, ReasonerCls };
 }
@@ -1226,6 +1253,42 @@ async function handleCommand(msg: RDFWorkerCommand) {
         result = { added, removed };
         break;
       }
+      case "runReasoning": {
+        const payload = msg.args && msg.args[0] ? (msg.args[0] as any) : undefined;
+        const reasoningId =
+          payload && typeof payload.reasoningId === "string" && payload.reasoningId.length > 0
+            ? payload.reasoningId
+            : `reasoning-${Date.now().toString(36)}`;
+        const reasoningRequest: ReasoningRequest = {
+          type: "runReasoning",
+          id: reasoningId,
+          rulesets: Array.isArray(payload?.rulesets)
+            ? (payload!.rulesets as string[])
+            : undefined,
+          baseUrl:
+            payload && typeof payload.baseUrl === "string" ? payload.baseUrl : undefined,
+        };
+        const outcome = await handleRunReasoning(reasoningRequest, {
+          mutateSharedStore: true,
+          includeAdded: false,
+          emitSubjects: payload?.emitSubjects !== false,
+          emitChange: true,
+          emitResultEvent: true,
+        });
+        result = {
+          id: outcome.id,
+          durationMs: outcome.durationMs,
+          startedAt: outcome.startedAt,
+          warnings: outcome.warnings,
+          errors: outcome.errors,
+          inferences: outcome.inferences,
+          usedReasoner: outcome.usedReasoner,
+          addedCount: outcome.addedCount,
+          workerDurationMs: outcome.workerDurationMs,
+          ruleQuadCount: outcome.ruleQuadCount,
+        };
+        break;
+      }
       default:
         throw new Error(`Unsupported command: ${String(msg.command)}`);
     }
@@ -1243,8 +1306,11 @@ async function handleCommand(msg: RDFWorkerCommand) {
   }
 }
 
-async function handleRunReasoning(msg: ReasoningRequest) {
-  const startTime = Date.now();
+async function handleRunReasoning(
+  msg: ReasoningRequest,
+  options: RunReasoningOptions = {},
+): Promise<ReasoningResultMessage> {
+  const startedAt = Date.now();
   reasoningStage({ type: "reasoningStage", id: msg.id, stage: "start" });
 
   const { DataFactory, StoreCls, ParserCls, ReasonerCls } = resolveN3();
@@ -1253,14 +1319,34 @@ async function handleRunReasoning(msg: ReasoningRequest) {
     throw new Error("n3-api-unavailable");
   }
 
-  const store = new (StoreCls as any)();
-  const beforeKeys = new Set<string>();
+  const mutateSharedStore =
+    options.mutateSharedStore ?? !(Array.isArray(msg.quads) && msg.quads.length > 0);
+  const includeAdded = options.includeAdded ?? !mutateSharedStore;
+  const emitSubjectsFlag = options.emitSubjects ?? mutateSharedStore;
+  const emitChangeFlag = options.emitChange ?? mutateSharedStore;
+  const emitResultEvent = options.emitResultEvent ?? true;
 
-  try {
+  const workingStore = new (StoreCls as any)();
+  const beforeKeys = new Set<string>();
+  let sharedStoreRef: any | null = null;
+
+  if (mutateSharedStore) {
+    sharedStoreRef = getSharedStore();
+    const existingQuads = sharedStoreRef.getQuads(null, null, null, null) || [];
+    for (const q of existingQuads) {
+      try {
+        workingStore.addQuad(q);
+        beforeKeys.add(quadKeyFromTerms(q));
+      } catch (_) {
+        /* ignore copy failures */
+      }
+    }
+  } else {
     for (const pq of msg.quads || []) {
       try {
         const q = plainToQuad(pq, DataFactory);
-        store.addQuad(q);
+        if (!q) continue;
+        workingStore.addQuad(q);
         beforeKeys.add(quadKeyFromTerms(q));
       } catch (err) {
         reasoningStage({
@@ -1271,12 +1357,10 @@ async function handleRunReasoning(msg: ReasoningRequest) {
         });
       }
     }
-  } catch (_) {
-    // ignore top-level ingestion failures; proceed with what we have
   }
 
   try {
-    const countsBefore = collectGraphCountsFromStore(store);
+    const countsBefore = collectGraphCountsFromStore(workingStore);
     console.debug("[VG_REASONING_WORKER] quad counts before reasoning", {
       id: msg.id,
       total: Object.values(countsBefore).reduce((acc, v) => acc + v, 0),
@@ -1290,8 +1374,11 @@ async function handleRunReasoning(msg: ReasoningRequest) {
   const parsedRules: any[] = [];
   const ruleDiagnostics: { name: string; quadCount: number }[] = [];
 
-  const rulesets = Array.isArray(msg.rulesets) ? msg.rulesets.filter((r) => typeof r === "string" && r) : [];
-  const baseUrlRaw = typeof msg.baseUrl === "string" && msg.baseUrl.length > 0 ? msg.baseUrl : "/";
+  const rulesets = Array.isArray(msg.rulesets)
+    ? msg.rulesets.filter((r) => typeof r === "string" && r)
+    : [];
+  const baseUrlRaw =
+    typeof msg.baseUrl === "string" && msg.baseUrl.length > 0 ? msg.baseUrl : "/";
   const normalizedBase = (() => {
     try {
       let v = baseUrlRaw;
@@ -1315,7 +1402,9 @@ async function handleRunReasoning(msg: ReasoningRequest) {
   })();
   const origin = (() => {
     try {
-      return (self as any).location && (self as any).location.origin ? String((self as any).location.origin) : "";
+      return (self as any).location && (self as any).location.origin
+        ? String((self as any).location.origin)
+        : "";
     } catch (_) {
       return "";
     }
@@ -1325,53 +1414,54 @@ async function handleRunReasoning(msg: ReasoningRequest) {
     const attemptsSet = new Set<string>();
     attemptsSet.add(`${normalizedBase}reasoning-rules/${name}`);
     attemptsSet.add(`/reasoning-rules/${name}`);
-    attemptsSet.add(`reasoning-rules/${name}`);
+    attemptsSet.add(`${normalizedBase}${name}`);
+    attemptsSet.add(name);
     if (workerDir) attemptsSet.add(`${workerDir}reasoning-rules/${name}`);
     if (origin) {
       attemptsSet.add(`${origin}${normalizedBase}reasoning-rules/${name}`);
       attemptsSet.add(`${origin}/reasoning-rules/${name}`);
       if (workerDir) attemptsSet.add(`${origin}${workerDir}reasoning-rules/${name}`);
     }
-    attemptsSet.add(name);
     const attempts = Array.from(attemptsSet);
+    let lastErr: unknown = null;
     for (const url of attempts) {
       try {
-        const resp = await fetch(url);
-        if (resp && resp.ok) {
-          const text = await resp.text();
-          if (text && text.length) return text;
+        reasoningStage({
+          type: "reasoningStage",
+          id: msg.id,
+          stage: "fetch-ruleset",
+          meta: { name },
+        });
+        const response = await fetch(url, { mode: "cors" });
+        if (response.ok) {
+          const text = await response.text();
+          if (text && text.length > 0) {
+            return text;
+          }
         }
-      } catch (_) {
-        // try next candidate
+        lastErr = new Error(`Failed to fetch ruleset ${name} from ${url}`);
+      } catch (err) {
+        lastErr = err;
       }
     }
-    return "";
+    if (lastErr) throw lastErr;
+    throw new Error(`Unable to fetch ruleset ${name}`);
   };
-
-  try {
-    console.debug("[VG_REASONING_WORKER] requested reasoning rulesets", {
-      id: msg.id,
-      requested: rulesets,
-    });
-  } catch (_) {
-    // ignore logging errors
-  }
 
   if (parser && rulesets.length > 0) {
     for (const name of rulesets) {
       try {
-        reasoningStage({ type: "reasoningStage", id: msg.id, stage: "fetch-ruleset", meta: { name } });
         const text = await fetchRuleText(String(name));
         if (text && text.trim()) {
-          const parsed = parser.parse(text);
-          if (Array.isArray(parsed) && parsed.length) {
-            parsedRules.push(...parsed);
-            ruleDiagnostics.push({ name: String(name), quadCount: parsed.length });
+          const quads = parser.parse(text);
+          if (Array.isArray(quads) && quads.length > 0) {
+            parsedRules.push(...quads);
+            ruleDiagnostics.push({ name: String(name), quadCount: quads.length });
             reasoningStage({
               type: "reasoningStage",
               id: msg.id,
               stage: "ruleset-parsed",
-              meta: { name, quadCount: parsed.length },
+              meta: { name, quadCount: quads.length },
             });
           }
         }
@@ -1385,30 +1475,31 @@ async function handleRunReasoning(msg: ReasoningRequest) {
       }
     }
   } else if (parser) {
-    try {
-      const defaultName = "best-practice.n3";
-      reasoningStage({ type: "reasoningStage", id: msg.id, stage: "fetch-default-rules" });
-      const text = await fetchRuleText(defaultName);
-      if (text && text.trim()) {
-        const parsed = parser.parse(text);
-        if (Array.isArray(parsed) && parsed.length) {
-          parsedRules.push(...parsed);
-          ruleDiagnostics.push({ name: defaultName, quadCount: parsed.length });
-          reasoningStage({
-            type: "reasoningStage",
-            id: msg.id,
-            stage: "default-rules-parsed",
-            meta: { quadCount: parsed.length },
-          });
+    const defaultNames = ["best-practice.n3", "owl-rl.n3"];
+    for (const name of defaultNames) {
+      try {
+        const text = await fetchRuleText(name);
+        if (text && text.trim()) {
+          const quads = parser.parse(text);
+          if (Array.isArray(quads) && quads.length > 0) {
+            parsedRules.push(...quads);
+            ruleDiagnostics.push({ name, quadCount: quads.length });
+            reasoningStage({
+              type: "reasoningStage",
+              id: msg.id,
+              stage: "default-rules-parsed",
+              meta: { name, quadCount: quads.length },
+            });
+          }
         }
+      } catch (err) {
+        reasoningStage({
+          type: "reasoningStage",
+          id: msg.id,
+          stage: "default-rules-error",
+          meta: { name, error: String((err as Error).message || err) },
+        });
       }
-    } catch (err) {
-      reasoningStage({
-        type: "reasoningStage",
-        id: msg.id,
-        stage: "default-rules-error",
-        meta: { error: String((err as Error).message || err) },
-      });
     }
   }
 
@@ -1426,17 +1517,11 @@ async function handleRunReasoning(msg: ReasoningRequest) {
   }
 
   let usedReasoner = false;
+  let reasonerDuration = 0;
+
   if (ReasonerCls) {
     try {
-      const reasoner = new (ReasonerCls as any)(store);
-      let rulesInput: any = undefined;
-      if (parsedRules.length > 0 && StoreCls) {
-        try {
-          rulesInput = new (StoreCls as any)(parsedRules);
-        } catch (_) {
-          rulesInput = parsedRules;
-        }
-      }
+      const reasoner = new (ReasonerCls as any)(workingStore);
       const totalRuleQuads = ruleDiagnostics.reduce((acc, item) => acc + item.quadCount, 0);
       reasoningStage({
         type: "reasoningStage",
@@ -1444,13 +1529,28 @@ async function handleRunReasoning(msg: ReasoningRequest) {
         stage: "reasoner-start",
         meta: { ruleQuadCount: totalRuleQuads },
       });
+      let rulesInput: any = new (StoreCls as any)();
+      if (parsedRules.length > 0) {
+        try {
+          rulesInput = new (StoreCls as any)(parsedRules);
+        } catch (_) {
+          rulesInput = new (StoreCls as any)();
+          for (const quad of parsedRules) {
+            try {
+              rulesInput.addQuad(quad);
+            } catch (_) {
+              /* ignore individual rule quad failures */
+            }
+          }
+        }
+      }
       const reasonerStart = Date.now();
       const maybePromise = reasoner.reason(rulesInput);
       if (maybePromise && typeof maybePromise.then === "function") {
         await maybePromise;
       }
       usedReasoner = true;
-      const reasonerDuration = Date.now() - reasonerStart;
+      reasonerDuration = Date.now() - reasonerStart;
       reasoningStage({
         type: "reasoningStage",
         id: msg.id,
@@ -1475,25 +1575,17 @@ async function handleRunReasoning(msg: ReasoningRequest) {
     reasoningStage({ type: "reasoningStage", id: msg.id, stage: "reasoner-missing" });
   }
 
-  const afterQuads = store.getQuads(null, null, null, null) || [];
-  const addedPlain: PlainQuad[] = [];
+  const afterQuads = workingStore.getQuads(null, null, null, null) || [];
+  const addedPlainAll: PlainQuad[] = [];
   const seenKeys = new Set<string>();
   for (const q of afterQuads) {
     const key = quadKeyFromTerms(q);
     if (beforeKeys.has(key)) continue;
     if (seenKeys.has(key)) continue;
     seenKeys.add(key);
-    addedPlain.push(quadToPlain(q, "urn:vg:inferred"));
+    addedPlainAll.push(quadToPlain(q, "urn:vg:inferred"));
   }
 
-  const { warnings, errors } = collectShaclResults(
-    addedPlain.map((pq) => ({
-      s: pq.s,
-      p: pq.p,
-      o: pq.o,
-      g: pq.g ?? "urn:vg:inferred",
-    })),
-  );
   if (!usedReasoner) {
     reasoningStage({
       type: "reasoningStage",
@@ -1501,11 +1593,143 @@ async function handleRunReasoning(msg: ReasoningRequest) {
       stage: "reasoner-missing",
       meta: { message: "Reasoner unavailable after execution attempt" },
     });
-    throw new Error("Reasoner unavailable or failed to execute");
+
+    const durationMs = Date.now() - startedAt;
+    const fallbackWarnings: ReasoningWarning[] = [
+      {
+        message: "Reasoner unavailable; no inferred triples were generated.",
+        rule: "reasoner-missing",
+        severity: "warning",
+      },
+    ];
+
+    const fallbackResult: ReasoningResultMessage = {
+      type: "reasoningResult",
+      id: msg.id,
+      durationMs,
+      startedAt,
+      added: includeAdded ? [] : undefined,
+      addedCount: 0,
+      warnings: fallbackWarnings,
+      errors: [],
+      inferences: [],
+      usedReasoner: false,
+      workerDurationMs: 0,
+      ruleQuadCount: ruleDiagnostics.reduce((acc, item) => acc + item.quadCount, 0),
+    };
+
+    if (emitResultEvent) {
+      const eventPayload: ReasoningResult = {
+        id: msg.id,
+        timestamp: startedAt,
+        status: "completed",
+        duration: durationMs,
+        errors: [],
+        warnings: fallbackWarnings,
+        inferences: [],
+        meta: {
+          usedReasoner: false,
+          workerDurationMs: 0,
+          totalDurationMs: durationMs,
+          addedCount: 0,
+          ruleQuadCount: fallbackResult.ruleQuadCount,
+        },
+      };
+      post({
+        type: "event",
+        event: "reasoningResult",
+        payload: eventPayload,
+      });
+    }
+
+    reasoningStage({
+      type: "reasoningStage",
+      id: msg.id,
+      stage: "complete",
+      meta: {
+        durationMs,
+        addedCount: 0,
+        usedReasoner: false,
+        inferenceCount: 0,
+        ruleQuadCount: fallbackResult.ruleQuadCount,
+      },
+    });
+
+    return fallbackResult;
   }
 
+  const touchedSubjects = new Set<string>();
+  let effectiveAdded: PlainQuad[] = [];
+
+  if (mutateSharedStore && sharedStoreRef) {
+    const inserted: PlainQuad[] = [];
+    for (const pq of addedPlainAll) {
+      try {
+        const q = plainToQuad(pq, DataFactory);
+        if (!q) continue;
+        const graphTerm =
+          q.graph && q.graph.termType !== "DefaultGraph"
+            ? q.graph
+            : DataFactory.namedNode("urn:vg:inferred");
+        const exists =
+          typeof sharedStoreRef.countQuads === "function"
+            ? sharedStoreRef.countQuads(q.subject, q.predicate, q.object, graphTerm) > 0
+            : (sharedStoreRef.getQuads(q.subject, q.predicate, q.object, graphTerm) || [])
+                .length > 0;
+        if (exists) continue;
+        sharedStoreRef.addQuad(
+          DataFactory.quad(q.subject, q.predicate, q.object, graphTerm),
+        );
+
+        const subjectValue =
+          q.subject && typeof q.subject.value === "string"
+            ? String(q.subject.value)
+            : pq.s;
+        touchedSubjects.add(subjectValue);
+
+        inserted.push({
+          s: subjectValue,
+          p:
+            q.predicate && typeof q.predicate.value === "string"
+              ? String(q.predicate.value)
+              : pq.p,
+          o: pq.o,
+          g: graphTerm && graphTerm.value ? String(graphTerm.value) : "urn:vg:inferred",
+        });
+      } catch (_) {
+        /* ignore insertion failure */
+      }
+    }
+    effectiveAdded = inserted;
+
+    if (emitChangeFlag && inserted.length > 0) {
+      emitChange({ reason: "reasoning", addedCount: inserted.length });
+    }
+    if (emitSubjectsFlag && inserted.length > 0) {
+      const emission = prepareSubjectEmissionFromSet(
+        touchedSubjects,
+        sharedStoreRef,
+        DataFactory,
+      );
+      if (emission.subjects.length > 0) {
+        emitSubjects(emission.subjects, emission.quadsBySubject);
+      }
+    }
+  } else {
+    effectiveAdded = addedPlainAll;
+  }
+
+  const { warnings, errors } = collectShaclResults(
+    effectiveAdded.map((pq) => ({
+      s: pq.s,
+      p: pq.p,
+      o: pq.o,
+      g: pq.g ?? "urn:vg:inferred",
+    })),
+  );
+
   const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-  const inferences: ReasoningInference[] = addedPlain
+  const inferences: ReasoningInference[] = effectiveAdded
     .map((pq) => {
       const subject = pq.s;
       const predicate = pq.p;
@@ -1530,16 +1754,18 @@ async function handleRunReasoning(msg: ReasoningRequest) {
     })
     .filter((entry): entry is ReasoningInference => Boolean(entry));
 
-  const durationMs = Date.now() - startTime;
+  const durationMs = Date.now() - startedAt;
 
   try {
-    const countsAfter = collectGraphCountsFromStore(store);
+    const countsAfter = collectGraphCountsFromStore(
+      mutateSharedStore && sharedStoreRef ? sharedStoreRef : workingStore,
+    );
     console.debug("[VG_REASONING_WORKER] quad counts after reasoning", {
       id: msg.id,
       durationMs,
       total: Object.values(countsAfter).reduce((acc, v) => acc + v, 0),
       counts: countsAfter,
-      addedCount: addedPlain.length,
+      addedCount: effectiveAdded.length,
       usedReasoner,
       ruleQuadCount: ruleDiagnostics.reduce((acc, item) => acc + item.quadCount, 0),
     });
@@ -1551,24 +1777,53 @@ async function handleRunReasoning(msg: ReasoningRequest) {
     type: "reasoningResult",
     id: msg.id,
     durationMs,
-    added: addedPlain,
+    startedAt,
+    added: includeAdded ? effectiveAdded : undefined,
+    addedCount: effectiveAdded.length,
     warnings,
     errors,
     inferences,
     usedReasoner,
+    workerDurationMs: reasonerDuration,
+    ruleQuadCount: ruleDiagnostics.reduce((acc, item) => acc + item.quadCount, 0),
   };
 
-  post(result);
+  if (emitResultEvent) {
+    const eventPayload: ReasoningResult = {
+      id: msg.id,
+      timestamp: startedAt,
+      status: "completed",
+      duration: durationMs,
+      errors,
+      warnings,
+      inferences,
+      meta: {
+        usedReasoner,
+        workerDurationMs: reasonerDuration,
+        totalDurationMs: durationMs,
+        addedCount: result.addedCount,
+        ruleQuadCount: result.ruleQuadCount,
+      },
+    };
+    post({
+      type: "event",
+      event: "reasoningResult",
+      payload: eventPayload,
+    });
+  }
+
   reasoningStage({
     type: "reasoningStage",
     id: msg.id,
     stage: "complete",
     meta: {
       durationMs,
-      addedCount: addedPlain.length,
+      addedCount: result.addedCount,
       usedReasoner,
       inferenceCount: usedReasoner ? inferences.length : 0,
-      ruleQuadCount: ruleDiagnostics.reduce((acc, item) => acc + item.quadCount, 0),
+      ruleQuadCount: result.ruleQuadCount,
     },
   });
+
+  return result;
 }
