@@ -13,6 +13,7 @@ import {
 } from "../../utils/termUtils";
 import type { NodeData } from "../../types/canvas";
 import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip";
+import { useOntologyStore } from "../../stores/ontologyStore";
 
 
 function RDFNodeImpl(props: NodeProps) {
@@ -121,6 +122,10 @@ function RDFNodeImpl(props: NodeProps) {
       : "";
 
 
+  const namespaceRegistry = useOntologyStore(
+    (s) => (Array.isArray(s.namespaceRegistry) ? s.namespaceRegistry : []),
+  );
+
   const annotations = useMemo(() => {
     if (!Array.isArray(nodeData.properties) || nodeData.properties.length === 0) {
       return [] as Array<{ term: string; value: string }>;
@@ -136,12 +141,12 @@ function RDFNodeImpl(props: NodeProps) {
       if (rawValue === undefined || rawValue === null) continue;
       const valueStr = String(rawValue).trim();
       if (!valueStr) continue;
-      const prefixed = toPrefixed(propertyIri);
+      const prefixed = toPrefixed(propertyIri, namespaceRegistry);
       const term = prefixed !== propertyIri ? prefixed : propertyIri;
       entries.push({ term, value: valueStr });
     }
     return entries;
-  }, [nodeData.properties]);
+  }, [nodeData.properties, namespaceRegistry]);
 
   const typePresentButNotLoaded =
     !nodeData.classType &&
