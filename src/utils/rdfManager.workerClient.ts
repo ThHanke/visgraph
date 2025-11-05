@@ -107,15 +107,12 @@ export class RdfManagerWorkerClient {
       throw new Error("rdfManager worker not initialised");
     }
 
-    const message: RDFWorkerCommand = {
+    const message: RDFWorkerCommand = Object.freeze({
       type: "command",
       id,
       command,
-      args:
-        typeof payload === "undefined"
-          ? undefined
-          : ([payload] as RDFWorkerCommandPayloads[C] extends undefined ? undefined : [RDFWorkerCommandPayloads[C]]),
-    };
+      ...(typeof payload === "undefined" ? {} : { payload }),
+    }) as RDFWorkerCommand;
 
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve, reject });

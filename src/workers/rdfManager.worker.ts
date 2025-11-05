@@ -5,7 +5,13 @@ import rdfParsePkg from "rdf-parse";
 import * as N3 from "n3";
 import { Reasoner as N3ReasonerExplicit } from "n3";
 import type { Quad } from "@rdfjs/types";
-import type { RDFWorkerCommand } from "../utils/rdfManager.workerProtocol";
+import {
+  assertRdfWorkerInbound,
+  RDFWorkerCommand,
+  RDFWorkerCommandPayloads,
+  RDFWorkerLoadFromUrlMessage,
+  RDFWorkerRunReasoningMessage,
+} from "../utils/rdfManager.workerProtocol";
 import type { ReasoningResult } from "../utils/reasoningTypes";
 import { deserializeQuad, deserializeTerm, serializeQuad } from "../utils/rdfSerialization";
 import type { WorkerQuad } from "../utils/rdfSerialization";
@@ -15,31 +21,7 @@ declare const self: any;
 
 const BATCH_SIZE = 1000;
 
-type PlainQuad = {
-  s: string;
-  p: string;
-  o: { t: "iri" | "bnode" | "lit"; v: string; dt?: string; ln?: string };
-  g?: string;
-};
-
-type LoadMessage = {
-  type: "loadFromUrl";
-  id: string;
-  url: string;
-  timeoutMs?: number;
-  headers?: Record<string, string>;
-};
-
-type AckMessage = { type: "ack"; id: string };
-
-type ReasoningRequest = {
-  type: "runReasoning";
-  id: string;
-  quads?: WorkerQuad[];
-  rulesets?: string[];
-  baseUrl?: string;
-  emitSubjects?: boolean;
-};
+type SubjectQuadMap = Record<string, WorkerQuad[]>;
 
 type ReasoningStageMessage = {
   type: "reasoningStage";
@@ -129,44 +111,59 @@ function getSharedStore() {
   return resetSharedStore();
 }
 
-self.addEventListener("message", (event: MessageEvent<any>) => {
-  const msg = event.data;
-  if (!msg) return;
-  if (msg.type === "command") {
-    handleCommand(msg as RDFWorkerCommand);
+self.addEventListener("message", (event: MessageEvent<unknown>) => {
+  const incoming = event.data;
+  if (!incoming) return;
+
+  try {
+    assertRdfWorkerInbound(incoming);
+  } catch (err) {
+    console.error("[rdfManager.worker] received malformed message", err);
     return;
   }
-  if (msg.type === "ack") {
-    pendingAcks.set(String(msg.id), true);
-    return;
-  }
-  if (msg.type === "loadFromUrl") {
-    handleLoad(msg).catch((err) => {
-      post({ type: "error", id: msg.id, message: String((err as Error).message || err) });
-    });
-    return;
-  }
-  if (msg.type === "runReasoning") {
-    const hasExternalQuads = Array.isArray(msg.quads) && msg.quads.length > 0;
-    handleRunReasoning(msg, {
-      mutateSharedStore: !hasExternalQuads,
-      includeAdded: hasExternalQuads,
-      emitSubjects: !hasExternalQuads,
-      emitChange: !hasExternalQuads,
-      emitResultEvent: false,
-    })
-      .then((result) => {
-        post(result);
-      })
-      .catch((err) => {
-        const errorMessage: ReasoningErrorMessage = {
-          type: "reasoningError",
-          id: msg.id,
-          message: String((err as Error).message || err),
-          stack: (err && (err as any).stack) ? String((err as any).stack) : undefined,
-        };
-        post(errorMessage);
+
+  switch (incoming.type) {
+    case "command":
+      void handleCommand(incoming);
+      return;
+    case "ack":
+      pendingAcks.set(String(incoming.id), true);
+      return;
+    case "loadFromUrl":
+      void handleLoad(incoming).catch((err) => {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        post({ type: "error", id: incoming.id, message: errorMessage });
       });
+      return;
+    case "runReasoning": {
+      const hasExternalQuads = Array.isArray(incoming.quads) && incoming.quads.length > 0;
+      handleRunReasoning(incoming, {
+        mutateSharedStore: !hasExternalQuads,
+        includeAdded: hasExternalQuads,
+        emitSubjects: !hasExternalQuads,
+        emitChange: !hasExternalQuads,
+        emitResultEvent: false,
+      })
+        .then((result) => {
+          post(result);
+        })
+        .catch((err) => {
+          const errorMessage: ReasoningErrorMessage = {
+            type: "reasoningError",
+            id: incoming.id,
+            message: String((err as Error).message || err),
+            stack: err instanceof Error && err.stack ? err.stack : undefined,
+          };
+          post(errorMessage);
+        });
+      return;
+    }
+    case "subscribe":
+    case "unsubscribe":
+      // Subscriptions are managed on the main thread; worker broadcasts to all listeners.
+      return;
+    default:
+      console.warn("[rdfManager.worker] Unhandled message type", incoming);
   }
 });
 
@@ -192,8 +189,10 @@ function waitForAck(id: string) {
 function reasoningStage(message: ReasoningStageMessage) {
   try {
     post(message);
-  } catch (_) {
-    /* ignore stage emission failures */
+  } catch (err) {
+    console.debug("[rdfManager.worker] reasoningStage emission skipped", {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 function emitChange(meta?: Record<string, unknown> | null) {
@@ -209,7 +208,7 @@ function emitChange(meta?: Record<string, unknown> | null) {
   }
 }
 
-function emitSubjects(subjects: string[], quadsBySubject?: Record<string, PlainQuad[]>) {
+function emitSubjects(subjects: string[], quadsBySubject?: SubjectQuadMap) {
   try {
     post({
       type: "event",
@@ -267,21 +266,24 @@ function subjectTermToString(term: any, fallback?: string): string {
   }
 }
 
-function collectPlainQuadsForSubject(subject: string, store: any, DataFactory: any): PlainQuad[] {
+function collectWorkerQuadsForSubject(subject: string, store: any, DataFactory: any): WorkerQuad[] {
   try {
     const term =
       /^_:/i.test(String(subject))
         ? DataFactory.blankNode(String(subject).replace(/^_:/, ""))
         : DataFactory.namedNode(String(subject));
     const quads = store.getQuads(term, null, null, null) || [];
-    const out: PlainQuad[] = [];
+    const out: WorkerQuad[] = [];
     for (const q of quads) {
-      const pq = quadToPlain(q);
-      if (pq) out.push(pq);
+      try {
+        out.push(serializeQuad(q));
+      } catch (err) {
+        console.error("[rdfManager.worker] collectWorkerQuadsForSubject serialize failed", err);
+      }
     }
     return out;
   } catch (err) {
-    console.error("[rdfManager.worker] collectPlainQuadsForSubject failed", err);
+    console.error("[rdfManager.worker] collectWorkerQuadsForSubject failed", err);
     return [];
   }
 }
@@ -327,25 +329,19 @@ function isBlacklistedIri(iri: string): boolean {
       const namespace = workerNamespaces[prefix];
       if (namespace) candidates.add(String(namespace));
 
-      try {
-        const wkPrefix =
-          WELL_KNOWN && WELL_KNOWN.prefixes && WELL_KNOWN.prefixes[prefix];
-        if (wkPrefix) candidates.add(String(wkPrefix));
+      const wkPrefix = WELL_KNOWN?.prefixes?.[prefix];
+      if (wkPrefix) candidates.add(String(wkPrefix));
 
-        const ontologies = WELL_KNOWN && WELL_KNOWN.ontologies ? WELL_KNOWN.ontologies : {};
-        for (const [ontUrl, meta] of Object.entries(ontologies)) {
-          const data = meta as any;
-          if (data && data.namespaces && data.namespaces[prefix]) {
-            candidates.add(String(ontUrl));
-            if (Array.isArray(data.aliases)) {
-              for (const alias of data.aliases) {
-                if (alias) candidates.add(String(alias));
-              }
-            }
+      const ontologies = WELL_KNOWN?.ontologies ?? {};
+      for (const [ontUrl, meta] of Object.entries(ontologies)) {
+        const data = meta as { namespaces?: Record<string, string>; aliases?: string[] } | undefined;
+        if (!data?.namespaces?.[prefix]) continue;
+        candidates.add(String(ontUrl));
+        if (Array.isArray(data.aliases)) {
+          for (const alias of data.aliases) {
+            if (alias) candidates.add(String(alias));
           }
         }
-      } catch (_) {
-        /* ignore */
       }
     }
 
@@ -373,16 +369,16 @@ function prepareSubjectEmissionFromSet(
   subjectSet: Set<string>,
   store: any,
   DataFactory: any,
-): { subjects: string[]; quadsBySubject: Record<string, PlainQuad[]> } {
+): { subjects: string[]; quadsBySubject: SubjectQuadMap } {
   const subjects: string[] = [];
-  const quadsBySubject: Record<string, PlainQuad[]> = {};
+  const quadsBySubject: SubjectQuadMap = {};
   for (const raw of subjectSet) {
     try {
       const subject = String(raw || "").trim();
       if (!subject) continue;
       if (isBlacklistedIri(subject)) continue;
       subjects.push(subject);
-      quadsBySubject[subject] = collectPlainQuadsForSubject(subject, store, DataFactory);
+      quadsBySubject[subject] = collectWorkerQuadsForSubject(subject, store, DataFactory);
     } catch (err) {
       console.error("[rdfManager.worker] prepareSubjectEmissionFromSet item failed", err);
     }
@@ -390,63 +386,29 @@ function prepareSubjectEmissionFromSet(
   return { subjects, quadsBySubject };
 }
 
-function prepareSubjectEmissionFromQuads(
-  quads: any[],
-  DataFactory: any,
-): { subjects: string[]; quadsBySubject: Record<string, PlainQuad[]> } {
-  const map = new Map<string, PlainQuad[]>();
+function prepareSubjectEmissionFromQuads(quads: Quad[]): {
+  subjects: string[];
+  quadsBySubject: SubjectQuadMap;
+} {
+  const map = new Map<string, WorkerQuad[]>();
   for (const q of quads || []) {
     try {
       const subject = subjectTermToString(q.subject);
       if (!subject) continue;
       if (isBlacklistedIri(subject)) continue;
-      const plain = quadToPlain(q);
-      if (!plain) continue;
+      const serialized = serializeQuad(q);
       if (!map.has(subject)) map.set(subject, []);
-      map.get(subject)!.push(plain);
+      map.get(subject)!.push(serialized);
     } catch (err) {
       console.error("[rdfManager.worker] prepareSubjectEmissionFromQuads item failed", err);
     }
   }
   const subjects = Array.from(map.keys());
-  const quadsBySubject: Record<string, PlainQuad[]> = {};
+  const quadsBySubject: SubjectQuadMap = {};
   for (const subject of subjects) {
     quadsBySubject[subject] = map.get(subject)!;
   }
   return { subjects, quadsBySubject };
-}
-
-function quadToPlain(q: any, overrideGraph?: string): PlainQuad {
-  const graphValue =
-    typeof overrideGraph === "string"
-      ? overrideGraph
-      : q.graph && q.graph.value
-        ? String(q.graph.value)
-        : undefined;
-  const objTerm = q.object;
-  let obj: PlainQuad["o"] = { t: "lit", v: "" };
-  if (objTerm) {
-    if (objTerm.termType === "NamedNode") {
-      obj = { t: "iri", v: String(objTerm.value) };
-    } else if (objTerm.termType === "BlankNode") {
-      obj = { t: "bnode", v: String(objTerm.value) };
-    } else if (objTerm.termType === "Literal") {
-      obj = {
-        t: "lit",
-        v: String(objTerm.value),
-        dt: objTerm.datatype && objTerm.datatype.value ? String(objTerm.datatype.value) : undefined,
-        ln: objTerm.language || undefined,
-      };
-    } else {
-      obj = { t: "lit", v: String(objTerm.value || "") };
-    }
-  }
-  return {
-    s: q.subject && q.subject.value ? String(q.subject.value) : "",
-    p: q.predicate && q.predicate.value ? String(q.predicate.value) : "",
-    o: obj,
-    g: graphValue,
-  };
 }
 
 function collectShaclResults(all: Quad[]): { warnings: ReasoningWarning[]; errors: ReasoningError[] } {
@@ -511,13 +473,10 @@ function collectGraphCountsFromStore(store: any): Record<string, number> {
   try {
     const quads = store.getQuads(null, null, null, null) || [];
     for (const q of quads) {
-      try {
-        const graphName =
-          q && q.graph && q.graph.value ? String(q.graph.value) : "urn:vg:default";
-        counts[graphName] = (counts[graphName] || 0) + 1;
-      } catch (_) {
-        /* ignore individual quad issues */
-      }
+      const graphValue = q?.graph?.value;
+      const graphName =
+        typeof graphValue === "string" && graphValue.length > 0 ? graphValue : "urn:vg:default";
+      counts[graphName] = (counts[graphName] || 0) + 1;
     }
   } catch (err) {
     console.debug("[VG_REASONING_WORKER] collectGraphCountsFromStore failed", err);
@@ -569,7 +528,7 @@ async function createReadable(resp: Response) {
   return null;
 }
 
-async function handleLoad(msg: LoadMessage) {
+async function handleLoad(msg: RDFWorkerLoadFromUrlMessage) {
   const { id, url } = msg;
   const timeoutMs = typeof msg.timeoutMs === "number" ? msg.timeoutMs : 15000;
 
@@ -701,7 +660,7 @@ async function handleLoad(msg: LoadMessage) {
 
 async function handleCommand(msg: RDFWorkerCommand) {
   try {
-    const payload = Array.isArray(msg.args) && msg.args.length > 0 ? msg.args[0] : undefined;
+    const payload = (msg as { payload?: unknown }).payload;
     let result: unknown;
     switch (msg.command) {
       case "ping":
@@ -937,7 +896,7 @@ async function handleCommand(msg: RDFWorkerCommand) {
             ? DataFactory.namedNode(String(graphName))
             : DataFactory.defaultGraph();
         const quads = store.getQuads(null, null, null, graphTerm) || [];
-        const { subjects, quadsBySubject } = prepareSubjectEmissionFromQuads(quads, DataFactory);
+        const { subjects, quadsBySubject } = prepareSubjectEmissionFromQuads(quads);
         if (subjects.length > 0) emitSubjects(subjects, quadsBySubject);
         result = { subjects: subjects.length };
         break;
@@ -952,13 +911,9 @@ async function handleCommand(msg: RDFWorkerCommand) {
             : [];
         const subjectSet = new Set<string>();
         for (const item of subjectInput) {
-          try {
-            const value = String(item ?? "").trim();
-            if (!value) continue;
-            subjectSet.add(value);
-          } catch (_) {
-            /* ignore individual subject errors */
-          }
+          const value = typeof item === "string" ? item.trim() : String(item ?? "").trim();
+          if (!value) continue;
+          subjectSet.add(value);
         }
         const { subjects, quadsBySubject } = prepareSubjectEmissionFromSet(
           subjectSet,
@@ -1023,7 +978,7 @@ async function handleCommand(msg: RDFWorkerCommand) {
               object: termToString(q.object),
               graph: q.graph && q.graph.value ? String(q.graph.value) : graphName,
             }))
-          : slice.map((q: any) => quadToPlain(q));
+          : slice.map((q: Quad) => serializeQuad(q));
         result = { total, offset, limit, items, serialize: shouldSerialize };
         break;
       }
@@ -1143,7 +1098,7 @@ async function handleCommand(msg: RDFWorkerCommand) {
         const shouldEmitSubjects =
           !payload?.options || payload.options.suppressSubjects !== true;
         let emissionSubjects: string[] = [];
-        let emissionQuads: Record<string, PlainQuad[]> = {};
+        let emissionQuads: SubjectQuadMap = {};
         if (shouldEmitSubjects) {
           const emission = prepareSubjectEmissionFromSet(
             touchedSubjects,
@@ -1165,24 +1120,20 @@ async function handleCommand(msg: RDFWorkerCommand) {
         break;
       }
       case "runReasoning": {
-        const payload = msg.args && msg.args[0] ? (msg.args[0] as any) : undefined;
-        const reasoningId =
-          payload && typeof payload.reasoningId === "string" && payload.reasoningId.length > 0
-            ? payload.reasoningId
-            : `reasoning-${Date.now().toString(36)}`;
-        const reasoningRequest: ReasoningRequest = {
+        const payload = msg.payload as RDFWorkerCommandPayloads["runReasoning"];
+        const reasoningId = payload.reasoningId;
+        const reasoningRequest: RDFWorkerRunReasoningMessage = {
           type: "runReasoning",
           id: reasoningId,
-          rulesets: Array.isArray(payload?.rulesets)
-            ? (payload!.rulesets as string[])
-            : undefined,
-          baseUrl:
-            payload && typeof payload.baseUrl === "string" ? payload.baseUrl : undefined,
+          quads: payload.quads,
+          rulesets: payload.rulesets,
+          baseUrl: payload.baseUrl,
+          emitSubjects: payload.emitSubjects,
         };
         const outcome = await handleRunReasoning(reasoningRequest, {
           mutateSharedStore: true,
           includeAdded: false,
-          emitSubjects: payload?.emitSubjects !== false,
+          emitSubjects: payload.emitSubjects !== false,
           emitChange: true,
           emitResultEvent: true,
         });
@@ -1218,7 +1169,7 @@ async function handleCommand(msg: RDFWorkerCommand) {
 }
 
 async function handleRunReasoning(
-  msg: ReasoningRequest,
+  msg: RDFWorkerRunReasoningMessage,
   options: RunReasoningOptions = {},
 ): Promise<ReasoningResultMessage> {
   const startedAt = Date.now();
@@ -1248,8 +1199,10 @@ async function handleRunReasoning(
       try {
         workingStore.addQuad(q);
         beforeKeys.add(quadKeyFromTerms(q));
-      } catch (_) {
-        /* ignore copy failures */
+      } catch (err) {
+        console.error("[rdfManager.worker] failed to copy existing quad into working store", {
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
   } else {

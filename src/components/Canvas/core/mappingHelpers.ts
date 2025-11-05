@@ -16,12 +16,22 @@ import type { NodeData, LinkData } from "../../../types/canvas";
  * This file intentionally keeps the functionality minimal and pure (no store lookups).
  */
 
-/* Minimal defensive shapes */
-type QuadLike = {
-  subject?: { value: string };
-  predicate?: { value: string };
-  object?: { value: string; termType?: string; datatype?: { value: string } };
-} | any;
+type TermLike = {
+  termType?: string;
+  value?: unknown;
+  id?: unknown;
+  datatype?: { value?: unknown };
+  language?: string;
+};
+
+type QuadLike =
+  | {
+      subject?: TermLike | null;
+      predicate?: TermLike | null;
+      object?: TermLike | null;
+      graph?: TermLike | string | null;
+    }
+  | any;
 
 type PredicateKind = "annotation" | "object" | "datatype" | "unknown";
 
@@ -43,6 +53,115 @@ type PredicateKind = "annotation" | "object" | "datatype" | "unknown";
  *   that lets the mapper make semantic decisions (e.g., treat owl:AnnotationProperty
  *   predicates as annotations even when the object is an IRI).
  */
+function termValue(term: unknown): string | null {
+  if (typeof term === "string") return term;
+  if (!term || typeof term !== "object") return null;
+  const candidate =
+    (term as TermLike).value ?? (term as TermLike).id ?? null;
+  return typeof candidate === "string" ? candidate : null;
+}
+
+function isBlankNode(term: unknown): boolean {
+  const value = termValue(term);
+  return typeof value === "string" && value.startsWith("_:");
+}
+
+function isNamedNode(term: unknown): boolean {
+  const value = termValue(term);
+  if (typeof value !== "string") return false;
+  if (/^https?:\/\//i.test(value)) return true;
+  return Boolean(
+    term &&
+      typeof term === "object" &&
+      (term as TermLike).termType === "NamedNode",
+  );
+}
+
+function isNamedOrBlank(term: unknown): boolean {
+  return isNamedNode(term) || isBlankNode(term);
+}
+
+function isLiteral(term: unknown): boolean {
+  if (term && typeof term === "object" && (term as TermLike).termType === "Literal") {
+    return true;
+  }
+  const value = termValue(term);
+  if (typeof value !== "string") return false;
+  return !/^https?:\/\//i.test(value) && !value.startsWith("_:");
+}
+
+function graphName(term: unknown): string | null {
+  if (typeof term === "string") return term;
+  const value = termValue(term);
+  return value ?? null;
+}
+
+function sanitizePredicateKind(
+  resolver: ((iri: string) => PredicateKind) | undefined,
+): (iri: string) => PredicateKind {
+  if (typeof resolver === "function") return resolver;
+  return () => "annotation";
+}
+
+// `toPrefixed` throws when the registry lacks the prefix; fall back to the original IRI instead
+// of relying on catch-all suppression downstream.
+function safeToPrefixed(iri: string | undefined, registry: any): string | undefined {
+  if (!iri) return undefined;
+  try {
+    return toPrefixed(iri, registry);
+  } catch {
+    return iri;
+  }
+}
+
+function extractNamespace(iri: string): string {
+  const match = iri.match(/^(.*[/#])/);
+  return match && match[1] ? match[1] : "";
+}
+
+function toStringSafe(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return value == null ? "" : String(value);
+}
+
+function resolveLiteral(term: unknown, defaultType: string): {
+  value: string;
+  type?: string;
+} {
+  const value = termValue(term) ?? "";
+  let type: string | undefined;
+  if (term && typeof term === "object") {
+    const literal = term as TermLike;
+    const datatype = literal.datatype?.value;
+    if (typeof datatype === "string" && datatype.length > 0) {
+      type = datatype;
+    } else if (typeof literal.language === "string" && literal.language.length > 0) {
+      type = `@${literal.language}`;
+    }
+  }
+  if (!type && value) {
+    type = defaultType;
+  }
+  return { value, type };
+}
+
+function coerceQuad(input: QuadLike): {
+  subject: string;
+  predicate: string;
+  object: string;
+  raw: QuadLike;
+  graph: string | null;
+} | null {
+  if (!input || typeof input !== "object") return null;
+  const subject = termValue((input as any).subject);
+  const predicate = termValue((input as any).predicate);
+  const object = termValue((input as any).object);
+  if (!subject || !predicate || !object) return null;
+  const graph = graphName((input as any).graph);
+  return { subject, predicate, object, raw: input, graph };
+}
+
 export function mapQuadsToDiagram(
   quads: QuadLike[] = [],
   options?: {
@@ -54,65 +173,25 @@ export function mapQuadsToDiagram(
     palette?: Record<string,string> | undefined;
   }
 ) {
-  // Diagnostic: log a small sample of incoming quads with their graph terms so we can
-  // trace which named graph the mapper is receiving quads from (e.g. urn:vg:data vs urn:vg:inferred).
-  try {
-    if (typeof console !== "undefined" && console.debug) {
-      const sample = Array.isArray(quads) ? quads.slice(0, 10).map((q: any) => ({
-        s: q && q.subject && q.subject.value ? String(q.subject.value) : null,
-        p: q && q.predicate && q.predicate.value ? String(q.predicate.value) : null,
-        o: q && q.object && q.object.value ? String(q.object.value) : null,
-        g: q && q.graph && (q.graph.value || q.graph.id || (typeof q.graph === "string" ? q.graph : undefined)) ? String(q.graph.value || q.graph.id || q.graph) : null,
-      })) : [];
-      console.debug("[VG_DEBUG] mapQuadsToDiagram.input.sample", { count: Array.isArray(quads) ? quads.length : 0, sample });
-    }
-  } catch (_) { /* ignore diag failures */ }
-  // Small helpers to detect term kinds robustly across N3 and POJO shapes.
-  const isNamedOrBlank = (obj: any) => {
-    try {
-      if (obj === null || typeof obj === "undefined") return false;
-      // Plain string representing an IRI or blank node id
-      if (typeof obj === "string") {
-        return /^https?:\/\//i.test(obj) || obj.startsWith("_:");
-      }
-      if (obj.termType === "NamedNode" || obj.termType === "BlankNode") return true;
-      const v = obj && obj.value ? String(obj.value) : "";
-      if (!v) return false;
-      return /^https?:\/\//i.test(v) || v.startsWith("_:");
-    } catch (_) {
-      return false;
-    }
-  };
+  const predicateKindResolver = sanitizePredicateKind(options?.predicateKind);
+  const availableProperties = Array.isArray(options?.availableProperties)
+    ? options!.availableProperties!
+    : [];
+  const availableClasses = Array.isArray(options?.availableClasses)
+    ? options!.availableClasses!
+    : [];
 
-  const isLiteral = (obj: any) => {
-    try {
-      if (obj === null || typeof obj === "undefined") return false;
-      // plain string -> literal
-      if (typeof obj === "string") return true;
-      if (obj.termType === "Literal") return true;
-      const v = obj && obj.value ? String(obj.value) : "";
-      if (!v) return false;
-      return !(/^https?:\/\//i.test(v) || v.startsWith("_:"));
-    } catch (_) {
-      return false;
+  const getPredicateKind = (iri: string): PredicateKind => {
+    if (predicateKindCache.has(iri)) {
+      return predicateKindCache.get(iri)!;
     }
-  };
-
-  // Prefer an explicit NamedNode check for IRI detection (handles real N3 Terms).
-  const isNamedNode = (obj: any) => {
-    try {
-      if (obj === null || typeof obj === "undefined") return false;
-      if (typeof obj === "string") return /^https?:\/\//i.test(obj);
-      if (obj.termType === "NamedNode") return true;
-      const v = obj && obj.value ? String(obj.value) : "";
-      if (!v) return false;
-      return /^https?:\/\//i.test(v);
-    } catch (_) {
-      return false;
-    }
+    const resolved = predicateKindResolver(iri) ?? "annotation";
+    predicateKindCache.set(iri, resolved);
+    return resolved;
   };
 
   // Collection structures
+  const normalizedByRef = new Map<QuadLike, ReturnType<typeof coerceQuad>>();
   const nodeMap = new Map<
     string,
     {
@@ -129,6 +208,7 @@ export function mapQuadsToDiagram(
   >();
 
   const rfEdges: RFEdge<LinkData>[] = [];
+  const seenEdgeIds = new Set<string>();
 
   const ensureNode = (iri: string) => {
     if (!iri) return;
@@ -174,345 +254,316 @@ export function mapQuadsToDiagram(
   const predicateKindCache = new Map<string, PredicateKind>();
 
   // Initialize cache from provided fat-map snapshot (availableProperties) if present.
-  {
-    const avail =
-      options && Array.isArray((options as any).availableProperties)
-        ? (options as any).availableProperties
-        : [];
-    for (const p of avail) {
-      try {
-        const iri = p && (p.iri || p.key || p) ? String(p.iri || p.key || p) : "";
-        if (!iri) continue;
-        const kindRaw = (p && (p.propertyKind || p.kind || p.type)) || undefined;
-        const kind =
-          kindRaw === "object" || kindRaw === "datatype" || kindRaw === "annotation"
-            ? String(kindRaw)
-            : undefined;
-        if (kind) {
-          if (kind === "object") predicateKindCache.set(iri, "object");
-          else if (kind === "datatype") predicateKindCache.set(iri, "datatype");
-          else if (kind === "annotation") predicateKindCache.set(iri, "annotation");
-        } else {
-          predicateKindCache.set(iri, "unknown");
-        }
-      } catch (_) {
-        /* ignore per-entry */
-      }
+  for (const property of availableProperties) {
+    if (!property || typeof property !== "object") continue;
+    const iriCandidate =
+      (property as any).iri ??
+      (property as any).key ??
+      (typeof property === "string" ? property : null);
+    if (typeof iriCandidate !== "string" || iriCandidate.length === 0) {
+      continue;
+    }
+    const kindRaw =
+      (property as any).propertyKind ??
+      (property as any).kind ??
+      (property as any).type;
+    if (kindRaw === "object" || kindRaw === "datatype" || kindRaw === "annotation") {
+      predicateKindCache.set(iriCandidate, kindRaw);
+    } else {
+      predicateKindCache.set(iriCandidate, "unknown");
     }
   }
 
-  
   // Blank node referenced checker (in the provided quad batch)
-  const isBlankNodeReferenced = (bn?: string | null, quadsToCheck?: QuadLike[]) => {
-    try {
-      if (!bn) return false;
-      const id = String(bn);
-      if (!id.startsWith("_:")) return false;
-      const arr = Array.isArray(quadsToCheck) ? quadsToCheck : quads;
-      if (!Array.isArray(arr) || arr.length === 0) return false;
-      return arr.some((qq: any) => {
-        try { return qq && qq.subject && String(qq.subject.value) === id; } catch (_) { return false; }
-      });
-    } catch (_) {
-      return false;
-    }
+  const isBlankNodeReferenced = (bn?: string | null, collection?: QuadLike[]) => {
+    if (typeof bn !== "string" || !bn.startsWith("_:")) return false;
+    const source = Array.isArray(collection) ? collection : quads;
+    if (!Array.isArray(source) || source.length === 0) return false;
+    return source.some((candidate) => {
+      const normalized = coerceQuad(candidate);
+      return normalized?.subject === bn;
+    });
   };
 
 
   // Step 2: split quads by origin (graph name)
   const dataQuads: QuadLike[] = [];
   const inferredQuads: QuadLike[] = [];
-  {
-    for (const q of quads || []) {
-      try {
-        const graphVal =
-          q && q.graph
-            ? (q.graph.value || q.graph.id || (typeof q.graph === "string" ? q.graph : undefined))
-            : undefined;
-        const gstr = typeof graphVal !== "undefined" && graphVal !== null ? String(graphVal || "") : "";
-        // default detection: data quads include "urn:vg:data"
-        if (gstr && gstr.includes("urn:vg:data")) {
-          dataQuads.push(q);
-          continue;
-        }
-        // inferred quads detection: includes "urn:vg:inferred"
-        if (gstr && gstr.includes("urn:vg:inferred")) {
-          inferredQuads.push(q);
-          continue;
-        }
-        // fallback: treat other graphs as data if no graph provided
-        if (!gstr) {
-          // If no graph we treat as data by default (preserve previous behaviour in many cases)
-          dataQuads.push(q);
-        }
-      } catch (_) { /* ignore per-quad */ }
+  for (const quad of Array.isArray(quads) ? quads : []) {
+    const normalized = coerceQuad(quad);
+    if (!normalized) continue;
+    normalizedByRef.set(quad, normalized);
+
+    const graphId = normalized.graph ?? "";
+    if (graphId.includes("urn:vg:inferred")) {
+      inferredQuads.push(quad);
+      continue;
+    }
+    if (graphId.includes("urn:vg:data") || graphId === "") {
+      dataQuads.push(quad);
+      continue;
     }
   }
 
   // Pre-scan dataQuads for rdf:type declarations so we can make deterministic decisions
   const typesBySubject = new Map<string, Set<string>>();
-  {
-    for (const q of dataQuads || []) {
-      try {
-        const s = q && q.subject ? q.subject : null;
-        const p = q && q.predicate ? q.predicate : null;
-        const o = q && q.object ? q.object : null;
-        const subjIri = s && s.value ? String(s.value) : "";
-        const predIri = p && p.value ? String(p.value) : "";
-        if (!subjIri || !predIri) continue;
-        if (predIri === RDF_TYPE) {
-          const val = o && o.value ? String(o.value) : "";
-          if (val) {
-            if (!typesBySubject.has(subjIri)) typesBySubject.set(subjIri, new Set<string>());
-            typesBySubject.get(subjIri)!.add(val);
-          }
-        }
-      } catch (_) { /* ignore per-quad */ }
+  for (const quad of dataQuads) {
+    const normalized = normalizedByRef.get(quad) ?? coerceQuad(quad);
+    if (!normalized) continue;
+    const predicateIri = normalized.predicate;
+    if (predicateIri !== RDF_TYPE) continue;
+    const objectIri = normalized.object;
+    if (!objectIri) continue;
+    if (!typesBySubject.has(normalized.subject)) {
+      typesBySubject.set(normalized.subject, new Set<string>());
+    }
+    typesBySubject.get(normalized.subject)!.add(objectIri);
+  }
+
+  const propertyLabelByIri = new Map<string, string>();
+  for (const property of availableProperties) {
+    if (!property || typeof property !== "object") continue;
+    const iri = typeof property.iri === "string" ? property.iri : undefined;
+    const label =
+      typeof property.label === "string"
+        ? property.label
+        : typeof property.name === "string"
+        ? property.name
+        : typeof property.title === "string"
+        ? property.title
+        : typeof property.display === "string"
+        ? property.display
+        : undefined;
+    if (iri && label) {
+      propertyLabelByIri.set(iri, label);
+    }
+  }
+
+  const classLabelByIri = new Map<string, string>();
+  for (const cls of availableClasses) {
+    if (!cls || typeof cls !== "object") continue;
+    const iri = typeof cls.iri === "string" ? cls.iri : undefined;
+    const label =
+      typeof cls.label === "string"
+        ? cls.label
+        : typeof cls.name === "string"
+        ? cls.name
+        : typeof cls.title === "string"
+        ? cls.title
+        : typeof cls.display === "string"
+        ? cls.display
+        : undefined;
+    if (iri && label) {
+      classLabelByIri.set(iri, label);
     }
   }
 
   // Step 3: loop over data quads and fill the properties of the already existing nodes
-  try {
-    for (const q of dataQuads || []) {
-      try {
-        const subj = q && q.subject ? q.subject : null;
-        const pred = q && q.predicate ? q.predicate : null;
-        const obj = q && q.object ? q.object : null;
+  for (const quad of dataQuads) {
+    const normalized = normalizedByRef.get(quad) ?? coerceQuad(quad);
+    if (!normalized) continue;
 
-        const subjectIri = subj && subj.value ? String(subj.value) : "";
-        const predIri = pred && pred.value ? String(pred.value) : "";
-        if (!subjectIri || !predIri) continue;
+    ensureNode(normalized.subject);
+    const entry = nodeMap.get(normalized.subject)!;
 
-        // ensure the node exists (pre-pass should have created it, but be defensive)
-        ensureNode(subjectIri);
-        const entry = nodeMap.get(subjectIri)!;
+    const subjectTypesSet = typesBySubject.get(normalized.subject);
+    const subjectTypes = subjectTypesSet
+      ? Array.from(subjectTypesSet)
+      : Array.isArray(entry.rdfTypes)
+      ? entry.rdfTypes.slice()
+      : [];
 
-        // Determine subjectIsTBox using pre-scanned types (prefer deterministic)
-        let subjectIsTBox = true;
-        const subjTypesArr = typesBySubject.has(subjectIri)
-          ? Array.from(typesBySubject.get(subjectIri)!).map(String)
-          : Array.isArray(entry.rdfTypes)
-          ? entry.rdfTypes.map(String)
-          : [];
+    const hasAboxType =
+      subjectTypes.length === 0 ||
+      subjectTypes.some((type) => ABOX_TYPE_IRIS.has(type));
+    entry.forceIsTBox = !hasAboxType;
 
-        // // const hasIndividual = subjTypesArr.includes(OWL_NAMED_INDIVIDUAL);
-        // // const hasTboxType = subjTypesArr.some((t) => TBOX_TYPE_IRIS.has(String(t)));
-        const hasAboxType = subjTypesArr.length === 0 || subjTypesArr.some((t) => ABOX_TYPE_IRIS.has(String(t)));
-        subjectIsTBox = !hasAboxType;
-        entry.forceIsTBox=subjectIsTBox
-        // Determine predicate kind (use cache -> options.predicateKind -> default to annotation)
-        let predicateKindLocal: PredicateKind = "annotation";
-        try {
-          if (predicateKindCache.has(predIri)) {
-            predicateKindLocal = predicateKindCache.get(predIri)!;
-          } else if (options && typeof options.predicateKind === "function") {
-            try {
-              const k = options.predicateKind(String(predIri));
-              predicateKindLocal = k || "annotation";
-            } catch (_) {
-              predicateKindLocal = "annotation";
-            }
-            try { predicateKindCache.set(predIri, predicateKindLocal); } catch (_) { /* ignore */ }
-          } else {
-            predicateKindLocal = "annotation";
-          }
-        } catch (_) {
-          predicateKindLocal = "annotation";
-        }
+    const predicateIri = normalized.predicate;
+    const predicateTerm = (quad as { predicate?: TermLike }).predicate ?? null;
+    const objectTerm = (quad as { object?: TermLike }).object ?? null;
 
-        // Handle rdf:type
-        if (predIri === RDF_TYPE) {
-          const val = obj && obj.value ? String(obj.value) : "";
-          if (val) entry.rdfTypes.push(val);
-          continue;
-        }
-
-        // rdfs:label as node label (literal preferred)
-        if (predIri === RDFS_LABEL && isLiteral(obj)) {
-          const labelVal = obj && obj.value ? String(obj.value) : entry.label;
-          entry.label = labelVal;
-          {
-            // Preserve legacy string fields but attach native predicate/object Terms for downstream consumers
-            entry.annotationProperties.push({
-              property: predIri,
-              value: labelVal,
-              predicateTerm: pred,
-              objectTerm: obj,
-              type: obj && obj.datatype && obj.datatype.value ? String(obj.datatype.value) : (obj && obj.language ? `@${String(obj.language)}` : XSD_STRING),
-            });
-          }
-          continue;
-        }
-
-        // Annotation property classifier
-        if (predicateKindLocal === "annotation") {
-          {
-            const val = obj && obj.value ? String(obj.value) : "";
-            entry.annotationProperties.push({
-              property: predIri,
-              value: val,
-              predicateTerm: pred,
-              objectTerm: obj,
-              type: obj && obj.datatype && obj.datatype.value ? String(obj.datatype.value) : (obj && obj.language ? `@${String(obj.language)}` : XSD_STRING),
-            });
-          }
-          continue;
-        }
-
-        // Literals for data quads -> annotationProperties (per policy)
-        if (isLiteral(obj)) {
-          {
-            const litVal = obj && obj.value ? String(obj.value) : "";
-            entry.annotationProperties.push({
-              property: predIri,
-              value: litVal,
-              predicateTerm: pred,
-              objectTerm: obj,
-              type: obj && obj.datatype && obj.datatype.value ? String(obj.datatype.value) : (obj && obj.language ? `@${String(obj.language)}` : XSD_STRING),
-            });
-          }
-          continue;
-        }
-
-        // Blank node handling for data quads
-        if (obj && (obj.termType === "BlankNode" || (obj.value && String(obj.value).startsWith("_:")))) {
-          const bn = obj.value ? String(obj.value) : "";
-          if (predicateKindLocal === "object" || predicateKindLocal === "unknown" || isBlankNodeReferenced(bn, dataQuads)) {
-            ensureNode(bn);
-            {
-              const objEntry = nodeMap.get(bn);
-              if (objEntry) objEntry.forceIsTBox = subjectIsTBox;
-            }
-
-            const edgeId = String(generateEdgeId(subjectIri, bn, predIri || ""));
-            rfEdges.push(
-              initializeEdge({
-                id: edgeId,
-                source: subjectIri,
-                target: bn,
-                type: "floating",
-                data: {
-                  key: edgeId,
-                  from: subjectIri,
-                  to: bn,
-                  propertyUri: predIri,
-                  propertyPrefixed: toPrefixed(
-                    predIri,
-                    (options as any).registry
-                  ),
-                  propertyType: "",
-                  label: options.availableProperties.find(p => String(p.iri) === String(predIri))?.label,
-                  namespace: "",
-                  rdfType: "",
-                } as LinkData,
-              })
-            );
-            } else {
-            {
-              entry.annotationProperties.push({
-                property: predIri,
-                value: bn,
-                predicateTerm: pred,
-                objectTerm: obj,
-              });
-            }
-          }
-          continue;
-        }
-
-        // object is NamedNode (IRI) for data quads
-        if (obj && (obj.termType === "NamedNode" || (obj.value && /^https?:\/\//i.test(String(obj.value))))) {
-          // assume the object is in subjects and needs no creation (else it would override the existing node in canvas)
-          const objectIri = obj && obj.value ? String(obj.value) : "";
-          if (!objectIri) continue;
-
-          if (predicateKindLocal === "object" || predicateKindLocal === "unknown") {
-            ensureNode(objectIri);
-            {
-              const objEntry = nodeMap.get(objectIri);
-              if (objEntry) objEntry.forceIsTBox = subjectIsTBox;
-            }
-
-            const edgeId = String(generateEdgeId(subjectIri, objectIri, predIri || ""));
-            rfEdges.push(
-              initializeEdge({
-                id: edgeId,
-                source: subjectIri,
-                target: objectIri,
-                type: "floating",
-                data: {
-                  key: edgeId,
-                  from: subjectIri,
-                  to: objectIri,
-                  propertyUri: predIri,
-                  propertyPrefixed: toPrefixed(
-                    predIri,
-                    (options as any).registry
-                  ),
-                  propertyType: "",
-                  label: options.availableProperties.find(p => String(p.iri) === String(predIri))?.label,
-                  namespace: "",
-                  rdfType: "",
-                } as LinkData,
-              })
-            );
-          } else {
-            {
-              entry.annotationProperties.push({
-                property: predIri,
-                value: objectIri,
-                predicateTerm: pred,
-                objectTerm: obj,
-              });
-            }
-          }
-          continue;
-        }
-
-        // fallback -> annotationProperties
-        {
-          entry.annotationProperties.push({
-            property: predIri,
-            value: obj && obj.value ? String(obj.value) : "",
-          });
-        }
-      } catch (_) {
-        /* ignore per-quad failures */
-      }
+    if (predicateIri === RDF_TYPE) {
+      const typeValue = termValue(objectTerm);
+      if (typeValue) entry.rdfTypes.push(typeValue);
+      continue;
     }
-  } catch (_) { /* ignore overall */ }
 
-  // Step 4: loop over inferred quads and fold them into existing data nodes' annotationProperties (do not create new nodes)
-  {
-    for (const q of inferredQuads || []) {
-      try {
-        const subj = q && q.subject ? q.subject : null;
-        const pred = q && q.predicate ? q.predicate : null;
-        const obj = q && q.object ? q.object : null;
+    const predicateKindLocal = getPredicateKind(predicateIri);
 
-        const subjectIri = subj && subj.value ? String(subj.value) : "";
-        const predIri = pred && pred.value ? String(pred.value) : "";
-        if (!subjectIri || !predIri) continue;
+    if (predicateIri === RDFS_LABEL && isLiteral(objectTerm)) {
+      const { value, type } = resolveLiteral(objectTerm, XSD_STRING);
+      if (value) entry.label = value;
+      entry.annotationProperties.push({
+        property: predicateIri,
+        value,
+        predicateTerm,
+        objectTerm,
+        ...(type ? { type } : {}),
+      });
+      continue;
+    }
 
-        // Only fold into nodes that already exist (i.e., created from data quads)
-        if (!nodeMap.has(subjectIri)) continue;
-        const entry = nodeMap.get(subjectIri)!;
+    if (predicateKindLocal === "annotation") {
+      const literal = resolveLiteral(objectTerm, XSD_STRING);
+      entry.annotationProperties.push({
+        property: predicateIri,
+        value: literal.value,
+        predicateTerm,
+        objectTerm,
+        ...(literal.type ? { type: literal.type } : {}),
+      });
+      continue;
+    }
 
-        const prop = predIri;
-        const val = obj && obj.value ? String(obj.value) : "";
+    if (isLiteral(objectTerm)) {
+      const literal = resolveLiteral(objectTerm, XSD_STRING);
+      entry.annotationProperties.push({
+        property: predicateIri,
+        value: literal.value,
+        predicateTerm,
+        objectTerm,
+        ...(literal.type ? { type: literal.type } : {}),
+      });
+      continue;
+    }
 
-        // Push into annotationProperties (fold inferred triples into subject annotations)
-        try {
-          const exists = Array.isArray(entry.annotationProperties)
-            ? entry.annotationProperties.some((ap) => {
-                try { return String(ap.property) === String(prop) && String(ap.value) === String(val); } catch { return false; }
-              })
-            : false;
-          if (!exists) {
-            entry.annotationProperties.push({ property: prop, value: val, predicateTerm: pred, objectTerm: obj, type: obj && obj.datatype && obj.datatype.value ? String(obj.datatype.value) : (obj && obj.language ? `@${String(obj.language)}` : XSD_STRING) });
-          }
-        } catch (_) { /* ignore */ }
-      } catch (_) { /* ignore per-quad */ }
+    if (isBlankNode(objectTerm)) {
+      const bn = termValue(objectTerm);
+      if (!bn) continue;
+      if (
+        predicateKindLocal === "object" ||
+        predicateKindLocal === "unknown" ||
+        isBlankNodeReferenced(bn, dataQuads)
+      ) {
+        ensureNode(bn);
+        const objEntry = nodeMap.get(bn);
+        if (objEntry) objEntry.forceIsTBox = entry.forceIsTBox;
+
+        const edgeId = String(generateEdgeId(normalized.subject, bn, predicateIri));
+        const propertyPrefixed =
+          safeToPrefixed(predicateIri, options?.registry) ?? predicateIri;
+        const propertyLabel = propertyLabelByIri.get(predicateIri);
+
+        if (!seenEdgeIds.has(edgeId)) {
+          seenEdgeIds.add(edgeId);
+          rfEdges.push(
+            initializeEdge({
+              id: edgeId,
+              source: normalized.subject,
+              target: bn,
+              type: "floating",
+              data: {
+                key: edgeId,
+                from: normalized.subject,
+                to: bn,
+                propertyUri: predicateIri,
+                propertyPrefixed,
+                propertyType: "",
+                label: propertyLabel,
+                namespace: "",
+                rdfType: "",
+              } as LinkData,
+            }),
+          );
+        }
+      } else {
+        entry.annotationProperties.push({
+          property: predicateIri,
+          value: bn,
+          predicateTerm,
+          objectTerm,
+        });
+      }
+      continue;
+    }
+
+    if (isNamedNode(objectTerm)) {
+      const objectIri = termValue(objectTerm);
+      if (!objectIri) continue;
+
+      if (predicateKindLocal === "object" || predicateKindLocal === "unknown") {
+        ensureNode(objectIri);
+        const objEntry = nodeMap.get(objectIri);
+        if (objEntry) objEntry.forceIsTBox = entry.forceIsTBox;
+
+        const edgeId = String(generateEdgeId(normalized.subject, objectIri, predicateIri));
+        const propertyPrefixed =
+          safeToPrefixed(predicateIri, options?.registry) ?? predicateIri;
+        const propertyLabel = propertyLabelByIri.get(predicateIri);
+
+        if (!seenEdgeIds.has(edgeId)) {
+          seenEdgeIds.add(edgeId);
+          rfEdges.push(
+            initializeEdge({
+              id: edgeId,
+              source: normalized.subject,
+              target: objectIri,
+              type: "floating",
+              data: {
+                key: edgeId,
+                from: normalized.subject,
+                to: objectIri,
+                propertyUri: predicateIri,
+                propertyPrefixed,
+                propertyType: "",
+                label: propertyLabel,
+                namespace: "",
+                rdfType: "",
+              } as LinkData,
+            }),
+          );
+        }
+      } else {
+        entry.annotationProperties.push({
+          property: predicateIri,
+          value: objectIri,
+          predicateTerm,
+          objectTerm,
+        });
+      }
+      continue;
+    }
+
+    entry.annotationProperties.push({
+      property: predicateIri,
+      value: termValue(objectTerm) ?? "",
+      predicateTerm,
+      objectTerm,
+    });
+  }
+
+  // Step 4: fold inferred quads into annotation properties (do not create new nodes)
+  for (const quad of inferredQuads) {
+    const normalized = normalizedByRef.get(quad) ?? coerceQuad(quad);
+    if (!normalized) continue;
+    if (!nodeMap.has(normalized.subject)) continue;
+
+    const entry = nodeMap.get(normalized.subject)!;
+    const predicateTerm = (quad as { predicate?: TermLike }).predicate ?? null;
+    const objectTerm = (quad as { object?: TermLike }).object ?? null;
+    const value = termValue(objectTerm) ?? "";
+
+    const duplicate = entry.annotationProperties.some(
+      (ap) => ap.property === normalized.predicate && ap.value === value,
+    );
+    if (duplicate) continue;
+
+    if (isLiteral(objectTerm)) {
+      const literal = resolveLiteral(objectTerm, XSD_STRING);
+      entry.annotationProperties.push({
+        property: normalized.predicate,
+        value: literal.value,
+        predicateTerm,
+        objectTerm,
+        ...(literal.type ? { type: literal.type } : {}),
+      });
+    } else {
+      entry.annotationProperties.push({
+        property: normalized.predicate,
+        value,
+        predicateTerm,
+        objectTerm,
+      });
     }
   }
 
@@ -525,53 +576,26 @@ export function mapQuadsToDiagram(
     }
     let classType: string | undefined = undefined;
     const typesArr = Array.isArray(info.rdfTypes) ? info.rdfTypes.map(String) : [];
-    if (typesArr.length > 0) {
-      try {
-        if (typesArr.includes(OWL_NAMED_INDIVIDUAL)) {
-          const other = typesArr.find((t: string) => String(t) !== OWL_NAMED_INDIVIDUAL);
-          classType = other || primaryTypeIri;
-        } else {
-          classType = primaryTypeIri;
-        }
-      } catch (_) {
-        classType = primaryTypeIri;
-      }
+    if (typesArr.includes(OWL_NAMED_INDIVIDUAL)) {
+      classType = typesArr.find((t) => t !== OWL_NAMED_INDIVIDUAL) ?? primaryTypeIri;
     } else {
-      classType = undefined;
+      classType = primaryTypeIri;
     }
 
-    // Coarse namespace extraction from IRI (prefix before last / or #)
-    let namespace = "";
-    try {
-      const m = String(iri || "").match(/^(.*[/#])/);
-      namespace = m && m[1] ? String(m[1]) : "";
-    } catch (_) {
-      namespace = "";
-    }
-
-    // Determine isTBox
-    let isTBox;
-    // try {
-    //   const types = Array.isArray(info.rdfTypes) ? info.rdfTypes.map((t: any) => String(t || "")) : [];
-    //   const hasIndividual = types.includes(OWL_NAMED_INDIVIDUAL);
-    //   const hasTboxType = types.some((t) => TBOX_TYPE_IRIS.has(String(t)));
-    //   isTBox = !hasIndividual && hasTboxType;
-    // } catch (_) {
-    //   isTBox = false;
-    // }
-    const types = Array.isArray(info.rdfTypes) ? info.rdfTypes.map((t: any) => String(t || "")) : [];
-    isTBox = true;
-
-
-    // Honor explicit override set during mapping
-    {
-      if (typeof info.forceIsTBox === "boolean") {
-        isTBox = !!info.forceIsTBox;
-      }
-    }
+    const namespace = extractNamespace(iri);
+    const isTBox = typeof info.forceIsTBox === "boolean" ? info.forceIsTBox : true;
 
     // compute node color using classType (preferred) or the node iri as fallback
-    const nodeColor = getNodeColor(classType);
+    let nodeColor: string | undefined;
+    const colorSource =
+      typeof classType === "string" && classType.trim().length > 0 ? classType : iri;
+    if (colorSource) {
+      nodeColor = getNodeColor(colorSource, options?.palette, {
+        registry: options?.registry,
+        availableProperties,
+        availableClasses,
+      });
+    }
 
     const nodeData: NodeData & any = {
       key: iri,
@@ -580,42 +604,35 @@ export function mapQuadsToDiagram(
       primaryTypeIri,
       rdfTypes: Array.isArray(info.rdfTypes) ? info.rdfTypes.map(String) : [],
       label: info.label || iri,
-      displayPrefixed: toPrefixed(
-        iri,
-        (options as any).registry
-      ),
+      displayPrefixed: safeToPrefixed(iri, options?.registry),
       displayShort: shortLocalName(iri),
-      displayclassType: (() => {
-        try {
-          const pref = toPrefixed(
-            classType,
-            (options as any).registry
-          );
-          return pref;
-        } catch (_) {
-          return String(classType || "");
-        }
-      })(),
+      displayclassType: safeToPrefixed(classType, options?.registry),
       namespace,
       classType,
       color: nodeColor || undefined,
       properties: [
         ...(Array.isArray(info.literalProperties)
           ? info.literalProperties.map((lp: any) => {
-              try {
-                return { property: String(lp.key || lp.property || lp.propertyUri || ""), value: lp.value };
-              } catch (_) {
-                return { property: String((lp && (lp.key || lp.property || lp.propertyUri)) || ""), value: String((lp && lp.value) || "") };
-              }
+              const propertyId =
+                typeof lp?.key === "string"
+                  ? lp.key
+                  : typeof lp?.property === "string"
+                  ? lp.property
+                  : typeof lp?.propertyUri === "string"
+                  ? lp.propertyUri
+                  : "";
+              return { property: propertyId, value: lp?.value };
             })
           : []),
         ...(Array.isArray(info.annotationProperties)
           ? (info.annotationProperties as any[]).map((ap) => {
-              try {
-                return { property: String((ap && (ap.property || ap.propertyUri)) || ""), value: (ap && ap.value) };
-              } catch (_) {
-                return { property: String((ap && (ap.property || ap.propertyUri)) || ""), value: String((ap && ap.value) || "") };
-              }
+              const propertyId =
+                typeof ap?.property === "string"
+                  ? ap.property
+                  : typeof ap?.propertyUri === "string"
+                  ? ap.propertyUri
+                  : "";
+              return { property: propertyId, value: ap?.value };
             })
           : []),
       ],
@@ -627,50 +644,24 @@ export function mapQuadsToDiagram(
       isTBox: !!isTBox,
     };
 
-    // Compose a human-friendly subtitle for the node and attach as nodeData.subtitle.
-    // Prefer explicit labels where available and fall back to already-computed
-    // prefixed values (displayPrefixed / displayclassType) and finally to short local names.
-    try {
-      const resolveFromAvailable = (iriToFind: string | undefined, arr: any[] | undefined) => {
-        try {
-          if (!iriToFind || !Array.isArray(arr)) return "";
-          const key = String(iriToFind);
-          const found = arr.find((e: any) => {
-            const cand = String((e && (e.iri || e.key || e)) || "");
-            return cand === key;
-          });
-          if (!found) return "";
-          return String(found.label || found.name || found.title || found.display || "").trim();
-        } catch (_) { return ""; }
-      };
-
-      const subjectText = (() => {
-        // prefer explicit node label (info.label), then already-computed displayPrefixed, then shortLocalName
-        const lab = info.label && String(info.label).trim() ? String(info.label).trim() : "";
-        if (lab && lab !== iri) return lab;
-        if (nodeData.displayPrefixed && String(nodeData.displayPrefixed).trim()) return String(nodeData.displayPrefixed).trim();
-        return shortLocalName(String(iri));
-      })();
-
-      const classText = (() => {
-        if (!classType) return "";
-        // prefer label from availableClasses snapshot (if provided)
-        const fromAvail = resolveFromAvailable(classType, options && Array.isArray((options as any).availableClasses) ? (options as any).availableClasses : undefined);
-        if (fromAvail) return fromAvail;
-        // reuse already-computed prefixed displayclassType
-        if (nodeData.displayclassType && String(nodeData.displayclassType).trim()) return String(nodeData.displayclassType).trim();
-        // final fallback: short local name
-        return shortLocalName(String(classType));
-      })();
-
-      if (classText) {
-        nodeData.subtitle = `${subjectText} is a ${classText}`;
-      } else {
-        nodeData.subtitle = subjectText;
+    const subjectText = (() => {
+      const explicit = typeof info.label === "string" ? info.label.trim() : "";
+      if (explicit && explicit !== iri) return explicit;
+      if (typeof nodeData.displayPrefixed === "string" && nodeData.displayPrefixed.trim()) {
+        return nodeData.displayPrefixed.trim();
       }
-    } catch (_) {
-      // non-fatal: if anything goes wrong, leave subtitle undefined
-    }
+      return shortLocalName(iri);
+    })();
+
+    const classText = (() => {
+      if (!classType) return "";
+      if (classLabelByIri.has(classType)) return classLabelByIri.get(classType)!;
+      const prefixed = nodeData.displayclassType;
+      if (typeof prefixed === "string" && prefixed.trim()) return prefixed.trim();
+      return shortLocalName(classType);
+    })();
+
+    nodeData.subtitle = classText ? `${subjectText} is a ${classText}` : subjectText;
 
     const rfNode: RFNode<NodeData> = {
       id: iri,
@@ -687,59 +678,43 @@ export function mapQuadsToDiagram(
 
   const rfNodes: RFNode<NodeData>[] = allNodeEntries.map((e) => e.rfNode);
 
-  const rfEdgesFiltered = rfEdges || [];
+  const rfEdgesFiltered = rfEdges;
 
-  // Assign deterministic alternating shifts for parallel edges produced by the mapper.
-  // Sequence: 0, +STEP, -STEP, +2*STEP, -2*STEP, ...
-  // This always overwrites/sets edge.data.shift for mapper-generated edges so that
-  // ObjectPropertyEdge can render separated parallel edges and labels.
-  try {
-    const PARALLEL_EDGE_SHIFT_STEP = 60;
-    const groups = new Map<string, any[]>();
-    for (const e of rfEdgesFiltered || []) {
-      try {
-        const src = e && (e.source || (e.data && e.data.from)) ? String(e.source || (e.data && e.data.from)) : "";
-        const tgt = e && (e.target || (e.data && e.data.to)) ? String(e.target || (e.data && e.data.to)) : "";
-        const key = `${src}||${tgt}`;
-        const arr = groups.get(key) || [];
-        arr.push(e);
-        groups.set(key, arr);
-      } catch (_) {
-        // ignore per-edge grouping failures
-      }
-    }
+  const PARALLEL_EDGE_SHIFT_STEP = 60;
+  const edgeGroups = new Map<string, RFEdge<LinkData>[]>();
 
-    const indexToShift = (i: number) => {
-      if (i === 0) return 0;
-      const k = Math.ceil(i / 2);
-      const sign = i % 2 === 1 ? 1 : -1;
-      return sign * k * PARALLEL_EDGE_SHIFT_STEP;
-    };
-
-    // Apply shifts deterministically: sort by edge id then assign
-    for (const [_, arr] of groups) {
-      try {
-        (arr || []).sort((a: any, b: any) =>
-          String(a && a.id ? a.id : "").localeCompare(String(b && b.id ? b.id : ""))
-        );
-        for (let i = 0; i < (arr || []).length; i++) {
-          try {
-            const edge = arr[i];
-            if (!edge) continue;
-            edge.data = { ...(edge.data || {}), shift: indexToShift(i) } as any;
-          } catch (_) {
-            // ignore per-edge assignment
-          }
-        }
-      } catch (_) {
-        // ignore per-group failures
-      }
-    }
-  } catch (_) {
-    // ignore overall shift-assignment failures
+  for (const edge of rfEdgesFiltered) {
+    if (!edge) continue;
+    const source =
+      typeof edge.source === "string"
+        ? edge.source
+        : toStringSafe(edge.data && (edge.data as any).from);
+    const target =
+      typeof edge.target === "string"
+        ? edge.target
+        : toStringSafe(edge.data && (edge.data as any).to);
+    const key = `${source}||${target}`;
+    if (!edgeGroups.has(key)) edgeGroups.set(key, []);
+    edgeGroups.get(key)!.push(edge);
   }
 
-  console.debug("[VG_DEBUG] mapQuadsToDiagram.return", { rfNodes, rfEdgesFiltered });
+  const indexToShift = (index: number) => {
+    if (index === 0) return 0;
+    const magnitude = Math.ceil(index / 2);
+    const direction = index % 2 === 1 ? 1 : -1;
+    return direction * magnitude * PARALLEL_EDGE_SHIFT_STEP;
+  };
+
+  for (const groupEdges of edgeGroups.values()) {
+    groupEdges.sort((a, b) => toStringSafe(a.id).localeCompare(toStringSafe(b.id)));
+    groupEdges.forEach((edge, index) => {
+      edge.data = {
+        ...(edge.data || {}),
+        shift: indexToShift(index),
+      } as LinkData;
+    });
+  }
+
   return { nodes: rfNodes, edges: rfEdgesFiltered };
 }
 
@@ -762,94 +737,126 @@ export function mapDiagramToQuads(
   const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
   const XSD_STRING = "http://www.w3.org/2001/XMLSchema#string";
 
-  {
-    for (const n of nodes || []) {
-      try {
-        const src = n && n.data ? n.data : n;
-        const subj = src && (src.iri || src.key || src.id) ? String(src.iri || src.key || src.id) : "";
-        if (!subj) continue;
+  const nodeSources = Array.isArray(nodes) ? nodes : [];
+  for (const node of nodeSources) {
+    const src =
+      node && typeof node === "object" && "data" in node ? (node as any).data : node;
+    if (!src || typeof src !== "object") continue;
 
-        // rdfTypes -> rdf:type triples
-        const rdfTypes = Array.isArray(src.rdfTypes) ? src.rdfTypes : src.rdfTypes ? [src.rdfTypes] : [];
-        for (const t of rdfTypes) {
-          try {
-            if (!t) continue;
-            quads.push({
-              subject: { value: subj },
-              predicate: { value: RDF_TYPE },
-              object: { value: String(t), termType: "NamedNode" },
-            });
-          } catch (_) { /* ignore per-type */ }
-        }
+    const subjectIri = toStringSafe(
+      (src as any).iri ?? (src as any).key ?? (src as any).id,
+    ).trim();
+    if (!subjectIri) continue;
 
-        // rdfs:label from label if present
-        if (src.label) {
-          try {
-            quads.push({
-              subject: { value: subj },
-              predicate: { value: RDFS_LABEL },
-              object: { value: String(src.label), termType: "Literal", datatype: { value: XSD_STRING } },
-            });
-          } catch (_) { /* ignore */ }
-        }
-
-        // literalProperties -> literal triples
-        if (Array.isArray(src.literalProperties)) {
-          for (const lp of src.literalProperties) {
-            try {
-              const key = lp && (lp.key || lp.property || lp.propertyUri) ? String(lp.key || lp.property || lp.propertyUri) : "";
-              const v = lp && lp.value !== undefined && lp.value !== null ? String(lp.value) : "";
-              const dt = lp && (lp.type || lp.datatype) ? String(lp.type || lp.datatype) : XSD_STRING;
-              if (key && v !== "") {
-                quads.push({
-                  subject: { value: subj },
-                  predicate: { value: key },
-                  object: { value: v, termType: "Literal", datatype: { value: dt } },
-                });
-              }
-            } catch (_) { /* ignore per-literal */ }
-          }
-        }
-
-        // annotationProperties -> literal triples (annotationProperties typically use { property, value } shape)
-        if (Array.isArray(src.annotationProperties)) {
-          for (const ap of src.annotationProperties) {
-            try {
-              const key = ap && (ap.property || ap.propertyUri || ap.key) ? String(ap.property || ap.propertyUri || ap.key) : "";
-              const v = ap && ap.value !== undefined && ap.value !== null ? String(ap.value) : "";
-              if (key && v !== "") {
-                quads.push({
-                  subject: { value: subj },
-                  predicate: { value: key },
-                  object: { value: v, termType: "Literal", datatype: { value: XSD_STRING } },
-                });
-              }
-            } catch (_) { /* ignore per-annotation */ }
-          }
-        }
-      } catch (_) {
-        /* ignore per-node */
-      }
+    const rdfTypesRaw = Array.isArray((src as any).rdfTypes)
+      ? (src as any).rdfTypes
+      : (src as any).rdfTypes
+      ? [(src as any).rdfTypes]
+      : [];
+    for (const rdfType of rdfTypesRaw) {
+      const typeIri = toStringSafe(rdfType).trim();
+      if (!typeIri) continue;
+      quads.push({
+        subject: { value: subjectIri },
+        predicate: { value: RDF_TYPE },
+        object: { value: typeIri, termType: "NamedNode" },
+      });
     }
 
-    // edges -> triples with object being IRI (NamedNode)
-    for (const e of edges || []) {
-      try {
-        const src = e && e.data ? e.data : e;
-        const subj = src && (src.from || src.source) ? String(src.from || src.source) : (e && (e.source || e.from) ? String(e.source || e.from) : "");
-        const obj = src && (src.to || src.target) ? String(src.to || src.target) : (e && (e.target || e.to) ? String(e.target || e.to) : "");
-        const pred = src && (src.propertyUri || src.property || src.propertyType) ? String(src.propertyUri || src.property || src.propertyType) : (e && (e.predicate || e.property) ? String(e.predicate || e.property) : "");
-        if (!subj || !pred || !obj) continue;
+    const labelValue = toStringSafe((src as any).label).trim();
+    if (labelValue) {
+      quads.push({
+        subject: { value: subjectIri },
+        predicate: { value: RDFS_LABEL },
+        object: {
+          value: labelValue,
+          termType: "Literal",
+          datatype: { value: XSD_STRING },
+        },
+      });
+    }
 
+    if (Array.isArray((src as any).literalProperties)) {
+      for (const literal of (src as any).literalProperties) {
+        if (!literal || typeof literal !== "object") continue;
+        const predicateIri = toStringSafe(
+          (literal as any).key ??
+            (literal as any).property ??
+            (literal as any).propertyUri,
+        ).trim();
+        const value = toStringSafe((literal as any).value);
+        if (!predicateIri || value === "") continue;
+        const datatype = toStringSafe(
+          (literal as any).type ?? (literal as any).datatype,
+        ).trim();
         quads.push({
-          subject: { value: subj },
-          predicate: { value: pred },
-          object: { value: obj, termType: "NamedNode" },
+          subject: { value: subjectIri },
+          predicate: { value: predicateIri },
+          object: {
+            value,
+            termType: "Literal",
+            datatype: { value: datatype || XSD_STRING },
+          },
         });
-      } catch (_) {
-        /* ignore per-edge */
       }
     }
+
+    if (Array.isArray((src as any).annotationProperties)) {
+      for (const annotation of (src as any).annotationProperties) {
+        if (!annotation || typeof annotation !== "object") continue;
+        const predicateIri = toStringSafe(
+          (annotation as any).property ??
+            (annotation as any).propertyUri ??
+            (annotation as any).key,
+        ).trim();
+        const value = toStringSafe((annotation as any).value);
+        if (!predicateIri || value === "") continue;
+        quads.push({
+          subject: { value: subjectIri },
+          predicate: { value: predicateIri },
+          object: {
+            value,
+            termType: "Literal",
+            datatype: { value: XSD_STRING },
+          },
+        });
+      }
+    }
+  }
+
+  const edgeSources = Array.isArray(edges) ? edges : [];
+  for (const edge of edgeSources) {
+    const src =
+      edge && typeof edge === "object" && "data" in edge ? (edge as any).data : edge;
+    if (!src || typeof src !== "object") continue;
+
+    const subjectIri = toStringSafe(
+      (src as any).from ??
+        (src as any).source ??
+        (edge as any)?.source ??
+        (edge as any)?.from,
+    ).trim();
+    const objectIri = toStringSafe(
+      (src as any).to ??
+        (src as any).target ??
+        (edge as any)?.target ??
+        (edge as any)?.to,
+    ).trim();
+    const predicateIri = toStringSafe(
+      (src as any).propertyUri ??
+        (src as any).property ??
+        (src as any).propertyType ??
+        (edge as any)?.predicate ??
+        (edge as any)?.property,
+    ).trim();
+
+    if (!subjectIri || !predicateIri || !objectIri) continue;
+
+    quads.push({
+      subject: { value: subjectIri },
+      predicate: { value: predicateIri },
+      object: { value: objectIri, termType: "NamedNode" },
+    });
   }
 
   return quads;

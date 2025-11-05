@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -48,27 +48,12 @@ import {
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { useAppConfigStore } from '../../stores/appConfigStore';
 import { NodePropertyEditor } from './NodePropertyEditor';
-import { fallback } from '../../utils/startupDebug';
 import { LayoutManager } from './LayoutManager';
 import { WELL_KNOWN_PREFIXES } from '../../utils/wellKnownOntologies';
 import { ConfigurationPanel } from './ConfigurationPanel';
 import { Popover, PopoverTrigger, PopoverContent } from '../ui/popover';
 import { toast } from 'sonner';
-
-const runAsync = (fn: any, delay = 0) => {
-  if (delay === 0) {
-    try {
-      Promise.resolve().then(fn);
-      return -1;
-    } catch (_) {
-      if (typeof window !== 'undefined') return window.setTimeout(fn, 0 as any);
-      return -1;
-    }
-  }
-  if (typeof window !== 'undefined') return window.setTimeout(fn, delay as any);
-  try { Promise.resolve().then(fn); } catch (_) { /* ignore */ }
-  return -1;
-};
+import { useShallow } from 'zustand/react/shallow';
 
 interface CanvasToolbarProps {
   onAddNode: (payload: any) => void;
@@ -115,12 +100,52 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   const [newNodeIri, setNewNodeIri] = useState('');
   const [fileSource, setFileSource] = useState('');
   const [rdfBody, setRdfBody] = useState('');
-  
-  // Select functions from the store as stable callbacks; subscribe separately to the loadedOntologies array
-  const { loadOntology, availableClasses, loadKnowledgeGraph, getRdfManager } = useOntologyStore();
-  // Backwards-compatible selector: tests may set either loadOntologyFromRDF or loadOntologyRDFtoGraph on the store.
-  const loadOntologyFromRDFFn = useOntologyStore((s: any) => (typeof s.loadOntologyFromRDF === "function" ? s.loadOntologyFromRDF : s.loadOntologyRDFtoGraph));
-  const loadedOntologies = useOntologyStore((s) => s.loadedOntologies);
+
+  const setCanvasLoading = useCallback(
+    (isLoading: boolean, progress = 0, message = '') => {
+      const setter =
+        (canvasActions && typeof canvasActions.setLoading === 'function')
+          ? canvasActions.setLoading
+          : typeof window !== 'undefined' &&
+              typeof (window as any).__VG_SET_LOADING === 'function'
+            ? (window as any).__VG_SET_LOADING
+            : null;
+      if (setter) {
+        try {
+          setter(isLoading, progress, message);
+        } catch (_) {
+          // ignore setter errors
+        }
+      }
+    },
+    [canvasActions],
+  );
+
+  const {
+    loadOntology,
+    availableClasses,
+    loadKnowledgeGraph,
+    getRdfManager,
+    loadOntologyFromRDF,
+    loadOntologyRDFtoGraph,
+    loadedOntologies,
+  } = useOntologyStore(
+    useShallow((state) => ({
+      loadOntology: state.loadOntology,
+      availableClasses: state.availableClasses ?? [],
+      loadKnowledgeGraph: state.loadKnowledgeGraph,
+      getRdfManager: state.getRdfManager,
+      loadOntologyFromRDF: state.loadOntologyFromRDF,
+      loadOntologyRDFtoGraph: state.loadOntologyRDFtoGraph,
+      loadedOntologies: state.loadedOntologies ?? [],
+    })),
+  );
+  const loadOntologyFromRDFFn =
+    typeof loadOntologyFromRDF === 'function'
+      ? loadOntologyFromRDF
+      : typeof loadOntologyRDFtoGraph === 'function'
+        ? loadOntologyRDFtoGraph
+        : undefined;
   // registeredCount excludes core vocabularies; configuredCount shows user-configured autoload list size
   // Count all loaded ontologies except explicit core vocabularies.
   // Some entries may not have a 'source' field set reliably, so detect core
@@ -227,19 +252,6 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
 
   const configuredCount = configuredList.length;
 
-  // Debug subscription: surface loadedOntologies/loadedCount changes to console so we can trace why the toolbar count may stay at 0.
-  React.useEffect(() => {
-    {
-      if (typeof console !== "undefined" && typeof console.debug === "function") {
-        console.debug("[VG_DEBUG] CanvasToolbar.loadedOntologies change", {
-          registeredCount,
-          configuredCount,
-          sample: Array.isArray(loadedOntologies) ? loadedOntologies.slice(0, 6).map(o => ({ url: o.url, name: o.name, source: (o as any).source })) : loadedOntologies,
-        });
-      }
-    }
-  }, [registeredCount, loadedOntologies, configuredCount]);
-
   // Build a merged list of namespaces: prefer namespaces discovered in the RDF manager
   // but include namespaces from loaded ontology metadata as a fallback.
   const namespacesFromLoaded = loadedOntologies.reduce((acc, ont) => ({ ...acc, ...ont.namespaces }), {} as Record<string, string>);
@@ -264,7 +276,12 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   const layoutOptions = layoutManager.getAvailableLayouts();
 
   // Persistent layout spacing (single source of truth) — toolbar exposes a compact control.
-  const { config, setLayoutSpacing } = useAppConfigStore();
+  const { config, setLayoutSpacing } = useAppConfigStore(
+    useShallow((state) => ({
+      config: state.config,
+      setLayoutSpacing: state.setLayoutSpacing,
+    })),
+  );
   const [tempLayoutSpacing, setTempLayoutSpacing] = useState<number>(config.layoutSpacing ?? 120);
   // Keep slider in sync when value changes elsewhere
   React.useEffect(() => {
@@ -294,87 +311,29 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   };
 
   const handleLoadOntology = async () => {
-    if (ontologyUrl.trim()) {
-      try {
-        // Show canvas progress modal immediately to match autoload UX
-        try {
-          try {
-            const setLoadingFn =
-              (canvasActions && typeof canvasActions.setLoading === "function")
-                ? (canvasActions.setLoading as any)
-                : (typeof window !== "undefined" && (window as any).__VG_SET_LOADING)
-                  ? (window as any).__VG_SET_LOADING
-                  : null;
-            if (typeof setLoadingFn === "function") setLoadingFn(true, 5, "Loading ontology...");
-          } catch (_) {
-            // ignore if canvas helper unavailable
-          }
-        } catch (_) {
-          // ignore if canvas helper unavailable
-        }
+    const trimmedUrl = ontologyUrl.trim();
+    if (!trimmedUrl) return;
+    if (typeof loadOntology !== 'function') {
+      toast.error('Ontology loader is unavailable');
+      return;
+    }
 
-        // Close the dialog immediately (same behavior as autoload)
-        setIsLoadOntologyOpen(false);
+    setCanvasLoading(true, 5, 'Loading ontology...');
+    setIsLoadOntologyOpen(false);
 
-        // Start the load but do not await here to keep UI responsive.
-        // Update the canvas loading modal when the promise resolves/rejects.
-        (async () => {
-          try {
-            await loadOntology(ontologyUrl);
-            try {
-              const setLoadingFn =
-                (canvasActions && typeof canvasActions.setLoading === "function")
-                  ? (canvasActions.setLoading as any)
-                  : (typeof window !== "undefined" && (window as any).__VG_SET_LOADING)
-                    ? (window as any).__VG_SET_LOADING
-                    : null;
-              if (typeof setLoadingFn === "function") setLoadingFn(false, 100, "");
-            } catch (_) {
-              // ignore per-setter failures
-            }
-            setOntologyUrl('');
-            toast.success('Ontology loaded');
-          } catch (error: any) {
-            try {
-              const setLoadingFn =
-                (canvasActions && typeof canvasActions.setLoading === "function")
-                  ? (canvasActions.setLoading as any)
-                  : (typeof window !== "undefined" && (window as any).__VG_SET_LOADING)
-                    ? (window as any).__VG_SET_LOADING
-                    : null;
-              if (typeof setLoadingFn === "function") setLoadingFn(false, 0, "");
-            } catch (_) {
-              // ignore
-            }
-            try {
-              if (typeof fallback === "function") {
-                try {
-                  fallback('console.error', { args: [(error && error.message) ? error.message : String(error)] }, { level: 'error', captureStack: true });
-                } catch (_) { /* ignore */ }
-              }
-            } catch (_) { /* ignore */ }
-            console.error('Failed to load ontology:', error);
-            const msg = (error && error.message) ? error.message : String(error);
-            toast.error(`Failed to load ontology: ${msg}`, {
-              description: 'If this looks like a cross-origin or redirect issue, try pasting the RDF into "Paste RDF" below or upload the file. You can also use a proxy-hosted URL if available.'
-            });
-            // dialog remains closed (user can re-open to retry)
-          }
-        })();
-      } catch (error: any) {
-        try {
-          if (typeof fallback === "function") {
-            try {
-              fallback('console.error', { args: [(error && error.message) ? error.message : String(error)] }, { level: 'error', captureStack: true });
-            } catch (_) { void 0; }
-          }
-        } catch (_) { void 0; }
-        console.error('Failed to load ontology:', error);
-        const msg = (error && error.message) ? error.message : String(error);
-        toast.error(`Failed to load ontology: ${msg}`, {
-          description: 'If this looks like a cross-origin or redirect issue, try pasting the RDF into "Paste RDF" below or upload the file. You can also use a proxy-hosted URL if available.'
-        });
-      }
+    try {
+      await loadOntology(trimmedUrl);
+      setCanvasLoading(false, 100, '');
+      setOntologyUrl('');
+      toast.success('Ontology loaded');
+    } catch (error) {
+      setCanvasLoading(false, 0, '');
+      const message =
+        error instanceof Error ? error.message : String(error ?? 'Unknown error');
+      toast.error(`Failed to load ontology: ${message}`, {
+        description:
+          'Paste the RDF via "Paste RDF", upload the file, or retry with a proxy-hosted URL if cross-origin restrictions apply.',
+      });
     }
   };
 
@@ -384,26 +343,19 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
     if (!iriToAdd) return;
 
     try {
-      // Pass full payload (IRI + optional class/namespace) so the canvas can persist rdf:type + label
       onAddNode({
         iri: iriToAdd,
         classCandidate: newNodeClass ? String(newNodeClass) : undefined,
         namespace: newNodeNamespace ? String(newNodeNamespace) : undefined,
       } as any);
-      // Clear inputs
       setNewNodeClass('');
       setNewNodeNamespace('');
       setNewNodeIri('');
       setIsAddNodeOpen(false);
-      } catch (e) {
-      try {
-        if (typeof fallback === "function") {
-          try {
-            fallback('console.error', { args: [(e && e.message) ? e.message : String(e)] }, { level: 'error', captureStack: true });
-          } catch (_) { void 0; }
-        }
-      } catch (_) { void 0; }
-      console.error('Failed to add node:', e);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error ?? 'Unknown error');
+      toast.error(`Failed to add node: ${message}`);
     }
   };
 
@@ -615,16 +567,9 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                             setIsLoadOntologyOpen(false);
                             toast.success('RDF content applied as ontology (prefixes registered)');
                           } catch (err) {
-                            try {
-                              try {
-                                if (typeof fallback === "function") {
-                                  try {
-                                    fallback('console.error', { args: [(err && err.message) ? err.message : String(err)] }, { level: 'error', captureStack: true });
-                                  } catch (_) { void 0; }
-                                }
-                              } catch (_) { void 0; }
-                              console.error('Failed to load RDF content as ontology:', err);
-                            } catch (_) { void 0; }
+                            const message =
+                              err instanceof Error ? err.message : String(err ?? 'Unknown error');
+                            console.warn('Failed to load RDF content as ontology:', message);
                             toast.error('Failed to load RDF content');
                           }
                         }}
@@ -926,25 +871,20 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                             url: fileSource.trim(),
                             type: 'url'
                           };
-                          await onLoadFile(mockFile as any);
-                          setFileSource('');
-                          setIsLoadFileOpen(false);
-                        } catch (error) {
-                          try {
-  try {
-    if (typeof fallback === "function") {
-      try {
-        fallback('console.error', { args: [(error && error.message) ? error.message : String(error)] }, { level: 'error', captureStack: true });
-      } catch (_) { void 0; }
-    }
-  } catch (_) { void 0; }
-  console.error('Failed to load file:', error);
-} catch (_) { void 0; }
-                        }
-                      }
-                    }}
-                    disabled={!fileSource.trim()}
-                    variant="outline"
+                      await onLoadFile(mockFile as any);
+                      setFileSource('');
+                      setIsLoadFileOpen(false);
+                    } catch (error) {
+                      const message =
+                        error instanceof Error
+                          ? error.message
+                          : String(error ?? 'Unknown error');
+                      console.warn('Failed to load file from URL:', message);
+                    }
+                  }
+                }}
+                disabled={!fileSource.trim()}
+                variant="outline"
                   >
                     Load
                   </Button>
@@ -978,16 +918,12 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                     await onLoadFile(file);
                     setIsLoadFileOpen(false);
                   } catch (error) {
-                    try {
-  try {
-    if (typeof fallback === "function") {
-      try {
-        fallback('console.error', { args: [(error && error.message) ? error.message : String(error)] }, { level: 'error', captureStack: true });
-      } catch (_) { void 0; }
-    }
-  } catch (_) { void 0; }
-  console.error('Failed to load file:', error);
-} catch (_) { void 0; }
+                    const message =
+                      error instanceof Error
+                        ? error.message
+                        : String(error ?? 'Unknown error');
+                    console.warn('Failed to load file:', message);
+                    toast.error('Failed to load file');
                   }
                 }
               }}
@@ -1102,16 +1038,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                                   useAppConfigStore.getState().removeAdditionalOntology(ont.url);
                                   toast.success('Removed ontology from auto-load list');
                                 } catch (e) {
-                                  try {
-  try {
-    if (typeof fallback === "function") {
-      try {
-        fallback('console.warn', { args: [(e && e.message) ? e.message : String(e)] }, { level: 'warn' });
-      } catch (_) { void 0; }
-    }
-  } catch (_) { void 0; }
-  console.warn('Failed to remove additional ontology', e);
-} catch (_) { void 0; }
+                                  console.warn('Failed to remove additional ontology', e);
                                   toast.error('Failed to update auto-load list');
                                 }
                               }}
@@ -1128,16 +1055,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                                   useAppConfigStore.getState().addAdditionalOntology(ont.url);
                                   toast.success('Added ontology to auto-load list');
                                 } catch (e) {
-                                  try {
-  try {
-    if (typeof fallback === "function") {
-      try {
-        fallback('console.warn', { args: [(e && e.message) ? e.message : String(e)] }, { level: 'warn' });
-      } catch (_) { void 0; }
-    }
-  } catch (_) { void 0; }
-  console.warn('Failed to add additional ontology', e);
-} catch (_) { void 0; }
+                                  console.warn('Failed to add additional ontology', e);
                                   toast.error('Failed to update auto-load list');
                                 }
                               }}

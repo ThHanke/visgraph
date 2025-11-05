@@ -19,7 +19,6 @@ import {
 } from "@xyflow/react";
 // import '../../tailwind-config.js';
 import { useOntologyStore } from "../../stores/ontologyStore";
-import { DataFactory } from "n3";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useAppConfigStore } from "../../stores/appConfigStore";
 import { CanvasToolbar } from "./CanvasToolbar";
@@ -48,6 +47,7 @@ import { LayoutManager } from "./LayoutManager";
 import { NodePropertyEditor } from "./NodePropertyEditor";
 import { projectClient } from "./core/viewportUtils";
 import type { ReasoningResult } from "../../utils/rdfManager";
+import { useShallow } from "zustand/react/shallow";
 import * as LinkPropertyEditorModule from "./LinkPropertyEditor";
 const LinkPropertyEditor: any = (() => {
   const mod = LinkPropertyEditorModule as any;
@@ -75,8 +75,6 @@ const LinkPropertyEditor: any = (() => {
  * attempt backwards compatibility or fallbacks. It expects the RDF manager to
  * provide quads in the subject-level emission.
  */
-
-const { namedNode } = DataFactory;
 
 /**
  * Provide a race-safe stub for external test runners that may call window.__VG_APPLY_LAYOUT
@@ -114,129 +112,41 @@ const KnowledgeCanvas: React.FC = () => {
   const [edges, setEdges] = useEdgesState<RFEdge<LinkData>>([]);
   const reactFlowInstance = useRef<ReactFlowInstance | null>(null);
   const { state: canvasState, actions: canvasActions } = useCanvasState();
-  // Attempt to use selective selectors for better performance, but fall back to the full store
-  // shape when tests/mock implementations return the raw store object (common in unit tests).
-  const _os_raw =
-    (useOntologyStore as any) && typeof (useOntologyStore as any) === "function"
-      ? (useOntologyStore as any)()
-      : {};
-  const _sel_loadedOntologies = useOntologyStore(
-    (s: any) => s.loadedOntologies,
+
+  const {
+    loadedOntologies,
+    availableClasses,
+    availableProperties,
+    ontologiesVersion,
+    loadKnowledgeGraph,
+    exportGraph,
+    loadAdditionalOntologies,
+    getRdfManager,
+  } = useOntologyStore(
+    useShallow((state) => ({
+      loadedOntologies: state.loadedOntologies ?? [],
+      availableClasses: state.availableClasses ?? [],
+      availableProperties: state.availableProperties ?? [],
+      ontologiesVersion: state.ontologiesVersion ?? 0,
+      loadKnowledgeGraph: state.loadKnowledgeGraph,
+      exportGraph: state.exportGraph,
+      loadAdditionalOntologies: state.loadAdditionalOntologies,
+      getRdfManager: state.getRdfManager,
+    })),
   );
-  const loadedOntologies = ((): any[] => {
-    if (Array.isArray(_sel_loadedOntologies)) return _sel_loadedOntologies;
-    if (
-      _sel_loadedOntologies &&
-      typeof _sel_loadedOntologies === "object" &&
-      Object.prototype.hasOwnProperty.call(
-        _sel_loadedOntologies,
-        "loadedOntologies",
-      )
-    )
-      return _sel_loadedOntologies.loadedOntologies;
-    return _os_raw && Array.isArray(_os_raw.loadedOntologies)
-      ? _os_raw.loadedOntologies
-      : [];
-  })();
-
-  const _sel_availableClasses = useOntologyStore(
-    (s: any) => s.availableClasses,
-  );
-  const availableClasses = ((): any[] => {
-    if (Array.isArray(_sel_availableClasses)) return _sel_availableClasses;
-    if (
-      _sel_availableClasses &&
-      typeof _sel_availableClasses === "object" &&
-      Object.prototype.hasOwnProperty.call(
-        _sel_availableClasses,
-        "availableClasses",
-      )
-    )
-      return _sel_availableClasses.availableClasses;
-    return _os_raw && Array.isArray(_os_raw.availableClasses)
-      ? _os_raw.availableClasses
-      : [];
-  })();
-  const ac = availableClasses;
-
-  const _sel_loadKnowledgeGraph = useOntologyStore(
-    (s: any) => s.loadKnowledgeGraph,
-  );
-  const loadKnowledgeGraph =
-    typeof _sel_loadKnowledgeGraph === "function"
-      ? _sel_loadKnowledgeGraph
-      : _os_raw && typeof _os_raw.loadKnowledgeGraph === "function"
-        ? _os_raw.loadKnowledgeGraph
-        : undefined;
-
-  const _sel_exportGraph = useOntologyStore((s: any) => s.exportGraph);
-  const exportGraph =
-    typeof _sel_exportGraph === "function"
-      ? _sel_exportGraph
-      : _os_raw && typeof _os_raw.exportGraph === "function"
-        ? _os_raw.exportGraph
-        : undefined;
-
-  const _sel_loadAdditionalOntologies = useOntologyStore(
-    (s: any) => s.loadAdditionalOntologies,
-  );
-  const loadAdditionalOntologies =
-    typeof _sel_loadAdditionalOntologies === "function"
-      ? _sel_loadAdditionalOntologies
-      : _os_raw && typeof _os_raw.loadAdditionalOntologies === "function"
-        ? _os_raw.loadAdditionalOntologies
-        : undefined;
-
-  const _sel_getRdfManager = useOntologyStore((s: any) => s.getRdfManager);
-  const getRdfManager =
-    typeof _sel_getRdfManager === "function"
-      ? _sel_getRdfManager
-      : _os_raw && typeof _os_raw.getRdfManager === "function"
-        ? _os_raw.getRdfManager
-        : undefined;
-
-  const _sel_availableProperties = useOntologyStore(
-    (s: any) => s.availableProperties,
-  );
-  const availableProperties = ((): any[] => {
-    if (Array.isArray(_sel_availableProperties))
-      return _sel_availableProperties;
-    if (
-      _sel_availableProperties &&
-      typeof _sel_availableProperties === "object" &&
-      Object.prototype.hasOwnProperty.call(
-        _sel_availableProperties,
-        "availableProperties",
-      )
-    )
-      return _sel_availableProperties.availableProperties;
-    return _os_raw && Array.isArray(_os_raw.availableProperties)
-      ? _os_raw.availableProperties
-      : [];
-  })();
-
-  const _sel_ontologiesVersion = useOntologyStore(
-    (s: any) => s.ontologiesVersion,
-  );
-  const ontologiesVersion =
-    _sel_ontologiesVersion !== undefined
-      ? _sel_ontologiesVersion
-      : _os_raw && _os_raw.ontologiesVersion !== undefined
-        ? _os_raw.ontologiesVersion
-        : undefined;
 
   // Safe getter for the RDF manager: prefer the selector-provided function but fall back to the store's getState accessor.
   // Some test mocks replace the store-level getter, so this helper ensures we find the manager reliably.
   const getRdfManagerSafe = useCallback(() => {
-    {
-      const maybe =
-        typeof getRdfManager === "function" ? getRdfManager() : undefined;
-      if (maybe) return maybe;
-      const gs =
-        (useOntologyStore as any).getState &&
-        (useOntologyStore as any).getState().getRdfManager;
-      return typeof gs === "function" ? gs() : undefined;
+    if (typeof getRdfManager === "function") {
+      const manager = getRdfManager();
+      if (manager) return manager;
     }
+    const getter =
+      typeof (useOntologyStore as any).getState === "function"
+        ? (useOntologyStore as any).getState().getRdfManager
+        : undefined;
+    return typeof getter === "function" ? getter() : undefined;
   }, [getRdfManager]);
 
   const settings = useSettingsStore((s) => s.settings);
@@ -244,12 +154,6 @@ const KnowledgeCanvas: React.FC = () => {
   const setCurrentLayout = useAppConfigStore((s) => s.setCurrentLayout);
   const setShowLegend = useAppConfigStore((s) => s.setShowLegend);
   const setPersistedViewMode = useAppConfigStore((s) => s.setViewMode);
-
-  // Timing instrumentation removed: replace with a zero-cost stub so all existing
-  // vgMeasure(...) call sites remain valid but produce no runtime overhead or globals.
-  const vgMeasure = (name: string, meta: any = {}) => {
-    return { end: (_?: any) => {} };
-  };
 
   const [currentReasoning, setCurrentReasoning] = useState<ReasoningResult | null>(null);
   const [reasoningHistory, setReasoningHistory] = useState<ReasoningResult[]>([]);
@@ -267,6 +171,7 @@ const KnowledgeCanvas: React.FC = () => {
   // Palette from RDF manager — used to compute colors without rebuilding palettes.
   const palette = usePaletteFromRdfManager();
 
+
   // Local editor state driven by React Flow events (node/edge payloads come from RF state).
   const [nodeEditorOpen, setNodeEditorOpen] = useState<boolean>(false);
   const [linkEditorOpen, setLinkEditorOpen] = useState<boolean>(false);
@@ -277,58 +182,10 @@ const KnowledgeCanvas: React.FC = () => {
     null,
   );
 
-  // Expose namedNode factory for synchronous store queries in the local classifier.
-  const termForIri = (iri: string) => {
-    if (typeof iri === "string" && iri.startsWith("_:")) {
-      return DataFactory.blankNode(iri.slice(2));
-    }
-    return namedNode(String(iri));
-  };
-
-  const predicateClassifier = (predIri: string) => {
-    // Quick fat-map hint
-    if (Array.isArray(availableProperties)) {
-      const found = (availableProperties as any[]).find(
-        (p) => String(p.iri) === String(predIri),
-      );
-      if (found) {
-        if (Array.isArray(found.range) && found.range.length > 0)
-          return "object";
-        if (Array.isArray(found.domain) && found.domain.length > 0)
-          return "object";
-      }
-    }
-
-    return "unknown";
-  };
-
   const handleToggleLayoutEnabled = useCallback((enabled: boolean) => {
     setLayoutEnabled(Boolean(enabled));
     useAppConfigStore.getState().setAutoApplyLayout(Boolean(enabled));
   }, []);
-
-  const _blacklistedPrefixes = new Set(["owl", "rdf", "rdfs", "xml", "xsd"]);
-  const _blacklistedUris = [
-    "http://www.w3.org/2002/07/owl",
-    "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
-    "http://www.w3.org/2000/01/rdf-schema#",
-    "http://www.w3.org/XML/1998/namespace",
-    "http://www.w3.org/2001/XMLSchema#",
-  ];
-
-  function isBlacklistedIri(val?: string | null): boolean {
-    if (!val) return false;
-    const s = String(val).trim();
-    if (!s) return false;
-    if (s.includes(":") && !/^https?:\/\//i.test(s)) {
-      const prefix = s.split(":", 1)[0];
-      if (_blacklistedPrefixes.has(prefix)) return true;
-    }
-    for (const u of _blacklistedUris) {
-      if (s.startsWith(u)) return true;
-    }
-    return false;
-  }
 
   useEffect(() => {
     setViewMode(config.viewMode);
@@ -416,11 +273,9 @@ const KnowledgeCanvas: React.FC = () => {
     return m;
   }, [availablePropertiesSnapshot, ontologiesVersion]);
 
-  const predicateKindFn = useCallback(
-    (predIri: string) => {
-      const k = predicateKindLookup.get(String(predIri));
-      return (k as any) || "unknown";
-    },
+  const predicateClassifier = useCallback(
+    (predicateIri: string) =>
+      predicateKindLookup.get(String(predicateIri)) ?? "unknown",
     [predicateKindLookup],
   );
 
@@ -453,7 +308,6 @@ const KnowledgeCanvas: React.FC = () => {
     }
   }, [ontologiesVersion]);
 
-  const initialMapRef = useRef(true);
   // Mounted ref to help guard async callbacks that may run after unmount.
   const mountedRef = useRef<boolean>(true);
 
@@ -510,109 +364,11 @@ const KnowledgeCanvas: React.FC = () => {
     };
   }, [clearAllTrackedTimeouts]);
 
-  // In-process mapper wrapper kept for compatibility with earlier worker-based
-  // experiments. For now we run the pure mapper synchronously on the main thread.
-  // Keeping this wrapper lets us later reintroduce a worker without changing
-  // translateQuadsToDiagram call sites.
-  const mapQuadsWithWorker = async (quads: any[], opts: any) => {
-    // Lightweight blocking debug instrumentation (low overhead when disabled).
-    // Logs start/end and records durations into window.__VG_BLOCKING_LOGS for post-mortem inspection.
-    const startTime =
-      typeof performance !== "undefined" && performance.now
-        ? performance.now()
-        : Date.now();
-    try {
-      try {
-        if (typeof console !== "undefined" && console.debug) {
-          console.debug("[VG_BLOCK] mapQuadsWithWorker.start", {
-            quadCount: Array.isArray(quads) ? quads.length : 0,
-            ts: startTime,
-          });
-        }
-      } catch (_) {/* noop */}
-
-      const m = typeof vgMeasure === "function" ? vgMeasure("mapQuadsWithWorker", { quadCount: Array.isArray(quads) ? quads.length : 0 }) : { end: () => {} };
-      try {
-        const res = await mapQuadsToDiagram(quads, opts);
-        try {
-          m.end({
-            mappedNodeCount: res && Array.isArray(res.nodes) ? res.nodes.length : 0,
-            mappedEdgeCount: res && Array.isArray(res.edges) ? res.edges.length : 0,
-          });
-        } catch (_) {/* noop */}
-        try {
-          const endTime =
-            typeof performance !== "undefined" && performance.now
-              ? performance.now()
-              : Date.now();
-          const duration = Number((endTime - startTime).toFixed(2));
-          try {
-            console.debug("[VG_BLOCK] mapQuadsWithWorker.end", { durationMs: duration });
-          } catch (_) {/* noop */}
-          try {
-            if (typeof window !== "undefined" && (window as any).__VG_BLOCKING_LOGS) {
-              (window as any).__VG_BLOCKING_LOGS.push({
-                name: "mapQuadsWithWorker",
-                durationMs: duration,
-                quadCount: Array.isArray(quads) ? quads.length : 0,
-                ts: Date.now(),
-              });
-            }
-          } catch (_) {/* noop */}
-        } catch (_) {/* noop */}
-        return res;
-      } catch (err) {
-        try { m.end({ error: true }); } catch (_) {/* noop */}
-        try {
-          const errEnd =
-            typeof performance !== "undefined" && performance.now
-              ? performance.now()
-              : Date.now();
-          const duration = Number((errEnd - startTime).toFixed(2));
-          try { console.debug("[VG_BLOCK] mapQuadsWithWorker.error", { durationMs: duration, err }); } catch (_) {/* noop */}
-          try {
-            if (typeof window !== "undefined" && (window as any).__VG_BLOCKING_LOGS) {
-              (window as any).__VG_BLOCKING_LOGS.push({
-                name: "mapQuadsWithWorker",
-                durationMs: duration,
-                error: String(err),
-                ts: Date.now(),
-              });
-            }
-          } catch (_) {/* noop */}
-        } catch (_) {/* noop */}
-        throw err;
-      }
-    } catch (e) {
-      // Fallback: call mapper directly in case instrumentation fails
-      try {
-        const fallbackStart =
-          typeof performance !== "undefined" && performance.now
-            ? performance.now()
-            : Date.now();
-        const result = await mapQuadsToDiagram(quads, opts);
-        const fallbackEnd =
-          typeof performance !== "undefined" && performance.now
-            ? performance.now()
-            : Date.now();
-        try {
-          const dur = Number((fallbackEnd - fallbackStart).toFixed(2));
-          console.debug("[VG_BLOCK] mapQuadsWithWorker.fallback", { durationMs: dur });
-          if (typeof window !== "undefined" && (window as any).__VG_BLOCKING_LOGS) {
-            (window as any).__VG_BLOCKING_LOGS.push({
-              name: "mapQuadsWithWorker.fallback",
-              durationMs: dur,
-              ts: Date.now(),
-            });
-          }
-        } catch (_) {/* noop */}
-        return result;
-      } catch (_) {
-        // If even fallback fails, rethrow
-        throw e;
-      }
-    }
-  };
+  const mapQuadsWithWorker = useCallback(
+    (quads: any[], opts: Parameters<typeof mapQuadsToDiagram>[1]) =>
+      mapQuadsToDiagram(quads, opts),
+    [],
+  );
   const loadTriggerRef = useRef(false);
   const loadFitRef = useRef(false);
 
@@ -696,27 +452,12 @@ const KnowledgeCanvas: React.FC = () => {
     if (!force && lastLayoutFingerprintRef.current === fingerprint) return;
 
     layoutInProgressRef.current = true;
-    let appliedLayoutType: string | undefined = undefined;
-    // Instrument layout timing
-    const vgLayoutMeasure = typeof vgMeasure === "function" ? vgMeasure("doLayout", { candidateNodeCount: Array.isArray(candidateNodes) ? candidateNodes.length : 0, candidateEdgeCount: Array.isArray(candidateEdges) ? candidateEdges.length : 0 }) : { end: () => {} };
     try {
       const layoutType =
         layoutTypeOverride ||
         (config && config.currentLayout) ||
         lm.suggestOptimalLayout();
-      appliedLayoutType = layoutType;
-      // Debug: announce layout start so we can trace when layouts are computed and why.
-      try {
-        console.debug("[VG_DEBUG] canvas.layout.start", {
-          layoutType,
-          candidateNodeCount: Array.isArray(candidateNodes) ? candidateNodes.length : 0,
-          candidateEdgeCount: Array.isArray(candidateEdges) ? candidateEdges.length : 0,
-          force,
-        });
-      } catch (_) { /* ignore debug failures */ }
 
-      // Ask the layout manager to compute node change objects for the provided nodes/edges.
-      const applyLayoutMeasure = typeof vgMeasure === "function" ? vgMeasure("lm.applyLayout", { layoutType, candidateNodeCount: Array.isArray(candidateNodes) ? candidateNodes.length : 0, candidateEdgeCount: Array.isArray(candidateEdges) ? candidateEdges.length : 0 }) : { end: () => {} };
       const nodeChanges = await lm.applyLayout(
         layoutType as any,
         {
@@ -727,94 +468,57 @@ const KnowledgeCanvas: React.FC = () => {
           edges: candidateEdges || [],
         },
       );
-      try { applyLayoutMeasure.end({ nodeChangeCount: Array.isArray(nodeChanges) ? nodeChanges.length : 0 }); } catch (_) {/* noop */}
-
-        // Apply layout results to React Flow state via applyNodeChanges so RF runtime metadata is preserved.
-        if (Array.isArray(nodeChanges) && nodeChanges.length > 0) {
-          try {
-            setNodes((prev) =>
-              applyNodeChanges(nodeChanges as any, prev || []),
-            );
-          } catch (errApply) {
-            // Fallback: if applyNodeChanges fails, attempt a reset-merge using the returned positions
-            try {
-              setNodes((prev = []) => {
-                const prevById = new Map(
-                  (prev || []).map((p) => [String(p.id), p]),
-                );
-                const changes = (nodeChanges || []).map((nc: any) => {
-                  const id = String(nc.id);
-                  const pos = nc.position ||
-                    (nc.item && nc.item.position) || { x: 0, y: 0 };
-                  const existing = prevById.get(id);
-                  const item = existing
-                    ? {
-                        ...(existing as any),
-                        position: pos,
-                        data: {
-                          ...(existing as any).data,
-                          ...(nc.item && nc.item.data ? nc.item.data : {}),
-                        },
-                      }
-                    : {
-                        id,
-                        type: "ontology",
-                        position: pos,
-                        data: (nc.item && nc.item.data) || {},
-                      };
-                  return { id, type: "reset", item };
-                });
-                return applyNodeChanges(changes as any, prev || []);
-              });
-            } catch {
-              // Last resort: full replace with nodes from nodeChanges (best-effort)
-              try {
-                const full = (nodeChanges || []).map((nc: any) => ({
-                  id: String(nc.id),
-                  type: "ontology",
-                  position: nc.position ||
-                    (nc.item && nc.item.position) || { x: 0, y: 0 },
-                  data: (nc.item && nc.item.data) || {},
-                })) as RFNode<NodeData>[];
-                setNodes(full);
-              } catch {
-                // swallow to avoid breaking layout caller
-              }
-            }
-          }
-        }
-      } catch (err) {
-        // allow errors to surface in tests
-        throw err;
-      } finally {
-        // Ensure the React/ReactFlow render has flushed so callers awaiting doLayout
-        // observe the updated positions. Await two animation frames as a deterministic
-        // post-update hook (fallback to setTimeout if RAF unavailable).
-        const raf = () =>
-          new Promise((resolve) => {
-            try {
-              requestAnimationFrame(resolve);
-            } catch (_) {
-              setTrackedTimeout(resolve, 16);
-            }
+      if (Array.isArray(nodeChanges) && nodeChanges.length > 0) {
+        try {
+          setNodes((prev) => applyNodeChanges(nodeChanges as any, prev || []));
+        } catch {
+          setNodes((prev = []) => {
+            const prevById = new Map((prev || []).map((p) => [String(p.id), p]));
+            const changes = (nodeChanges || []).map((nc: any) => {
+              const id = String(nc.id);
+              const pos = nc.position || (nc.item && nc.item.position) || { x: 0, y: 0 };
+              const existing = prevById.get(id);
+              const item = existing
+                ? {
+                    ...(existing as any),
+                    position: pos,
+                    data: {
+                      ...(existing as any).data,
+                      ...(nc.item && nc.item.data ? nc.item.data : {}),
+                    },
+                  }
+                : {
+                    id,
+                    type: "ontology",
+                    position: pos,
+                    data: (nc.item && nc.item.data) || {},
+                  };
+              return { id, type: "reset", item };
+            });
+            return applyNodeChanges(changes as any, prev || []);
           });
-        // Await two frames to allow React and ReactFlow to apply changes.
-        // eslint-disable-next-line no-await-in-loop
-        const rafMeasure = typeof vgMeasure === "function" ? vgMeasure("doLayout.raf_waits", {}) : { end: () => {} };
-        await raf();
-        // eslint-disable-next-line no-await-in-loop
-        await raf();
-        try { rafMeasure.end({}); } catch (_) {/* noop */}
-        {
-          console.debug("canvas.layout.apply.completed", appliedLayoutType);
         }
-        lastLayoutFingerprintRef.current = fingerprint;
-        layoutInProgressRef.current = false;
-        try { vgLayoutMeasure.end({ appliedLayoutType }); } catch (_) {/* noop */}
       }
-    },
-    [layoutEnabled, config],
-  );
+    } catch (err) {
+      layoutInProgressRef.current = false;
+      throw err;
+    } finally {
+      const raf = () =>
+        new Promise((resolve) => {
+          try {
+            requestAnimationFrame(resolve);
+          } catch (_) {
+            setTrackedTimeout(resolve, 16);
+          }
+        });
+      await raf();
+      await raf();
+      lastLayoutFingerprintRef.current = fingerprint;
+      layoutInProgressRef.current = false;
+    }
+  },
+  [layoutEnabled, config],
+);
 
   useEffect(() => {
     const auto = !!(config && (config as any).autoApplyLayout);
@@ -1047,9 +751,6 @@ const KnowledgeCanvas: React.FC = () => {
       try {
         const last = lastDragStopRef.current;
         if (typeof last === "number" && Date.now() - last < RECENT_DRAG_MS) {
-          console.debug("[VG_DEBUG] selection ignored due to recent drag", {
-            ageMs: Date.now() - last,
-          });
           return;
         }
       } catch (_) {
@@ -1118,180 +819,81 @@ const KnowledgeCanvas: React.FC = () => {
     const pendingSubjects: Set<string> = new Set<string>();
 
     const translateQuadsToDiagram = async (quads: any[]) => {
-      const m = typeof vgMeasure === "function" ? vgMeasure("translateQuadsToDiagram", { count: Array.isArray(quads) ? quads.length : 0 }) : { end: () => {} };
-      try {
-        let registry: any = undefined;
-        if (
+        const state =
           typeof useOntologyStore === "function" &&
           typeof (useOntologyStore as any).getState === "function"
-        ) {
-          registry = (useOntologyStore as any).getState().namespaceRegistry;
-        }
-        console.debug("[VG_DEBUG] translateQuadsToDiagram.input", {
-          count: Array.isArray(quads) ? quads.length : 0,
-          sample: Array.isArray(quads) ? quads.slice(0, 10) : quads,
-        });
+            ? (useOntologyStore as any).getState()
+            : null;
 
-        // Read live availableProperties from the ontology store at mapping time to avoid
-        // stale memoization races where reconcile updates may not yet have propagated.
+        const registry = state && Array.isArray(state.namespaceRegistry)
+          ? state.namespaceRegistry
+          : [];
         const liveAvailableProps =
-          (useOntologyStore as any).getState && (useOntologyStore as any).getState().availableProperties
-            ? (useOntologyStore as any).getState().availableProperties
+          state && Array.isArray(state.availableProperties)
+            ? state.availableProperties
             : availableProperties;
+
         const opts = {
           predicateKind: predicateClassifier,
-          availableProperties: Array.isArray(liveAvailableProps) ? (liveAvailableProps as any[]).slice() : [],
-          availableClasses: availableClasses,
+          availableProperties: Array.isArray(liveAvailableProps)
+            ? liveAvailableProps.slice()
+            : [],
+          availableClasses,
           registry,
           palette: palette as any,
-        } as any;
+        };
 
-        // Prefer worker offload; fallback to in-process mapper on failure.
-        const res = await mapQuadsWithWorker(quads, opts);
-        try { m.end({ mappedNodeCount: res && Array.isArray(res.nodes) ? res.nodes.length : 0, mappedEdgeCount: res && Array.isArray(res.edges) ? res.edges.length : 0 }); } catch (_) {/* noop */}
-        return res;
-      } catch (err) {
-        try { m.end({ error: true }); } catch (_) {/* noop */}
-        throw err;
-      }
-    };
+        return mapQuadsWithWorker(quads, opts);
+      };
 
     const runMapping = async () => {
       if (!mounted) return;
       if (!pendingQuads || pendingQuads.length === 0) return;
 
-      const runM = typeof vgMeasure === "function" ? vgMeasure("runMapping", { queuedQuadCount: pendingQuads.length }) : { end: () => {} };
-
-      // Atomically consume and clear the pending buffer so each mapping run
-      // processes only the quads that were present when the run started.
       const dataQuads: any[] = pendingQuads.splice(0, pendingQuads.length);
-      // Capture and clear the set of subjects that changed in this batch
-      const subjects: string[] = Array.from(pendingSubjects);
       pendingSubjects.clear();
 
-      console.debug("[VG_DEBUG] mappingBatch.start", {
-        pendingQuads: dataQuads.map((q: any) => ({
-          subject: q && q.subject ? (q.subject as any).value : undefined,
-          predicate: q && q.predicate ? (q.predicate as any).value : undefined,
-          object: q && q.object ? (q.object as any).value : undefined,
-          graph: q && q.graph ? (q.graph as any).value : undefined,
-        })),
-      });
-
-      // Minimal, deterministic mapping: translate quads and apply mapper output
-      // directly using React Flow's applyNodeChanges/applyEdgeChanges helper.
-      let diagram;
-      try {
-        diagram = await translateQuadsToDiagram(dataQuads);
-      } catch (err) {
-        try { runM.end({ error: true }); } catch (_) {/* noop */}
-        throw err;
-      }
-      const mappedNodes: RFNode<NodeData>[] = diagram && diagram.nodes;
-      const mappedEdges: RFEdge<LinkData>[] = diagram && diagram.edges;
-
-      // Build deterministic add/replace change objects so:
-      // - mapper-provided positions are applied only for new nodes
-      // - existing nodes preserve runtime metadata (position, selected, __rf, etc.)
       mappingInProgressRef.current = true;
-
-      // Apply mapper output via centralized helper (nodes + edges)
       try {
+        const diagram = await translateQuadsToDiagram(dataQuads);
+        const mappedNodes: RFNode<NodeData>[] = diagram?.nodes ?? [];
+        const mappedEdges: RFEdge<LinkData>[] = diagram?.edges ?? [];
+
         await applyDiagrammChange(mappedNodes, mappedEdges);
-      } catch (err) {
-        // ensure we still end measurement
-        try { runM.end({ error: true }); } catch (_) {/* noop */}
-        throw err;
+      } finally {
+        mappingInProgressRef.current = false;
       }
 
-      // Signal mapping completion for tests
-      if (typeof window !== "undefined")
-        (window as any).__VG_LAST_MAPPING_RUN = Date.now();
+      const rfInst = reactFlowInstance?.current ?? null;
+      const nodesForLayout =
+        rfInst && typeof (rfInst as any).getNodes === 'function'
+          ? (rfInst as any).getNodes()
+          : nodes;
+      const edgesForLayout =
+        rfInst && typeof (rfInst as any).getEdges === 'function'
+          ? (rfInst as any).getEdges()
+          : edges;
 
-      console.debug("canvas.rebuild.end");
-      // Snapshot RF nodes for test inspection (best-effort).
-      try {
-        if (typeof window !== "undefined" && reactFlowInstance && reactFlowInstance.current && typeof (reactFlowInstance.current as any).getNodes === "function") {
-          (window as any).__VG_LAST_NODES = (reactFlowInstance.current as any).getNodes();
+      if (forceLayoutNextMappingRef.current) {
+        forceLayoutNextMappingRef.current = false;
+        await doLayout(nodesForLayout as any, edgesForLayout as any, true);
+        await new Promise((resolve) => setTrackedTimeout(resolve, 50));
+        if (
+          mountedRef.current &&
+          rfInst &&
+          typeof (rfInst as any).fitView === 'function'
+        ) {
+          (rfInst as any).fitView({ padding: 0.1 });
         }
-      } catch (_) {/* noop */}
+      } else if (config?.autoApplyLayout) {
+        await doLayout(nodesForLayout as any, edgesForLayout as any, true);
+      }
 
-      // Finalize mapping immediately (ensure React updates are enqueued and then run layout).
-      // Avoid scheduling another tracked timeout here to reduce races; we already awaited
-      // applyDiagrammChange which waits a tracked microtask so React has queued state updates.
-      try {
-        if (!mountedRef.current) {
-          try { runM.end({ reason: "unmounted" }); } catch (_) {/* noop */}
-          return;
-        }
-        mappingInProgressRef.current = false;
-
-        const mergedNodes = Array.isArray(mappedNodes) ? mappedNodes : nodes || [];
-        const mergedEdges = Array.isArray(mappedEdges) ? mappedEdges : edges || [];
-
-        // Prefer live React Flow runtime nodes/edges if available so LayoutManager can observe measurements.
-        const rfInst = reactFlowInstance && reactFlowInstance.current;
-        const nodesForLayout =
-          rfInst && typeof (rfInst as any).getNodes === "function"
-            ? (rfInst as any).getNodes()
-            : mergedNodes;
-        const edgesForLayout =
-          rfInst && typeof (rfInst as any).getEdges === "function"
-            ? (rfInst as any).getEdges()
-            : mergedEdges;
-
-        // If loader requested a forced layout for the next mapping, honor it first.
-        if (forceLayoutNextMappingRef.current) {
-          try {
-            console.debug("[VG_DEBUG] canvas.layout.forced.flag.detected", {
-              mergedNodesCount: Array.isArray(nodesForLayout) ? nodesForLayout.length : 0,
-              mergedEdgesCount: Array.isArray(edgesForLayout) ? edgesForLayout.length : 0,
-            });
-          } catch (_) { /* ignore */ }
-          forceLayoutNextMappingRef.current = false;
-          await doLayout(nodesForLayout as any, edgesForLayout as any, true);
-          try {
-            console.debug("[VG_DEBUG] canvas.layout.forced.run.completed", { time: Date.now() });
-          } catch (_) { /* ignore */ }
-          // Give React Flow a moment to apply node changes, then fit the view so the user sees the graph.
-          try {
-            await new Promise((r) => setTrackedTimeout(r, 50));
-          } catch (_) { /* ignore */ }
-          if (!mountedRef.current) {
-            try { runM.end({ reason: "post-forced-layout.unmounted" }); } catch (_) {/* noop */}
-            return;
-          }
-
-          const inst = rfInst;
-          if (mountedRef.current && inst && typeof (inst as any).fitView === "function") {
-            try { (inst as any).fitView({ padding: 0.1 }); } catch (_) { /* ignore */ }
-          }
-        } else {
-          // Otherwise run layout if autoApplyLayout is enabled
-          const autoLayoutEnabled = !!(config && (config as any).autoApplyLayout);
-          if (autoLayoutEnabled) {
-            await doLayout(nodesForLayout as any, edgesForLayout as any, true);
-          }
-        }
-
-        // Honor any manual Apply that was queued while mapping was in progress
-        if (applyRequestedRef.current) {
-          applyRequestedRef.current = false;
-          await doLayout(nodesForLayout as any, edgesForLayout as any, true);
-        }
-        try { runM.end({ mappedNodes: Array.isArray(mappedNodes) ? mappedNodes.length : 0, mappedEdges: Array.isArray(mappedEdges) ? mappedEdges.length : 0 }); } catch (_) {/* noop */}
-      } catch (err) {
-        // ignore finalization errors to avoid breaking mapping caller
-        console.debug("[VG_DEBUG] mapping.finalize.error", err);
-        try { runM.end({ error: true }); } catch (_) {/* noop */}
+      if (applyRequestedRef.current) {
+        applyRequestedRef.current = false;
+        await doLayout(nodesForLayout as any, edgesForLayout as any, true);
       }
     };
-
-    if (!initialMapRef.current) {
-      // runMapping();
-    } else {
-      initialMapRef.current = false;
-    }
 
     const scheduleRunMapping = () => {
       if (debounceTimer) window.clearTimeout(debounceTimer);
@@ -1306,153 +908,27 @@ const KnowledgeCanvas: React.FC = () => {
       quads?: any[] | undefined,
     ) => {
       const incomingSubjects = Array.isArray(subs)
-        ? subs.map((s) => String(s))
+        ? subs.map((value) => String(value))
         : [];
-      const scount = Array.isArray(incomingSubjects) ? incomingSubjects.length : 0;
-      const qcount = Array.isArray(quads) ? quads.length : 0;
-      const subM = typeof vgMeasure === "function" ? vgMeasure("subjectsCallback", { subjectCount: scount, quadCount: qcount }) : { end: () => {} };
+      for (const subject of incomingSubjects) {
+        pendingSubjects.add(subject);
+      }
 
-      console.debug("[VG_DEBUG] rdfManager.onSubjectsChange", {
-        subjects: Array.isArray(subs) ? subs.slice() : subs,
-        quads: Array.isArray(quads)
-          ? (quads as any[]).map((q: any) => ({
-              subject: q && q.subject ? (q.subject as any).value : undefined,
-              predicate:
-                q && q.predicate ? (q.predicate as any).value : undefined,
-              object: q && q.object ? (q.object as any).value : undefined,
-              graph: q && q.graph ? (q.graph as any).value : undefined,
-            }))
-          : [],
-      });
-
-      // Normalize incoming subjects
-      if (incomingSubjects.length > 0) {
-        for (const s of incomingSubjects) {
-          {
-            pendingSubjects.add(String(s));
-          }
+      if (Array.isArray(quads) && quads.length > 0) {
+        for (const quad of quads) {
+          pendingQuads.push(quad);
         }
       }
 
-      // If we have quads for this emission attempt, apply the mapper output directly by
-      // projecting mapper items into change objects and using applyNodeChanges/applyEdgeChanges.
-      if (Array.isArray(quads) && quads.length > 0) {
-        try {
-          const diagram = await translateQuadsToDiagram(quads || []);
-          const mappedNodes: RFNode<NodeData>[] =
-            (diagram && diagram.nodes) || [];
-          const mappedEdges: RFEdge<LinkData>[] =
-            (diagram && diagram.edges) || [];
-
-          const mappedById = new Map(
-            (mappedNodes || []).map((m: any) => [String(m.id), m]),
-          );
-          const mappedEdgeById = new Map(
-            (mappedEdges || []).map((e: any) => [String(e.id), e]),
-          );
-
-          await applyDiagrammChange(mappedNodes, mappedEdges);
-
-          // Signal mapping completion for tests
-          if (typeof window !== "undefined")
-            (window as any).__VG_LAST_MAPPING_RUN = Date.now();
-
-          console.debug("canvas.rebuild.end");
-          // Snapshot RF nodes for test inspection (best-effort).
-          try {
-            if (typeof window !== "undefined" && reactFlowInstance && reactFlowInstance.current && typeof (reactFlowInstance.current as any).getNodes === "function") {
-              (window as any).__VG_LAST_NODES = (reactFlowInstance.current as any).getNodes();
-            }
-          } catch (_) {/* noop */}
-
-          // Finalize mapping immediately (ensure React updates are enqueued and then run layout).
-          try {
-            if (!mountedRef.current) {
-              try { subM.end({ reason: "unmounted" }); } catch (_) {/* noop */}
-              return;
-            }
-            const mergedNodes = Array.isArray(mappedNodes) ? mappedNodes : nodes || [];
-            const mergedEdges = Array.isArray(mappedEdges) ? mappedEdges : edges || [];
-
-            const rfInst = reactFlowInstance && reactFlowInstance.current;
-            const nodesForLayout =
-              rfInst && typeof (rfInst as any).getNodes === "function"
-                ? (rfInst as any).getNodes()
-                : mergedNodes;
-            const edgesForLayout =
-              rfInst && typeof (rfInst as any).getEdges === "function"
-                ? (rfInst as any).getEdges()
-                : mergedEdges;
-
-            if (forceLayoutNextMappingRef.current) {
-              forceLayoutNextMappingRef.current = false;
-              try {
-                await doLayout(nodesForLayout as any, edgesForLayout as any, true);
-                await new Promise((r) => setTrackedTimeout(r, 50));
-                if (!mountedRef.current) {
-                  try { subM.end({ reason: "post-forced-layout.unmounted" }); } catch (_) {/* noop */}
-                  return;
-                }
-                const inst = rfInst;
-                if (mountedRef.current && inst && typeof (inst as any).fitView === "function") {
-                  try { (inst as any).fitView({ padding: 0.1 }); } catch (_) { /* ignore */ }
-                }
-              } catch {
-                // ignore
-              }
-            } else {
-              const autoLayoutEnabled = !!(config && (config as any).autoApplyLayout);
-              if (autoLayoutEnabled) {
-                try {
-                  await doLayout(nodesForLayout as any, edgesForLayout as any, true);
-                } catch {
-                  // ignore
-                }
-              }
-            }
-
-            if (applyRequestedRef.current) {
-              applyRequestedRef.current = false;
-              try {
-                await doLayout(nodesForLayout as any, edgesForLayout as any, true);
-              } catch {
-                // ignore
-              }
-            }
-          } catch {
-            // ignore
-          }
-
-          try { subM.end({ mappedNodes: Array.isArray(mappedNodes) ? mappedNodes.length : 0, mappedEdges: Array.isArray(mappedEdges) ? mappedEdges.length : 0 }); } catch (_) {/* noop */}
-          return;
-        } catch (err) {
-          console.debug("[VG_DEBUG] subjectsCallback.directMappingFailed", {
-            err,
-          });
-          try { subM.end({ error: true }); } catch (_) {/* noop */}
-          // fallthrough to queued mapping path below
-        }
-      }
-
-      // Fallback: queue quads and schedule debounced mapping
-      if (Array.isArray(quads) && quads.length > 0) {
-        for (const q of quads) pendingQuads.push(q);
-      }
       scheduleRunMapping();
-      try { subM.end({ queued: true, queuedQuadCount: qcount }); } catch (_) {/* noop */}
     };
 
     // Subscribe to subject-level incremental notifications when available.
     if (typeof mgr.onSubjectsChange === "function" && subjectsCallback) {
-      console.debug("[VG_DEBUG] registering mgr.onSubjectsChange");
-
       try {
         mgr.onSubjectsChange(subjectsCallback as any);
       } catch (err) {
-        console.debug(
-          "[VG_DEBUG] mgr.onSubjectsChange registration failed",
-          err,
-        );
+        console.warn("KnowledgeCanvas subject subscription failed", err);
       }
 
       // Safety-net: after registering, request an immediate subject emission for
@@ -1463,7 +939,7 @@ const KnowledgeCanvas: React.FC = () => {
             try {
               await (mgr as any).emitAllSubjects("urn:vg:data");
             } catch (e) {
-              console.debug("[VG_DEBUG] emitAllSubjects (post-register) failed", e);
+              console.warn("KnowledgeCanvas emitAllSubjects failed", e);
             }
           })();
         }
@@ -1471,8 +947,8 @@ const KnowledgeCanvas: React.FC = () => {
         /* ignore */
       }
     } else {
-      console.debug(
-        "[VG_DEBUG] mgr.onSubjectsChange not available, subjectsCallback not registered",
+      console.warn(
+        "KnowledgeCanvas subject notifications unavailable; falling back to queued mapping",
       );
     }
 
@@ -1624,13 +1100,6 @@ const KnowledgeCanvas: React.FC = () => {
         const cfg = (useAppConfigStore as any).getState
           ? (useAppConfigStore as any).getState().config
           : config;
-        // Debug: log persisted config snapshot so test runs can verify whether
-        // persistedAutoload/additionalOntologies were read by the canvas at init time.
-        console.debug("[VG_DEBUG] __VG_INIT_APP.config_snapshot", {
-          persistedAutoload: !!cfg?.persistedAutoload,
-          additionalOntologies: cfg?.additionalOntologies,
-        });
-
         const additional = Array.isArray(cfg?.additionalOntologies)
           ? cfg.additionalOntologies.filter(Boolean)
           : [];
@@ -1663,10 +1132,6 @@ const KnowledgeCanvas: React.FC = () => {
             cfg &&
             cfg.persistedAutoload
           ) {
-            console.debug(
-              "[VG_DEBUG] Autoload start - configured additionalOntologies:",
-              toLoad,
-            );
             canvasActions.setLoading(
               true,
               5,
@@ -1677,18 +1142,12 @@ const KnowledgeCanvas: React.FC = () => {
             await loadAdditionalOntologies(
               toLoad,
               (progress: number, message: string) => {
-                console.debug(
-                  `[VG_DEBUG] loadAdditionalOntologies progress ${progress}%: ${message}`,
-                );
                 canvasActions.setLoading(
                   true,
                   Math.max(5, progress),
                   message,
                 );
               },
-            );
-            console.debug(
-              "[VG_DEBUG] Autoload complete - requested ontologies loaded",
             );
             loadTriggerRef.current = true;
             loadFitRef.current = true;
@@ -1704,7 +1163,7 @@ const KnowledgeCanvas: React.FC = () => {
             }
           }
         } catch (err) {
-          console.debug("[VG_DEBUG] Autoload error", err);
+          console.warn("KnowledgeCanvas autoload failed", err);
           // ensure we don't block init on autoload failures
           if (
             additional &&
@@ -1969,15 +1428,13 @@ const KnowledgeCanvas: React.FC = () => {
       ) {
         // Fire-and-forget but catch errors to avoid blocking UI
         (mgr as any).triggerSubjectUpdate(allNodeIris).catch((err: any) => {
-          console.debug("[VG_DEBUG] triggerSubjectUpdate failed", err);
+          console.warn("KnowledgeCanvas triggerSubjectUpdate failed", err);
         });
       } else {
-        console.debug(
-          "[VG_DEBUG] skipping triggerSubjectUpdate: canvas not ready",
-        );
+        console.warn("KnowledgeCanvas skipped triggerSubjectUpdate because canvas is not ready");
       }
     } else {
-      console.debug("[VG_DEBUG] triggerSubjectUpdate invocation failed or unavailable");
+      console.warn("KnowledgeCanvas triggerSubjectUpdate unavailable");
     }
   }, [currentReasoning, setNodes, setEdges]);
 
@@ -1995,9 +1452,6 @@ const KnowledgeCanvas: React.FC = () => {
       try {
         const last = lastDragStopRef.current;
         if (typeof last === "number" && Date.now() - last < RECENT_DRAG_MS) {
-          console.debug("[VG_DEBUG] double-click suppressed due to recent drag", {
-            ageMs: Date.now() - last,
-          });
           return;
         }
       } catch (_) {
@@ -2042,9 +1496,6 @@ const KnowledgeCanvas: React.FC = () => {
     try {
       const last = lastDragStopRef.current;
       if (typeof last === "number" && Date.now() - last < RECENT_DRAG_MS) {
-        console.debug("[VG_DEBUG] click suppressed due to recent drag", {
-          ageMs: Date.now() - last,
-        });
         return;
       }
     } catch (_) {
@@ -2209,20 +1660,16 @@ const KnowledgeCanvas: React.FC = () => {
         if (isDebugMetricsEnabled()) {
           const intervals = dragMetricsRef.current.intervals || [];
           (window as any).__VG_DRAG_METRICS_ACTIVE = false;
-          if (intervals.length === 0) {
-            console.debug("[VG_DEBUG] drag metrics: no intervals");
-          } else {
+          if (intervals.length > 0) {
             const sum = intervals.reduce((a, b) => a + b, 0);
             const avg = sum / intervals.length;
             const fps = avg > 0 ? 1000 / avg : 0;
             const count = dragMetricsRef.current.count || intervals.length;
-            const metrics = {
+            (window as any).__VG_LAST_DRAG_METRICS = {
               count,
               avgMs: Number(avg.toFixed(2)),
               fps: Math.round(fps),
             };
-            console.debug("[VG_DEBUG] drag metrics", metrics);
-            (window as any).__VG_LAST_DRAG_METRICS = metrics;
           }
         }
       } catch (_) {
@@ -2702,322 +2149,138 @@ const KnowledgeCanvas: React.FC = () => {
   // mapper-provided positions for newly added nodes. Placeholders for missing
   // edge endpoints are also created automatically.
   const applyDiagrammChange = useCallback(
-    async (incomingNodes?: RFNode<NodeData>[], incomingEdges?: RFEdge<LinkData>[]) => {
-      const inNodes = Array.isArray(incomingNodes) ? incomingNodes : [];
-      const inEdges = Array.isArray(incomingEdges) ? incomingEdges : [];
+    async (
+      incomingNodes?: RFNode<NodeData>[],
+      incomingEdges?: RFEdge<LinkData>[],
+    ) => {
+      const nodesList = Array.isArray(incomingNodes) ? incomingNodes : [];
+      const edgesList = Array.isArray(incomingEdges) ? incomingEdges : [];
 
-      const measure = typeof vgMeasure === "function" ? vgMeasure("applyDiagrammChange", { nodeCount: inNodes.length, edgeCount: inEdges.length }) : { end: () => {} };
-
-      // Apply node changes first so placeholders/new nodes exist before edges are applied.
-      if (inNodes.length > 0 || inEdges.length > 0) {
-        const nodePhaseMeasure = typeof vgMeasure === "function" ? vgMeasure("applyDiagrammChange.nodes", { nodeCount: inNodes.length }) : { end: () => {} };
+      if (nodesList.length > 0 || edgesList.length > 0) {
         setNodes((prev = []) => {
-          const prevArr = prev || [];
-          const prevById = new Map((prevArr || []).map((n: any) => [String(n.id), n]));
-          const incomingById = new Map((inNodes || []).map((n: any) => [String(n.id), n]));
+          const current = prev || [];
+          const currentById = new Map(
+            current.map((node: any) => [String(node.id), node]),
+          );
+          const incomingById = new Map(
+            nodesList.map((node: any) => [String(node.id), node]),
+          );
+          const knownIds = new Set<string>([
+            ...currentById.keys(),
+            ...incomingById.keys(),
+          ]);
           const changes: any[] = [];
 
-          // Convert incoming nodes into add/replace change objects
-          for (const m of inNodes || []) {
-            try {
-              const id = String(m.id);
-              const existing = prevById.get(id);
-              if (existing) {
-                // Preserve runtime metadata for existing nodes; perform a defensive merge
-                // so sparse/empty arrays from the mapper do not clobber existing rich data.
-                const incomingData = (m && (m as any).data) || {};
-                const baseData = { ...(existing.data || {}) } as any;
-                const mergedData: any = { ...baseData };
-
-                // Merge keys from incomingData with defensive rules:
-                // - If incoming value is an array:
-                //    - if non-empty: overwrite
-                //    - if empty: skip (preserve existing)
-                // - If incoming value is scalar (string/number/boolean):
-                //    - if non-empty (not null/undefined/""): overwrite
-                //    - otherwise skip
-                for (const k of Object.keys(incomingData)) {
-                  try {
-                    const val = (incomingData as any)[k];
-                    if (Array.isArray(val)) {
-                      if (val.length > 0) mergedData[k] = val;
-                      // empty array -> treat as "no information", preserve existing
-                    } else if (val === null || typeof val === "undefined" || (typeof val === "string" && val === "")) {
-                      // skip empty scalar -> preserve existing
-                    } else {
-                      mergedData[k] = val;
-                    }
-                  } catch {
-                    // ignore per-key merge errors
-                  }
-                }
-
-                const item = {
-                  ...existing,
-                  type: (m && (m as any).type) || existing.type,
-                  position: existing.position || (m && (m as any).position) || { x: 0, y: 0 },
-                  data: mergedData,
-                } as any;
-                // Ensure selection is not preserved from existing metadata.
-                delete (item as any).selected;
-                changes.push({ id, type: "replace", item });
-              } else {
-                // New node: accept mapper-provided position and data as-is.
-                const item = { ...(m as any), position: m && m.position ? m.position : { x: 0, y: 0 } } as any;
-                delete (item as any).selected;
-                changes.push({ type: "add", item });
-              }
-            } catch {
-              // per-item ignore
-            }
-          }
-
-          // Ensure endpoints referenced by incomingEdges exist as placeholders if missing.
-          const currentIds = new Set((prevArr || []).map((n: any) => String(n.id)));
-          for (const e of inEdges || []) {
-            try {
-              const s = String(e && e.source);
-              const t = String(e && e.target);
-              if (s && !currentIds.has(s) && !incomingById.has(s)) {
-                currentIds.add(s);
-                const placeholder = {
-                  id: s,
-                  type: "ontology",
-                  position: { x: 0, y: 0 },
-                  data: {
-                    key: s,
-                    iri: s,
-                    rdfTypes: [],
-                    literalProperties: [],
-                    annotationProperties: [],
-                    visible: true,
-                    hasReasoningError: false,
-                    namespace: "",
-                    label: s,
-                  } as NodeData,
-                } as RFNode<NodeData>;
-                changes.push({ type: "add", item: placeholder });
-              }
-              if (t && !currentIds.has(t) && !incomingById.has(t)) {
-                currentIds.add(t);
-                const placeholder = {
-                  id: t,
-                  type: "ontology",
-                  position: { x: 0, y: 0 },
-                  data: {
-                    key: t,
-                    iri: t,
-                    rdfTypes: [],
-                    literalProperties: [],
-                    annotationProperties: [],
-                    visible: true,
-                    hasReasoningError: false,
-                    namespace: "",
-                    label: t,
-                  } as NodeData,
-                } as RFNode<NodeData>;
-                changes.push({ type: "add", item: placeholder });
-              }
-            } catch {
-              // ignore
-            }
-          }
-
-          if (changes.length === 0) {
-            try { nodePhaseMeasure.end({ applied: false }); } catch (_) {/* noop */}
-            return prevArr;
-          }
-          try { nodePhaseMeasure.end({ applied: true, changeCount: changes.length }); } catch (_) {/* noop */}
-          return applyNodeChanges(changes as any, prevArr);
-        });
-      }
-
-      // Apply edge changes after nodes so placeholders and new nodes exist.
-      if (inEdges.length > 0) {
-        const edgePhaseMeasure = typeof vgMeasure === "function" ? vgMeasure("applyDiagrammChange.edges", { edgeCount: inEdges.length }) : { end: () => {} };
-        setEdges((prev = []) => {
-          const prevArr = prev || [];
-          const prevById = new Map(prevArr.map((e: any) => [String(e.id), e]));
-          const changes: any[] = [];
-
-          // Build map of incoming edges grouped by source -> Set of incoming ids
-          const incomingBySource = new Map<string, Set<string>>();
-          for (const m of inEdges || []) {
-            try {
-              const sid = String(m && (m.source || ""));
-              const mid = String(m && (m.id || ""));
-              if (!sid) continue;
-              const sset = incomingBySource.get(sid) || new Set<string>();
-              if (mid) sset.add(mid);
-              incomingBySource.set(sid, sset);
-            } catch {
-              // ignore per-item
-            }
-          }
-
-          // For each source present in incomingBySource, remove all existing edges that originate
-          // from that source but are not present in the incoming set. This synchronizes outgoing
-          // edges for the subject with the mapper's authoritative outgoing set.
-          if (incomingBySource.size > 0) {
-            const toRemoveIds = new Set<string>();
-            for (const e of prevArr || []) {
-              try {
-                const src = String(e && (e.source || ""));
-                const id = String(e && (e.id || ""));
-                if (!src) continue;
-                const incomingSet = incomingBySource.get(src);
-                if (incomingSet) {
-                  // If existing edge id is not present in incomingSet, schedule removal
-                  if (!incomingSet.has(id)) {
-                    toRemoveIds.add(id);
-                  }
-                }
-              } catch {
-                // ignore per-edge
+          const mergeData = (existingData: any, incomingData: any) => {
+            const merged = { ...(existingData ?? {}) };
+            if (!incomingData || typeof incomingData !== 'object') return merged;
+            for (const key of Object.keys(incomingData)) {
+              const value = (incomingData as any)[key];
+              if (Array.isArray(value)) {
+                if (value.length > 0) merged[key] = value;
+              } else if (
+                value !== null &&
+                value !== undefined &&
+                !(typeof value === 'string' && value.trim() === '')
+              ) {
+                merged[key] = value;
               }
             }
-            for (const rid of Array.from(toRemoveIds)) {
-              try {
-                changes.push({ id: rid, type: "remove" });
-              } catch {
-                // ignore
-              }
-            }
-          }
+            return merged;
+          };
 
-          // Now add/replace incoming edges (preserve runtime metadata when ids match)
-          for (const m of inEdges || []) {
-            try {
-              const id = String(m.id);
-              const existing = prevById.get(id);
-
-              const incomingData = (m && (m as any).data) || {};
-              // Build a minimal rendering-relevant snapshot for incoming edge
-              const incomingSnapshot = {
-                source: m && m.source ? String(m.source) : "",
-                target: m && m.target ? String(m.target) : "",
-                propertyUri: incomingData && incomingData.propertyUri ? String(incomingData.propertyUri) : "",
-                label: incomingData && typeof incomingData.label !== "undefined" ? String(incomingData.label || "") : "",
-                propertyType: incomingData && incomingData.propertyType ? String(incomingData.propertyType) : "",
-                shift: typeof incomingData.shift === "number" ? Number(incomingData.shift) : null,
-                namespace: incomingData && incomingData.namespace ? String(incomingData.namespace) : "",
-                rdfType: incomingData && incomingData.rdfType ? String(incomingData.rdfType) : "",
+          for (const node of nodesList) {
+            const id = String(node.id);
+            const existing = currentById.get(id);
+            if (existing) {
+              const mergedNode = {
+                ...existing,
+                type: (node as any).type ?? existing.type,
+                position:
+                  existing.position ??
+                  (node as any).position ??
+                  { x: 0, y: 0 },
+                data: mergeData(existing.data, (node as any).data),
               };
-
-              if (existing) {
-                // Build same snapshot for existing edge
-                const existingData = (existing && (existing as any).data) || {};
-                const existingSnapshot = {
-                  source: existing && existing.source ? String(existing.source) : "",
-                  target: existing && existing.target ? String(existing.target) : "",
-                  propertyUri: existingData && existingData.propertyUri ? String(existingData.propertyUri) : "",
-                  label: existingData && typeof existingData.label !== "undefined" ? String(existingData.label || "") : "",
-                  propertyType: existingData && existingData.propertyType ? String(existingData.propertyType) : "",
-                  shift: typeof existingData.shift === "number" ? Number(existingData.shift) : null,
-                  namespace: existingData && existingData.namespace ? String(existingData.namespace) : "",
-                  rdfType: existingData && existingData.rdfType ? String(existingData.rdfType) : "",
-                };
-
-                const changed =
-                  JSON.stringify(existingSnapshot) !== JSON.stringify(incomingSnapshot);
-
-                if (changed) {
-                  // Preserve existing runtime flags but ensure the edge remains selectable
-                  const item = {
-                    ...existing,
-                    source: m && m.source ? m.source : existing.source,
-                    target: m && m.target ? m.target : existing.target,
-                    data: { ...(existing.data || {}), ...(m && m.data ? m.data : {}) },
-                  } as any;
-                  // If selectable wasn't explicitly set on the existing edge, default to true.
-                  if (typeof (item as any).selectable !== "boolean") {
-                    (item as any).selectable = true;
-                  }
-
-                  // Provide an immediate persistence hook so UI updates to shift are visible
-                  // as soon as the handle drag completes. This is a runtime-only callback and
-                  // will not be serialized/stored by the mapper.
-                  try {
-                    item.data = item.data || {};
-                    (item.data as any).onEdgeUpdate = (payload: { id: string; shift: number }) => {
-                      try {
-                        setEdges((prev = []) =>
-                          (prev || []).map((e) =>
-                            String(e.id) === String(id)
-                              ? { ...(e as any), data: { ...(e as any).data, shift: payload.shift } }
-                              : e,
-                          ),
-                        );
-                      } catch (_) {
-                        // ignore
-                      }
-                    };
-                  } catch (_) {
-                    // ignore
-                  }
-
-                  changes.push({ id, type: "replace", item });
-                }
-                // if not changed, skip emitting a replace
-              } else {
-                const item = { ...(m as any) } as any;
-                // Ensure newly added edges are selectable by default unless caller explicitly disabled it.
-                if (typeof (item as any).selectable !== "boolean") {
-                  (item as any).selectable = true;
-                }
-
-                // Inject onEdgeUpdate callback for newly added edges as well so a label drag
-                // persists shift immediately into React Flow state.
-                try {
-                  item.data = item.data || {};
-                  (item.data as any).onEdgeUpdate = (payload: { id: string; shift: number }) => {
-                    try {
-                      setEdges((prev = []) =>
-                        (prev || []).map((e) =>
-                          String(e.id) === String(id)
-                            ? { ...(e as any), data: { ...(e as any).data, shift: payload.shift } }
-                            : e,
-                        ),
-                      );
-                    } catch (_) {
-                      // ignore
-                    }
-                  };
-                } catch (_) {
-                  // ignore
-                }
-
-                changes.push({ type: "add", item });
-              }
-            } catch {
-              // per-item ignore
+              delete (mergedNode as any).selected;
+              changes.push({ id, type: 'replace', item: mergedNode });
+            } else {
+              const newNode = {
+                ...(node as any),
+                position: (node as any).position ?? { x: 0, y: 0 },
+              };
+              delete (newNode as any).selected;
+              changes.push({ type: 'add', item: newNode });
+              knownIds.add(String(newNode.id));
             }
           }
 
-          if (changes.length === 0) return prevArr;
-          return applyEdgeChanges(changes as any, prevArr);
+          const ensurePlaceholder = (id: string) => {
+            if (!id || knownIds.has(id)) return;
+            knownIds.add(id);
+            changes.push({
+              type: 'add',
+              item: {
+                id,
+                type: 'ontology',
+                position: { x: 0, y: 0 },
+                data: {
+                  key: id,
+                  iri: id,
+                  rdfTypes: [],
+                  literalProperties: [],
+                  annotationProperties: [],
+                  inferredProperties: [],
+                  visible: true,
+                },
+              },
+            });
+          };
+
+          for (const edge of edgesList) {
+            ensurePlaceholder(String(edge?.source ?? ''));
+            ensurePlaceholder(String(edge?.target ?? ''));
+          }
+
+          return applyNodeChanges(changes as any, current);
         });
-        try { edgePhaseMeasure.end({ applied: true }); } catch (_) {/* noop */}
       }
 
-      // Allow callers to await one tracked microtask so React has queued state updates
-      // before layout/finalization runs. Use the component-level setTrackedTimeout so
-      // timers are tracked and cleared on unmount in tests.
-      try {
-        if (typeof setTrackedTimeout === "function") {
-          const microtaskMeasure = typeof vgMeasure === "function" ? vgMeasure("applyDiagrammChange.microtask_wait", {}) : { end: () => {} };
-          await new Promise((res) => setTrackedTimeout(res, 0));
-          try { microtaskMeasure.end({}); } catch (_) {/* noop */}
-        } else {
-          await Promise.resolve();
-        }
-      } catch (_) {
-        // ignore microtask scheduling failures
-        await Promise.resolve();
+      if (edgesList.length > 0) {
+        setEdges((prev = []) => {
+          const current = prev || [];
+          const currentById = new Map(
+            current.map((edge: any) => [String(edge.id), edge]),
+          );
+          const changes: any[] = [];
+
+          for (const edge of edgesList) {
+            const id = String(edge.id);
+            const existing = currentById.get(id);
+            const mergedEdge = {
+              ...(existing ?? {}),
+              ...(edge as any),
+              data: {
+                ...(existing?.data ?? {}),
+                ...((edge as any).data ?? {}),
+              },
+            };
+            if (existing) {
+              changes.push({ id, type: 'replace', item: mergedEdge });
+            } else {
+              changes.push({ type: 'add', item: mergedEdge });
+            }
+          }
+
+          return applyEdgeChanges(changes as any, current);
+        });
       }
-      try { measure.end({ nodes: inNodes.length, edges: inEdges.length }); } catch (_) {/* noop */}
+
+      await new Promise<void>((resolve) => {
+        setTrackedTimeout(resolve, 0);
+      });
     },
-    [setNodes, setEdges],
+    [setNodes, setEdges, setTrackedTimeout],
   );
 
   return (

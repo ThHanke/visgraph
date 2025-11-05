@@ -15,6 +15,17 @@ import { DataFactory, Quad } from "n3";
 import { toast } from "sonner";
 import { buildPaletteMap } from "../components/Canvas/core/namespacePalette";
 import { shortLocalName, toPrefixed } from "../utils/termUtils";
+import {
+  assertArray,
+  assertPlainObject,
+  invariant,
+  isPlainObject,
+} from "../utils/guards";
+import {
+  normalizeNumber,
+  normalizeOptionalString,
+  normalizeStringArray,
+} from "../utils/normalizers";
 const { namedNode, quad, blankNode, literal } = DataFactory;
 
 /* NOTE: attachPrefixed removed in favor of computing prefixed values locally
@@ -34,61 +45,137 @@ type SerializedQuad = {
   graph: string;
 };
 
+type QuadFilter = { subject?: string; predicate?: string; object?: string };
+
+interface SerializedQuadPage {
+  items: SerializedQuad[];
+  total: number | null;
+  limit: number | null;
+}
+
+interface RdfPageFetcher {
+  fetchQuadsPage: (
+    graph: string,
+    offset: number,
+    limit: number,
+    options: { serialize: true; filter?: QuadFilter },
+  ) => Promise<unknown>;
+}
+
+function assertRdfPageFetcher(value: unknown, context: string): asserts value is RdfPageFetcher {
+  invariant(
+    value !== null &&
+      typeof value === "object" &&
+      typeof (value as Record<string, unknown>).fetchQuadsPage === "function",
+    `${context} must expose fetchQuadsPage(graph, offset, limit, options)`,
+    { value },
+  );
+}
+
+function normalizeQuadFilter(filter: QuadFilter | undefined): QuadFilter | undefined {
+  if (typeof filter === "undefined") return undefined;
+  assertPlainObject(filter, "quad filter must be a plain object");
+  const normalized: QuadFilter = {};
+  if (Object.prototype.hasOwnProperty.call(filter, "subject")) {
+    const subject = normalizeOptionalString(filter.subject, "filter.subject");
+    if (subject) normalized.subject = subject;
+  }
+  if (Object.prototype.hasOwnProperty.call(filter, "predicate")) {
+    const predicate = normalizeOptionalString(filter.predicate, "filter.predicate");
+    if (predicate) normalized.predicate = predicate;
+  }
+  if (Object.prototype.hasOwnProperty.call(filter, "object")) {
+    const object = normalizeOptionalString(filter.object, "filter.object", { allowEmpty: true });
+    if (typeof object !== "undefined") normalized.object = object;
+  }
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function coerceSerializedQuadEntry(
+  value: unknown,
+  fallbackGraph: string,
+  context: string,
+): SerializedQuad | null {
+  if (!isPlainObject(value)) {
+    throw new Error(`${context} must be a plain object`);
+  }
+  const entry = value as Record<string, unknown>;
+  const subject = normalizeOptionalString(entry.subject, `${context}.subject`);
+  if (!subject) return null;
+  const predicate =
+    normalizeOptionalString(entry.predicate, `${context}.predicate`, { allowEmpty: true }) ?? "";
+  const object =
+    normalizeOptionalString(entry.object, `${context}.object`, { allowEmpty: true }) ?? "";
+  const graph =
+    normalizeOptionalString(entry.graph, `${context}.graph`, { allowEmpty: false }) ??
+    fallbackGraph;
+  return { subject, predicate, object, graph };
+}
+
+function normalizeSerializedQuadPage(
+  raw: unknown,
+  defaultGraph: string,
+): SerializedQuadPage {
+  assertPlainObject(raw, "fetchQuadsPage result must be a plain object");
+  const page = raw as Record<string, unknown>;
+  assertArray(page.items, "fetchQuadsPage.items must be an array");
+
+  const items: SerializedQuad[] = [];
+  for (const [index, entry] of (page.items as unknown[]).entries()) {
+    const normalized = coerceSerializedQuadEntry(
+      entry,
+      defaultGraph,
+      `fetchQuadsPage.items[${index}]`,
+    );
+    if (normalized) items.push(normalized);
+  }
+
+  let total: number | null = null;
+  if (Object.prototype.hasOwnProperty.call(page, "total") && page.total !== undefined) {
+    const value = normalizeNumber(page.total, "fetchQuadsPage.total", { min: 0 });
+    total = Math.trunc(value);
+  }
+
+  let limit: number | null = null;
+  if (Object.prototype.hasOwnProperty.call(page, "limit") && page.limit !== undefined) {
+    const value = normalizeNumber(page.limit, "fetchQuadsPage.limit", { min: 1 });
+    limit = Math.max(1, Math.trunc(value));
+  }
+
+  return { items, total, limit };
+}
+
 async function fetchSerializedQuads(
   mgr: any,
   graphName: string,
-  filter?: { subject?: string; predicate?: string; object?: string },
+  filter?: QuadFilter,
   pageSize = 2000,
 ): Promise<SerializedQuad[]> {
+  assertRdfPageFetcher(mgr, "rdfManager");
+  const graph =
+    normalizeOptionalString(graphName, "fetchSerializedQuads.graphName") ?? "urn:vg:data";
+  const limit = Math.max(1, Math.trunc(normalizeNumber(pageSize, "fetchSerializedQuads.pageSize", { min: 1 })));
+  const normalizedFilter = normalizeQuadFilter(filter);
+
   const results: SerializedQuad[] = [];
-  if (!mgr || typeof (mgr as any).fetchQuadsPage !== "function") return results;
-  const graph = graphName && graphName !== "" ? graphName : "urn:vg:data";
 
   let offset = 0;
   let total: number | null = null;
 
   while (true) {
-    let page: any;
-    try {
-      page = await (mgr as any).fetchQuadsPage(graph, offset, pageSize, {
-        serialize: true,
-        filter,
-      });
-    } catch (err) {
-      console.debug("[ontologyStore] fetchSerializedQuads fetchQuadsPage failed", err);
-      break;
-    }
-    if (!page || !Array.isArray(page.items) || page.items.length === 0) {
-      break;
-    }
+    const rawPage = await mgr.fetchQuadsPage(graph, offset, limit, {
+      serialize: true,
+      ...(normalizedFilter ? { filter: normalizedFilter } : {}),
+    });
+    const page = normalizeSerializedQuadPage(rawPage, graph);
+    if (page.items.length === 0) break;
+    results.push(...page.items);
 
-    for (const item of page.items) {
-      const subject = String(item && item.subject ? item.subject : "");
-      if (!subject) continue;
-      results.push({
-        subject,
-        predicate: String(item && item.predicate ? item.predicate : ""),
-        object: String(item && item.object ? item.object : ""),
-        graph: String(item && item.graph ? item.graph : graph),
-      });
-    }
+    offset += page.items.length;
+    if (page.total !== null && offset >= page.total) break;
 
-    const received = page.items.length;
-    if (received === 0) break;
-
-    if (typeof page.total === "number" && Number.isFinite(page.total)) {
-      total = page.total;
-    }
-    offset += received;
-
-    const pageLimit =
-      typeof page.limit === "number" && Number.isFinite(page.limit)
-        ? page.limit
-        : received;
-    if (pageLimit <= 0) break;
-
-    if (total !== null && offset >= total) break;
-    if (received < pageLimit) break;
+    const expectedPageSize = page.limit ?? limit;
+    if (page.items.length < expectedPageSize) break;
   }
 
   return results;
@@ -97,13 +184,21 @@ async function fetchSerializedQuads(
 async function fetchSerializedQuadsAcrossGraphs(
   mgr: any,
   graphNames: string[],
-  filter?: { subject?: string; predicate?: string; object?: string },
+  filter?: QuadFilter,
   pageSize = 2000,
 ): Promise<SerializedQuad[]> {
+  const normalizedGraphs = Array.from(
+    new Set(
+      normalizeStringArray(
+        graphNames,
+        "fetchSerializedQuadsAcrossGraphs.graphNames",
+      ),
+    ),
+  );
   const combined: SerializedQuad[] = [];
   const seen = new Set<string>();
-  for (const g of graphNames) {
-    const quads = await fetchSerializedQuads(mgr, g, filter, pageSize);
+  for (const graph of normalizedGraphs) {
+    const quads = await fetchSerializedQuads(mgr, graph, filter, pageSize);
     for (const q of quads) {
       const key = `${q.graph}::${q.subject}::${q.predicate}::${q.object}`;
       if (seen.has(key)) continue;

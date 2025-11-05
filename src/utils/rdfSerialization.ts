@@ -11,15 +11,32 @@ import type {
  * Interfaces describing the minimal JSON representation of RDF/JS terms and quads
  * that can safely cross the worker boundary via structured cloning.
  */
+export type WorkerNamedNode = { termType: "NamedNode"; value: string };
+export type WorkerBlankNode = { termType: "BlankNode"; value: string };
+export type WorkerLiteral = {
+  termType: "Literal";
+  value: string;
+  datatype?: string;
+  language?: string;
+};
+export type WorkerDefaultGraph = { termType: "DefaultGraph"; value?: string };
+
 export type WorkerTerm =
-  | { termType: "NamedNode"; value: string }
-  | { termType: "BlankNode"; value: string }
-  | { termType: "Literal"; value: string; datatype?: string; language?: string }
-  | { termType: "DefaultGraph"; value?: string };
+  | WorkerNamedNode
+  | WorkerBlankNode
+  | WorkerLiteral
+  | WorkerDefaultGraph;
 
 export interface WorkerQuad {
   subject: WorkerTerm;
-  predicate: WorkerTerm;
+  predicate: WorkerNamedNode;
+  object: WorkerTerm;
+  graph: WorkerTerm;
+}
+
+export interface WorkerQuadUpdate {
+  subject: WorkerTerm;
+  predicate: WorkerNamedNode;
   object?: WorkerTerm;
   graph: WorkerTerm;
 }
@@ -33,7 +50,7 @@ function isRdfTerm(term: unknown): term is Term {
   return Boolean(term && typeof (term as any).termType === "string");
 }
 
-function isWorkerTerm(term: unknown): term is WorkerTerm {
+export function isWorkerTerm(term: unknown): term is WorkerTerm {
   return Boolean(
     term &&
       typeof term === "object" &&
@@ -41,7 +58,48 @@ function isWorkerTerm(term: unknown): term is WorkerTerm {
   );
 }
 
+function assertWorkerNamedNode(
+  term: WorkerTerm,
+): asserts term is WorkerNamedNode {
+  if (term.termType !== "NamedNode") {
+    throw new Error("worker-term-predicate-must-be-named-node");
+  }
+}
+
+export function isWorkerQuad(value: unknown): value is WorkerQuad {
+  if (!value || typeof value !== "object") return false;
+  const quad = value as WorkerQuad;
+  return (
+    isWorkerTerm(quad.subject) &&
+    isWorkerTerm(quad.object) &&
+    isWorkerTerm(quad.graph) &&
+    isWorkerTerm(quad.predicate) &&
+    quad.predicate.termType === "NamedNode"
+  );
+}
+
+export function isWorkerQuadUpdate(value: unknown): value is WorkerQuadUpdate {
+  if (!value || typeof value !== "object") return false;
+  const quad = value as WorkerQuadUpdate;
+  if (
+    !isWorkerTerm(quad.subject) ||
+    !isWorkerTerm(quad.graph) ||
+    !isWorkerTerm(quad.predicate) ||
+    quad.predicate.termType !== "NamedNode"
+  ) {
+    return false;
+  }
+  if (quad.object && !isWorkerTerm(quad.object)) {
+    return false;
+  }
+  return true;
+}
+
 export function serializeTerm(term: Term): WorkerTerm {
+  if (!isRdfTerm(term)) {
+    throw new Error("serialize-term-invalid");
+  }
+
   switch (term.termType) {
     case "NamedNode":
       return { termType: "NamedNode", value: term.value };
@@ -67,9 +125,12 @@ export function serializeTerm(term: Term): WorkerTerm {
 }
 
 export function serializeQuad(quad: Quad): WorkerQuad {
+  const predicate = serializeTerm(quad.predicate);
+  assertWorkerNamedNode(predicate);
+
   return {
     subject: serializeTerm(quad.subject),
-    predicate: serializeTerm(quad.predicate),
+    predicate,
     object: serializeTerm(quad.object),
     graph: serializeTerm(quad.graph),
   };
@@ -111,6 +172,9 @@ export function deserializeQuad(
   }
   const subject = deserializeTerm(serial.subject, factory);
   const predicate = deserializeTerm(serial.predicate, factory);
+  if (predicate.termType !== "NamedNode") {
+    throw new Error("serialized-quad-invalid-predicate");
+  }
   const object = deserializeTerm(serial.object, factory);
   const graph = deserializeTerm(serial.graph, factory);
   return factory.quad(subject, predicate, object, graph);

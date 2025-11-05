@@ -7,21 +7,26 @@ import {
   useConnection,
 } from "@xyflow/react";
 import { cn } from "../../lib/utils";
-import { toPrefixed } from "../../utils/termUtils";
-import { NodeData } from "../../types/canvas";
+import {
+  computeTermDisplay,
+  toPrefixed,
+} from "../../utils/termUtils";
+import type { NodeData } from "../../types/canvas";
 import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip";
 
 
 function RDFNodeImpl(props: NodeProps) {
   const { data, selected, id } = props;
-  const connection = useConnection();
+  const connection = useConnection() as {
+    inProgress?: boolean;
+    fromNode?: { id?: string; measured?: { id?: string } };
+  };
 
-  const connectionInProgress = Boolean((connection as any)?.inProgress);
-  const connectionFromNodeId = String(
-    (connection as any)?.fromNode && ((connection as any).fromNode.id || ((connection as any).fromNode as any).measured && ((connection as any).fromNode as any).measured.id)
-      ? String(((connection as any).fromNode.id || ""))
-      : ""
-  );
+  const connectionInProgress = Boolean(connection?.inProgress);
+  const connectionFromNodeId =
+    connection?.fromNode?.id ??
+    connection?.fromNode?.measured?.id ??
+    "";
   
   const isTarget = Boolean(connectionInProgress && connectionFromNodeId && connectionFromNodeId !== String(id));
   const nodeData = (data ?? {}) as NodeData;
@@ -29,29 +34,73 @@ function RDFNodeImpl(props: NodeProps) {
 
 
   // Compute display info for the node IRI and for the meaningful type (classType) if present.
+  const {
+    displayPrefixed,
+    displayShort,
+    label,
+    subtitle,
+    classType,
+    iri,
+    rdfTypes,
+    humanLabel,
+    displayclassType,
+  } = nodeData as NodeData & {
+    humanLabel?: string;
+    displayclassType?: string;
+  };
+
   const { badgeText, subtitleText, headerDisplay, typesList } = useMemo(() => {
-  // Header/title: prefer explicit mapped displayPrefixed -> label -> displayShort -> short local name.
-  const headerDisp =
-    (nodeData.displayPrefixed as string);
+    const safeRdfTypes = Array.isArray(rdfTypes)
+      ? rdfTypes.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      : [];
+    const headerCandidate = typeof displayPrefixed === "string" && displayPrefixed.trim().length > 0
+      ? displayPrefixed
+      : typeof displayShort === "string" && displayShort.trim().length > 0
+      ? displayShort
+      : typeof label === "string"
+      ? label
+      : null;
+    const subtitleCandidate = typeof subtitle === "string" && subtitle.trim().length > 0
+      ? subtitle
+      : typeof humanLabel === "string" && humanLabel.trim().length > 0
+      ? humanLabel
+      : null;
+    const badgeCandidate = typeof displayclassType === "string" && displayclassType.trim().length > 0
+      ? displayclassType
+      : typeof classType === "string"
+      ? classType
+      : null;
 
-  let badge = "";
-  // Prefer: mapper-provided displayClassType, then computed prefixed classDisplayPrefixed,
-  // then node-level displayPrefixed, then raw classType, then short local name.
-  badge = String(nodeData.displayclassType || "");
+    let computedHeader = headerCandidate;
+    let computedBadge = badgeCandidate;
+    if (!computedHeader || !computedBadge) {
+      if (typeof iri === "string" && iri.trim().length > 0) {
+        try {
+          const display = computeTermDisplay(iri);
+          if (!computedHeader) computedHeader = display.prefixed || display.short || display.iri;
+          if (!computedBadge) computedBadge = display.label ?? display.short;
+        } catch {
+          // Safe fallback: keep provided values if normalization fails, render remains stable.
+        }
+      }
+    }
 
-  // Subtitle: prefer explicit subtitle, then humanLabel, then label, then displayPrefixed/displayShort, then short local name.
-  const subtitle =
-    (nodeData.subtitle as string);
-  return { badgeText: badge, subtitleText: subtitle, headerDisplay: headerDisp, typesList: nodeData.rdfTypes};
+    return {
+      badgeText: computedBadge ?? "",
+      subtitleText: subtitleCandidate ?? "",
+      headerDisplay: computedHeader ?? "",
+      typesList: safeRdfTypes,
+    };
   }, [
-    nodeData.classType,
-    nodeData.label,
-    nodeData.subtitle,
-    nodeData.iri,
-    nodeData.displayPrefixed,
-    nodeData.displayShort,
-    nodeData.primaryTypeIri,
-    nodeData.rdfTypes,
+    rdfTypes,
+    displayPrefixed,
+    displayShort,
+    label,
+    subtitle,
+    displayclassType,
+    classType,
+    iri,
+    humanLabel,
   ]);
 
   const nodeColor = nodeData.color;
@@ -72,30 +121,27 @@ function RDFNodeImpl(props: NodeProps) {
       : "";
 
 
-  const annotations: Array<{ term: string; value: string }> = [];
-  if (Array.isArray(nodeData.properties) && nodeData.properties.length > 0) {
-    (nodeData.properties as Array<{ property: string; value: any }>).slice(0, 6).forEach((ap) => {
-      {
-        const propertyIri = String((ap && ap.property) || "");
-        const rawValue = ap && ap.value;
-        if (!propertyIri) return;
-        if (rawValue === undefined || rawValue === null) return;
-        const valueStr = String(rawValue);
-        if (valueStr.trim() === "") return;
-        const term = (() => {
-          if (propertyIri.startsWith("_:")) return propertyIri;
-          try {
-            const p = toPrefixed(propertyIri);
-            // Only accept a prefixed form when it differs from the raw IRI; otherwise keep the raw IRI.
-            return p && String(p) !== String(propertyIri) ? String(p) : String(propertyIri);
-          } catch (_) {
-            return String(propertyIri);
-          }
-        })();
-        annotations.push({ term, value: valueStr });
-      }
-    });
-  }
+  const annotations = useMemo(() => {
+    if (!Array.isArray(nodeData.properties) || nodeData.properties.length === 0) {
+      return [] as Array<{ term: string; value: string }>;
+    }
+    const entries: Array<{ term: string; value: string }> = [];
+    for (const property of nodeData.properties as Array<{ property: unknown; value: unknown }>) {
+      if (entries.length >= 6) break;
+      if (!property || typeof property !== "object") continue;
+      const propertyIri =
+        typeof (property as any).property === "string" ? (property as any).property : null;
+      if (!propertyIri || propertyIri.trim().length === 0) continue;
+      const rawValue = (property as any).value;
+      if (rawValue === undefined || rawValue === null) continue;
+      const valueStr = String(rawValue).trim();
+      if (!valueStr) continue;
+      const prefixed = toPrefixed(propertyIri);
+      const term = prefixed !== propertyIri ? prefixed : propertyIri;
+      entries.push({ term, value: valueStr });
+    }
+    return entries;
+  }, [nodeData.properties]);
 
   const typePresentButNotLoaded =
     !nodeData.classType &&
@@ -119,17 +165,13 @@ function RDFNodeImpl(props: NodeProps) {
     if (!nodeEl) return;
 
     const onMove = (e: MouseEvent) => {
-      try {
-        const rect = nodeEl.getBoundingClientRect();
-        const inside =
-          e.clientX >= rect.left &&
-          e.clientX <= rect.right &&
-          e.clientY >= rect.top &&
-          e.clientY <= rect.bottom;
-        setHoverOpen(inside);
-      } catch (_) {
-        // ignore
-      }
+      const rect = nodeEl.getBoundingClientRect();
+      const inside =
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom;
+      setHoverOpen(inside);
     };
 
     window.addEventListener("mousemove", onMove, { capture: true });

@@ -1,310 +1,403 @@
-import { NamedNode } from "n3";
+import type { NamedNode } from "n3";
 import { useOntologyStore } from "../stores/ontologyStore";
+import {
+  assertPlainObject,
+  assertString,
+  invariant,
+  isPlainObject,
+} from "./guards";
+import {
+  normalizeString,
+} from "./normalizers";
+
+export interface NamespaceRegistryEntry {
+  prefix: string;
+  namespace: string;
+  color?: string;
+}
+
+export interface FatMapEntry {
+  iri: string;
+  label?: string;
+  namespace?: string;
+  key?: string;
+  color?: string;
+}
+
+type RegistryInput = NamespaceRegistryEntry[] | Record<string, string> | undefined;
+
+interface TermDataOverrides {
+  registry?: RegistryInput;
+  availableProperties?: unknown;
+  availableClasses?: unknown;
+}
+
+interface OntologyStoreSnapshot {
+  namespaceRegistry: NamespaceRegistryEntry[];
+  availableProperties: FatMapEntry[];
+  availableClasses: FatMapEntry[];
+}
+
+function coerceNamespaceEntry(value: unknown, context: string): NamespaceRegistryEntry {
+  assertPlainObject(value, context);
+  const record = value as Record<string, unknown>;
+  const prefix = normalizeString(record.prefix ?? "", `${context}.prefix`, {
+    allowEmpty: true,
+  });
+  const namespace = normalizeString(record.namespace, `${context}.namespace`);
+  const color =
+    typeof record.color === "string" && record.color.trim().length > 0
+      ? record.color.trim()
+      : undefined;
+  return { prefix, namespace, color };
+}
+
+function coerceNamespaceRegistry(
+  source: RegistryInput,
+  context: string,
+): NamespaceRegistryEntry[] {
+  if (typeof source === "undefined") return [];
+  if (Array.isArray(source)) {
+    return source.map((entry, index) =>
+      coerceNamespaceEntry(entry, `${context}[${index}]`),
+    );
+  }
+  if (isPlainObject(source)) {
+    // Accept legacy record<string,string> inputs at boundaries (tests, adapter shims).
+    return Object.entries(source as Record<string, unknown>).map(
+      ([prefix, namespace]) => {
+        assertString(namespace, `${context}.${prefix}`);
+        return coerceNamespaceEntry(
+          { prefix, namespace },
+          `${context}.${prefix}`,
+        );
+      },
+    );
+  }
+  throw new Error(`${context} must be an array or record of namespaces`);
+}
+
+function coerceFatMapEntry(value: unknown, context: string): FatMapEntry {
+  assertPlainObject(value, context);
+  const record = value as Record<string, unknown>;
+  const iriCandidate =
+    (typeof record.iri === "string" && record.iri.trim().length > 0
+      ? record.iri
+      : undefined) ??
+    (typeof record.key === "string" && record.key.trim().length > 0
+      ? record.key
+      : undefined);
+  invariant(iriCandidate, `${context} is missing an iri/key string`);
+  const namespace =
+    typeof record.namespace === "string" && record.namespace.trim().length > 0
+      ? record.namespace.trim()
+      : undefined;
+  const label =
+    typeof record.label === "string" && record.label.trim().length > 0
+      ? record.label
+      : undefined;
+  const color =
+    typeof record.color === "string" && record.color.trim().length > 0
+      ? record.color.trim()
+      : undefined;
+  const key =
+    typeof record.key === "string" && record.key.trim().length > 0
+      ? record.key
+      : undefined;
+  return {
+    iri: iriCandidate,
+    namespace,
+    label,
+    color,
+    key,
+  };
+}
+
+function coerceFatMapEntries(source: unknown, context: string): FatMapEntry[] {
+  if (typeof source === "undefined") return [];
+  invariant(
+    Array.isArray(source),
+    `${context} must be an array of fat-map entries`,
+  );
+  return (source as unknown[]).map((entry, index) =>
+    coerceFatMapEntry(entry, `${context}[${index}]`),
+  );
+}
+
+function readOntologyStoreSnapshot(): OntologyStoreSnapshot {
+  const getState =
+    useOntologyStore && typeof (useOntologyStore as any).getState === "function"
+      ? (useOntologyStore as any).getState
+      : null;
+  if (!getState) {
+    return {
+      namespaceRegistry: [],
+      availableProperties: [],
+      availableClasses: [],
+    };
+  }
+  const state = getState() as Record<string, unknown>;
+  return {
+    namespaceRegistry: coerceNamespaceRegistry(
+      state.namespaceRegistry as RegistryInput,
+      "ontologyStore.namespaceRegistry",
+    ),
+    availableProperties: coerceFatMapEntries(
+      state.availableProperties,
+      "ontologyStore.availableProperties",
+    ),
+    availableClasses: coerceFatMapEntries(
+      state.availableClasses,
+      "ontologyStore.availableClasses",
+    ),
+  };
+}
+
+function resolveTermData(overrides?: TermDataOverrides): OntologyStoreSnapshot {
+  let snapshot: OntologyStoreSnapshot | null = null;
+  const ensureSnapshot = () => {
+    if (!snapshot) snapshot = readOntologyStoreSnapshot();
+    return snapshot;
+  };
+
+  const haveRegistryOverride =
+    overrides && Object.prototype.hasOwnProperty.call(overrides, "registry");
+  const havePropertiesOverride =
+    overrides &&
+    Object.prototype.hasOwnProperty.call(overrides, "availableProperties");
+  const haveClassesOverride =
+    overrides &&
+    Object.prototype.hasOwnProperty.call(overrides, "availableClasses");
+
+  return {
+    namespaceRegistry: haveRegistryOverride
+      ? coerceNamespaceRegistry(overrides!.registry, "termData.registry")
+      : ensureSnapshot().namespaceRegistry,
+    availableProperties: havePropertiesOverride
+      ? coerceFatMapEntries(
+          overrides!.availableProperties,
+          "termData.availableProperties",
+        )
+      : ensureSnapshot().availableProperties,
+    availableClasses: haveClassesOverride
+      ? coerceFatMapEntries(
+          overrides!.availableClasses,
+          "termData.availableClasses",
+        )
+      : ensureSnapshot().availableClasses,
+  };
+}
 
 /**
- * Strict, store-first term utilities.
- *
- * Rules:
- * - No try/catch blocks are introduced.
- * - No multi-step fallbacks or probing (rdfManager, window, etc).
- * - Canonical sources:
- *    - namespaceRegistry: useOntologyStore.getState().namespaceRegistry
- *    - fat-map: useOntologyStore.getState().availableClasses / availableProperties
- *
- * The functions accept optional overrides (registry, availableProperties, availableClasses)
- * primarily for testing convenience. When an explicit registry is provided and a requested
- * prefix/lookup cannot be resolved, an Error is thrown.
+ * Extract the local name from a URI or prefixed name.
  */
+export function shortLocalName(value?: string): string {
+  if (!value) return "";
+  const source = value.trim();
+  if (!source) return "";
+  const delimiters = ["#", "/", ":"];
+  let position = -1;
+  for (const delimiter of delimiters) {
+    const idx = source.lastIndexOf(delimiter);
+    if (idx > position) position = idx;
+  }
+  return position >= 0 ? source.slice(position + 1) : source;
+}
 
-/* Public type returned by computeTermDisplay */
+/**
+ * Normalize registry input to NamespaceRegistryEntry[] for compatibility with legacy map callers.
+ */
+export function normalizeRegistry(
+  input?: RegistryInput,
+): NamespaceRegistryEntry[] {
+  return coerceNamespaceRegistry(input, "normalizeRegistry.input");
+}
+
+/**
+ * Locate the registry entry whose namespace best matches the provided IRI.
+ * Prefers the longest matching namespace.
+ */
+export function findRegistryEntryForIri(
+  targetIri: string,
+  registryInput?: RegistryInput,
+): NamespaceRegistryEntry | undefined {
+  const iri = normalizeString(targetIri, "findRegistryEntryForIri.targetIri");
+  const { namespaceRegistry } = resolveTermData({
+    registry: registryInput,
+  });
+  let winner: NamespaceRegistryEntry | undefined;
+  for (const entry of namespaceRegistry) {
+    if (!entry.namespace) continue;
+    if (!iri.startsWith(entry.namespace)) continue;
+    if (!winner || entry.namespace.length > winner.namespace.length) {
+      winner = entry;
+    }
+  }
+  return winner;
+}
+
+/**
+ * Expand a prefixed name using the namespace registry.
+ */
+export function expandPrefixed(
+  value: string,
+  registryInput?: RegistryInput,
+): string {
+  const term = normalizeString(value, "expandPrefixed.value");
+  if (term.includes("://") || term.startsWith("_:")) return term;
+  const idx = term.indexOf(":");
+  invariant(idx >= 0, `Value '${term}' is not a prefixed name`);
+  const prefix = term.slice(0, idx);
+  const local = term.slice(idx + 1);
+  const { namespaceRegistry } = resolveTermData({ registry: registryInput });
+  invariant(
+    namespaceRegistry.length > 0,
+    `Namespace registry is empty; cannot expand '${term}'`,
+  );
+  const entry = namespaceRegistry.find((candidate) => candidate.prefix === prefix);
+  invariant(entry, `Unknown prefix '${prefix}' while expanding '${term}'`);
+  return `${entry.namespace}${local}`;
+}
+
+/**
+ * Convert an IRI into a prefixed representation using the namespace registry.
+ * Returns the original IRI if no matching namespace is available.
+ */
+export function toPrefixed(
+  iri: string,
+  registryInput?: RegistryInput,
+): string {
+  const target = normalizeString(iri, "toPrefixed.iri");
+  if (target.startsWith("_:")) return target;
+  const entry = findRegistryEntryForIri(target, registryInput);
+  if (!entry) return target;
+  const local =
+    target.startsWith(entry.namespace) && entry.namespace.length < target.length
+      ? target.slice(entry.namespace.length)
+      : shortLocalName(target);
+  const prefix = entry.prefix ?? "";
+  if (!prefix || prefix === ":") {
+    return `:${local}`;
+  }
+  return `${prefix}:${local}`;
+}
+
+/**
+ * Resolve a palette color for the provided IRI using the namespace registry
+ * and optional palette overrides keyed by prefix.
+ */
+export function getNodeColor(
+  targetIri: string,
+  palette?: Record<string, string>,
+  overrides?: TermDataOverrides,
+): string | undefined {
+  const iri = normalizeString(targetIri, "getNodeColor.targetIri");
+  const { availableProperties, availableClasses, namespaceRegistry } =
+    resolveTermData(overrides);
+  const fatMatch =
+    availableProperties.find((entry) => entry.iri === iri) ??
+    availableClasses.find((entry) => entry.iri === iri);
+  if (!fatMatch) return undefined;
+  if (fatMatch.color) return fatMatch.color;
+  const entry =
+    namespaceRegistry.find(
+      (candidate) => candidate.namespace === fatMatch.namespace,
+    ) ?? findRegistryEntryForIri(iri, overrides?.registry);
+  if (entry && entry.color) {
+    return entry.color;
+  }
+  if (!palette) return undefined;
+  if (!entry || !entry.prefix) return undefined;
+  const prefix = entry.prefix;
+  return (
+    palette[prefix] ??
+    palette[prefix.toLowerCase()] ??
+    palette[prefix.toUpperCase()]
+  );
+}
+
 export interface TermDisplayInfo {
   iri: string;
   prefixed: string;
   short: string;
   tooltipLines: string[];
-  color?: string | undefined;
-  label?: string | undefined;
-  labelSource?: "fatmap" | "computed" | undefined;
+  color?: string;
+  label?: string;
+  labelSource?: "fatmap" | "computed";
 }
 
-type RegistryEntry = { prefix: string; namespace: string; color?: string };
-
-/**
- * Extract local name from a URI or prefixed name.
- */
-export function shortLocalName(uriOrPrefixed?: string): string {
-  if (!uriOrPrefixed) return "";
-  const s = String(uriOrPrefixed);
-  if (s.includes("://")) {
-    const parts = s.split(/[#/]/).filter(Boolean);
-    return parts.length ? parts[parts.length - 1] : s;
-  }
-  if (s.includes(":",1)) {
-    return s.split(":").pop() || s;
-  }
-  const parts = s.split(/[#/]/).filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : s;
+export interface TermDisplayOptions extends TermDataOverrides {
+  palette?: Record<string, string>;
 }
 
 /**
- * Normalize registry input into RegistryEntry[].
- * Accepts:
- *  - RegistryEntry[] => returned as-is (if non-empty)
- *  - Record<string,string> => converted to array of entries (color undefined)
- *
- * Returns undefined when no usable registry can be derived.
- */
-export function normalizeRegistry(input?: RegistryEntry[] | Record<string, string>): RegistryEntry[] | undefined {
-  if (!input) return undefined;
-  if (Array.isArray(input) && input.length > 0) return input as RegistryEntry[];
-  if (typeof input === "object") {
-    const entries = Object.entries(input as Record<string, string>).map(([p, ns]) => ({ prefix: String(p), namespace: String(ns) }));
-    return entries.length > 0 ? entries : undefined;
-  }
-  return undefined;
-}
-
-/**
- * Helper: read the ontology store's current namespaceRegistry.
- * This is the canonical runtime registry.
- */
-function getStoreRegistry(): RegistryEntry[] | undefined {
-  const st = useOntologyStore && (useOntologyStore as any).getState ? (useOntologyStore as any).getState() : undefined;
-  const persisted = st && Array.isArray((st as any).namespaceRegistry) ? (st as any).namespaceRegistry : undefined;
-  return normalizeRegistry(persisted as any) || undefined;
-}
-
-/**
- * Helper: read the ontology store fat-map arrays.
- */
-function getStoreFatMap() {
-  const st = useOntologyStore && (useOntologyStore as any).getState ? (useOntologyStore as any).getState() : undefined;
-  const availableProperties = st && Array.isArray((st as any).availableProperties) ? (st as any).availableProperties : [];
-  const availableClasses = st && Array.isArray((st as any).availableClasses) ? (st as any).availableClasses : [];
-  return { availableProperties, availableClasses };
-}
-
-/**
- * Choose the best registry entry that matches a given IRI.
- * Prefers the longest namespace match to handle nested namespaces.
- * Returns the entry or undefined.
- */
-export function findRegistryEntryForIri(targetIri: string, registry?: RegistryEntry[] | Record<string,string>): RegistryEntry | undefined {
-  if (!targetIri) return undefined;
-  const reg = getStoreRegistry();
-  if (!reg || reg.length === 0) return undefined;
-  let best: RegistryEntry | undefined = undefined;
-  for (const e of reg) {
-    const uri = String((e && e.namespace) || "");
-    if (!uri) continue;
-    if (targetIri.startsWith(uri)) {
-      if (!best || uri.length > String(best.namespace || "").length) best = e;
-    }
-  }
-  return best;
-}
-
-/**
- * Expand a prefixed name using only the provided registry or the persisted
- * ontology store namespaceRegistry when registry is omitted.
- * Throws on unknown prefix or empty registry.
- */
-export function expandPrefixed(prefixedOrIri: string, registry?: RegistryEntry[] | Record<string,string>): string {
-  if (!prefixedOrIri) throw new Error("Empty value passed to expandPrefixed");
-  if (prefixedOrIri.includes("://")) return prefixedOrIri;
-  if (prefixedOrIri.startsWith("_:")) return prefixedOrIri;
-
-  const idx = prefixedOrIri.indexOf(":");
-  if (idx === -1) throw new Error(`Value '${prefixedOrIri}' is not a prefixed name`);
-  const prefix = prefixedOrIri.substring(0, idx);
-  const local = prefixedOrIri.substring(idx + 1);
-
-  const reg = getStoreRegistry();
-
-  if (!reg || reg.length === 0) throw new Error(`Namespace registry is empty; cannot expand '${prefixedOrIri}'`);
-
-  // Find entry for the exact prefix (note: empty string "" is valid default prefix)
-  const entry = reg.find((e) => String(e.prefix) === String(prefix));
-  if (!entry) throw new Error(`Unknown prefix '${prefix}' while expanding '${prefixedOrIri}'`);
-  return `${entry.namespace}${local}`;
-}
-
-/**
- * Convert a full IRI into a prefixed form using the fat-map and/or registry.
- * Returns a prefixed string such as "ex:LocalName" or the full IRI if no registry match.
- *
- * This function prefers explicit parameters but will fall back to the ontology store
- * canonical data when parameters are omitted.
- */
-
-export function toPrefixed(
-  iri: string,
-  registry?: RegistryEntry[] | Record<string,string>,
-): string {
-  if (!iri) return "";
-
-  // const props = Array.isArray(availableProperties) ? availableProperties : [];
-  // const classes = Array.isArray(availableClasses) ? availableClasses : [];
-
-  // // Prefer an exact fat-map match (property first, then class)
-  // const fatMatch =
-  //   props.find((p: any) => String((p && (p.iri || p.key)) || "") === String(iri)) ||
-  //   classes.find((c: any) => String((c && c.iri) || "") === String(iri));
-
-  const reg = normalizeRegistry(registry as any) || normalizeRegistry((useOntologyStore && (useOntologyStore as any).getState && (useOntologyStore as any).getState().namespaceRegistry) || undefined);
-
-
-    const entry = findRegistryEntryForIri(String(iri), reg);
-    if (entry && entry.namespace) {
-      const local = String(iri).startsWith(entry.namespace) ? String(iri).substring(entry.namespace.length) : shortLocalName(iri);
-      const p = String(entry.prefix || "");
-      if (p === ":" || p === "") return `:${local}`;
-      return `${p}:${local}`;
-    }
-
-
-  return iri;
-}
-
-
-/**
- * Return a palette color for a given IRI using the registry and optional palette override.
- * - If a registry entry matching the IRI exists and has a color, return that color.
- * - Otherwise, if a palette map is provided, try to find a color by prefix (case-insensitive).
- * - Returns undefined when no color can be determined.
- *
- * Registry will be read from the provided parameter or from the persisted ontology store.
- */
-export function getNodeColor(
-  targetIri: string,
-  palette?: Record<string, string> | undefined,
-): string | undefined {
-  if (!targetIri) return undefined;
-
-  // Strict: determine node color using fat-map namespace -> namespaceRegistry
-  const storeFat = getStoreFatMap();
-  const props = storeFat.availableProperties || [];
-  const classes = storeFat.availableClasses || [];
-
-  const fatMatch =
-    props.find((p: any) => String((p && (p.iri || p.key)) || "") === String(targetIri)) ||
-    classes.find((c: any) => String((c && c.iri) || "") === String(targetIri));
-
-  if (!fatMatch) {
-    // No fat-map entry -> cannot determine color from namespace. Return undefined as safe fallback.
-    return undefined;
-  }
-
-  const nsUri = String((fatMatch as any).namespace || "");
-  const reg = getStoreRegistry();
-  if (reg && reg.length > 0) {
-    const entry = reg.find((e) => String(e.namespace || "") === nsUri);
-    if (entry && entry.color) {
-      const c = String(entry.color || "").trim();
-      if (c) return c;
-    }
-  }
-
-  // If no color in registry, allow palette override keyed by prefix only if a prefix exists
-  if (reg && reg.length > 0) {
-    const entry = reg.find((e) => String(e.namespace || "") === nsUri);
-    const prefix = entry ? String(entry.prefix || "") : undefined;
-    if (prefix && palette && typeof palette === "object") {
-      return palette[prefix] || palette[prefix.toLowerCase()] || undefined;
-    }
-  }
-
-  return undefined;
-}
-
-/**
- * Compute a TermDisplayInfo using only namespaceRegistry and optional fat-map data (opts).
- * When an explicit registry parameter is provided and a matching entry cannot be found
- * for a given IRI/prefixed input, the function will throw to enforce a single-source assertion.
+ * Compute display metadata for an IRI or prefixed term.
  */
 export function computeTermDisplay(
   iriOrTerm: string | NamedNode,
-  opts?: { availableProperties?: any[]; availableClasses?: any[] },
+  options?: TermDisplayOptions,
 ): TermDisplayInfo {
-  const iri = typeof iriOrTerm === "string" ? iriOrTerm : (iriOrTerm as NamedNode).value;
-  if (!iri) throw new Error("Empty IRI passed to computeTermDisplay");
+  const raw = typeof iriOrTerm === "string" ? iriOrTerm : iriOrTerm.value;
+  const source = normalizeString(raw, "computeTermDisplay.input");
 
-  // Blank nodes handled transparently
-  if (iri.startsWith("_:")) {
+  if (source.startsWith("_:")) {
     return {
-      iri,
-      prefixed: iri,
-      short: iri,
-      tooltipLines: [iri],
+      iri: source,
+      prefixed: source,
+      short: source,
+      tooltipLines: [source],
       color: undefined,
-      label: iri,
+      label: source,
       labelSource: "computed",
     };
   }
 
-  // Expand prefixed names using store-only registry
-  let targetIri = iri;
-  if (!targetIri.includes("://")) {
-    targetIri = expandPrefixed(targetIri);
+  let iri = source;
+  if (!iri.includes("://")) {
+    iri = expandPrefixed(iri, options?.registry);
   }
 
-  // Strict: fat-map is the canonical source for entity data.
-  const storeFat = getStoreFatMap();
-  const props = Array.isArray(opts && opts.availableProperties) ? opts!.availableProperties! : storeFat.availableProperties;
-  const classes = Array.isArray(opts && opts.availableClasses) ? opts!.availableClasses! : storeFat.availableClasses;
-
+  const { availableProperties, availableClasses, namespaceRegistry } =
+    resolveTermData(options);
   const fatMatch =
-    (props || []).find((p: any) => String((p && (p.iri || p.key)) || "") === String(targetIri)) ||
-    (classes || []).find((c: any) => String((c && c.iri) || "") === String(targetIri));
+    availableProperties.find((entry) => entry.iri === iri) ??
+    availableClasses.find((entry) => entry.iri === iri);
 
   if (!fatMatch) {
-    // No fat-map entry found — return a computed fallback TermDisplayInfo using the input IRI.
-    const canonicalIri = targetIri;
-    const local = shortLocalName(targetIri);
-    const prefixed = targetIri;
-    const color = undefined;
-    const label = local;
-    const labelSource = "computed" as const;
+    const local = shortLocalName(iri);
     return {
-      iri: canonicalIri,
-      prefixed,
+      iri,
+      prefixed: toPrefixed(iri, options?.registry),
       short: local,
       tooltipLines: [local],
-      color,
-      label,
-      labelSource,
+      color: undefined,
+      label: local,
+      labelSource: "computed",
     };
   }
 
-  const canonicalIri = String(fatMatch.iri || targetIri);
-  const nsUri = String((fatMatch as any).namespace || "");
-  const local = shortLocalName(targetIri);
-
-  // Lookup prefix and color live from namespaceRegistry by exact namespace match
-  const reg = getStoreRegistry();
-  const prefixed = toPrefixed(targetIri);
-  let color: string | undefined = undefined;
-  if (reg && reg.length > 0 && nsUri) {
-    const entryForFat = reg.find((e) => String(e.namespace || "") === nsUri);
-    if (entryForFat) {
-      const prefixToken = String(entryForFat.prefix || "");
-      if (entryForFat.color) {
-        color = String(entryForFat.color || "").trim() || undefined;
-      }
-    } 
-  }
-
-  // Label resolution: fat-map is authoritative
-    const label = String((fatMatch as any).label || targetIri);
-    const labelSource = "fatmap" as const;
+  const label = fatMatch.label ?? shortLocalName(iri);
+  const prefixed = toPrefixed(iri, options?.registry);
+  const namespaceEntry =
+    namespaceRegistry.find(
+      (entry) => entry.namespace === fatMatch.namespace,
+    ) ?? findRegistryEntryForIri(iri, options?.registry);
+  const color =
+    fatMatch.color ??
+    namespaceEntry?.color ??
+    (options?.palette && namespaceEntry?.prefix
+      ? options.palette[namespaceEntry.prefix] ??
+        options.palette[namespaceEntry.prefix.toLowerCase()] ??
+        options.palette[namespaceEntry.prefix.toUpperCase()]
+      : undefined);
 
   return {
-    iri: canonicalIri,
+    iri,
     prefixed,
-    short: local,
-    tooltipLines: [local],
+    short: shortLocalName(prefixed || iri),
+    tooltipLines: [label],
     color,
     label,
-    labelSource,
+    labelSource: "fatmap",
   };
 }

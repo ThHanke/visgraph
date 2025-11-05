@@ -65,6 +65,77 @@ interface LiteralProperty {
   lang?: string;
 }
 
+const DISPLAY_DATATYPE = "xsd:string";
+
+const toPrefixedSafe = (value: string): string => {
+  try {
+    return toPrefixed(value) || value;
+  } catch {
+    return value;
+  }
+};
+
+function cloneLiteralProperty(source: LiteralProperty): LiteralProperty {
+  return {
+    key: source.key,
+    value: source.value,
+    type: source.type,
+    predicateTerm: source.predicateTerm,
+    objectTerm: source.objectTerm,
+    lang: source.lang,
+  };
+}
+
+function coerceLiteralProperty(entry: any): LiteralProperty | null {
+  if (!entry || typeof entry !== "object") return null;
+  const key =
+    typeof entry.property === "string"
+      ? entry.property
+      : typeof entry.propertyUri === "string"
+      ? entry.propertyUri
+      : typeof entry.key === "string"
+      ? entry.key
+      : "";
+  if (!key) return null;
+
+  const rawValue =
+    entry.value ??
+    (entry.objectTerm && typeof entry.objectTerm.value === "string"
+      ? entry.objectTerm.value
+      : entry.object);
+  if (rawValue === undefined || rawValue === null) return null;
+
+  const rawType =
+    typeof entry.type === "string" && entry.type.length > 0
+      ? entry.type
+      : entry.objectTerm &&
+          entry.objectTerm.datatype &&
+          typeof entry.objectTerm.datatype.value === "string"
+        ? entry.objectTerm.datatype.value
+        : undefined;
+  const rawLang =
+    typeof entry.lang === "string" && entry.lang.length > 0
+      ? entry.lang
+      : entry.objectTerm && typeof entry.objectTerm.language === "string"
+        ? entry.objectTerm.language
+        : undefined;
+
+  return {
+    key,
+    value: String(rawValue),
+    type: rawLang
+      ? DISPLAY_DATATYPE
+      : rawType
+      ? rawType.includes("://")
+        ? toPrefixedSafe(rawType)
+        : rawType
+      : DISPLAY_DATATYPE,
+    lang: rawLang,
+    predicateTerm: entry.predicateTerm ?? entry.predicate,
+    objectTerm: entry.objectTerm ?? entry.object,
+  };
+}
+
 /**
  * Props for the NodePropertyEditor component
  */
@@ -114,8 +185,10 @@ export const NodePropertyEditor = ({
   useEffect(() => {
     if (!open) return;
 
-    // Prefer explicit prop nodeData (no selection probing in this simplified editor)
-    const sourceNode = nodeData && (nodeData.data || nodeData) ? (nodeData.data || nodeData) : null;
+    const sourceNode =
+      nodeData && typeof nodeData === "object"
+        ? (nodeData as any).data ?? nodeData
+        : null;
 
     if (!sourceNode) {
       setNodeIri("");
@@ -123,108 +196,68 @@ export const NodePropertyEditor = ({
       setProperties([]);
       setRdfTypesState([]);
       initialPropertiesRef.current = [];
+      initialRdfTypesRef.current = [];
       return;
     }
 
-    // node could be React Flow node object or a plain node data object — handle both.
-    const d = sourceNode;
-
-    // IRI
-    const iri = (d && (d.iri || d.id || d.key)) ? String(d.iri || d.id || d.key) : "";
+    const iri =
+      typeof sourceNode.iri === "string"
+        ? sourceNode.iri
+        : typeof sourceNode.id === "string"
+        ? sourceNode.id
+        : typeof sourceNode.key === "string"
+        ? sourceNode.key
+        : "";
     setNodeIri(iri);
 
-    // Class/type info: prefer explicit rdfTypes array or classType/displayType fields
-    const rdfTypes = Array.isArray(d.rdfTypes) ? d.rdfTypes.slice() : (d.rdfType ? [d.rdfType] : []);
+    const rdfTypes = Array.isArray(sourceNode.rdfTypes)
+      ? sourceNode.rdfTypes.filter((type: unknown): type is string => typeof type === "string")
+      : sourceNode.rdfType
+      ? [String(sourceNode.rdfType)]
+      : [];
     setRdfTypesState(rdfTypes);
-    // Capture the initial rdf.types snapshot so subsequent saves can compute removals.
-    initialRdfTypesRef.current = Array.isArray(rdfTypes) ? rdfTypes.slice() : [];
-    // For UI selection show the first rdf:type (or fall back to classType/displayType)
-    const chosen = (rdfTypes || []).length > 0 ? rdfTypes[0] : (d.classType || d.displayType || "");
-    setNodeType(String(chosen || ""));
+    initialRdfTypesRef.current = rdfTypes.slice();
 
-    // Annotation properties
-    const existingProps: LiteralProperty[] = [];
-    if (Array.isArray(d.annotationProperties)) {
-      d.annotationProperties.forEach((p: any) => {
-        // Prefer native Term shapes when available (predicateTerm / objectTerm).
-        const predIri =
-          (p && (p.property || p.propertyUri)) ||
-          (p && p.predicateTerm && p.predicateTerm.value)
-            ? String((p && (p.property || p.propertyUri)) || (p && p.predicateTerm && p.predicateTerm.value) || "")
-            : "";
-        const objVal =
-          p && p.value !== undefined && p.value !== null
-            ? String(p.value)
-            : p && p.objectTerm && p.objectTerm.value
-            ? String(p.objectTerm.value)
-            : "";
-        // Derive a display-friendly type token:
-        // - prefer explicit p.type when present
-        // - else prefer objectTerm.datatype.value (full IRI) or objectTerm.language
-        // - convert full IRI datatypes into prefixed tokens for the UI when possible
-        // Prefer an explicit language tag when present on the Term.
-        // Order of precedence:
-        // 1) objectTerm.language (if present) -> display as xsd:string with lang populated
-        // 2) explicit p.type that starts with "@" (legacy language marker) -> display as xsd:string with lang populated
-        // 3) explicit p.type or objectTerm.datatype value -> use that datatype (prefixed for display when possible)
-        // 4) fallback -> xsd:string
-        const objTypeRaw =
-          (p && p.type) ||
-          (p && p.objectTerm && p.objectTerm.datatype && p.objectTerm.datatype.value)
-            ? String((p && p.type) || (p && p.objectTerm && p.objectTerm.datatype && p.objectTerm.datatype.value) || "")
-            : "";
-        let objLang: string | undefined = undefined;
-        let objType: string;
-        // 1) Term language wins
-        if (p && p.objectTerm && p.objectTerm.language) {
-          objLang = String(p.objectTerm.language);
-          objType = "xsd:string";
-        } else if (objTypeRaw && String(objTypeRaw).startsWith("@")) {
-          // 2) legacy "@lang" marker
-          objLang = String(objTypeRaw).slice(1);
-          objType = "xsd:string";
-        } else if (!objTypeRaw) {
-          // 4) no explicit type -> default string
-          objType = "xsd:string";
-        } else if (String(objTypeRaw).includes("://")) {
-          // 3) full IRI datatype -> convert to prefixed token for display when possible
-          try {
-            const pref = toPrefixed(String(objTypeRaw));
-            objType = pref || String(objTypeRaw);
-          } catch (_) {
-            objType = String(objTypeRaw);
-          }
-        } else {
-          // 3b) already-prefixed token
-          objType = String(objTypeRaw);
-        }
-        existingProps.push({
-          key: predIri,
-          value: objVal,
-          type: objType,
-          lang: objLang,
-          predicateTerm: p && (p.predicateTerm || p.predicate),
-          objectTerm: p && (p.objectTerm || p.object),
+    const chosenType =
+      rdfTypes.length > 0
+        ? rdfTypes[0]
+        : typeof sourceNode.classType === "string"
+        ? sourceNode.classType
+        : typeof sourceNode.displayType === "string"
+        ? sourceNode.displayType
+        : "";
+    setNodeType(chosenType);
+
+    const normalizedProps: LiteralProperty[] = [];
+    if (Array.isArray(sourceNode.annotationProperties)) {
+      for (const entry of sourceNode.annotationProperties) {
+        const normalized = coerceLiteralProperty(entry);
+        if (normalized) normalizedProps.push(normalized);
+      }
+    } else if (Array.isArray(sourceNode.annotations)) {
+      for (const annotation of sourceNode.annotations) {
+        if (!annotation || typeof annotation !== "object") continue;
+        const [key, value] = Object.entries(annotation)[0] ?? ["", ""];
+        const normalized = coerceLiteralProperty({
+          property: key,
+          value,
         });
-      });
-    } else if (Array.isArray(d.annotations)) {
-      d.annotations.forEach((ann: any) => {
-        if (ann && typeof ann === "object") {
-          const entry = Object.entries(ann)[0] as [string, any];
-          existingProps.push({ key: String(entry[0] || ""), value: String(entry[1] || ""), type: "xsd:string" });
-        }
-      });
+        if (normalized) normalizedProps.push(normalized);
+      }
     }
 
-    setProperties(existingProps);
-    initialPropertiesRef.current = existingProps.map(p => ({ ...p }));
+    setProperties(normalizedProps);
+    initialPropertiesRef.current = normalizedProps.map(cloneLiteralProperty);
   }, [open, nodeData]);
 
   // Handlers for properties
   const handleAddProperty = (e?: React.MouseEvent) => {
     e?.preventDefault();
     e?.stopPropagation();
-    setProperties((prev) => [...prev, { key: "", value: "", type: "xsd:string" }]);
+    setProperties((prev) => [
+      ...prev,
+      { key: "", value: "", type: DISPLAY_DATATYPE },
+    ]);
   };
 
   const handleRemoveProperty = (index: number, e?: React.MouseEvent) => {
@@ -237,42 +270,19 @@ export const NodePropertyEditor = ({
     setProperties((prev) =>
       prev.map((p, i) => {
         if (i !== index) return p;
-        // Update the requested field and clear native Terms when the user edits
-        // the lexical value, datatype, or the predicate key so we don't reuse stale Terms.
-        const updated: LiteralProperty = { ...p, [field]: value };
-        try {
-          if (field === "value" || field === "type") {
-            // Value/type changed -> objectTerm no longer valid
-            if ((updated as any).objectTerm) delete (updated as any).objectTerm;
-          }
-        } catch (_) {
-          /* ignore */
-        }
-        try {
-          if (field === "key") {
-            // Predicate changed -> predicateTerm no longer valid
-            if ((updated as any).predicateTerm) delete (updated as any).predicateTerm;
-          }
-        } catch (_) {
-          /* ignore */
-        }
-        // Language/datatype exclusivity rules:
-        try {
-          if (field === "type") {
-            // If user changed type away from xsd:string, clear lang
-            if (String(value) !== "xsd:string" && (updated as any).lang) {
-              delete (updated as any).lang;
-            }
-          }
-          if (field === "lang") {
-            // If user sets a language, ensure type is xsd:string
-            if (value && String(value).trim()) {
-              (updated as any).type = "xsd:string";
-            }
-          }
-        } catch (_) {
-          /* ignore */
-        }
+    const updated: LiteralProperty = { ...p, [field]: value };
+    if (field === "value" || field === "type") {
+      updated.objectTerm = undefined;
+    }
+    if (field === "key") {
+      updated.predicateTerm = undefined;
+    }
+    if (field === "type" && value !== DISPLAY_DATATYPE) {
+      updated.lang = undefined;
+    }
+    if (field === "lang" && value && value.trim()) {
+      updated.type = DISPLAY_DATATYPE;
+    }
         return updated;
       }),
     );
@@ -280,7 +290,8 @@ export const NodePropertyEditor = ({
 
   // Utility to diff annotation properties (simple equality on key+value+type)
   const diffProperties = (before: LiteralProperty[], after: LiteralProperty[]) => {
-    const key = (p: LiteralProperty) => `${p.key}||${p.value}||${p.type || ""}`;
+    const key = (p: LiteralProperty) =>
+      `${p.key}||${p.value}||${p.type || ""}||${p.lang || ""}`;
     const beforeSet = new Set(before.map(key));
     const afterSet = new Set(after.map(key));
     const toAdd = after.filter(p => !beforeSet.has(key(p)));
@@ -328,7 +339,10 @@ export const NodePropertyEditor = ({
     }
 
     // Compute annotation property diffs from initial snapshot (no RDF lookups)
-    const { toAdd: propsToAdd, toRemove: propsToRemove } = diffProperties(initialPropertiesRef.current || [], properties || []);
+    const { toAdd: propsToAdd, toRemove: propsToRemove } = diffProperties(
+      initialPropertiesRef.current || [],
+      properties || [],
+    );
 
     // Compute rdf:type diffs (use rdfTypesState if present, otherwise use nodeType)
     const currentTypes = (Array.isArray(rdfTypesState) && rdfTypesState.length > 0) ? rdfTypesState.slice() : (nodeType ? [String(nodeType)] : []);
@@ -390,9 +404,12 @@ export const NodePropertyEditor = ({
 
     const removesPrepared = (propsToRemove || []).map((p: any) => {
       try {
-        const objTerm = p && p.objectTerm && (p.objectTerm.termType || p.objectTerm.termType === 0)
-          ? p.objectTerm
-          : valueToTerm(p.value, p.lang ? `@${p.lang}` : p.type);
+          const objTerm =
+            p &&
+            p.objectTerm &&
+            ((p.objectTerm as any).termType || (p.objectTerm as any).termType === 0)
+              ? p.objectTerm
+              : valueToTerm(p.value, p.lang ? `@${p.lang}` : p.type);
         const pred = String(p.key || p.property || (p.predicateTerm && p.predicateTerm.value) || "");
         return {
           subject: subjIri,
@@ -448,7 +465,7 @@ export const NodePropertyEditor = ({
       propertyUri: p.key,
       key: p.key,
       value: p.value,
-      type: p.type || "xsd:string",
+      type: p.type || DISPLAY_DATATYPE,
     }));
 
     // For create flows, provide a richer payload including the subject IRI (which
@@ -515,7 +532,7 @@ export const NodePropertyEditor = ({
 
 
   const getXSDTypes = () => [
-    "xsd:string",
+    DISPLAY_DATATYPE,
     "xsd:boolean",
     "xsd:integer",
     "xsd:decimal",
@@ -630,11 +647,15 @@ export const NodePropertyEditor = ({
 
                   <div className="col-span-1">
                     <Label className="text-xs">Type</Label>
-                    <Select value={property.type || "xsd:string"} onValueChange={(value) => {
-                      // when changing type away from xsd:string, clear lang
-                      handleUpdateProperty(index, "type", value);
-                      if (String(value) !== "xsd:string") handleUpdateProperty(index, "lang", "");
-                    }}>
+                    <Select
+                      value={property.type || DISPLAY_DATATYPE}
+                      onValueChange={(value) => {
+                        handleUpdateProperty(index, "type", value);
+                        if (value !== DISPLAY_DATATYPE) {
+                          handleUpdateProperty(index, "lang", "");
+                        }
+                      }}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select type..." />
                       </SelectTrigger>
@@ -648,7 +669,7 @@ export const NodePropertyEditor = ({
                     </Select>
                   </div>
 
-                  {property.type === "xsd:string" && (
+                  {property.type === DISPLAY_DATATYPE && (
                     <div className="col-span-1">
                       <Label className="text-xs">Lang</Label>
                       <Input
@@ -658,7 +679,7 @@ export const NodePropertyEditor = ({
                           // if lang set, ensure type is xsd:string
                           if (v) {
                             handleUpdateProperty(index, "lang", v);
-                            handleUpdateProperty(index, "type", "xsd:string");
+                            handleUpdateProperty(index, "type", DISPLAY_DATATYPE);
                           } else {
                             handleUpdateProperty(index, "lang", "");
                           }

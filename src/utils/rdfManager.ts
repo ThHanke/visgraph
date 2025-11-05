@@ -13,13 +13,18 @@ export type {
 
 import { RDFManagerImpl, enableN3StoreWriteLogging, collectGraphCountsFromStore } from "./rdfManager.impl";
 import { createRdfManagerWorkerClient, RdfManagerWorkerClient } from "./rdfManager.workerClient";
-import type {
-  RDFWorkerCommandName,
-  RDFWorkerCommandPayloads,
-  PlainQuad,
-  PlainQuadTerm,
-} from "./rdfManager.workerProtocol";
-import type { WorkerQuad, WorkerTerm } from "./rdfSerialization";
+import type { RDFWorkerCommandName, RDFWorkerCommandPayloads } from "./rdfManager.workerProtocol";
+import {
+  isWorkerQuad,
+  isWorkerTerm,
+  serializeQuad,
+  serializeTerm,
+  type WorkerLiteral,
+  type WorkerNamedNode,
+  type WorkerQuad,
+  type WorkerQuadUpdate,
+  type WorkerTerm,
+} from "./rdfSerialization";
 import { useAppConfigStore } from "../stores/appConfigStore";
 
 export { RDFManagerImpl as RDFManager, enableN3StoreWriteLogging, collectGraphCountsFromStore };
@@ -36,159 +41,251 @@ const isRdfTerm = (value: any): value is { termType: string; value: string; data
   return value && typeof value === "object" && typeof value.termType === "string";
 };
 
-const toPlainSubject = (value: any): string => {
+type TermContext = "subject" | "predicate" | "object" | "graph";
+
+const sanitizeBlankNodeValue = (value: string): string => value.replace(/^_:/, "");
+
+const cloneLiteral = (source: WorkerLiteral): WorkerLiteral => {
+  const literal: WorkerLiteral = { termType: "Literal", value: String(source.value ?? "") };
+  if (source.language) literal.language = source.language;
+  if (source.datatype) literal.datatype = source.datatype;
+  return literal;
+};
+
+const normalizeWorkerTerm = (term: WorkerTerm, context: TermContext): WorkerTerm => {
+  const value = typeof term.value === "string" ? term.value : "";
+  switch (term.termType) {
+    case "NamedNode":
+      return { termType: "NamedNode", value };
+    case "BlankNode": {
+      const sanitized = sanitizeBlankNodeValue(value);
+      if (context === "predicate" || context === "graph") {
+        return { termType: "NamedNode", value: sanitized || value };
+      }
+      return { termType: "BlankNode", value: sanitized };
+    }
+    case "Literal":
+      if (context === "subject" || context === "predicate" || context === "graph") {
+        return { termType: "NamedNode", value };
+      }
+      return cloneLiteral(term as WorkerLiteral);
+    case "DefaultGraph":
+    default:
+      if (context === "graph") return { termType: "DefaultGraph" };
+      if (context === "object") return { termType: "Literal", value: value || "" };
+      return { termType: "NamedNode", value: value || "" };
+  }
+};
+
+const extractDatatype = (input: unknown): string | undefined => {
+  if (!input) return undefined;
+  if (typeof input === "string") return input;
+  if (typeof input === "object" && typeof (input as any).value === "string") {
+    return String((input as any).value);
+  }
+  return undefined;
+};
+
+const coerceWorkerTerm = (value: any, context: TermContext): WorkerTerm | null => {
+  if (value === null || typeof value === "undefined") {
+    if (context === "graph") return { termType: "DefaultGraph" };
+    if (context === "object") return null;
+    return null;
+  }
+
+  if (isWorkerTerm(value)) {
+    const next: WorkerTerm =
+      value.termType === "BlankNode"
+        ? { ...value, value: sanitizeBlankNodeValue(value.value) }
+        : { ...value };
+    return normalizeWorkerTerm(next, context);
+  }
+
   if (isRdfTerm(value)) {
-    if (value.termType === "BlankNode") return `_:${String(value.value || "")}`;
-    return String(value.value || "");
-  }
-  if (value && typeof value === "object" && typeof value.value === "string") {
-    return String(value.value);
-  }
-  return String(value ?? "");
-};
-
-const toPlainPredicate = (value: any): string => {
-  if (isRdfTerm(value)) return String(value.value || "");
-  if (value && typeof value === "object" && typeof value.value === "string") {
-    return String(value.value);
-  }
-  return String(value ?? "");
-};
-
-const toPlainObjectTerm = (value: any): PlainQuadTerm | null => {
-  if (value === null || typeof value === "undefined") return null;
-
-  if (isRdfTerm(value)) {
-    const termType = value.termType;
-    if (value.termType === "NamedNode") {
-      return { t: "iri", v: String(value.value || "") };
-    }
-    if (value.termType === "BlankNode") {
-      return { t: "bnode", v: String(value.value || "") };
-    }
-    if (value.termType === "Literal") {
-      const plain: PlainQuadTerm = { t: "lit", v: String(value.value || "") };
-      if (value.datatype && value.datatype.value) plain.dt = String(value.datatype.value);
-      if ((value as any).language) plain.ln = String((value as any).language);
-      return plain;
+    try {
+      return normalizeWorkerTerm(serializeTerm(value as any), context);
+    } catch (err) {
+      console.error("[rdfManager] serializeTerm failed", err);
+      return null;
     }
   }
 
-  if (value && typeof value === "object") {
-    const loweredType = typeof value.type === "string" ? value.type.toLowerCase() : "";
-    if ("value" in value) {
-      const rawVal = String((value as any).value || "");
-      if (loweredType === "iri" || loweredType === "namednode") {
-        return { t: "iri", v: rawVal };
-      }
-      if (loweredType === "bnode" || loweredType === "blanknode" || loweredType === "blank") {
-        return { t: "bnode", v: rawVal.replace(/^_:/, "") };
-      }
-      if (loweredType === "literal" || loweredType === "lit") {
-        const plain: PlainQuadTerm = { t: "lit", v: rawVal };
-        if (value.datatype) plain.dt = String(value.datatype && value.datatype.value ? value.datatype.value : value.datatype);
-        if (value.language) plain.ln = String(value.language);
-        if (value.lang) plain.ln = String(value.lang);
-        return plain;
-      }
-      if (value.datatype || value.language || value.lang) {
-        const plain: PlainQuadTerm = { t: "lit", v: rawVal };
-        if (value.datatype) plain.dt = String(value.datatype && value.datatype.value ? value.datatype.value : value.datatype);
-        if (value.language) plain.ln = String(value.language);
-        if (value.lang) plain.ln = String(value.lang);
-        return plain;
-      }
-      if (IRI_REGEX.test(rawVal)) {
-        return { t: "iri", v: rawVal };
-      }
-      if (/^_:/i.test(rawVal)) {
-        return { t: "bnode", v: rawVal.replace(/^_:/, "") };
-      }
-      return { t: "lit", v: rawVal };
-    }
-  }
-
-  const str = String(value);
-  if (/^_:/i.test(str)) return { t: "bnode", v: str.replace(/^_:/, "") };
-  if (IRI_REGEX.test(str)) return { t: "iri", v: str };
-  return { t: "lit", v: str };
-};
-
-const quadToPlain = (quad: any): PlainQuad | null => {
-  if (!quad) return null;
-  const plain: PlainQuad = {
-    s: toPlainSubject(quad.subject),
-    p: toPlainPredicate(quad.predicate),
-    o: toPlainObjectTerm(quad.object) ?? { t: "lit", v: "" },
-  };
-  try {
-    const graphValue =
-      quad.graph && typeof quad.graph.value === "string" && quad.graph.value.length > 0
-        ? String(quad.graph.value)
+  if (typeof value === "object") {
+    const termType =
+      typeof (value as any).termType === "string"
+        ? String((value as any).termType)
         : undefined;
-    if (graphValue) plain.g = graphValue;
-  } catch (_) {
-    /* ignore graph extraction failures */
-  }
-  return plain;
-};
+    if (termType) {
+      return normalizeWorkerTerm(value as WorkerTerm, context);
+    }
 
-const plainObjectToWorkerTerm = (obj: PlainQuadTerm): WorkerTerm => {
-  switch (obj.t) {
-    case "iri":
-      return { termType: "NamedNode", value: obj.v };
-    case "bnode":
-      return { termType: "BlankNode", value: obj.v.replace(/^_:/, "") };
-    case "lit":
-    default: {
-      const term: WorkerTerm = { termType: "Literal", value: obj.v };
-      if (obj.dt) term.datatype = obj.dt;
-      if (obj.ln) term.language = obj.ln;
-      return term;
+    if ("value" in (value as any)) {
+      const raw = String((value as any).value ?? "");
+      const typeHint =
+        typeof (value as any).type === "string"
+          ? String((value as any).type).toLowerCase()
+          : "";
+      const datatype = extractDatatype((value as any).datatype);
+      const language =
+        typeof (value as any).language === "string"
+          ? String((value as any).language)
+          : typeof (value as any).lang === "string"
+            ? String((value as any).lang)
+            : undefined;
+
+      if (context === "object") {
+        if (typeHint === "iri" || typeHint === "namednode") {
+          return normalizeWorkerTerm({ termType: "NamedNode", value: raw }, context);
+        }
+        if (typeHint === "bnode" || typeHint === "blank" || typeHint === "blanknode") {
+          return normalizeWorkerTerm({ termType: "BlankNode", value: raw }, context);
+        }
+        if (typeHint === "literal" || typeHint === "lit" || datatype || language) {
+          const literal: WorkerLiteral = { termType: "Literal", value: raw };
+          if (datatype) literal.datatype = datatype;
+          if (language) literal.language = language;
+          return normalizeWorkerTerm(literal, context);
+        }
+        if (/^_:/i.test(raw)) {
+          return normalizeWorkerTerm({ termType: "BlankNode", value: raw }, context);
+        }
+        if (IRI_REGEX.test(raw)) {
+          return normalizeWorkerTerm({ termType: "NamedNode", value: raw }, context);
+        }
+        const literal: WorkerLiteral = { termType: "Literal", value: raw };
+        if (datatype) literal.datatype = datatype;
+        if (language) literal.language = language;
+        return normalizeWorkerTerm(literal, context);
+      }
+
+      if (context === "graph") {
+        if (typeHint === "defaultgraph" || raw === "default") {
+          return { termType: "DefaultGraph" };
+        }
+        if (typeHint === "bnode" || typeHint === "blank" || typeHint === "blanknode") {
+          return normalizeWorkerTerm({ termType: "BlankNode", value: raw }, context);
+        }
+        return normalizeWorkerTerm({ termType: "NamedNode", value: raw }, context);
+      }
+
+      if (context === "subject") {
+        if (typeHint === "bnode" || /^_:/i.test(raw)) {
+          return normalizeWorkerTerm({ termType: "BlankNode", value: raw }, context);
+        }
+        return normalizeWorkerTerm({ termType: "NamedNode", value: raw }, context);
+      }
+
+      if (context === "predicate") {
+        return normalizeWorkerTerm({ termType: "NamedNode", value: raw }, context);
+      }
     }
   }
-};
 
-const plainQuadToWorkerQuad = (plain: PlainQuad): WorkerQuad => {
-  const subject: WorkerTerm = plain.s.startsWith("_:")
-    ? { termType: "BlankNode", value: plain.s.slice(2) }
-    : { termType: "NamedNode", value: plain.s };
-  const predicate: WorkerTerm = { termType: "NamedNode", value: plain.p };
-  const graph: WorkerTerm =
-    plain.g && plain.g !== "default"
-      ? { termType: "NamedNode", value: plain.g }
-      : { termType: "DefaultGraph" };
-  const worker: WorkerQuad = {
-    subject,
-    predicate,
-    graph,
-  };
-  if (plain.o) {
-    worker.object = plainObjectToWorkerTerm(plain.o);
+  const str = String(value ?? "").trim();
+  if (!str) {
+    if (context === "graph") return { termType: "DefaultGraph" };
+    if (context === "object") return null;
+    return null;
   }
-  return worker;
+
+  if (context === "object") {
+    if (/^_:/i.test(str)) {
+      return normalizeWorkerTerm({ termType: "BlankNode", value: str }, context);
+    }
+    if (IRI_REGEX.test(str)) {
+      return normalizeWorkerTerm({ termType: "NamedNode", value: str }, context);
+    }
+    return normalizeWorkerTerm({ termType: "Literal", value: str }, context);
+  }
+
+  if (context === "graph") {
+    if (str === "default") return { termType: "DefaultGraph" };
+    return normalizeWorkerTerm({ termType: "NamedNode", value: str }, context);
+  }
+
+  if (context === "subject") {
+    if (/^_:/i.test(str)) {
+      return normalizeWorkerTerm({ termType: "BlankNode", value: str }, context);
+    }
+    return normalizeWorkerTerm({ termType: "NamedNode", value: str }, context);
+  }
+
+  return normalizeWorkerTerm({ termType: "NamedNode", value: str }, context);
 };
 
-const collectPlainQuadsFromGraph = (graphName: string): PlainQuad[] => {
+const toWorkerSubjectTerm = (value: any): WorkerTerm | null => coerceWorkerTerm(value, "subject");
+
+const toWorkerPredicateTerm = (value: any): WorkerNamedNode | null => {
+  const term = coerceWorkerTerm(value, "predicate");
+  if (!term) return null;
+  return {
+    termType: "NamedNode",
+    value: typeof term.value === "string" ? term.value : "",
+  };
+};
+
+const toWorkerObjectTerm = (value: any): WorkerTerm | null => coerceWorkerTerm(value, "object");
+
+const toWorkerGraphTerm = (value: any, fallbackGraph: string): WorkerTerm => {
+  const raw = typeof value === "undefined" || value === null ? fallbackGraph : value;
+  const term = coerceWorkerTerm(raw, "graph");
+  if (!term) {
+    if (fallbackGraph === "default") return { termType: "DefaultGraph" };
+    return {
+      termType: "NamedNode",
+      value: String(fallbackGraph || "urn:vg:data"),
+    };
+  }
+  if (term.termType === "NamedNode") {
+    return {
+      termType: "NamedNode",
+      value: term.value || String(fallbackGraph || "urn:vg:data"),
+    };
+  }
+  if (term.termType === "DefaultGraph") {
+    if (typeof raw === "string" && raw !== "default" && raw.length > 0) {
+      return { termType: "NamedNode", value: raw };
+    }
+    if (fallbackGraph && fallbackGraph !== "default") {
+      return { termType: "NamedNode", value: fallbackGraph };
+    }
+    return { termType: "DefaultGraph" };
+  }
+  return {
+    termType: "NamedNode",
+    value: term.value || String(fallbackGraph || "urn:vg:data"),
+  };
+};
+
+const collectWorkerQuadsFromGraph = (graphName: string): WorkerQuad[] => {
   try {
     const store = (baseManager as any).getStore?.();
     if (!store || typeof store.getQuads !== "function") return [];
-    const graphArg =
-      graphName && graphName !== "default" ? graphName : null;
+    const graphArg = graphName && graphName !== "default" ? graphName : null;
     const quads = store.getQuads(null, null, null, graphArg) || [];
-    const plain: PlainQuad[] = [];
+    const serialized: WorkerQuad[] = [];
     for (const q of quads) {
-      const pq = quadToPlain(q);
-      if (pq) {
-        if (!pq.g && graphName && graphName !== "default") {
-          pq.g = graphName;
+      try {
+        const worker = serializeQuad(q);
+        if (
+          graphName &&
+          graphName !== "default" &&
+          worker.graph.termType === "DefaultGraph"
+        ) {
+          serialized.push({
+            ...worker,
+            graph: { termType: "NamedNode", value: graphName },
+          });
+        } else {
+          serialized.push(worker);
         }
-        plain.push(pq);
+      } catch (err) {
+        console.error("[rdfManager] collectWorkerQuadsFromGraph serialize failed", err);
       }
     }
-    return plain;
+    return serialized;
   } catch (err) {
-    console.error("[rdfManager] collectPlainQuadsFromGraph failed", err);
+    console.error("[rdfManager] collectWorkerQuadsFromGraph failed", err);
     return [];
   }
 };
@@ -198,57 +295,60 @@ const buildWorkerBatchPayload = (
   graphName: string,
 ): RDFWorkerCommandPayloads["syncBatch"] => {
   const graph = graphName || "urn:vg:data";
-  const adds: PlainQuad[] = [];
-  const removes: PlainQuad[] = [];
+  const adds: WorkerQuad[] = [];
+  const removes: WorkerQuadUpdate[] = [];
 
   if (changes && Array.isArray(changes.adds)) {
     for (const entry of changes.adds) {
-      const subjectRaw = entry?.subject ?? entry?.s;
-      const predicateRaw = entry?.predicate ?? entry?.p;
-      if (typeof subjectRaw === "undefined" || typeof predicateRaw === "undefined") continue;
-      const subject = toPlainSubject(subjectRaw);
-      const predicate = toPlainPredicate(predicateRaw);
-      const objectSource = entry?.object ?? entry?.o ?? entry?.value;
-      const objectPlain = toPlainObjectTerm(objectSource);
-      if (!objectPlain) continue;
-      const graphOverride = entry?.graph ?? entry?.g;
-      adds.push({
-        s: subject,
-        p: predicate,
-        o: objectPlain,
-        g: typeof graphOverride === "string" && graphOverride.length > 0 ? graphOverride : graph,
-      });
+      try {
+        const subject = toWorkerSubjectTerm(entry?.subject ?? entry?.s);
+        const predicate = toWorkerPredicateTerm(entry?.predicate ?? entry?.p);
+        if (!subject || !predicate) continue;
+        const objectTerm = toWorkerObjectTerm(entry?.object ?? entry?.o ?? entry?.value);
+        if (!objectTerm) continue;
+        const graphTerm = toWorkerGraphTerm(entry?.graph ?? entry?.g, graph);
+        adds.push({
+          subject,
+          predicate,
+          object: objectTerm,
+          graph: graphTerm,
+        });
+      } catch (err) {
+        console.error("[rdfManager] buildWorkerBatchPayload.add failed", err);
+      }
     }
   }
 
   if (changes && Array.isArray(changes.removes)) {
     for (const entry of changes.removes) {
-      const subjectRaw = entry?.subject ?? entry?.s;
-      const predicateRaw = entry?.predicate ?? entry?.p;
-      if (typeof subjectRaw === "undefined" || typeof predicateRaw === "undefined") continue;
-      const subject = toPlainSubject(subjectRaw);
-      const predicate = toPlainPredicate(predicateRaw);
-      const objectSource = entry?.object ?? entry?.o ?? entry?.value;
-      const hasObject =
-        !(objectSource === null || typeof objectSource === "undefined" || objectSource === "");
-      const graphOverride = entry?.graph ?? entry?.g;
-      const removePlain: PlainQuad = {
-        s: subject,
-        p: predicate,
-        g: typeof graphOverride === "string" && graphOverride.length > 0 ? graphOverride : graph,
-      };
-      if (hasObject) {
-        const objectPlain = toPlainObjectTerm(objectSource);
-        if (objectPlain) removePlain.o = objectPlain;
+      try {
+        const subject = toWorkerSubjectTerm(entry?.subject ?? entry?.s);
+        const predicate = toWorkerPredicateTerm(entry?.predicate ?? entry?.p);
+        if (!subject || !predicate) continue;
+        const graphTerm = toWorkerGraphTerm(entry?.graph ?? entry?.g, graph);
+        const objectSource = entry?.object ?? entry?.o ?? entry?.value;
+        const hasObject =
+          !(objectSource === null || typeof objectSource === "undefined" || objectSource === "");
+        const update: WorkerQuadUpdate = {
+          subject,
+          predicate,
+          graph: graphTerm,
+        };
+        if (hasObject) {
+          const objectTerm = toWorkerObjectTerm(objectSource);
+          if (objectTerm) update.object = objectTerm;
+        }
+        removes.push(update);
+      } catch (err) {
+        console.error("[rdfManager] buildWorkerBatchPayload.remove failed", err);
       }
-      removes.push(removePlain);
     }
   }
 
   const payload: RDFWorkerCommandPayloads["syncBatch"] = {
     graphName: graph,
-    adds: adds.map(plainQuadToWorkerQuad),
-    removes: removes.map((plain) => plainQuadToWorkerQuad(plain)),
+    adds,
+    removes,
   };
 
   const options = (changes as any)?.options;
@@ -339,9 +439,41 @@ const localChangeForwarder = (count: number, meta?: unknown) => {
 };
 
 const localSubjectsForwarder = (subjects: string[], quads?: unknown) => {
+  let payload = quads;
+
+  if (Array.isArray(quads)) {
+    const alreadyWorker = quads.every((item) => isWorkerQuad(item));
+    if (!alreadyWorker) {
+      const converted: WorkerQuad[] = [];
+      for (const item of quads) {
+        try {
+          if (
+            item &&
+            typeof item === "object" &&
+            isRdfTerm((item as any).subject) &&
+            isRdfTerm((item as any).predicate) &&
+            isRdfTerm((item as any).object) &&
+            isRdfTerm((item as any).graph)
+          ) {
+            converted.push(serializeQuad(item as any));
+            continue;
+          }
+          if (isWorkerQuad(item)) {
+            converted.push(item);
+          }
+        } catch (err) {
+          console.error("[rdfManager] localSubjectsForwarder serialize failed", err);
+        }
+      }
+      if (converted.length > 0) {
+        payload = converted;
+      }
+    }
+  }
+
   for (const cb of Array.from(subjectsSubscribers)) {
     try {
-      (cb as any)(subjects, quads);
+      (cb as any)(subjects, payload);
     } catch (err) {
       /* ignore individual subscriber errors */
     }
@@ -383,8 +515,27 @@ const ensureWorkerSubjectsBridge = () => {
   if (!workerEnabled || workerSubjectsUnsub || !workerClient) return;
   workerSubjectsUnsub = workerClient.on("subjects", (payload: any) => {
     const subjects = Array.isArray(payload?.subjects) ? payload.subjects : [];
-    const quads = payload?.quads;
-    localSubjectsForwarder(subjects, quads);
+    let quadPayload: WorkerQuad[] | undefined;
+
+    if (Array.isArray(payload?.quads)) {
+      quadPayload = payload.quads as WorkerQuad[];
+    } else if (payload?.quads && typeof payload.quads === "object") {
+      const aggregated: WorkerQuad[] = [];
+      for (const value of Object.values(payload.quads as Record<string, unknown>)) {
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            if (isWorkerQuad(item)) {
+              aggregated.push(item);
+            }
+          }
+        }
+      }
+      if (aggregated.length > 0) {
+        quadPayload = aggregated;
+      }
+    }
+
+    localSubjectsForwarder(subjects, quadPayload);
   });
 };
 
@@ -743,7 +894,7 @@ const rdfManagerProxyHandler: ProxyHandler<RDFManagerImpl> = {
         if (workerEnabled) {
           try {
             const gName = String(graphName || "urn:vg:data");
-            const quads = collectPlainQuadsFromGraph(gName).map(plainQuadToWorkerQuad);
+            const quads = collectWorkerQuadsFromGraph(gName);
             const namespaces =
               (target as any).getNamespaces && typeof (target as any).getNamespaces === "function"
                 ? (target as any).getNamespaces()
@@ -771,7 +922,7 @@ const rdfManagerProxyHandler: ProxyHandler<RDFManagerImpl> = {
         if (workerEnabled) {
           try {
             const gName = String(graphName || "urn:vg:data");
-            const quads = collectPlainQuadsFromGraph(gName).map(plainQuadToWorkerQuad);
+            const quads = collectWorkerQuadsFromGraph(gName);
             const namespaces =
               (target as any).getNamespaces && typeof (target as any).getNamespaces === "function"
                 ? (target as any).getNamespaces()
