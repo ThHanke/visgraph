@@ -23,6 +23,98 @@ const BATCH_SIZE = 1000;
 
 const { namedNode, literal, quad, blankNode, defaultGraph } = DataFactory;
 
+type ReasoningWorkerPlainQuad = {
+  s: string;
+  p: string;
+  o: { t: "iri" | "bnode" | "lit"; v: string; dt?: string; ln?: string };
+  g?: string;
+};
+
+export interface ReasoningError {
+  nodeId?: string;
+  edgeId?: string;
+  message: string;
+  rule: string;
+  severity: "critical" | "error";
+}
+
+export interface ReasoningWarning {
+  nodeId?: string;
+  edgeId?: string;
+  message: string;
+  rule: string;
+  severity?: "critical" | "warning" | "info";
+}
+
+export interface ReasoningInference {
+  type: "property" | "class" | "relationship";
+  subject: string;
+  predicate: string;
+  object: string;
+  confidence: number;
+}
+
+export interface ReasoningResult {
+  id: string;
+  timestamp: number;
+  status: "running" | "completed" | "error";
+  duration?: number;
+  errors: ReasoningError[];
+  warnings: ReasoningWarning[];
+  inferences: ReasoningInference[];
+  inferredQuads?: { subject: string; predicate: string; object: string; graph?: string }[];
+  meta?: { usedReasoner?: boolean };
+}
+
+function quadToWorkerPlain(q: Quad): ReasoningWorkerPlainQuad {
+  const objTerm = q.object;
+  let obj: ReasoningWorkerPlainQuad["o"] = { t: "lit", v: "" };
+  if (objTerm.termType === "NamedNode") {
+    obj = { t: "iri", v: String(objTerm.value) };
+  } else if (objTerm.termType === "BlankNode") {
+    obj = { t: "bnode", v: String(objTerm.value) };
+  } else if (objTerm.termType === "Literal") {
+    obj = {
+      t: "lit",
+      v: String(objTerm.value),
+      dt: objTerm.datatype && objTerm.datatype.value ? String(objTerm.datatype.value) : undefined,
+      ln: objTerm.language || undefined,
+    };
+  } else {
+    obj = { t: "lit", v: String((objTerm as any).value || "") };
+  }
+  const graphTerm = q.graph;
+  const graphValue =
+    graphTerm && graphTerm.termType !== "DefaultGraph"
+      ? String((graphTerm as any).value)
+      : undefined;
+  return {
+    s: String(q.subject.value),
+    p: String(q.predicate.value),
+    o: obj,
+    g: graphValue,
+  };
+}
+
+function plainObjectToTerm(o: ReasoningWorkerPlainQuad["o"]) {
+  if (!o) return literal("");
+  if (o.t === "iri") return namedNode(o.v);
+  if (o.t === "bnode") return blankNode(o.v.replace(/^_:/, ""));
+  if (o.t === "lit") {
+    if (o.dt) return literal(o.v, namedNode(o.dt));
+    if (o.ln) return literal(o.v, o.ln);
+    return literal(o.v);
+  }
+  return literal(o.v);
+}
+
+function plainSubjectToTerm(value: string) {
+  if (/^_:/.test(String(value))) {
+    return blankNode(String(value).replace(/^_:/, ""));
+  }
+  return namedNode(String(value));
+}
+
 /*
   Global N3 Store prototype hook
   ------------------------------
@@ -770,6 +862,221 @@ export class RDFManager {
         /* ignore fallback errors */
       }
     }
+  }
+
+  public async runReasoning(options?: { rulesets?: string[] }): Promise<ReasoningResult> {
+    const start = Date.now();
+    const id = `reasoning-${start.toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const quads = this.store.getQuads(null, null, null, null) || [];
+    const serialized: ReasoningWorkerPlainQuad[] = [];
+    for (const q of quads) {
+      try {
+        serialized.push(quadToWorkerPlain(q));
+      } catch (_) {
+        /* ignore per-quad serialization errors */
+      }
+    }
+
+    let configuredRulesets: string[] = [];
+    try {
+      if (
+        typeof useAppConfigStore !== "undefined" &&
+        (useAppConfigStore as any).getState
+      ) {
+        const st = (useAppConfigStore as any).getState();
+        if (st && st.config && Array.isArray(st.config.reasoningRulesets)) {
+          configuredRulesets = st.config.reasoningRulesets
+            .map((r: any) => String(r))
+            .filter((r: string) => r.length > 0);
+        }
+      }
+    } catch (_) {
+      configuredRulesets = [];
+    }
+
+    const requestedRulesets = Array.isArray(options?.rulesets)
+      ? options!.rulesets
+          .map((r) => String(r))
+          .filter((r) => r.length > 0)
+      : [];
+
+    const rulesets =
+      requestedRulesets.length > 0 ? requestedRulesets : configuredRulesets;
+
+    const runStartMs = Date.now();
+
+    const worker = new LoadWorker();
+
+    return new Promise<ReasoningResult>((resolve, reject) => {
+      const cleanup = () => {
+        try { worker.removeEventListener("message", onMessage as any); } catch (_) { /* noop */ }
+        try { worker.removeEventListener("error", onError as any); } catch (_) { /* noop */ }
+        try { worker.terminate(); } catch (_) { /* noop */ }
+      };
+
+      const onError = (ev: ErrorEvent) => {
+        cleanup();
+        reject(new Error(`[rdfManager.runReasoning] worker error: ${ev && ev.message ? ev.message : "unknown"}`));
+      };
+
+      const onMessage = async (ev: MessageEvent) => {
+        const msg = ev && ev.data ? ev.data : {};
+        if (!msg || !msg.type) return;
+
+        if (msg.type === "reasoningStage") return;
+
+        if (msg.type === "reasoningError" && msg.id === id) {
+          cleanup();
+          reject(new Error(msg && msg.message ? String(msg.message) : "reasoning worker error"));
+          return;
+        }
+
+        if (msg.type !== "reasoningResult" || msg.id !== id) return;
+
+        try {
+          const added = Array.isArray(msg.added) ? (msg.added as ReasoningWorkerPlainQuad[]) : [];
+          const dedup = new Set<string>();
+          const addsForManager: { subject: any; predicate: any; object: any }[] = [];
+          for (const pq of added) {
+            try {
+              const key = `${pq.s}|${pq.p}|${pq.o ? `${pq.o.t}:${pq.o.v}:${pq.o.dt || ""}:${pq.o.ln || ""}` : ""}`;
+              if (dedup.has(key)) continue;
+              dedup.add(key);
+              addsForManager.push({
+                subject: plainSubjectToTerm(pq.s),
+                predicate: namedNode(String(pq.p)),
+                object: plainObjectToTerm(pq.o),
+              });
+            } catch (_) {
+              /* ignore invalid quad */
+            }
+          }
+
+          const prevFlag = (globalThis as any).__VG_REASONING_PERSIST_IN_PROGRESS;
+          try {
+            (globalThis as any).__VG_REASONING_PERSIST_IN_PROGRESS = true;
+            if (addsForManager.length > 0) {
+              await this.applyBatch({ removes: [], adds: addsForManager }, "urn:vg:inferred");
+            }
+          } finally {
+            (globalThis as any).__VG_REASONING_PERSIST_IN_PROGRESS = prevFlag;
+          }
+
+          const safeWarnings: ReasoningWarning[] = Array.isArray(msg.warnings)
+            ? (msg.warnings as any[]).map((w) => ({
+                nodeId: w && w.nodeId ? String(w.nodeId) : undefined,
+                edgeId: w && w.edgeId ? String(w.edgeId) : undefined,
+                message: w && w.message ? String(w.message) : "",
+                rule: w && w.rule ? String(w.rule) : "rule",
+                severity: w && w.severity ? (w.severity as ReasoningWarning["severity"]) : undefined,
+              }))
+            : [];
+
+          const safeErrors: ReasoningError[] = Array.isArray(msg.errors)
+            ? (msg.errors as any[]).map((e) => ({
+                nodeId: e && e.nodeId ? String(e.nodeId) : undefined,
+                edgeId: e && e.edgeId ? String(e.edgeId) : undefined,
+                message: e && e.message ? String(e.message) : "",
+                rule: e && e.rule ? String(e.rule) : "rule",
+                severity:
+                  e && e.severity === "error" ? "error" : ("critical" as const),
+              }))
+            : [];
+
+          const safeInferences: ReasoningInference[] = Array.isArray(msg.inferences)
+            ? (msg.inferences as any[])
+                .map((inf) => {
+                  const type =
+                    inf && (inf.type === "class" || inf.type === "relationship" || inf.type === "property")
+                      ? inf.type
+                      : "relationship";
+                  const subject = inf && inf.subject ? String(inf.subject) : "";
+                  const predicate = inf && inf.predicate ? String(inf.predicate) : "";
+                  const object = inf && inf.object ? String(inf.object) : "";
+                  const confidence =
+                    inf && typeof inf.confidence === "number" ? inf.confidence : 0.5;
+                  return { type, subject, predicate, object, confidence };
+                })
+                .filter((inf) => inf.subject && inf.predicate)
+            : [];
+
+          const workerDuration =
+            typeof msg.durationMs === "number" ? Number(msg.durationMs) : null;
+          const totalDuration = Date.now() - runStartMs;
+
+          const completed: ReasoningResult = {
+            id,
+            timestamp: start,
+            status: "completed",
+            duration: totalDuration,
+            errors: safeErrors,
+            warnings: safeWarnings,
+            inferences: safeInferences,
+            meta: {
+              usedReasoner: Boolean(msg.usedReasoner),
+              workerDurationMs: workerDuration,
+              totalDurationMs: totalDuration,
+            },
+          };
+
+          try {
+            const summary = {
+              id: completed.id,
+              status: completed.status,
+              durationMs: totalDuration,
+              workerDurationMs: workerDuration,
+              errorCount: completed.errors.length,
+              warningCount: completed.warnings.length,
+              inferenceCount: completed.inferences.length,
+              usedReasoner: completed.meta?.usedReasoner ?? null,
+              persistedAddCount: addsForManager.length,
+            };
+            console.log("[VG_REASONING] completed reasoning run", summary);
+          } catch (_) {
+            /* ignore console errors */
+          }
+
+          cleanup();
+          resolve(completed);
+        } catch (err) {
+          cleanup();
+          reject(err);
+        }
+      };
+
+      worker.addEventListener("message", onMessage as any);
+      worker.addEventListener("error", onError as any);
+
+      let baseUrl = "/";
+      try {
+        const maybe = (import.meta as any)?.env?.BASE_URL;
+        if (typeof maybe === "string" && maybe.length > 0) {
+          baseUrl = maybe;
+        }
+      } catch (_) {
+        try {
+          if (typeof window !== "undefined" && window.location) {
+            baseUrl = "/";
+          }
+        } catch (_) {
+          /* ignore */
+        }
+      }
+
+      try {
+        worker.postMessage({
+          type: "runReasoning",
+          id,
+          quads: serialized,
+          rulesets,
+          baseUrl,
+        });
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    });
   }
 
   private scheduleSubjectFlush(delay = 50) {

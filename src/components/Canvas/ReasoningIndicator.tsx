@@ -2,16 +2,16 @@ import { memo } from 'react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Loader2, Brain, AlertTriangle, CheckCircle, XCircle, Play } from 'lucide-react';
-import { useReasoningStore } from '../../stores/reasoningStore';
+import type { ReasoningResult } from '../../utils/rdfManager';
 
 interface ReasoningIndicatorProps {
   onOpenReport: () => void;
   onRunReason?: () => void;
+  currentReasoning: ReasoningResult | null;
+  isReasoning: boolean;
 }
 
-export const ReasoningIndicator = memo(({ onOpenReport, onRunReason }: ReasoningIndicatorProps) => {
-  const { currentReasoning, isReasoning } = useReasoningStore();
-
+export const ReasoningIndicator = memo(({ onOpenReport, onRunReason, currentReasoning, isReasoning }: ReasoningIndicatorProps) => {
   const STATUS_COLOR_MAP: Record<string, string> = {
     warning: 'bg-warning text-warning-foreground',
     destructive: 'bg-destructive text-destructive-foreground',

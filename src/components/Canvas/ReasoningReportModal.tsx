@@ -1,4 +1,4 @@
-import { memo, useState, useMemo, useEffect } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { rdfManager } from '../../utils/rdfManager';
 import {
   Dialog,
@@ -13,7 +13,7 @@ import { ScrollArea } from '../ui/scroll-area';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Separator } from '../ui/separator';
 import { AlertTriangle, CheckCircle, XCircle, Lightbulb, Clock } from 'lucide-react';
-import { useReasoningStore } from '../../stores/reasoningStore';
+import type { ReasoningResult } from '../../utils/rdfManager';
 
 /**
  * Lazy paginated table for inferred triples.
@@ -196,10 +196,11 @@ const InferredTriplesTable = () => {
 interface ReasoningReportModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  currentReasoning: ReasoningResult | null;
+  reasoningHistory: ReasoningResult[];
 }
 
-export const ReasoningReportModal = memo(({ open, onOpenChange }: ReasoningReportModalProps) => {
-  const { currentReasoning, reasoningHistory } = useReasoningStore();
+export const ReasoningReportModal = memo(({ open, onOpenChange, currentReasoning, reasoningHistory }: ReasoningReportModalProps) => {
 
   if (!currentReasoning) {
     return (

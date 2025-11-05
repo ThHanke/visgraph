@@ -7,7 +7,6 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { RDFManager } from "../../utils/rdfManager";
 import { FIXTURES } from "../fixtures/rdfFixtures";
-import { useReasoningStore } from "../../stores/reasoningStore";
 
 describe("RDF Store Workflow Integration Tests", () => {
   beforeEach(() => {
@@ -330,9 +329,7 @@ ex:person1 a foaf:Person ;
       // Trigger reasoning explicitly so derived information (from domain/range rules)
       // is computed and applied into the RDF store before assertions. Some test
       // environments disable automatic reasoning, so run it here to ensure parity.
-      await useReasoningStore
-        .getState()
-        .startReasoning([], [], store.rdfManager.getStore());
+      await store.rdfManager.runReasoning();
 
       // Verify reasoner can access the RDF store data
       const rdfStore = store.rdfManager.getStore();

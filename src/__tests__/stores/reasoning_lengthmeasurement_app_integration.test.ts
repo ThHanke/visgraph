@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DataFactory } from "n3";
 import { useOntologyStore } from "../../../src/stores/ontologyStore";
-import { useReasoningStore } from "../../../src/stores/reasoningStore";
 import { useAppConfigStore } from "../../../src/stores/appConfigStore";
 
 const { namedNode } = DataFactory;
@@ -88,7 +87,7 @@ describe("reasoning (app integration) with LengthMeasurement ttl", () => {
           console.debug("[TEST] core ontologies pre-load failed (continuing):", String(e));
         }
 
-        // Install a fetch shim that serves local rule files from public/reasoning-rules when startReasoning fetches them
+        // Install a fetch shim that serves local rule files from public/reasoning-rules when runReasoning fetches them
         const origFetch = (globalThis as any).fetch;
         try {
           const fs = await import("fs");
@@ -207,7 +206,7 @@ describe("reasoning (app integration) with LengthMeasurement ttl", () => {
         const t0 = Date.now();
         // Pass the RDFManager instance (not just the underlying store) because the app runtime
         // invokes the reasoner with the manager and some reasoner behaviors rely on manager APIs.
-        const result = await useReasoningStore.getState().startReasoning([], [], rdfMgr);
+        const result = await rdfMgr.runReasoning();
         const duration = Date.now() - t0;
 
         // restore original fetch

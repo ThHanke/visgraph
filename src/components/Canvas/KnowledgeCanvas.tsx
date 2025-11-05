@@ -20,7 +20,6 @@ import {
 // import '../../tailwind-config.js';
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { DataFactory } from "n3";
-import { useReasoningStore } from "../../stores/reasoningStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useAppConfigStore } from "../../stores/appConfigStore";
 import { CanvasToolbar } from "./CanvasToolbar";
@@ -48,6 +47,7 @@ import { toast } from "sonner";
 import { LayoutManager } from "./LayoutManager";
 import { NodePropertyEditor } from "./NodePropertyEditor";
 import { projectClient } from "./core/viewportUtils";
+import type { ReasoningResult } from "../../utils/rdfManager";
 import * as LinkPropertyEditorModule from "./LinkPropertyEditor";
 const LinkPropertyEditor: any = (() => {
   const mod = LinkPropertyEditorModule as any;
@@ -239,7 +239,6 @@ const KnowledgeCanvas: React.FC = () => {
     }
   }, [getRdfManager]);
 
-  const startReasoning = useReasoningStore((s) => s.startReasoning);
   const settings = useSettingsStore((s) => s.settings);
   const config = useAppConfigStore((s) => s.config);
   const setCurrentLayout = useAppConfigStore((s) => s.setCurrentLayout);
@@ -251,6 +250,11 @@ const KnowledgeCanvas: React.FC = () => {
   const vgMeasure = (name: string, meta: any = {}) => {
     return { end: (_?: any) => {} };
   };
+
+  const [currentReasoning, setCurrentReasoning] = useState<ReasoningResult | null>(null);
+  const [reasoningHistory, setReasoningHistory] = useState<ReasoningResult[]>([]);
+  const [isReasoning, setIsReasoning] = useState(false);
+  const reasoningInFlightRef = useRef(false);
 
   const [viewMode, setViewMode] = useState(config.viewMode);
   const [showLegend, setShowLegendState] = useState(config.showLegend);
@@ -1834,129 +1838,53 @@ const KnowledgeCanvas: React.FC = () => {
   }, [viewMode, nodes.length, edges.length, setNodes, setEdges]);
 
   const triggerReasoningStrict = useCallback(
-    async (ns: RFNode<NodeData>[], es: RFEdge<LinkData>[], force = false) => {
-      if (!startReasoning || (!settings?.autoReasoning && !force)) return;
-      const nodesPayload = (ns || []).map((n) =>
-        n.data && n.data.iri ? { iri: n.data.iri, key: n.id } : { key: n.id },
-      );
-      const edgesPayload = (es || []).map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-      }));
+    async (_ns: RFNode<NodeData>[], _es: RFEdge<LinkData>[], force = false) => {
+      if (!settings?.autoReasoning && !force) return;
+      if (reasoningInFlightRef.current) return;
       const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
-      const result = await startReasoning(
-        nodesPayload as any,
-        edgesPayload as any,
-        mgr && mgr.getStore && mgr.getStore(),
-      );
+      if (!mgr || typeof (mgr as any).runReasoning !== "function") return;
 
-      const errors = Array.isArray(result?.errors) ? result.errors : [];
-      const warnings = Array.isArray(result?.warnings) ? result.warnings : [];
+      reasoningInFlightRef.current = true;
+      setIsReasoning(true);
+      const runStart = Date.now();
 
-      const nodeErrMap = new Map<string, string[]>();
-      const nodeWarnMap = new Map<string, string[]>();
-      const edgeErrMap = new Map<string, string[]>();
-      const edgeWarnMap = new Map<string, string[]>();
-
-      for (const er of errors) {
-        {
-          if (er && er.nodeId) {
-            const a = nodeErrMap.get(String(er.nodeId)) || [];
-            a.push(String(er.message || er));
-            nodeErrMap.set(String(er.nodeId), a);
-          }
-          if (er && er.edgeId) {
-            const a = edgeErrMap.get(String(er.edgeId)) || [];
-            a.push(String(er.message || er));
-            edgeErrMap.set(String(er.edgeId), a);
-          }
+      try {
+        const result: ReasoningResult | null = await (mgr as any).runReasoning();
+        if (result) {
+          setCurrentReasoning(result);
+          setReasoningHistory((prev) => [result, ...prev].slice(0, 10));
         }
+      } catch (err) {
+        console.error("[VG_DEBUG] runReasoning failed", err);
+        const errorResult: ReasoningResult = {
+          id: `reasoning-error-${runStart.toString(36)}`,
+          timestamp: runStart,
+          status: "error",
+          errors: [
+            {
+              message: err instanceof Error ? err.message : String(err),
+              rule: "reasoning",
+              severity: "error",
+            },
+          ],
+          warnings: [],
+          inferences: [],
+          meta: { usedReasoner: false },
+        };
+        setCurrentReasoning(errorResult);
+        setReasoningHistory((prev) => [errorResult, ...prev].slice(0, 10));
+      } finally {
+        reasoningInFlightRef.current = false;
+        setIsReasoning(false);
       }
-
-      for (const w of warnings) {
-        {
-          if (w && w.nodeId) {
-            const a = nodeWarnMap.get(String(w.nodeId)) || [];
-            a.push(String(w.message || w));
-            nodeWarnMap.set(String(w.nodeId), a);
-          }
-          if (w && w.edgeId) {
-            const a = edgeWarnMap.get(String(w.edgeId)) || [];
-            a.push(String(w.message || w));
-            edgeWarnMap.set(String(w.edgeId), a);
-          }
-        }
-      }
-
-      // Merge targeted node updates (only nodes referenced in the reasoning result)
-      setNodes((nds) =>
-        (nds || []).map((n) => {
-          try {
-            const id = String(n.id);
-            const errs = nodeErrMap.get(id) || [];
-            const warns = nodeWarnMap.get(id) || [];
-            const prevErrs = (n.data && (n.data as any).reasoningErrors) || [];
-            const prevWarns =
-              (n.data && (n.data as any).reasoningWarnings) || [];
-            const changed =
-              JSON.stringify(prevErrs) !== JSON.stringify(errs) ||
-              JSON.stringify(prevWarns) !== JSON.stringify(warns);
-            if (!changed) return n;
-            return {
-              ...(n as RFNode<NodeData>),
-              data: {
-                ...(n.data as NodeData),
-                reasoningErrors: errs,
-                reasoningWarnings: warns,
-                hasReasoningError: errs.length > 0,
-                hasReasoningWarning: warns.length > 0,
-              },
-            } as RFNode<NodeData>;
-          } catch {
-            return n;
-          }
-        }),
-      );
-
-      // Merge targeted edge updates (only edges referenced in the reasoning result)
-      setEdges((eds) =>
-        (eds || []).map((e) => {
-          try {
-            const id = String(e.id);
-            const errs = edgeErrMap.get(id) || [];
-            const warns = edgeWarnMap.get(id) || [];
-            const prevErrs = (e.data && (e.data as any).reasoningErrors) || [];
-            const prevWarns =
-              (e.data && (e.data as any).reasoningWarnings) || [];
-            const changed =
-              JSON.stringify(prevErrs) !== JSON.stringify(errs) ||
-              JSON.stringify(prevWarns) !== JSON.stringify(warns);
-            if (!changed) return e;
-            return {
-              ...(e as RFEdge<LinkData>),
-              data: {
-                ...(e.data as LinkData),
-                reasoningErrors: errs,
-                reasoningWarnings: warns,
-                hasReasoningError: errs.length > 0,
-                hasReasoningWarning: warns.length > 0,
-              },
-            } as RFEdge<LinkData>;
-          } catch {
-            return e;
-          }
-        }),
-      );
     },
-    [setNodes, setEdges, startReasoning, settings],
+    [settings?.autoReasoning, getRdfManagerRef],
   );
 
-  // Sync reasoning results from the global reasoning store into node/edge data so
+  // Sync reasoning results into node/edge data so
   // the UI components (CustomOntologyNode / FloatingEdge) can render borders and
   // tooltip messages. This effect listens for updates to the current reasoning
   // result and applies targeted updates only to referenced nodes/edges.
-  const currentReasoning = useReasoningStore((s) => s.currentReasoning);
   useEffect(() => {
     if (!currentReasoning) return;
 
@@ -3245,12 +3173,16 @@ const KnowledgeCanvas: React.FC = () => {
           onRunReason={() => {
             void triggerReasoningStrict(nodes, edges, true);
           }}
+          currentReasoning={currentReasoning}
+          isReasoning={isReasoning}
         />
       </ModalStatus>
 
       <ReasoningReportModal
         open={canvasState.showReasoningReport}
         onOpenChange={canvasActions.toggleReasoningReport}
+        currentReasoning={currentReasoning}
+        reasoningHistory={reasoningHistory}
       />
       <NodePropertyEditor
         open={nodeEditorOpen}
