@@ -1478,13 +1478,14 @@ export class RDFManager {
     const useWorker = options && typeof options.useWorker === "boolean" ? !!options.useWorker : true;
 
     if (!useWorker) {
-      const fetcher = typeof fetch === "function" ? fetch : undefined;
-      if (!fetcher) throw new Error("fetch not available for main-thread loadRDFFromUrl");
-      const resp = await fetcher(url);
-      if (!resp || typeof resp.text !== "function") throw new Error("fetch failed in loadRDFFromUrl main-thread path");
-      const txt = await resp.text();
-      await this.loadRDFIntoGraph(txt, graphName, undefined, url);
-      return;
+      try {
+        console.warn("[VG_RDF_WORKER] useWorker=false is deprecated; continuing with worker path", {
+          url,
+          graphName,
+        });
+      } catch (_) {
+        /* noop */
+      }
     }
 
     console.debug("[VG_RDF_WORKER] loadRDFFromUrl start", {
@@ -1602,13 +1603,7 @@ export class RDFManager {
       worker.addEventListener("message", onMessage as any);
       worker.addEventListener("error", onError as any);
 
-      worker.postMessage({
-        type: "loadFromUrl",
-        id: loadId,
-        url,
-        timeoutMs,
-        headers: { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" },
-      });
+      worker.postMessage({ type: "loadFromUrl", id: loadId, url, timeoutMs });
     });
   }
 

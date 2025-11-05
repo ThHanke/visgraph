@@ -1,5 +1,5 @@
  
-// Deterministic N3 reasoner worker (template based on parseRdf.worker.ts)
+// Deterministic N3 reasoner worker (template based on rdfManager.worker.ts)
 // - Uses static imports so bundler includes n3 in the worker chunk.
 // - Linear, deterministic flow with clear stage messages so dev/prod behave identically.
 // - Fail fast on missing runtime pieces (no silent fallbacks).
