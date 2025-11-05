@@ -27,6 +27,93 @@ function attachPrefixed(entries: any[] | undefined): any[] {
   return Array.isArray(entries) ? entries : [];
 }
 
+type SerializedQuad = {
+  subject: string;
+  predicate: string;
+  object: string;
+  graph: string;
+};
+
+async function fetchSerializedQuads(
+  mgr: any,
+  graphName: string,
+  filter?: { subject?: string; predicate?: string; object?: string },
+  pageSize = 2000,
+): Promise<SerializedQuad[]> {
+  const results: SerializedQuad[] = [];
+  if (!mgr || typeof (mgr as any).fetchQuadsPage !== "function") return results;
+  const graph = graphName && graphName !== "" ? graphName : "urn:vg:data";
+
+  let offset = 0;
+  let total: number | null = null;
+
+  while (true) {
+    let page: any;
+    try {
+      page = await (mgr as any).fetchQuadsPage(graph, offset, pageSize, {
+        serialize: true,
+        filter,
+      });
+    } catch (err) {
+      console.debug("[ontologyStore] fetchSerializedQuads fetchQuadsPage failed", err);
+      break;
+    }
+    if (!page || !Array.isArray(page.items) || page.items.length === 0) {
+      break;
+    }
+
+    for (const item of page.items) {
+      const subject = String(item && item.subject ? item.subject : "");
+      if (!subject) continue;
+      results.push({
+        subject,
+        predicate: String(item && item.predicate ? item.predicate : ""),
+        object: String(item && item.object ? item.object : ""),
+        graph: String(item && item.graph ? item.graph : graph),
+      });
+    }
+
+    const received = page.items.length;
+    if (received === 0) break;
+
+    if (typeof page.total === "number" && Number.isFinite(page.total)) {
+      total = page.total;
+    }
+    offset += received;
+
+    const pageLimit =
+      typeof page.limit === "number" && Number.isFinite(page.limit)
+        ? page.limit
+        : received;
+    if (pageLimit <= 0) break;
+
+    if (total !== null && offset >= total) break;
+    if (received < pageLimit) break;
+  }
+
+  return results;
+}
+
+async function fetchSerializedQuadsAcrossGraphs(
+  mgr: any,
+  graphNames: string[],
+  filter?: { subject?: string; predicate?: string; object?: string },
+  pageSize = 2000,
+): Promise<SerializedQuad[]> {
+  const combined: SerializedQuad[] = [];
+  const seen = new Set<string>();
+  for (const g of graphNames) {
+    const quads = await fetchSerializedQuads(mgr, g, filter, pageSize);
+    for (const q of quads) {
+      const key = `${q.graph}::${q.subject}::${q.predicate}::${q.object}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      combined.push(q);
+    }
+  }
+  return combined;
+}
+
 
 /*
   Deferred namespace registration:
@@ -399,25 +486,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             for (const a of adds) {
               try { (mgr as any).addTriple(String(a.subject), String(a.predicate), String(a.object), "urn:vg:data"); } catch (_) { void 0; }
             }
-          } else {
-            // last-resort direct store writes
-            try {
-              const store = mgr && typeof mgr.getStore === "function" ? mgr.getStore() : null;
-              const g = namedNode("urn:vg:data");
-              if (store && typeof store.getQuads === "function" && typeof store.addQuad === "function") {
-                for (const a of adds) {
-                  try {
-                    const subjT = namedNode(String(a.subject));
-                    const predT = namedNode(String(a.predicate));
-                    const objT = DataFactory.literal(String(a.object));
-                    const exists = store.getQuads(subjT, predT, objT, g) || [];
-                    if (!exists || exists.length === 0) {
-                      try { store.addQuad(DataFactory.quad(subjT, predT, objT, g)); } catch (_) { void 0; }
-                    }
-                  } catch (_) { void 0; }
-                }
-              }
-            } catch (_) { /* ignore */ }
           }
         }
       } catch (_) { /* ignore fallback failures */ }
@@ -585,19 +653,29 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
       // After successful load, attempt to discover declared ontology IRI in the ontologies graph
       try {
-        const store =
-          mgr && typeof (mgr as any).getStore === "function"
-            ? (mgr as any).getStore()
-            : rdfManager && typeof (rdfManager as any).getStore === "function"
-            ? (rdfManager as any).getStore()
-            : null;
+        const readMgr =
+          mgr && typeof (mgr as any).fetchQuadsPage === "function"
+            ? mgr
+            : typeof rdfManager !== "undefined" &&
+                rdfManager &&
+                typeof (rdfManager as any).fetchQuadsPage === "function"
+              ? (rdfManager as any)
+              : null;
 
-        if (store && typeof store.getQuads === "function") {
+        if (readMgr) {
           const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
           const OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
-          const g = namedNode("urn:vg:ontologies");
-          const ontQuads = store.getQuads(null, namedNode(RDF_TYPE), namedNode(OWL_ONTOLOGY), g) || [];
-          const subjects = Array.from(new Set((ontQuads || []).map((q: any) => (q && q.subject && (q.subject as any).value) || ""))).filter(Boolean);
+          const ontQuads = await fetchSerializedQuads(readMgr, "urn:vg:ontologies", {
+            predicate: RDF_TYPE,
+          });
+          const subjects = Array.from(
+            new Set(
+              (ontQuads || [])
+                .filter((q) => String(q.object || "") === OWL_ONTOLOGY)
+                .map((q) => q.subject)
+                .filter(Boolean),
+            ),
+          );
 
           if (subjects.length > 0) {
             const canonical = subjects.find((s: any) => /^https?:\/\//i.test(String(s))) || subjects[0];
@@ -624,27 +702,26 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
               const namespaces = {};
 
-                try {
-                  set((state: any) => {
-                    const meta: LoadedOntology = {
-                      url: canonicalNorm,
-                      name: deriveOntologyName(String(canonicalNorm || "")),
-                      classes: [],
-                      properties: [],
-                      // Do not couple loaded ontology entries to runtime namespace snapshots.
-                      namespaces: {},
-                      aliases: aliases.length ? aliases : undefined,
-                      source: "discovered",
-                      graphName: "urn:vg:ontologies",
-                      loadStatus: "ok",
-                      loadError: undefined,
-                    };
-                    return {
-                      loadedOntologies: [...(state.loadedOntologies || []), meta],
-                      ontologiesVersion: (state.ontologiesVersion || 0) + 1,
-                    };
-                  });
-                } catch (_) { /* ignore registration failures */ }
+              try {
+                set((state: any) => {
+                  const meta: LoadedOntology = {
+                    url: canonicalNorm,
+                    name: deriveOntologyName(String(canonicalNorm || "")),
+                    classes: [],
+                    properties: [],
+                    namespaces: {},
+                    aliases: aliases.length ? aliases : undefined,
+                    source: "discovered",
+                    graphName: "urn:vg:ontologies",
+                    loadStatus: "ok",
+                    loadError: undefined,
+                  };
+                  return {
+                    loadedOntologies: [...(state.loadedOntologies || []), meta],
+                    ontologiesVersion: (state.ontologiesVersion || 0) + 1,
+                  };
+                });
+              } catch (_) { /* ignore registration failures */ }
             }
           }
         }
@@ -743,11 +820,18 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
         await rdfManager.loadRDFIntoGraph(rdfContent, targetGraph, undefined, filename);
 
-        // Debug: report store triple count after parser load
+        // Debug: report triple count after parser load using manager graph counts
         try {
-          const store = rdfManager && typeof (rdfManager as any).getStore === "function" ? (rdfManager as any).getStore() : null;
-          const tripleCount = store && typeof store.getQuads === "function" ? (store.getQuads(null, null, null, null) || []).length : -1;
-          console.debug("[VG_DEBUG] rdfManager.loadRDFIntoGraph.tripleCount", { tripleCount });
+          if (rdfManager && typeof (rdfManager as any).getGraphCounts === "function") {
+            const counts = await (rdfManager as any).getGraphCounts();
+            const tripleCount =
+              counts && typeof counts === "object"
+                ? Object.values(counts).reduce((acc: number, val: any) => {
+                    return acc + (typeof val === "number" && Number.isFinite(val) ? val : 0);
+                  }, 0)
+                : -1;
+            console.debug("[VG_DEBUG] rdfManager.loadRDFIntoGraph.tripleCount", { tripleCount });
+          }
         } catch (_) { /* ignore debug failures */ }
       } catch (loadErr) {
         warn(
@@ -1012,10 +1096,21 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
     // Debug: report triple count after additional ontologies batch load
     {
-      const mgr = get().rdfManager;
-      const store = mgr && typeof mgr.getStore === "function" ? mgr.getStore() : null;
-      const tripleCount = store && typeof store.getQuads === "function" ? (store.getQuads(null, null, null, null) || []).length : -1;
-      console.debug("[VG_DEBUG] loadAdditionalOntologies.batchTripleCount", { tripleCount });
+      try {
+        const mgr = get().rdfManager;
+        if (mgr && typeof (mgr as any).getGraphCounts === "function") {
+          const graphCounts = await (mgr as any).getGraphCounts();
+          const tripleCount =
+            graphCounts && typeof graphCounts === "object"
+              ? Object.values(graphCounts).reduce((acc: number, val: any) => {
+                  return acc + (typeof val === "number" && Number.isFinite(val) ? val : 0);
+                }, 0)
+              : -1;
+          console.debug("[VG_DEBUG] loadAdditionalOntologies.batchTripleCount", { tripleCount });
+        }
+      } catch (_) {
+        console.debug("[VG_DEBUG] loadAdditionalOntologies.batchTripleCount", { tripleCount: -1 });
+      }
     }
 
     onProgress?.(100, "Additional ontologies loaded");
@@ -1440,33 +1535,38 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     console.debug("[VG_DEBUG] discoverReferencedOntologies.invoked", { graphName, loadMode, timeoutMs, concurrency });
 
     const mgr = get().rdfManager;
-    if (!mgr || typeof (mgr as any).getStore !== "function") {
+    if (!mgr || typeof (mgr as any).fetchQuadsPage !== "function") {
       vgM && typeof vgM.end === "function" && vgM.end({ reason: "no_mgr" });
-      throw new Error("discoverReferencedOntologies: no rdf manager available");
-    }
-
-    const store = (mgr as any).getStore();
-    if (!store || typeof store.getQuads !== "function") {
-      vgM && typeof vgM.end === "function" && vgM.end({ reason: "no_store" });
-      throw new Error("discoverReferencedOntologies: rdf manager store not available");
+      throw new Error("discoverReferencedOntologies: rdf manager unavailable for worker fetch");
     }
 
     const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
     const OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
     const OWL_IMPORTS = "http://www.w3.org/2002/07/owl#imports";
 
-    const ontQuads = store.getQuads(null, namedNode(RDF_TYPE), namedNode(OWL_ONTOLOGY), null) || [];
-    const importQuads = store.getQuads(null, namedNode(OWL_IMPORTS), null, null) || [];
+    const graphsToScan = Array.from(
+      new Set(
+        [graphName, "urn:vg:ontologies"].filter((g) => typeof g === "string" && g.length > 0),
+      ),
+    );
+
+    const typeQuads = await fetchSerializedQuadsAcrossGraphs(mgr, graphsToScan, {
+      predicate: RDF_TYPE,
+    });
+    const importQuads = await fetchSerializedQuadsAcrossGraphs(mgr, graphsToScan, {
+      predicate: OWL_IMPORTS,
+    });
 
     const candidateSet = new Set<string>();
     if (opts && (opts as any).includeOntologySubject) {
-      for (const q of ontQuads) {
-        const s = q && q.subject && (q.subject as any).value ? String((q.subject as any).value) : "";
-        if (s) candidateSet.add(s);
+      for (const q of typeQuads) {
+        const subj = q && q.subject ? String(q.subject) : "";
+        const obj = q && q.object ? String(q.object) : "";
+        if (subj && obj === OWL_ONTOLOGY) candidateSet.add(subj);
       }
     }
     for (const q of importQuads) {
-      const o = q && q.object && (q.object as any).value ? String((q.object as any).value) : "";
+      const o = q && q.object ? String(q.object) : "";
       if (o) candidateSet.add(o);
     }
 
@@ -1584,44 +1684,51 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
  */
 async function buildFatMap(rdfMgr?: any): Promise<void> {
   const mgr = rdfMgr || (typeof rdfManager !== "undefined" ? rdfManager : undefined);
-  if (!mgr || typeof mgr.getStore !== "function") return;
+  if (!mgr || typeof (mgr as any).fetchQuadsPage !== "function") return;
 
-  const store = mgr.getStore();
-  // Collect all quads across the store and include the ontology named graph explicitly.
-  const allQuads = (store.getQuads(null, null, null, null) || []).slice();
-  const ontQuads = (store.getQuads(null, null, null, namedNode("urn:vg:ontologies")) || []);
-  if (Array.isArray(ontQuads) && ontQuads.length > 0) {
-    allQuads.push(...ontQuads);
+  let allQuads: SerializedQuad[] = [];
+  try {
+    allQuads = await fetchSerializedQuadsAcrossGraphs(mgr, ["urn:vg:data", "urn:vg:ontologies"]);
+  } catch (err) {
+    console.debug("[ontologyStore] buildFatMap fetchSerializedQuadsAcrossGraphs failed", err);
+    return;
   }
 
   const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
   const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
 
-  const subjects = Array.from(
-    new Set(
-      (allQuads || []).map((q: any) => (q && q.subject && (q.subject.value || q.subject)) || "").filter(Boolean),
-    ),
-  );
+  const subjectIndex = new Map<string, SerializedQuad[]>();
+  for (const quad of allQuads) {
+    const subj = quad && quad.subject ? String(quad.subject) : "";
+    if (!subj) continue;
+    if (!subjectIndex.has(subj)) subjectIndex.set(subj, []);
+    subjectIndex.get(subj)!.push(quad);
+  }
 
   const propsMap: Record<string, any> = {};
   const classesMap: Record<string, any> = {};
 
-  for (const s of subjects) {
-    const subj = namedNode(String(s));
-    const typeQuads = store.getQuads(subj, namedNode(RDF_TYPE), null, null) || [];
-    const types = Array.from(new Set(typeQuads.map((q: any) => (q && q.object && (q.object as any).value) || "").filter(Boolean)));
+  for (const [subject, quads] of subjectIndex.entries()) {
+    const types = Array.from(
+      new Set(
+        (quads || [])
+          .filter((q) => q && q.predicate === RDF_TYPE)
+          .map((q) => String(q.object || ""))
+          .filter(Boolean),
+      ),
+    );
 
-    const isProp = types.some((t: string) => /Property/i.test(String(t)));
-    const isClass = types.some((t: string) => /Class/i.test(String(t)));
+    const isProp = types.some((t) => /Property/i.test(String(t)));
+    const isClass = types.some((t) => /Class/i.test(String(t)));
 
-    const labelQ = store.getQuads(subj, namedNode(RDFS_LABEL), null, null) || [];
-    const label = labelQ.length > 0 ? String((labelQ[0].object as any).value) : "";
-    const nsMatch = String(s || "").match(/^(.*[\/#])/);
+    const labelQuad = (quads || []).find((q) => q && q.predicate === RDFS_LABEL);
+    const label = labelQuad ? String(labelQuad.object || "") : "";
+    const nsMatch = String(subject || "").match(/^(.*[\/#])/);
     const namespace = nsMatch && nsMatch[1] ? String(nsMatch[1]) : "";
 
     if (isProp) {
-      propsMap[String(s)] = {
-        iri: String(s),
+      propsMap[String(subject)] = {
+        iri: String(subject),
         label,
         domain: [],
         range: [],
@@ -1631,8 +1738,8 @@ async function buildFatMap(rdfMgr?: any): Promise<void> {
     }
 
     if (isClass) {
-      classesMap[String(s)] = {
-        iri: String(s),
+      classesMap[String(subject)] = {
+        iri: String(subject),
         label,
         namespace,
         properties: [],

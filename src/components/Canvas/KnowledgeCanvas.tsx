@@ -299,33 +299,6 @@ const KnowledgeCanvas: React.FC = () => {
       }
     }
 
-    // Precise check against RDF store rdf:type triples (authoritative)
-    const mgr = getRdfManagerSafe
-      ? getRdfManagerSafe()
-      : typeof getRdfManager === "function"
-        ? getRdfManager()
-        : undefined;
-    if (!mgr || typeof mgr.getStore !== "function") return "unknown";
-    const store = mgr.getStore();
-    const rdfTypeIri =
-      typeof (mgr as any).expandPrefix === "function"
-        ? (mgr as any).expandPrefix("rdf:type")
-        : "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-    const quads =
-      store.getQuads(namedNode(predIri), namedNode(rdfTypeIri), null, null) ||
-      [];
-    for (const q of quads) {
-      const t =
-        q && (q.object as any) && (q.object as any).value
-          ? String((q.object as any).value)
-          : "";
-      if (!t) continue;
-      if (t === "http://www.w3.org/2002/07/owl#AnnotationProperty")
-        return "annotation";
-      if (t === "http://www.w3.org/2002/07/owl#ObjectProperty") return "object";
-      if (t === "http://www.w3.org/2002/07/owl#DatatypeProperty")
-        return "datatype";
-    }
     return "unknown";
   };
 
@@ -1485,23 +1458,14 @@ const KnowledgeCanvas: React.FC = () => {
       // Safety-net: after registering, request an immediate subject emission for
       // any subjects already present in the store so late subscribers receive a snapshot.
       try {
-        if (mgr && typeof (mgr as any).triggerSubjectUpdate === "function" && typeof mgr.getStore === "function") {
-          try {
-            const dataGraph = namedNode("urn:vg:data");
-            const all = mgr.getStore().getQuads(null, null, null, dataGraph) || [];
-            const subs = Array.from(new Set((all || []).map((q: any) => {
-              try { return q && q.subject && (q.subject as any).value ? String((q.subject as any).value) : null; } catch { return null; }
-            }).filter(Boolean)));
-            if (subs.length > 0) {
-              // Fire-and-forget; do not block init on errors
-              (mgr as any).triggerSubjectUpdate(subs).catch((e: any) => {
-                console.debug("[VG_DEBUG] triggerSubjectUpdate (post-register) failed", e);
-              });
+        if (mgr && typeof (mgr as any).emitAllSubjects === "function") {
+          void (async () => {
+            try {
+              await (mgr as any).emitAllSubjects("urn:vg:data");
+            } catch (e) {
+              console.debug("[VG_DEBUG] emitAllSubjects (post-register) failed", e);
             }
-          } catch (e) {
-            // ignore any failures here
-            console.debug("[VG_DEBUG] post-registration subject replay failed", e);
-          }
+          })();
         }
       } catch (_) {
         /* ignore */
@@ -2559,7 +2523,7 @@ const KnowledgeCanvas: React.FC = () => {
   );
 
   const handleSaveLinkProperty = useCallback(
-    (propertyUri: string, label: string) => {
+    async (propertyUri: string, label: string) => {
       const selected = selectedLinkPayload;
       if (!selected) return;
 
@@ -2581,53 +2545,82 @@ const KnowledgeCanvas: React.FC = () => {
       );
 
       const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
-      if (mgr && typeof mgr.getStore === "function" && selected) {
-        const store = mgr.getStore();
+      if (!mgr || !selected) return;
 
-        const subjIri =
-          (selected as any).source ||
-          (selected as any).data?.from ||
-          (selected as any).from ||
-          "";
-        const objIri =
-          (selected as any).target ||
-          (selected as any).data?.to ||
-          (selected as any).to ||
-          "";
+      const subjIri =
+        (selected as any).source ||
+        (selected as any).data?.from ||
+        (selected as any).from ||
+        "";
+      const objIri =
+        (selected as any).target ||
+        (selected as any).data?.to ||
+        (selected as any).to ||
+        "";
+      if (!subjIri || !objIri) return;
 
-        if (subjIri && objIri) {
-          const subjTerm = termForIri(String(subjIri));
-          const objTerm = termForIri(String(objIri));
-
-          const oldPredRaw =
-            (selected as any).data?.propertyUri ||
-            (selected as any).data?.propertyType ||
-            (selected as any).propertyUri ||
-            (selected as any).propertyType ||
-            "";
-          if (oldPredRaw) {
-            const oldPredFull =
-              mgr.expandPrefix && typeof mgr.expandPrefix === "function"
-                ? mgr.expandPrefix(oldPredRaw)
-                : oldPredRaw;
-            const g = namedNode("urn:vg:data");
-            const found =
-              store.getQuads(subjTerm, namedNode(oldPredFull), objTerm, g) ||
-              [];
-            for (const q of found) store.removeQuad(q);
+      const expand = (value: string | undefined | null) => {
+        if (!value) return "";
+        if (typeof mgr.expandPrefix === "function") {
+          try {
+            const expanded = mgr.expandPrefix(value);
+            if (expanded) return String(expanded);
+          } catch (_) {
+            /* ignore expansion failures */
           }
+        }
+        return String(value);
+      };
 
-          const newPredFull =
-            mgr.expandPrefix && typeof mgr.expandPrefix === "function"
-              ? mgr.expandPrefix(propertyUri)
-              : propertyUri;
-          const newPredTerm = namedNode(newPredFull);
-          const g = namedNode("urn:vg:data");
-          const exists =
-            store.getQuads(subjTerm, newPredTerm, objTerm, g) || [];
-          if (exists.length === 0) {
-            store.addQuad(DataFactory.quad(subjTerm, newPredTerm, objTerm, g));
-          }
+      const oldPredRaw =
+        (selected as any).data?.propertyUri ||
+        (selected as any).data?.propertyType ||
+        (selected as any).propertyUri ||
+        (selected as any).propertyType ||
+        "";
+
+      const previousPredicate = oldPredRaw ? expand(String(oldPredRaw)) : "";
+      const nextPredicate = expand(propertyUri);
+      const graphName = "urn:vg:data";
+
+      const removes: Array<{ subject: string; predicate: string; object: string }> = [];
+      const adds: Array<{ subject: string; predicate: string; object: string }> = [];
+
+      if (previousPredicate && previousPredicate !== nextPredicate) {
+        removes.push({
+          subject: String(subjIri),
+          predicate: previousPredicate,
+          object: String(objIri),
+        });
+      }
+
+      if (!previousPredicate || previousPredicate !== nextPredicate) {
+        adds.push({
+          subject: String(subjIri),
+          predicate: nextPredicate,
+          object: String(objIri),
+        });
+      }
+
+      if (removes.length === 0 && adds.length === 0) return;
+
+      if (typeof mgr.applyBatch === "function") {
+        try {
+          await mgr.applyBatch({ removes, adds }, graphName);
+          return;
+        } catch (err) {
+          console.error("[KnowledgeCanvas] applyBatch failed for link property update", err);
+        }
+      }
+
+      if (removes.length && typeof mgr.removeTriple === "function") {
+        for (const rem of removes) {
+          try { mgr.removeTriple(rem.subject, rem.predicate, rem.object, graphName); } catch (_) { /* ignore */ }
+        }
+      }
+      if (adds.length && typeof mgr.addTriple === "function") {
+        for (const add of adds) {
+          try { mgr.addTriple(add.subject, add.predicate, add.object, graphName); } catch (_) { /* ignore */ }
         }
       }
     },

@@ -22,7 +22,7 @@ interface LinkPropertyEditorProps {
   linkData: any;
   sourceNode: any;
   targetNode: any;
-  onSave: (propertyType: string, label: string) => void;
+  onSave: (propertyType: string, label: string) => Promise<void> | void;
 }
 
 /**
@@ -62,24 +62,30 @@ export const LinkPropertyEditor = ({
   // Read suggestions directly from the store each render (no snapshots).
   const availableProperties = useOntologyStore((s) => s.availableProperties);
   const entityIndex = useOntologyStore((s) => (s as any).entityIndex);
-  const entitySuggestions = Array.isArray(entityIndex?.suggestions) ? entityIndex.suggestions : [];
-  const computedAllObjectProperties = Array.isArray(entitySuggestions) && entitySuggestions.length > 0
-    ? entitySuggestions.map((ent: any) => ({
+  const entitySuggestions = Array.isArray(entityIndex?.suggestions) ? entityIndex.suggestions : undefined;
+  const computedAllObjectProperties = useMemo(() => {
+    if (Array.isArray(entitySuggestions) && entitySuggestions.length > 0) {
+      return entitySuggestions.map((ent: any) => ({
         iri: String(ent.iri || ent || ''),
         label: ent.label || undefined,
         description: ent.display || ent.description,
         rdfType: ent.rdfType,
         prefixed: ent.prefixed,
         __native: ent,
-      }))
-    : (Array.isArray(availableProperties) ? availableProperties.map((prop: any) => ({
+      }));
+    }
+    if (Array.isArray(availableProperties)) {
+      return availableProperties.map((prop: any) => ({
         iri: String(prop.iri || prop || ''),
         label: prop.label || undefined,
         description: prop.description || prop.namespace || undefined,
         rdfType: prop.rdfType || prop.type,
         prefixed: prop.prefixed,
         __native: prop,
-      })) : []);
+      }));
+    }
+    return [];
+  }, [entitySuggestions, availableProperties]);
 
   // Use the memoized computedAllObjectProperties directly as the AutoComplete options.
   // This avoids keeping a duplicate state copy; computedAllObjectProperties is memoized and stable.
@@ -96,32 +102,26 @@ export const LinkPropertyEditor = ({
           candidate.propertyType)) ||
       '';
     const resolvedStr = String(resolved || '');
-    // Only update local state if the resolved value actually differs to avoid redundant setState loops.
-    if (resolvedStr !== selectedProperty) {
-      setSelectedProperty(resolvedStr);
-    }
-  }, [
-    // Re-run when the dialog is opened or when linkData identity/fields change.
-    open,
-    linkData?.id,
-    linkData?.key,
-    linkData?.propertyUri,
-    linkData?.propertyType,
-    linkData?.data?.propertyUri,
-    linkData?.data?.propertyType,
-  ]);
+    setSelectedProperty((prev) => (prev === resolvedStr ? prev : resolvedStr));
+  }, [open, linkData]);
 
   // If the editor opens and there is no selectedProperty yet, but available properties exist,
   // prefill the selector with the first available property so UI tests and users immediately
   // see a sensible default. Use the memoized computedAllObjectProperties directly.
+  const firstSuggestionIri =
+    computedAllObjectProperties.length > 0
+      ? String(computedAllObjectProperties[0]?.iri || "")
+      : "";
+
   useEffect(() => {
-    if ((!selectedProperty || String(selectedProperty).trim() === "") && Array.isArray(computedAllObjectProperties) && computedAllObjectProperties.length > 0) {
-      const first = computedAllObjectProperties[0];
-      if (first && first.iri) {
-        setSelectedProperty(String(first.iri));
-      }
-    }
-  }, [computedAllObjectProperties, selectedProperty, open]);
+    if (!open) return;
+    if (!firstSuggestionIri) return;
+    const trimmed = String(selectedProperty || "").trim();
+    if (trimmed) return;
+    setSelectedProperty((prev) =>
+      String(prev || "").trim() ? prev : firstSuggestionIri,
+    );
+  }, [open, selectedProperty, firstSuggestionIri]);
 
   useEffect(() => {
     {
@@ -164,40 +164,83 @@ export const LinkPropertyEditor = ({
     const subjIri = (sourceNode && ((sourceNode as any).iri));
     const objIri = (targetNode && ((targetNode as any).iri));
     const oldPredIRI = linkData.data?.propertyUri;
+    const graphName = "urn:vg:data";
     if (mgr && subjIri && objIri) {
-      const predFull =
-        mgr && typeof mgr.expandPrefix === 'function' ? String(mgr.expandPrefix(uriToSave)) : String(uriToSave);
-
-      const g = 'urn:vg:data';
-
-      // Creation vs update:
-      // - If there is no existing predicate (create), only add the new triple.
-      // - If there is an existing predicate and it differs, remove exactly that triple and add the new one.
-      // Do NOT perform any removals when creating a link (oldPredIRI is absent) to avoid removing unrelated triples.
-      if (!oldPredIRI) {
-        {
-          if (typeof mgr.addTriple === "function") {
-            mgr.addTriple(subjIri, predFull, objIri, g);
+      const expand = (value: string | undefined | null) => {
+        if (!value) return "";
+        if (typeof mgr.expandPrefix === "function") {
+          try {
+            const expanded = mgr.expandPrefix(value);
+            if (expanded) return String(expanded);
+          } catch (_) {
+            /* ignore expansion failures */
           }
         }
-      } else if (String(oldPredIRI) !== String(predFull)) {
-        {
-          if (typeof mgr.removeTriple === "function") {
-            mgr.removeTriple(subjIri, oldPredIRI, objIri, g);
+        return String(value);
+      };
+
+      const nextPredicate = expand(String(uriToSave));
+      const previousPredicate = oldPredIRI ? expand(String(oldPredIRI)) : "";
+
+      const removes: Array<{ subject: string; predicate: string; object: string }> = [];
+      const adds: Array<{ subject: string; predicate: string; object: string }> = [];
+
+      if (previousPredicate && previousPredicate !== nextPredicate) {
+        removes.push({
+          subject: String(subjIri),
+          predicate: previousPredicate,
+          object: String(objIri),
+        });
+      }
+
+      if (!previousPredicate || previousPredicate !== nextPredicate) {
+        adds.push({
+          subject: String(subjIri),
+          predicate: nextPredicate,
+          object: String(objIri),
+        });
+      }
+
+      if (removes.length === 0 && adds.length === 0) {
+        /* No effective change requested */
+      } else if (typeof mgr.applyBatch === "function") {
+        try {
+          await mgr.applyBatch({ removes, adds }, graphName);
+        } catch (err) {
+          console.error("[LinkPropertyEditor] applyBatch failed, falling back to primitive ops", err);
+          if (removes.length && typeof mgr.removeTriple === "function") {
+            for (const rem of removes) {
+              try { mgr.removeTriple(rem.subject, rem.predicate, rem.object, graphName); } catch (_) { /* ignore */ }
+            }
+          }
+          if (adds.length && typeof mgr.addTriple === "function") {
+            for (const add of adds) {
+              try { mgr.addTriple(add.subject, add.predicate, add.object, graphName); } catch (_) { /* ignore */ }
+            }
           }
         }
-        {
-          if (typeof mgr.addTriple === "function") {
-            mgr.addTriple(subjIri, predFull, objIri, g);
+      } else {
+        if (removes.length && typeof mgr.removeTriple === "function") {
+          for (const rem of removes) {
+            try { mgr.removeTriple(rem.subject, rem.predicate, rem.object, graphName); } catch (_) { /* ignore */ }
+          }
+        }
+        if (adds.length && typeof mgr.addTriple === "function") {
+          for (const add of adds) {
+            try { mgr.addTriple(add.subject, add.predicate, add.object, graphName); } catch (_) { /* ignore */ }
           }
         }
       }
     }
-    // Notify parent; canvas mapping will pick up the change via RDF manager
-    const property = (computedAllObjectProperties || []).find((p) => String(p.iri || '') === String(uriToSave));
-    onSave(uriToSave, property?.label || uriToSave);
-    try { canvasActions.setLoading(false, 0, ""); } catch (_) {/* noop */}
-    onOpenChange(false);
+    try {
+      const property = (computedAllObjectProperties || []).find((p) => String(p.iri || '') === String(uriToSave));
+      await onSave(uriToSave, property?.label || uriToSave);
+    } catch (err) {
+      console.error("[LinkPropertyEditor] onSave handler rejected", err);
+    } finally {
+      try { canvasActions.setLoading(false, 0, ""); } catch (_) {/* noop */}
+      onOpenChange(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -221,27 +264,28 @@ export const LinkPropertyEditor = ({
       mgr = (mgrState as any).rdfManager || fallbackRdfManager;
     }
 
-    const g = 'urn:vg:data';
+    const g = "urn:vg:data";
     const subjIri = (sourceNode && ((sourceNode as any).iri));
     const objIri = (targetNode && ((targetNode as any).iri));
     const predicateRaw = selectedProperty || displayValue;
     const predFull = mgr && typeof mgr.expandPrefix === 'function' ? String(mgr.expandPrefix(predicateRaw)) : String(predicateRaw);
-    {
-      if (mgr && typeof mgr.removeTriple === "function") {
-        mgr.removeTriple(subjIri, predFull, objIri, g);
-      } else if (mgr && typeof mgr.getStore === "function") {
-        // best-effort fallback: remove via low-level store if manager doesn't expose helper
+    if (mgr && subjIri && objIri && predFull) {
+      const removes = [{ subject: String(subjIri), predicate: predFull, object: String(objIri) }];
+      if (typeof mgr.applyBatch === "function") {
         try {
-          const store = mgr.getStore();
-          const s = namedNode(String(subjIri));
-          const p = namedNode(String(predFull));
-          const o = /^https?:\/\//i.test(String(objIri)) ? namedNode(String(objIri)) : (String(objIri) ? namedNode(String(objIri)) : null);
-          const found = store.getQuads(s, p, o, namedNode(g)) || [];
-          for (const q of found) {
-            try { if (typeof mgr.bufferSubjectFromQuad === "function") mgr.bufferSubjectFromQuad(q); } catch (_) { void 0; }
-            if (typeof store.removeQuad === "function") store.removeQuad(q);
+          await mgr.applyBatch({ removes, adds: [] }, g);
+        } catch (err) {
+          console.error("[LinkPropertyEditor] applyBatch remove failed, falling back to removeTriple", err);
+          if (typeof mgr.removeTriple === "function") {
+            for (const rem of removes) {
+              try { mgr.removeTriple(rem.subject, rem.predicate, rem.object, g); } catch (_) { /* ignore */ }
+            }
           }
-        } catch (_) { /* ignore fallback failures */ }
+        }
+      } else if (typeof mgr.removeTriple === "function") {
+        for (const rem of removes) {
+          try { mgr.removeTriple(rem.subject, rem.predicate, rem.object, g); } catch (_) { /* ignore */ }
+        }
       }
     }
 

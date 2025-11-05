@@ -1,4 +1,4 @@
-import { memo, useState, useEffect } from 'react';
+import { memo, useState, useEffect, useCallback } from 'react';
 import { rdfManager } from '../../utils/rdfManager';
 import {
   Dialog,
@@ -29,7 +29,7 @@ const InferredTriplesTable = () => {
   const [total, setTotal] = useState(0);
 
   // Fetch the page items lazily from the rdfManager's indexed API
-  const fetchPage = async (p: number, ps: number) => {
+  const fetchPage = useCallback(async (p: number, ps: number) => {
     try {
       setLoading(true);
       try {
@@ -49,19 +49,16 @@ const InferredTriplesTable = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     // load initial page
     void fetchPage(page, pageSize);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
+  }, [page, pageSize, fetchPage]);
 
   useEffect(() => {
-    // if total changes and page is out of range, clamp
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
-    if (page > totalPages) setPage(totalPages);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setPage((prev) => (prev > totalPages ? totalPages : prev));
   }, [total, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -201,6 +198,43 @@ interface ReasoningReportModalProps {
 }
 
 export const ReasoningReportModal = memo(({ open, onOpenChange, currentReasoning, reasoningHistory }: ReasoningReportModalProps) => {
+  const [graphCounts, setGraphCounts] = useState<Record<string, number>>({});
+  const reasoningId = currentReasoning?.id ?? null;
+  const hasReasoning = !!currentReasoning;
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadGraphCounts = async () => {
+      if (!open || !hasReasoning) {
+        if (!cancelled) {
+          setGraphCounts((prev) => {
+            if (!prev || Object.keys(prev).length === 0) {
+              return prev;
+            }
+            return {};
+          });
+        }
+        return;
+      }
+      try {
+        const counts = await rdfManager.getGraphCounts();
+        if (!cancelled) {
+          setGraphCounts(counts || {});
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.warn("[ReasoningReportModal] Failed to fetch graph counts", err);
+          setGraphCounts({});
+        }
+      }
+    };
+
+    void loadGraphCounts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, reasoningId, hasReasoning]);
 
   if (!currentReasoning) {
     return (
@@ -219,9 +253,7 @@ export const ReasoningReportModal = memo(({ open, onOpenChange, currentReasoning
 
   const { errors, warnings, inferences, status, duration, timestamp } = currentReasoning;
 
-  // Determine inferred count via authoritative rdfManager (prefer authoritative store)
-  const graphCounts = rdfManager.getGraphCounts();
-  const inferredCount = graphCounts && graphCounts['urn:vg:inferred'] ? graphCounts['urn:vg:inferred'] : 0;
+  const inferredCount = graphCounts['urn:vg:inferred'] || 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

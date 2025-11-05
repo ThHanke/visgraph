@@ -3,6 +3,8 @@ import { Buffer } from "buffer";
 (globalThis as any).Buffer = Buffer;
 import rdfParsePkg from "rdf-parse";
 import * as N3 from "n3";
+import type { RDFWorkerCommand } from "../utils/rdfManager.workerProtocol";
+import { WELL_KNOWN } from "../utils/wellKnownOntologies";
 
 declare const self: any;
 
@@ -84,9 +86,38 @@ type ReasoningErrorMessage = {
 
 const pendingAcks = new Map<string, boolean>();
 
-self.addEventListener("message", (event: MessageEvent<AckMessage | LoadMessage | ReasoningRequest>) => {
+let sharedStore: any | null = null;
+let workerNamespaces: Record<string, string> = {};
+let workerBlacklistPrefixes: Set<string> = new Set(["owl", "rdf", "rdfs", "xml", "xsd"]);
+let workerBlacklistUris: string[] = [
+  "http://www.w3.org/2002/07/owl",
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+  "http://www.w3.org/2000/01/rdf-schema#",
+  "http://www.w3.org/XML/1998/namespace",
+  "http://www.w3.org/2001/XMLSchema#",
+];
+let workerChangeCounter = 0;
+
+function resetSharedStore() {
+  const { StoreCls } = resolveN3();
+  if (!StoreCls) throw new Error("n3-store-unavailable");
+  sharedStore = new (StoreCls as any)();
+  workerChangeCounter = 0;
+  return sharedStore;
+}
+
+function getSharedStore() {
+  if (sharedStore) return sharedStore;
+  return resetSharedStore();
+}
+
+self.addEventListener("message", (event: MessageEvent<any>) => {
   const msg = event.data;
   if (!msg) return;
+  if (msg.type === "command") {
+    handleCommand(msg as RDFWorkerCommand);
+    return;
+  }
   if (msg.type === "ack") {
     pendingAcks.set(String(msg.id), true);
     return;
@@ -136,6 +167,36 @@ function reasoningStage(message: ReasoningStageMessage) {
     /* ignore stage emission failures */
   }
 }
+function emitChange(meta?: Record<string, unknown> | null) {
+  try {
+    workerChangeCounter += 1;
+    post({
+      type: "event",
+      event: "change",
+      payload: { changeCount: workerChangeCounter, meta: meta || null },
+    });
+  } catch (err) {
+    console.error("[rdfManager.worker] emitChange failed", err);
+  }
+}
+
+function emitSubjects(subjects: string[], quadsBySubject?: Record<string, PlainQuad[]>) {
+  try {
+    post({
+      type: "event",
+      event: "subjects",
+      payload: {
+        subjects,
+        quads:
+          quadsBySubject && Object.keys(quadsBySubject).length > 0
+            ? quadsBySubject
+            : undefined,
+      },
+    });
+  } catch (err) {
+    console.error("[rdfManager.worker] emitSubjects failed", err);
+  }
+}
 
 function resolveN3() {
   const mod: any = N3;
@@ -172,12 +233,13 @@ function plainQuadKey(pq: PlainQuad): string {
   }
 }
 
-function plainToQuad(pq: PlainQuad, DataFactory: any): any {
+function plainToQuad(pq: PlainQuad, DataFactory: any): any | null {
   const { namedNode, blankNode, literal, quad } = DataFactory;
   const sTerm = /^_:/.test(String(pq.s || ""))
     ? blankNode(String(pq.s).replace(/^_:/, ""))
     : namedNode(String(pq.s));
   const pTerm = namedNode(String(pq.p));
+  if (!pq.o) return null;
   let oTerm: any;
   if (pq.o && pq.o.t === "iri") {
     oTerm = namedNode(String(pq.o.v));
@@ -197,6 +259,189 @@ function plainToQuad(pq: PlainQuad, DataFactory: any): any {
   const gTerm =
     pq.g && String(pq.g).length > 0 ? namedNode(String(pq.g)) : undefined;
   return quad(sTerm as any, pTerm as any, oTerm as any, gTerm as any);
+}
+
+function plainTermToSubject(value: string, DataFactory: any) {
+  const { namedNode, blankNode } = DataFactory;
+  if (/^_:/.test(String(value || ""))) {
+    return blankNode(String(value).replace(/^_:/, ""));
+  }
+  return namedNode(String(value));
+}
+
+function plainTermToObject(o: PlainQuad["o"], DataFactory: any) {
+  const { namedNode, blankNode, literal } = DataFactory;
+  if (!o) return null;
+  if (o.t === "iri") return namedNode(String(o.v));
+  if (o.t === "bnode") return blankNode(String(o.v));
+  if (o.t === "lit") {
+    if (o.dt) return literal(String(o.v), namedNode(String(o.dt)));
+    if (o.ln) return literal(String(o.v), String(o.ln));
+    return literal(String(o.v));
+  }
+  return literal(String(o.v || ""));
+}
+
+function subjectTermToString(term: any, fallback?: string): string {
+  try {
+    if (!term) return fallback || "";
+    const value = term.value ?? "";
+    if (term.termType === "BlankNode") {
+      return `_:${String(value)}`;
+    }
+    return String(value || "");
+  } catch (_) {
+    return fallback || "";
+  }
+}
+
+function collectPlainQuadsForSubject(subject: string, store: any, DataFactory: any): PlainQuad[] {
+  try {
+    const term =
+      /^_:/i.test(String(subject))
+        ? DataFactory.blankNode(String(subject).replace(/^_:/, ""))
+        : DataFactory.namedNode(String(subject));
+    const quads = store.getQuads(term, null, null, null) || [];
+    const out: PlainQuad[] = [];
+    for (const q of quads) {
+      const pq = quadToPlain(q);
+      if (pq) out.push(pq);
+    }
+    return out;
+  } catch (err) {
+    console.error("[rdfManager.worker] collectPlainQuadsForSubject failed", err);
+    return [];
+  }
+}
+
+function termToString(term: any): string {
+  try {
+    if (!term) return "";
+    if (term.termType === "BlankNode") {
+      return `_:${String(term.value || "")}`;
+    }
+    if (term.termType === "Literal") {
+      return String(term.value || "");
+    }
+    if (term.termType === "NamedNode") {
+      return String(term.value || "");
+    }
+    if (typeof term === "object" && term.value) {
+      return String(term.value);
+    }
+    return String(term);
+  } catch (_) {
+    return "";
+  }
+}
+
+function isBlacklistedIri(iri: string): boolean {
+  try {
+    const value = String(iri || "").trim();
+    if (!value) return false;
+    if (value.startsWith("_:")) return false;
+
+    if (!/^https?:\/\//i.test(value) && value.includes(":")) {
+      const prefix = value.split(":", 1)[0];
+      if (workerBlacklistPrefixes.has(prefix)) return true;
+    }
+
+    const candidates = new Set<string>();
+    for (const uri of workerBlacklistUris) {
+      if (uri) candidates.add(String(uri));
+    }
+
+    for (const prefix of Array.from(workerBlacklistPrefixes)) {
+      const namespace = workerNamespaces[prefix];
+      if (namespace) candidates.add(String(namespace));
+
+      try {
+        const wkPrefix =
+          WELL_KNOWN && WELL_KNOWN.prefixes && WELL_KNOWN.prefixes[prefix];
+        if (wkPrefix) candidates.add(String(wkPrefix));
+
+        const ontologies = WELL_KNOWN && WELL_KNOWN.ontologies ? WELL_KNOWN.ontologies : {};
+        for (const [ontUrl, meta] of Object.entries(ontologies)) {
+          const data = meta as any;
+          if (data && data.namespaces && data.namespaces[prefix]) {
+            candidates.add(String(ontUrl));
+            if (Array.isArray(data.aliases)) {
+              for (const alias of data.aliases) {
+                if (alias) candidates.add(String(alias));
+              }
+            }
+          }
+        }
+      } catch (_) {
+        /* ignore */
+      }
+    }
+
+    const normalized = new Set<string>();
+    for (const candidate of candidates) {
+      const trimmed = String(candidate || "").trim();
+      if (!trimmed) continue;
+      normalized.add(trimmed);
+      if (trimmed.endsWith("#")) normalized.add(trimmed.slice(0, -1));
+      else normalized.add(`${trimmed}#`);
+      if (trimmed.endsWith("/")) normalized.add(trimmed.slice(0, -1));
+      else normalized.add(`${trimmed}/`);
+    }
+
+    for (const candidate of normalized) {
+      if (candidate && value.startsWith(candidate)) return true;
+    }
+  } catch (err) {
+    console.error("[rdfManager.worker] isBlacklistedIri failed", err);
+  }
+  return false;
+}
+
+function prepareSubjectEmissionFromSet(
+  subjectSet: Set<string>,
+  store: any,
+  DataFactory: any,
+): { subjects: string[]; quadsBySubject: Record<string, PlainQuad[]> } {
+  const subjects: string[] = [];
+  const quadsBySubject: Record<string, PlainQuad[]> = {};
+  for (const raw of subjectSet) {
+    try {
+      const subject = String(raw || "").trim();
+      if (!subject) continue;
+      if (isBlacklistedIri(subject)) continue;
+      subjects.push(subject);
+      quadsBySubject[subject] = collectPlainQuadsForSubject(subject, store, DataFactory);
+    } catch (err) {
+      console.error("[rdfManager.worker] prepareSubjectEmissionFromSet item failed", err);
+    }
+  }
+  return { subjects, quadsBySubject };
+}
+
+function prepareSubjectEmissionFromQuads(
+  quads: any[],
+  DataFactory: any,
+): { subjects: string[]; quadsBySubject: Record<string, PlainQuad[]> } {
+  const map = new Map<string, PlainQuad[]>();
+  for (const q of quads || []) {
+    try {
+      const subject = subjectTermToString(q.subject);
+      if (!subject) continue;
+      if (isBlacklistedIri(subject)) continue;
+      const plain = quadToPlain(q);
+      if (!plain) continue;
+      if (!map.has(subject)) map.set(subject, []);
+      map.get(subject)!.push(plain);
+    } catch (err) {
+      console.error("[rdfManager.worker] prepareSubjectEmissionFromQuads item failed", err);
+    }
+  }
+  const subjects = Array.from(map.keys());
+  const quadsBySubject: Record<string, PlainQuad[]> = {};
+  for (const subject of subjects) {
+    quadsBySubject[subject] = map.get(subject)!;
+  }
+  return { subjects, quadsBySubject };
 }
 
 function quadToPlain(q: any, overrideGraph?: string): PlainQuad {
@@ -506,6 +751,496 @@ async function handleLoad(msg: LoadMessage) {
   }
 
   post({ type: "end", id, prefixes });
+}
+
+async function handleCommand(msg: RDFWorkerCommand) {
+  try {
+    const payload = Array.isArray(msg.args) && msg.args.length > 0 ? msg.args[0] : undefined;
+    let result: unknown;
+    switch (msg.command) {
+      case "ping":
+        result = "pong";
+        break;
+      case "clear":
+        resetSharedStore();
+        workerNamespaces = {};
+        workerBlacklistPrefixes = new Set(["owl", "rdf", "rdfs", "xml", "xsd"]);
+        workerBlacklistUris = [
+          "http://www.w3.org/2002/07/owl",
+          "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+          "http://www.w3.org/2000/01/rdf-schema#",
+          "http://www.w3.org/XML/1998/namespace",
+          "http://www.w3.org/2001/XMLSchema#",
+        ];
+        emitChange({ reason: "clear" });
+        emitSubjects([]);
+        result = true;
+        break;
+      case "getGraphCounts":
+        result = collectGraphCountsFromStore(getSharedStore());
+        break;
+      case "getNamespaces":
+        result = { ...workerNamespaces };
+        break;
+      case "setNamespaces":
+        workerNamespaces =
+          payload && typeof payload === "object" && payload.namespaces && typeof payload.namespaces === "object"
+            ? { ...payload.namespaces }
+            : {};
+        result = { ...workerNamespaces };
+        break;
+      case "getBlacklist":
+        result = {
+          prefixes: Array.from(workerBlacklistPrefixes),
+          uris: workerBlacklistUris.slice(),
+        };
+        break;
+      case "setBlacklist":
+        if (payload && typeof payload === "object") {
+          if (Array.isArray(payload.prefixes)) {
+            workerBlacklistPrefixes = new Set(payload.prefixes.map((p: any) => String(p)));
+          }
+          if (Array.isArray(payload.uris)) {
+            workerBlacklistUris = payload.uris.map((u: any) => String(u));
+          }
+        }
+        result = {
+          prefixes: Array.from(workerBlacklistPrefixes),
+          uris: workerBlacklistUris.slice(),
+        };
+        break;
+      case "syncLoad": {
+        const { DataFactory } = resolveN3();
+        if (!DataFactory) throw new Error("n3-datafactory-unavailable");
+        const store = getSharedStore();
+        const graphName =
+          payload && typeof payload === "object" && typeof payload.graphName === "string"
+            ? payload.graphName
+            : "urn:vg:data";
+        const graphTerm =
+          graphName && graphName !== "default"
+            ? DataFactory.namedNode(String(graphName))
+            : DataFactory.defaultGraph();
+        const existing = store.getQuads(null, null, null, graphTerm) || [];
+        const touchedSubjects = new Set<string>();
+        let removed = 0;
+        let added = 0;
+
+        for (const q of existing) {
+          try {
+            store.removeQuad(q);
+            removed += 1;
+            touchedSubjects.add(subjectTermToString(q.subject));
+          } catch (err) {
+            console.error("[rdfManager.worker] syncLoad remove existing failed", err);
+          }
+        }
+
+        if (payload && Array.isArray(payload.quads)) {
+          for (const pq of payload.quads) {
+            try {
+              const q = plainToQuad(pq, DataFactory);
+              if (!q) continue;
+              store.addQuad(q);
+              added += 1;
+              touchedSubjects.add(subjectTermToString(q.subject, pq.s));
+            } catch (err) {
+              console.error("[rdfManager.worker] syncLoad add failed", err);
+            }
+          }
+        }
+
+        if (payload && payload.prefixes && typeof payload.prefixes === "object") {
+          workerNamespaces = { ...workerNamespaces, ...(payload.prefixes as Record<string, string>) };
+        }
+
+        const { subjects, quadsBySubject } = prepareSubjectEmissionFromSet(
+          touchedSubjects,
+          store,
+          DataFactory,
+        );
+
+        emitChange({ reason: "syncLoad", graphName, added, removed });
+        if (subjects.length > 0) emitSubjects(subjects, quadsBySubject);
+
+        result = { graphName, added, removed };
+        break;
+      }
+      case "syncRemoveGraph": {
+        const { DataFactory } = resolveN3();
+        if (!DataFactory) throw new Error("n3-datafactory-unavailable");
+        const store = getSharedStore();
+        const graphName =
+          payload && typeof payload === "object" && typeof payload.graphName === "string"
+            ? payload.graphName
+            : "urn:vg:data";
+        const graphTerm =
+          graphName && graphName !== "default"
+            ? DataFactory.namedNode(String(graphName))
+            : DataFactory.defaultGraph();
+        const quads = store.getQuads(null, null, null, graphTerm) || [];
+        const touchedSubjects = new Set<string>();
+        let removed = 0;
+        for (const q of quads) {
+          try {
+            store.removeQuad(q);
+            removed += 1;
+            touchedSubjects.add(subjectTermToString(q.subject));
+          } catch (err) {
+            console.error("[rdfManager.worker] syncRemoveGraph remove failed", err);
+          }
+        }
+        if (removed > 0) {
+          const { subjects, quadsBySubject } = prepareSubjectEmissionFromSet(
+            touchedSubjects,
+            store,
+            DataFactory,
+          );
+          emitChange({ reason: "removeGraph", graphName, removed });
+          if (subjects.length > 0) emitSubjects(subjects, quadsBySubject);
+        }
+        result = { graphName, removed };
+        break;
+      }
+      case "syncRemoveAllQuadsForIri": {
+        const { DataFactory } = resolveN3();
+        if (!DataFactory) throw new Error("n3-datafactory-unavailable");
+        const store = getSharedStore();
+        const iri =
+          payload && typeof payload === "object" && typeof payload.iri === "string"
+            ? payload.iri
+            : "";
+        if (!iri) {
+          result = { removedSubjects: 0, removedObjects: 0 };
+          break;
+        }
+        const graphName =
+          payload && typeof payload === "object" && typeof payload.graphName === "string"
+            ? payload.graphName
+            : "urn:vg:data";
+        const graphTerm =
+          graphName && graphName !== "default"
+            ? DataFactory.namedNode(String(graphName))
+            : DataFactory.defaultGraph();
+        const subjTerm = /^_:/i.test(String(iri))
+          ? DataFactory.blankNode(String(iri).replace(/^_:/, ""))
+          : DataFactory.namedNode(String(iri));
+        const touchedSubjects = new Set<string>();
+        let removedSubjects = 0;
+        let removedObjects = 0;
+
+        try {
+          const subjectQuads = store.getQuads(subjTerm, null, null, graphTerm) || [];
+          for (const q of subjectQuads) {
+            try {
+              store.removeQuad(q);
+              removedSubjects += 1;
+              touchedSubjects.add(subjectTermToString(q.subject));
+            } catch (err) {
+              console.error("[rdfManager.worker] syncRemoveAllQuadsForIri subject removal failed", err);
+            }
+          }
+        } catch (err) {
+          console.error("[rdfManager.worker] syncRemoveAllQuadsForIri subject scan failed", err);
+        }
+
+        try {
+          const objectTerm = DataFactory.namedNode(String(iri));
+          const objectQuads = store.getQuads(null, null, objectTerm, graphTerm) || [];
+          for (const q of objectQuads) {
+            try {
+              store.removeQuad(q);
+              removedObjects += 1;
+              touchedSubjects.add(subjectTermToString(q.subject));
+            } catch (err) {
+              console.error("[rdfManager.worker] syncRemoveAllQuadsForIri object removal failed", err);
+            }
+          }
+        } catch (err) {
+          console.error("[rdfManager.worker] syncRemoveAllQuadsForIri object scan failed", err);
+        }
+
+        if (removedSubjects > 0 || removedObjects > 0) {
+          const { subjects, quadsBySubject } = prepareSubjectEmissionFromSet(
+            touchedSubjects,
+            store,
+            DataFactory,
+          );
+          emitChange({
+            reason: "removeAllQuadsForIri",
+            iri,
+            graphName,
+            removedSubjects,
+            removedObjects,
+          });
+          if (subjects.length > 0) emitSubjects(subjects, quadsBySubject);
+        }
+
+        result = { removedSubjects, removedObjects };
+        break;
+      }
+      case "emitAllSubjects": {
+        const { DataFactory } = resolveN3();
+        if (!DataFactory) throw new Error("n3-datafactory-unavailable");
+        const store = getSharedStore();
+        const graphName =
+          payload && typeof payload === "object" && typeof payload.graphName === "string"
+            ? payload.graphName
+            : "urn:vg:data";
+        const graphTerm =
+          graphName && graphName !== "default"
+            ? DataFactory.namedNode(String(graphName))
+            : DataFactory.defaultGraph();
+        const quads = store.getQuads(null, null, null, graphTerm) || [];
+        const { subjects, quadsBySubject } = prepareSubjectEmissionFromQuads(quads, DataFactory);
+        if (subjects.length > 0) emitSubjects(subjects, quadsBySubject);
+        result = { subjects: subjects.length };
+        break;
+      }
+      case "triggerSubjects": {
+        const { DataFactory } = resolveN3();
+        if (!DataFactory) throw new Error("n3-datafactory-unavailable");
+        const store = getSharedStore();
+        const subjectInput =
+          payload && typeof payload === "object" && Array.isArray((payload as any).subjects)
+            ? (payload as any).subjects
+            : [];
+        const subjectSet = new Set<string>();
+        for (const item of subjectInput) {
+          try {
+            const value = String(item ?? "").trim();
+            if (!value) continue;
+            subjectSet.add(value);
+          } catch (_) {
+            /* ignore individual subject errors */
+          }
+        }
+        const { subjects, quadsBySubject } = prepareSubjectEmissionFromSet(
+          subjectSet,
+          store,
+          DataFactory,
+        );
+        if (subjects.length > 0) emitSubjects(subjects, quadsBySubject);
+        result = { subjects: subjects.length };
+        break;
+      }
+      case "fetchQuadsPage": {
+        const { DataFactory } = resolveN3();
+        if (!DataFactory) throw new Error("n3-datafactory-unavailable");
+        const store = getSharedStore();
+        const graphName =
+          payload && typeof payload === "object" && typeof payload.graphName === "string"
+            ? payload.graphName
+            : "urn:vg:data";
+        const graphTerm =
+          graphName && graphName !== "default"
+            ? DataFactory.namedNode(String(graphName))
+            : DataFactory.defaultGraph();
+        const all = store.getQuads(null, null, null, graphTerm) || [];
+        const filter =
+          payload && typeof payload === "object" && payload.filter ? payload.filter : undefined;
+        const filtered = !filter
+          ? all
+          : all.filter((q: any) => {
+              try {
+                if (filter.subject && subjectTermToString(q.subject) !== String(filter.subject)) {
+                  return false;
+                }
+                if (filter.predicate) {
+                  const pred = termToString(q.predicate);
+                  if (pred !== String(filter.predicate)) return false;
+                }
+                if (filter.object) {
+                  const obj = termToString(q.object);
+                  if (obj !== String(filter.object)) return false;
+                }
+                return true;
+              } catch (_) {
+                return false;
+              }
+            });
+        const total = filtered.length;
+        const offset =
+          payload && typeof (payload as any).offset === "number"
+            ? Math.max(0, (payload as any).offset)
+            : 0;
+        const limit =
+          payload && typeof (payload as any).limit === "number"
+            ? Math.max(0, (payload as any).limit)
+            : 0;
+        const slice =
+          limit > 0 ? filtered.slice(offset, offset + limit) : filtered.slice(offset);
+        const shouldSerialize = !payload || (payload as any).serialize !== false;
+        const items = shouldSerialize
+          ? slice.map((q: any) => ({
+              subject: subjectTermToString(q.subject),
+              predicate: termToString(q.predicate),
+              object: termToString(q.object),
+              graph: q.graph && q.graph.value ? String(q.graph.value) : graphName,
+            }))
+          : slice.map((q: any) => quadToPlain(q));
+        result = { total, offset, limit, items, serialize: shouldSerialize };
+        break;
+      }
+      case "getQuads": {
+        const { DataFactory } = resolveN3();
+        if (!DataFactory) throw new Error("n3-datafactory-unavailable");
+        const store = getSharedStore();
+        const graphName =
+          payload && typeof payload === "object" && typeof payload.graphName === "string"
+            ? payload.graphName
+            : null;
+        const graphTerm =
+          graphName && graphName !== "default"
+            ? DataFactory.namedNode(String(graphName))
+            : graphName === null
+              ? null
+              : DataFactory.defaultGraph();
+        const subjectTerm =
+          payload && typeof payload === "object" && typeof payload.subject === "string"
+            ? plainTermToSubject(payload.subject, DataFactory)
+            : null;
+        const predicateTerm =
+          payload && typeof payload === "object" && typeof payload.predicate === "string"
+            ? DataFactory.namedNode(String(payload.predicate))
+            : null;
+        const objectTerm =
+          payload && typeof payload === "object" && payload.object
+            ? plainTermToObject(payload.object, DataFactory)
+            : null;
+        const quads = store.getQuads(subjectTerm, predicateTerm, objectTerm, graphTerm) || [];
+        result = quads.map((q: any) => quadToPlain(q));
+        break;
+      }
+      case "syncBatch": {
+        const { DataFactory } = resolveN3();
+        if (!DataFactory) throw new Error("n3-datafactory-unavailable");
+        const store = getSharedStore();
+        const graphName =
+          payload && typeof payload === "object" && typeof payload.graphName === "string"
+            ? payload.graphName
+            : "urn:vg:data";
+        const graphTerm =
+          graphName && graphName !== "default"
+            ? DataFactory.namedNode(String(graphName))
+            : DataFactory.defaultGraph();
+        const touchedSubjects = new Set<string>();
+        let added = 0;
+        let removed = 0;
+
+        if (payload && Array.isArray(payload.removes)) {
+          for (const rem of payload.removes) {
+            if (!rem || typeof rem.s !== "string" || typeof rem.p !== "string") continue;
+            try {
+              const sTerm = plainTermToSubject(rem.s, DataFactory);
+              const pTerm = DataFactory.namedNode(String(rem.p));
+              const gTerm =
+                rem.g && typeof rem.g === "string" && rem.g.length > 0
+                  ? DataFactory.namedNode(String(rem.g))
+                  : graphTerm;
+              if (!rem.o) {
+                const matches = store.getQuads(sTerm, pTerm, null, gTerm) || [];
+                for (const q of matches) {
+                  store.removeQuad(q);
+                  removed += 1;
+                  touchedSubjects.add(subjectTermToString(q.subject, rem.s));
+                }
+                continue;
+              }
+
+              const oTerm = plainTermToObject(rem.o, DataFactory);
+              if (!oTerm) continue;
+              const matches = store.getQuads(sTerm, pTerm, oTerm, gTerm) || [];
+              let handled = false;
+              for (const q of matches) {
+                store.removeQuad(q);
+                removed += 1;
+                handled = true;
+                touchedSubjects.add(subjectTermToString(q.subject, rem.s));
+              }
+              if (!handled && rem.o && rem.o.t === "lit") {
+                const lexical = String(rem.o.v || "");
+                const allForPredicate = store.getQuads(sTerm, pTerm, null, gTerm) || [];
+                for (const q of allForPredicate) {
+                  const objTerm = q.object;
+                  if (
+                    objTerm &&
+                    typeof objTerm.termType === "string" &&
+                    objTerm.termType === "Literal" &&
+                    String(objTerm.value || "") === lexical
+                  ) {
+                    store.removeQuad(q);
+                    removed += 1;
+                    touchedSubjects.add(subjectTermToString(q.subject, rem.s));
+                  }
+                }
+              }
+            } catch (err) {
+              console.error("[rdfManager.worker] syncBatch remove failed", err);
+            }
+          }
+        }
+
+        if (payload && Array.isArray(payload.adds)) {
+          for (const add of payload.adds) {
+            if (!add || typeof add.s !== "string" || typeof add.p !== "string" || !add.o) continue;
+            try {
+              const pq: PlainQuad = {
+                s: add.s,
+                p: add.p,
+                o: add.o,
+                g: add.g && typeof add.g === "string" ? add.g : graphName,
+              };
+              const q = plainToQuad(pq, DataFactory);
+              if (!q) continue;
+              store.addQuad(q);
+              added += 1;
+              touchedSubjects.add(subjectTermToString(q.subject, add.s));
+            } catch (err) {
+              console.error("[rdfManager.worker] syncBatch add failed", err);
+            }
+          }
+        }
+
+        const shouldEmitSubjects =
+          !payload?.options || payload.options.suppressSubjects !== true;
+        let emissionSubjects: string[] = [];
+        let emissionQuads: Record<string, PlainQuad[]> = {};
+        if (shouldEmitSubjects) {
+          const emission = prepareSubjectEmissionFromSet(
+            touchedSubjects,
+            store,
+            DataFactory,
+          );
+          emissionSubjects = emission.subjects;
+          emissionQuads = emission.quadsBySubject;
+        }
+
+        if (added > 0 || removed > 0) {
+          emitChange({ reason: "syncBatch", graphName, added, removed });
+          if (shouldEmitSubjects && emissionSubjects.length > 0) {
+            emitSubjects(emissionSubjects, emissionQuads);
+          }
+        }
+
+        result = { added, removed };
+        break;
+      }
+      default:
+        throw new Error(`Unsupported command: ${String(msg.command)}`);
+    }
+    post({ type: "response", id: msg.id, ok: true, result });
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    const errorStack = err instanceof Error && err.stack ? err.stack : undefined;
+    post({
+      type: "response",
+      id: msg.id,
+      ok: false,
+      error: errorMessage,
+      stack: errorStack,
+    });
+  }
 }
 
 async function handleRunReasoning(msg: ReasoningRequest) {
