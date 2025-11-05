@@ -15,7 +15,7 @@ import { Store, Parser, Writer, Quad, DataFactory } from "n3";
 import { rdfParser } from "rdf-parse";
 import { rdfSerializer } from "rdf-serialize";
 import type * as RDF from "@rdfjs/types";
-import ParseWorker from "../workers/parseRdf.worker.ts?worker";
+import LoadWorker from "../workers/rdfManager.worker.ts?worker";
 
 // Batch size used when draining/ingesting parsed quads to avoid blocking the main thread.
 // Keep in sync with worker batch sizes.
@@ -956,7 +956,7 @@ export class RDFManager {
       // Push the raw object into a dev-only collection on window so developers can
       // inspect exactly what parsers emit before we decide a strict runtime type.
       // Normalize collected prefixes into the shape expected by applyParsedNamespaces.
-      const normalizedPrefixMap: Record<string, any> = {};
+      const normalizedPrefixMap: Record<string, string> = {};
       // prefixes may contain strings, NamedNode-like objects, or our new { prefix, raw } objects.
       for (const [p, v] of Object.entries(prefixes || {})) {
         try {
@@ -970,10 +970,8 @@ export class RDFManager {
             uri = String((v as any).value).trim();
           }
           if (typeof uri === "string" && uri !== "") {
-            // Keep the new object shape for downstream consumers.
-            // Store default (empty) prefix under the literal ":" key as requested.
             const storageKey = key === "" ? ":" : key;
-            normalizedPrefixMap[storageKey] = { prefix: storageKey, raw: uri };
+            normalizedPrefixMap[storageKey] = uri;
           }
         } catch (_) {
           /* ignore per-entry */
@@ -1470,191 +1468,147 @@ export class RDFManager {
    * - Worker emits batched plain quads, prefixes, and end/error messages which we ingest.
    * - On worker error we surface the error to the caller (no main-thread parsing fallback).
    */
-    public async loadRDFFromUrl(
-      url: string,
-      graphName?: string,
-      options?: { timeoutMs?: number; useWorker?: boolean },
-    ): Promise<void> {
-      if (!url) throw new Error("loadRDFFromUrl requires a url");
-      // Use a long default timeout for large ontologies (configurable per-call)
-      const timeoutMs = options?.timeoutMs ?? 120000;
-      // Allow callers/tests to explicitly disable worker usage (main-thread parse fallback).
-      const useWorker = options && typeof options.useWorker === "boolean" ? !!options.useWorker : true;
+  public async loadRDFFromUrl(
+    url: string,
+    graphName?: string,
+    options?: { timeoutMs?: number; useWorker?: boolean },
+  ): Promise<void> {
+    if (!url) throw new Error("loadRDFFromUrl requires a url");
+    const timeoutMs = options?.timeoutMs ?? 120000;
+    const useWorker = options && typeof options.useWorker === "boolean" ? !!options.useWorker : true;
 
-      // If caller requests no worker, perform a main-thread fetch + parse path.
-      if (!useWorker) {
-        try {
-          const fetcher = typeof fetch === "function" ? fetch : undefined;
-          if (!fetcher) throw new Error("fetch not available for main-thread loadRDFFromUrl");
-          const resp = await fetcher(url);
-          if (!resp || typeof resp.text !== "function") throw new Error("fetch failed in loadRDFFromUrl main-thread path");
-          const txt = await resp.text();
-          await this.loadRDFIntoGraph(txt, graphName, undefined, url);
-          return;
-        } catch (err) {
-          // Surface fetch/parse errors to caller
-          throw err;
-        }
-      }
+    if (!useWorker) {
+      const fetcher = typeof fetch === "function" ? fetch : undefined;
+      if (!fetcher) throw new Error("fetch not available for main-thread loadRDFFromUrl");
+      const resp = await fetcher(url);
+      if (!resp || typeof resp.text !== "function") throw new Error("fetch failed in loadRDFFromUrl main-thread path");
+      const txt = await resp.text();
+      await this.loadRDFIntoGraph(txt, graphName, undefined, url);
+      return;
+    }
 
-    console.debug("[VG_RDF] loadRDFFromUrl (worker-only) start", {
+    console.debug("[VG_RDF_WORKER] loadRDFFromUrl start", {
       url,
       graphName,
       timeoutMs,
     });
 
-    const loadId = `wl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`;
+    const loadId = `wl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     const addedQuads: Quad[] = [];
-    const collectedPrefixes: Record<string, any> = {};
+    const collectedPrefixes: Record<string, string> = {};
     const targetGraph = namedNode(String(graphName || "urn:vg:data"));
 
-    // Use Vite ?worker import which returns a Worker constructor.
-    const w = new ParseWorker();
+    const worker = new LoadWorker();
 
     return new Promise<void>((resolve, reject) => {
-      const tH = setTimeout(() => {
-        w.terminate();
-        reject(new Error("parser worker timeout"));
-      }, timeoutMs);
+      const cleanup = () => {
+        try { worker.removeEventListener("message", onMessage as any); } catch (_) { /* ignore */ }
+        try { worker.removeEventListener("error", onError as any); } catch (_) { /* ignore */ }
+        try { worker.terminate(); } catch (_) { /* ignore */ }
+        clearTimeout(timeoutHandle);
+      };
 
-      let seenAny = false;
+      const ack = () => {
+        try { worker.postMessage({ type: "ack", id: loadId }); } catch (_) { /* ignore */ }
+      };
 
-      const onWorkerError = async (ev: ErrorEvent) => {
-        // Log full event object to aid diagnosis (some environments deliver sparse ErrorEvent)
-        try {
-          console.error("[VG_RDF] worker.onerror (raw event)", ev);
-          console.error("[VG_RDF] worker.onerror (decoded)", {
-            id: loadId,
-            message: ev && ev.message,
-            filename: (ev as any).filename,
-            lineno: (ev as any).lineno,
-            colno: (ev as any).colno,
-            errorObj: ev && ev.error
-          });
-        } catch (_) { /* ignore logging errors */ }
-
-        // Tidy up worker resources
-        try { cleanupWorker(); } catch (_) { /* ignore */ }
-        try { clearTimeout(tH); } catch (_) { /* ignore */ }
-        try { (this as any).parsingInProgress = false; } catch (_) { /* ignore */ }
-
-        // Fallback: attempt main-thread fetch+parse so production still works even when the worker fails.
-        try {
-          console.warn("[VG_RDF] worker failed — falling back to main-thread parse", { id: loadId, url });
-          const resp = await fetch(url);
-          if (!resp || typeof resp.text !== "function") {
-            throw new Error("fetch failed during worker fallback");
-          }
-          const txt = await resp.text();
-          await this.loadRDFIntoGraph(txt, graphName, undefined, url);
-          resolve();
-          return;
-        } catch (fallbackErr) {
+      const ingestPlain = (plain: any[]) => {
+        for (const pq of plain) {
           try {
-            console.error("[VG_RDF] worker fallback failed", { id: loadId, error: String(fallbackErr) });
-          } catch (_) { /* ignore */ }
-          reject(new Error(`parser worker error: ${ev && ev.message ? ev.message : String(ev)}; fallback error: ${String(fallbackErr)}`));
-          return;
+            const sTerm = /^_:/.test(String(pq.s || ""))
+              ? blankNode(String(pq.s).replace(/^_:/, ""))
+              : namedNode(String(pq.s));
+            const pTerm = namedNode(String(pq.p));
+            let oTerm: any = null;
+            if (pq.o && pq.o.t === "iri") oTerm = namedNode(String(pq.o.v));
+            else if (pq.o && pq.o.t === "bnode") oTerm = blankNode(String(pq.o.v));
+            else if (pq.o && pq.o.t === "lit") {
+              if (pq.o.dt) oTerm = literal(String(pq.o.v), namedNode(String(pq.o.dt)));
+              else if (pq.o.ln) oTerm = literal(String(pq.o.v), String(pq.o.ln));
+              else oTerm = literal(String(pq.o.v));
+            } else {
+              oTerm = literal(String((pq.o && pq.o.v) || ""));
+            }
+            const gTerm = pq.g ? namedNode(String(pq.g)) : targetGraph;
+            const toAdd = quad(sTerm, pTerm, oTerm, gTerm);
+            try {
+              this.addQuadToStore(toAdd, gTerm, addedQuads);
+            } catch (_) {
+              this.store.addQuad(toAdd);
+              addedQuads.push(toAdd);
+            }
+          } catch (err) {
+            console.debug("[VG_RDF_WORKER] ingestPlain failed", err);
+          }
         }
       };
 
-      const onWorkerMessageError = (ev: MessageEvent) => {
-        console.error("[VG_RDF] worker.messageerror", { id: loadId, data: (ev as any).data });
-        cleanupWorker();
-        clearTimeout(tH);
-        (this as any).parsingInProgress = false;
-        reject(new Error("parser worker messageerror"));
-      };
-
-      const cleanupWorker = () => {
-        w.removeEventListener("message", onMessage as any);
-        w.removeEventListener("error", onWorkerError);
-        w.removeEventListener("messageerror", onWorkerMessageError);
-        w.terminate();
-        clearTimeout(tH);
+      const onError = (ev: ErrorEvent) => {
+        cleanup();
+        reject(new Error(`[VG_RDF_WORKER] error: ${ev && ev.message ? ev.message : "unknown"}`));
       };
 
       const onMessage = async (ev: MessageEvent) => {
-        const m = ev && ev.data ? ev.data : {};
-        seenAny = true;
+        const msg = ev && ev.data ? ev.data : {};
+        if (!msg || !msg.type) return;
 
-        if (!m || !m.type) return;
+        if (msg.type === "stage") {
+          clearTimeout(timeoutHandle);
+          return;
+        }
 
-        if (m.type === "start") {
-          // worker indicates start; treat this as a liveness signal and clear the watchdog timer
-          clearTimeout(tH);
-          if (m.contentType) {
-            console.debug("[VG_RDF] worker.start contentType", m.contentType);
+        if (msg.type === "prefix" && msg.prefixes && typeof msg.prefixes === "object") {
+          for (const [p, v] of Object.entries(msg.prefixes)) {
+            if (typeof v === "string" && v) collectedPrefixes[p] = v;
           }
           return;
         }
 
-        if (m.type === "prefix" && m.prefixes) {
-          Object.assign(collectedPrefixes, m.prefixes || {});
+        if (msg.type === "quads" && Array.isArray(msg.quads)) {
+          ingestPlain(msg.quads);
+          ack();
           return;
         }
 
-        if (m.type === "quads" && Array.isArray(m.quads)) {
-          const plain = m.quads as any[];
-          for (const pq of plain) {
-            try {
-              const sTerm = /^_:/.test(String(pq.s || "")) ? blankNode(String(pq.s).replace(/^_:/, "")) : namedNode(String(pq.s));
-              const pTerm = namedNode(String(pq.p));
-              let oTerm: any = null;
-              if (pq.o && pq.o.t === "iri") oTerm = namedNode(String(pq.o.v));
-              else if (pq.o && pq.o.t === "bnode") oTerm = blankNode(String(pq.o.v));
-              else if (pq.o && pq.o.t === "lit") {
-                if (pq.o.dt) oTerm = literal(String(pq.o.v), namedNode(String(pq.o.dt)));
-                else if (pq.o.ln) oTerm = literal(String(pq.o.v), String(pq.o.ln));
-                else oTerm = literal(String(pq.o.v));
-              } else oTerm = literal(String((pq.o && pq.o.v) || ""));
-              const gTerm = pq.g ? namedNode(String(pq.g)) : targetGraph;
-              const toAdd = quad(sTerm, pTerm, oTerm, gTerm);
-              try {
-                this.addQuadToStore(toAdd, gTerm, addedQuads);
-              } catch (_) {
-                this.store.addQuad(toAdd); addedQuads.push(toAdd);
-              }
-            } catch (_) {
-              // ignore per-quad ingestion errors
-            }
-          }
-          // ACK to worker so it can continue
-          w.postMessage({ type: "ack", id: String(m.id || loadId) });
-          return;
-        }
-
-        if (m.type === "end") {
-          cleanupWorker();
-          clearTimeout(tH);
+        if (msg.type === "end") {
+          cleanup();
+          const mergedPrefixes: Record<string, string> = {
+            ...collectedPrefixes,
+            ...(msg.prefixes && typeof msg.prefixes === "object" ? msg.prefixes : {}),
+          };
           (async () => {
             try {
-              await (this as any).finalizeLoad(addedQuads, collectedPrefixes || {}, loadId, graphName);
-            } catch (e) {
-              console.error("[VG_RDF] worker finalize failed", e);
-              reject(e);
-              return;
+              await (this as any).finalizeLoad(addedQuads, mergedPrefixes, loadId, graphName);
+              resolve();
+            } catch (err) {
+              reject(err);
             }
-            resolve();
           })();
           return;
         }
 
-        if (m.type === "error") {
-          cleanupWorker(); clearTimeout(tH);
-          const msgText = m && m.message ? String(m.message) : "worker error";
-          (this as any).parsingInProgress = false;
-          reject(msgText);
+        if (msg.type === "error") {
+          cleanup();
+          reject(new Error(`[VG_RDF_WORKER] error: ${msg && msg.message ? String(msg.message) : "unknown"}`));
           return;
         }
       };
 
-      w.addEventListener("message", onMessage as any);
-      w.addEventListener("error", onWorkerError);
-      w.addEventListener("messageerror", onWorkerMessageError);
+      const timeoutHandle = setTimeout(() => {
+        cleanup();
+        reject(new Error(`[VG_RDF_WORKER] timeout after ${timeoutMs}ms`));
+      }, timeoutMs);
 
-      // Start worker fetching & parsing for the URL
-      w.postMessage({ type: "parseUrl", id: loadId, url, timeoutMs, headers: { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" } });
+      worker.addEventListener("message", onMessage as any);
+      worker.addEventListener("error", onError as any);
+
+      worker.postMessage({
+        type: "loadFromUrl",
+        id: loadId,
+        url,
+        timeoutMs,
+        headers: { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" },
+      });
     });
   }
 
@@ -1836,10 +1790,28 @@ export class RDFManager {
   }
 
   /**
+   * Normalize stored namespace values (strings or NamedNode-like objects) into plain URIs.
+   */
+  private normalizeNamespaceValue(val: any): string {
+    try {
+      if (typeof val === "string") return val;
+      if (val && typeof (val as any).raw === "string") return String((val as any).raw);
+      if (val && typeof (val as any).value === "string") return String((val as any).value);
+    } catch (_) {
+      /* ignore */
+    }
+    return "";
+  }
+
+  /**
    * Get all namespaces/prefixes
    */
   getNamespaces(): Record<string, string> {
-    return { ...(this.namespaces || {}) };
+    const out: Record<string, string> = {};
+    Object.entries(this.namespaces || {}).forEach(([prefix, val]) => {
+      out[prefix] = this.normalizeNamespaceValue(val);
+    });
+    return out;
   }
 
   /**
@@ -1854,17 +1826,13 @@ export class RDFManager {
   addNamespace(prefix: string, uri: any): void {
     // allow empty-string prefix (default namespace). Only skip truly missing keys.
     if (prefix === null || typeof prefix === "undefined") return;
-    // coerce incoming uri to a string only for supported shapes
-    let uriStr = "";
-    if (typeof uri === "string") uriStr = uri;
-    else if (uri && typeof (uri as any).value === "string")
-      uriStr = String((uri as any).value);
+    const uriStr = this.normalizeNamespaceValue(uri);
     if (!uriStr) return;
 
     const prev = Object.prototype.hasOwnProperty.call(this.namespaces, prefix)
-      ? this.namespaces[prefix]
+      ? this.normalizeNamespaceValue(this.namespaces[prefix])
       : undefined;
-    const changed = prev === undefined || String(prev) !== uriStr;
+    const changed = prev === undefined || prev !== uriStr;
 
     // Update internal map
     this.namespaces[prefix] = uriStr;
@@ -3336,8 +3304,8 @@ export class RDFManager {
           }
 
           // Persist string URI directly (do not wrap in NamedNode).
-          const prev = this.namespaces[key];
-          if (String(prev) !== uriStr) {
+          const prev = this.normalizeNamespaceValue(this.namespaces[key]);
+          if (prev !== uriStr) {
             this.namespaces[key] = uriStr;
             mergedPrefixes.push(String(key));
           }
@@ -3399,7 +3367,7 @@ export class RDFManager {
       }
 
       const g = namedNode(String(graphName));
-      const prefixes: Record<string, any> = {};
+      const prefixes: Record<string, string> = {};
       const addedQuads: any[] = [];
 
       // Buffered onData handler: collect incoming quads into a buffer and drain them in batches
@@ -3484,7 +3452,7 @@ export class RDFManager {
             if (typeof iri === "string") raw = iri;
             else if (iri && typeof (iri as any).value === "string") raw = (iri as any).value;
             else if (iri !== undefined && iri !== null) raw = String(iri);
-            prefixes[pKey] = { prefix: pKey, raw: raw || "" };
+            prefixes[pKey] = raw || "";
           } catch (_) {
             /* ignore */
           }
