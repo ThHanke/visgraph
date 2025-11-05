@@ -1,4 +1,10 @@
-import type { ReasoningError, ReasoningInference, ReasoningResult, ReasoningWarning } from "./reasoningTypes";
+import type { WorkerQuad, WorkerTerm } from "./rdfSerialization";
+import type {
+  ReasoningError,
+  ReasoningInference,
+  ReasoningResult,
+  ReasoningWarning,
+} from "./reasoningTypes";
 
 export type PlainQuadTerm =
   | { t: "iri"; v: string }
@@ -23,13 +29,13 @@ export interface SyncBlacklistPayload {
 
 export interface SyncBatchPayload {
   graphName: string;
-  adds: PlainQuad[];
-  removes: PlainQuad[];
+  adds: WorkerQuad[];
+  removes: WorkerQuad[];
   options?: { suppressSubjects?: boolean };
 }
 
 export interface SyncLoadPayload {
-  quads: PlainQuad[];
+  quads: WorkerQuad[];
   graphName: string;
   prefixes?: Record<string, string>;
   parsingMeta?: Record<string, unknown>;
@@ -56,7 +62,7 @@ export interface FetchQuadsPagePayload {
 export interface GetQuadsPayload {
   subject?: string | null;
   predicate?: string | null;
-  object?: PlainQuadTerm | null;
+  object?: WorkerTerm | null;
   graphName?: string | null;
 }
 
@@ -86,6 +92,7 @@ export type RDFWorkerCommandPayloads = {
   triggerSubjects: TriggerSubjectsPayload;
   runReasoning: {
     reasoningId: string;
+    quads?: WorkerQuad[];
     rulesets?: string[];
     baseUrl?: string;
     emitSubjects?: boolean;

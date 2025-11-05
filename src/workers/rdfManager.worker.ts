@@ -4,8 +4,11 @@ import { Buffer } from "buffer";
 import rdfParsePkg from "rdf-parse";
 import * as N3 from "n3";
 import { Reasoner as N3ReasonerExplicit } from "n3";
+import type { Quad } from "@rdfjs/types";
 import type { RDFWorkerCommand } from "../utils/rdfManager.workerProtocol";
 import type { ReasoningResult } from "../utils/reasoningTypes";
+import { deserializeQuad, deserializeTerm, serializeQuad } from "../utils/rdfSerialization";
+import type { WorkerQuad } from "../utils/rdfSerialization";
 import { WELL_KNOWN } from "../utils/wellKnownOntologies";
 
 declare const self: any;
@@ -32,7 +35,7 @@ type AckMessage = { type: "ack"; id: string };
 type ReasoningRequest = {
   type: "runReasoning";
   id: string;
-  quads?: PlainQuad[];
+  quads?: WorkerQuad[];
   rulesets?: string[];
   baseUrl?: string;
   emitSubjects?: boolean;
@@ -74,7 +77,7 @@ type ReasoningResultMessage = {
   id: string;
   durationMs: number;
   startedAt: number;
-  added?: PlainQuad[];
+  added?: WorkerQuad[];
   addedCount: number;
   warnings: ReasoningWarning[];
   errors: ReasoningError[];
@@ -249,64 +252,6 @@ function quadKeyFromTerms(q: any): string {
   } catch (_) {
     return Math.random().toString(36).slice(2);
   }
-}
-
-function plainQuadKey(pq: PlainQuad): string {
-  try {
-    const objSuffix = pq.o ? `${pq.o.t}:${pq.o.v}:${pq.o.dt || ""}:${pq.o.ln || ""}` : "";
-    return `${pq.s}|${pq.p}|${objSuffix}|${pq.g || ""}`;
-  } catch (_) {
-    return Math.random().toString(36).slice(2);
-  }
-}
-
-function plainToQuad(pq: PlainQuad, DataFactory: any): any | null {
-  const { namedNode, blankNode, literal, quad } = DataFactory;
-  const sTerm = /^_:/.test(String(pq.s || ""))
-    ? blankNode(String(pq.s).replace(/^_:/, ""))
-    : namedNode(String(pq.s));
-  const pTerm = namedNode(String(pq.p));
-  if (!pq.o) return null;
-  let oTerm: any;
-  if (pq.o && pq.o.t === "iri") {
-    oTerm = namedNode(String(pq.o.v));
-  } else if (pq.o && pq.o.t === "bnode") {
-    oTerm = blankNode(String(pq.o.v));
-  } else if (pq.o && pq.o.t === "lit") {
-    if (pq.o.dt) {
-      oTerm = literal(String(pq.o.v), namedNode(String(pq.o.dt)));
-    } else if (pq.o.ln) {
-      oTerm = literal(String(pq.o.v), String(pq.o.ln));
-    } else {
-      oTerm = literal(String(pq.o.v));
-    }
-  } else {
-    oTerm = literal(String((pq.o && pq.o.v) || ""));
-  }
-  const gTerm =
-    pq.g && String(pq.g).length > 0 ? namedNode(String(pq.g)) : undefined;
-  return quad(sTerm as any, pTerm as any, oTerm as any, gTerm as any);
-}
-
-function plainTermToSubject(value: string, DataFactory: any) {
-  const { namedNode, blankNode } = DataFactory;
-  if (/^_:/.test(String(value || ""))) {
-    return blankNode(String(value).replace(/^_:/, ""));
-  }
-  return namedNode(String(value));
-}
-
-function plainTermToObject(o: PlainQuad["o"], DataFactory: any) {
-  const { namedNode, blankNode, literal } = DataFactory;
-  if (!o) return null;
-  if (o.t === "iri") return namedNode(String(o.v));
-  if (o.t === "bnode") return blankNode(String(o.v));
-  if (o.t === "lit") {
-    if (o.dt) return literal(String(o.v), namedNode(String(o.dt)));
-    if (o.ln) return literal(String(o.v), String(o.ln));
-    return literal(String(o.v));
-  }
-  return literal(String(o.v || ""));
 }
 
 function subjectTermToString(term: any, fallback?: string): string {
@@ -504,19 +449,7 @@ function quadToPlain(q: any, overrideGraph?: string): PlainQuad {
   };
 }
 
-function plainObjectToString(o: PlainQuad["o"] | undefined): string {
-  if (!o) return "";
-  switch (o.t) {
-    case "iri":
-    case "bnode":
-      return String(o.v);
-    case "lit":
-    default:
-      return String(o.v);
-  }
-}
-
-function collectShaclResults(all: PlainQuad[]): { warnings: ReasoningWarning[]; errors: ReasoningError[] } {
+function collectShaclResults(all: Quad[]): { warnings: ReasoningWarning[]; errors: ReasoningError[] } {
   const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
   const SH_RESULT = "http://www.w3.org/ns/shacl#ValidationResult";
   const SH_FOCUS = "http://www.w3.org/ns/shacl#focusNode";
@@ -524,9 +457,11 @@ function collectShaclResults(all: PlainQuad[]): { warnings: ReasoningWarning[]; 
   const SH_SEVERITY = "http://www.w3.org/ns/shacl#resultSeverity";
   const SEVERITY_VIOLATION = "http://www.w3.org/ns/shacl#Violation";
 
-  const bySubject = new Map<string, PlainQuad[]>();
+  const bySubject = new Map<string, Quad[]>();
   for (const q of all) {
-    const key = `${q.g || ""}|${q.s}`;
+    const graphIri =
+      q.graph && q.graph.termType !== "DefaultGraph" ? String(q.graph.value) : "";
+    const key = `${graphIri}|${String(q.subject.value)}`;
     const existing = bySubject.get(key) || [];
     existing.push(q);
     bySubject.set(key, existing);
@@ -536,17 +471,19 @@ function collectShaclResults(all: PlainQuad[]): { warnings: ReasoningWarning[]; 
   const errors: ReasoningError[] = [];
 
   for (const q of all) {
-    if (q.p !== RDF_TYPE) continue;
-    if (!q.o || q.o.t !== "iri" || q.o.v !== SH_RESULT) continue;
-    const key = `${q.g || ""}|${q.s}`;
+    if (q.predicate.value !== RDF_TYPE) continue;
+    if (q.object.termType !== "NamedNode" || q.object.value !== SH_RESULT) continue;
+    const graphIri =
+      q.graph && q.graph.termType !== "DefaultGraph" ? String(q.graph.value) : "";
+    const key = `${graphIri}|${String(q.subject.value)}`;
     const subjectQuads = bySubject.get(key) || [];
-    const focus = subjectQuads.find((sq) => sq.p === SH_FOCUS);
-    const message = subjectQuads.find((sq) => sq.p === SH_MESSAGE);
-    const severityQuad = subjectQuads.find((sq) => sq.p === SH_SEVERITY);
+    const focus = subjectQuads.find((sq) => sq.predicate.value === SH_FOCUS);
+    const message = subjectQuads.find((sq) => sq.predicate.value === SH_MESSAGE);
+    const severityQuad = subjectQuads.find((sq) => sq.predicate.value === SH_SEVERITY);
 
-    const nodeId = focus ? plainObjectToString(focus.o) : undefined;
-    const messageText = message ? plainObjectToString(message.o) : "Validation issue";
-    const severityUri = severityQuad ? plainObjectToString(severityQuad.o) : "";
+    const nodeId = focus ? termToString(focus.object) : undefined;
+    const messageText = message ? termToString(message.object) || "Validation issue" : "Validation issue";
+    const severityUri = severityQuad ? termToString(severityQuad.object) : "";
     const severity =
       severityUri && severityUri.includes("Violation") ? "critical" : "warning";
     if (severity === "critical") {
@@ -586,20 +523,6 @@ function collectGraphCountsFromStore(store: any): Record<string, number> {
     console.debug("[VG_REASONING_WORKER] collectGraphCountsFromStore failed", err);
   }
   return counts;
-}
-
-function plainFromTerm(term: any): PlainQuad["o"] {
-  if (!term) return { t: "lit", v: "" };
-  const tt = (term.termType || "").toLowerCase();
-  if (tt === "namednode" || tt === "iri") return { t: "iri", v: String(term.value || term) };
-  if (tt === "blanknode" || tt === "bnode") return { t: "bnode", v: String(term.value || term) };
-  if (tt === "literal" || typeof term.value !== "undefined") {
-    const obj: PlainQuad["o"] = { t: "lit", v: String(term.value || "") };
-    if (term.datatype && term.datatype.value) obj.dt = String(term.datatype.value);
-    if (term.language) obj.ln = String(term.language);
-    return obj;
-  }
-  return { t: "iri", v: String(term) };
 }
 
 function resolveRdfParser(pkg: any) {
@@ -723,7 +646,7 @@ async function handleLoad(msg: LoadMessage) {
     post({ type: "stage", id, stage: "parser-filename", path: filename });
   }
 
-  const plainQuads: PlainQuad[] = [];
+  const parsedQuads: Quad[] = [];
   const prefixes: Record<string, string> = {};
 
   try {
@@ -732,15 +655,10 @@ async function handleLoad(msg: LoadMessage) {
       const quadStream = parserImpl.parse(readable, opts);
 
       quadStream.on("data", async (q: any) => {
-        const plain: PlainQuad = {
-          s: q.subject && q.subject.value ? String(q.subject.value) : "",
-          p: q.predicate && q.predicate.value ? String(q.predicate.value) : "",
-          o: plainFromTerm(q.object),
-          g: q.graph && q.graph.value ? String(q.graph.value) : undefined,
-        };
-        plainQuads.push(plain);
-        if (plainQuads.length >= BATCH_SIZE) {
-          post({ type: "quads", id, quads: plainQuads.splice(0, plainQuads.length) });
+        parsedQuads.push(q as Quad);
+        if (parsedQuads.length >= BATCH_SIZE) {
+          const payload = parsedQuads.splice(0, parsedQuads.length).map((quad) => serializeQuad(quad));
+          post({ type: "quads", id, quads: payload });
           await waitForAck(id);
         }
       });
@@ -772,8 +690,9 @@ async function handleLoad(msg: LoadMessage) {
     return;
   }
 
-  if (plainQuads.length > 0) {
-    post({ type: "quads", id, quads: plainQuads.splice(0, plainQuads.length) });
+  if (parsedQuads.length > 0) {
+    const payload = parsedQuads.splice(0, parsedQuads.length).map((quad) => serializeQuad(quad));
+    post({ type: "quads", id, quads: payload });
     await waitForAck(id);
   }
 
@@ -866,11 +785,10 @@ async function handleCommand(msg: RDFWorkerCommand) {
         if (payload && Array.isArray(payload.quads)) {
           for (const pq of payload.quads) {
             try {
-              const q = plainToQuad(pq, DataFactory);
-              if (!q) continue;
-              store.addQuad(q);
+              const quad = deserializeQuad(pq as any, DataFactory);
+              store.addQuad(quad);
               added += 1;
-              touchedSubjects.add(subjectTermToString(q.subject, pq.s));
+              touchedSubjects.add(subjectTermToString(quad.subject));
             } catch (err) {
               console.error("[rdfManager.worker] syncLoad add failed", err);
             }
@@ -1125,7 +1043,9 @@ async function handleCommand(msg: RDFWorkerCommand) {
               : DataFactory.defaultGraph();
         const subjectTerm =
           payload && typeof payload === "object" && typeof payload.subject === "string"
-            ? plainTermToSubject(payload.subject, DataFactory)
+            ? payload.subject.startsWith("_:")
+              ? DataFactory.blankNode(payload.subject.slice(2))
+              : DataFactory.namedNode(String(payload.subject))
             : null;
         const predicateTerm =
           payload && typeof payload === "object" && typeof payload.predicate === "string"
@@ -1133,10 +1053,10 @@ async function handleCommand(msg: RDFWorkerCommand) {
             : null;
         const objectTerm =
           payload && typeof payload === "object" && payload.object
-            ? plainTermToObject(payload.object, DataFactory)
+            ? deserializeTerm(payload.object, DataFactory)
             : null;
         const quads = store.getQuads(subjectTerm, predicateTerm, objectTerm, graphTerm) || [];
-        result = quads.map((q: any) => quadToPlain(q));
+        result = quads.map((q: Quad) => serializeQuad(q));
         break;
       }
       case "syncBatch": {
@@ -1157,48 +1077,46 @@ async function handleCommand(msg: RDFWorkerCommand) {
 
         if (payload && Array.isArray(payload.removes)) {
           for (const rem of payload.removes) {
-            if (!rem || typeof rem.s !== "string" || typeof rem.p !== "string") continue;
+            if (!rem) continue;
             try {
-              const sTerm = plainTermToSubject(rem.s, DataFactory);
-              const pTerm = DataFactory.namedNode(String(rem.p));
-              const gTerm =
-                rem.g && typeof rem.g === "string" && rem.g.length > 0
-                  ? DataFactory.namedNode(String(rem.g))
+              const subject = deserializeTerm(rem.subject, DataFactory);
+              const predicate = deserializeTerm(rem.predicate, DataFactory);
+              const graphOverride =
+                rem.graph && rem.graph.termType !== "DefaultGraph"
+                  ? deserializeTerm(rem.graph, DataFactory)
                   : graphTerm;
-              if (!rem.o) {
-                const matches = store.getQuads(sTerm, pTerm, null, gTerm) || [];
+              if (!rem.object) {
+                const matches = store.getQuads(subject, predicate, null, graphOverride) || [];
                 for (const q of matches) {
                   store.removeQuad(q);
                   removed += 1;
-                  touchedSubjects.add(subjectTermToString(q.subject, rem.s));
+                  touchedSubjects.add(subjectTermToString(q.subject));
                 }
                 continue;
               }
 
-              const oTerm = plainTermToObject(rem.o, DataFactory);
-              if (!oTerm) continue;
-              const matches = store.getQuads(sTerm, pTerm, oTerm, gTerm) || [];
+              const object = deserializeTerm(rem.object, DataFactory);
+              const matches = store.getQuads(subject, predicate, object, graphOverride) || [];
               let handled = false;
               for (const q of matches) {
                 store.removeQuad(q);
                 removed += 1;
                 handled = true;
-                touchedSubjects.add(subjectTermToString(q.subject, rem.s));
+                touchedSubjects.add(subjectTermToString(q.subject));
               }
-              if (!handled && rem.o && rem.o.t === "lit") {
-                const lexical = String(rem.o.v || "");
-                const allForPredicate = store.getQuads(sTerm, pTerm, null, gTerm) || [];
+              if (!handled && rem.object.termType === "Literal") {
+                const lexical = rem.object.value || "";
+                const allForPredicate = store.getQuads(subject, predicate, null, graphOverride) || [];
                 for (const q of allForPredicate) {
                   const objTerm = q.object;
                   if (
                     objTerm &&
-                    typeof objTerm.termType === "string" &&
                     objTerm.termType === "Literal" &&
                     String(objTerm.value || "") === lexical
                   ) {
                     store.removeQuad(q);
                     removed += 1;
-                    touchedSubjects.add(subjectTermToString(q.subject, rem.s));
+                    touchedSubjects.add(subjectTermToString(q.subject));
                   }
                 }
               }
@@ -1210,19 +1128,12 @@ async function handleCommand(msg: RDFWorkerCommand) {
 
         if (payload && Array.isArray(payload.adds)) {
           for (const add of payload.adds) {
-            if (!add || typeof add.s !== "string" || typeof add.p !== "string" || !add.o) continue;
+            if (!add) continue;
             try {
-              const pq: PlainQuad = {
-                s: add.s,
-                p: add.p,
-                o: add.o,
-                g: add.g && typeof add.g === "string" ? add.g : graphName,
-              };
-              const q = plainToQuad(pq, DataFactory);
-              if (!q) continue;
-              store.addQuad(q);
+              const quad = deserializeQuad(add, DataFactory);
+              store.addQuad(quad);
               added += 1;
-              touchedSubjects.add(subjectTermToString(q.subject, add.s));
+              touchedSubjects.add(subjectTermToString(quad.subject));
             } catch (err) {
               console.error("[rdfManager.worker] syncBatch add failed", err);
             }
@@ -1344,10 +1255,9 @@ async function handleRunReasoning(
   } else {
     for (const pq of msg.quads || []) {
       try {
-        const q = plainToQuad(pq, DataFactory);
-        if (!q) continue;
-        workingStore.addQuad(q);
-        beforeKeys.add(quadKeyFromTerms(q));
+        const quad = deserializeQuad(pq, DataFactory);
+        workingStore.addQuad(quad);
+        beforeKeys.add(quadKeyFromTerms(quad));
       } catch (err) {
         reasoningStage({
           type: "reasoningStage",
@@ -1576,14 +1486,17 @@ async function handleRunReasoning(
   }
 
   const afterQuads = workingStore.getQuads(null, null, null, null) || [];
-  const addedPlainAll: PlainQuad[] = [];
+  const addedQuads: Quad[] = [];
+  const inferredGraphTerm = DataFactory.namedNode("urn:vg:inferred");
   const seenKeys = new Set<string>();
   for (const q of afterQuads) {
     const key = quadKeyFromTerms(q);
     if (beforeKeys.has(key)) continue;
     if (seenKeys.has(key)) continue;
     seenKeys.add(key);
-    addedPlainAll.push(quadToPlain(q, "urn:vg:inferred"));
+    const graphTerm =
+      q.graph && q.graph.termType !== "DefaultGraph" ? q.graph : inferredGraphTerm;
+    addedQuads.push(DataFactory.quad(q.subject, q.predicate, q.object, graphTerm));
   }
 
   if (!usedReasoner) {
@@ -1659,43 +1572,43 @@ async function handleRunReasoning(
   }
 
   const touchedSubjects = new Set<string>();
-  let effectiveAdded: PlainQuad[] = [];
+  let effectiveAdded: Quad[] = [];
 
   if (mutateSharedStore && sharedStoreRef) {
-    const inserted: PlainQuad[] = [];
-    for (const pq of addedPlainAll) {
+    const inserted: Quad[] = [];
+    for (const quad of addedQuads) {
       try {
-        const q = plainToQuad(pq, DataFactory);
-        if (!q) continue;
         const graphTerm =
-          q.graph && q.graph.termType !== "DefaultGraph"
-            ? q.graph
-            : DataFactory.namedNode("urn:vg:inferred");
+          quad.graph && quad.graph.termType !== "DefaultGraph"
+            ? quad.graph
+            : inferredGraphTerm;
         const exists =
           typeof sharedStoreRef.countQuads === "function"
-            ? sharedStoreRef.countQuads(q.subject, q.predicate, q.object, graphTerm) > 0
-            : (sharedStoreRef.getQuads(q.subject, q.predicate, q.object, graphTerm) || [])
-                .length > 0;
+            ? sharedStoreRef.countQuads(
+                quad.subject,
+                quad.predicate,
+                quad.object,
+                graphTerm,
+              ) > 0
+            : (sharedStoreRef.getQuads(
+                quad.subject,
+                quad.predicate,
+                quad.object,
+                graphTerm,
+              ) || []).length > 0;
         if (exists) continue;
-        sharedStoreRef.addQuad(
-          DataFactory.quad(q.subject, q.predicate, q.object, graphTerm),
+        const normalized = DataFactory.quad(
+          quad.subject,
+          quad.predicate,
+          quad.object,
+          graphTerm,
         );
+        sharedStoreRef.addQuad(normalized);
 
-        const subjectValue =
-          q.subject && typeof q.subject.value === "string"
-            ? String(q.subject.value)
-            : pq.s;
-        touchedSubjects.add(subjectValue);
+        const subjectValue = subjectTermToString(quad.subject, quad.subject.value);
+        if (subjectValue) touchedSubjects.add(subjectValue);
 
-        inserted.push({
-          s: subjectValue,
-          p:
-            q.predicate && typeof q.predicate.value === "string"
-              ? String(q.predicate.value)
-              : pq.p,
-          o: pq.o,
-          g: graphTerm && graphTerm.value ? String(graphTerm.value) : "urn:vg:inferred",
-        });
+        inserted.push(normalized);
       } catch (_) {
         /* ignore insertion failure */
       }
@@ -1716,24 +1629,21 @@ async function handleRunReasoning(
       }
     }
   } else {
-    effectiveAdded = addedPlainAll;
+    effectiveAdded = addedQuads;
+    for (const quad of effectiveAdded) {
+      const subjectValue = subjectTermToString(quad.subject, quad.subject.value);
+      if (subjectValue) touchedSubjects.add(subjectValue);
+    }
   }
 
-  const { warnings, errors } = collectShaclResults(
-    effectiveAdded.map((pq) => ({
-      s: pq.s,
-      p: pq.p,
-      o: pq.o,
-      g: pq.g ?? "urn:vg:inferred",
-    })),
-  );
+  const { warnings, errors } = collectShaclResults(effectiveAdded);
 
   const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
   const inferences: ReasoningInference[] = effectiveAdded
-    .map((pq) => {
-      const subject = pq.s;
-      const predicate = pq.p;
-      const object = plainObjectToString(pq.o);
+    .map((quad) => {
+      const subject = subjectTermToString(quad.subject, quad.subject.value);
+      const predicate = termToString(quad.predicate);
+      const object = termToString(quad.object);
       if (!subject || !predicate) return null;
       if (predicate === RDF_TYPE) {
         return {
@@ -1778,7 +1688,7 @@ async function handleRunReasoning(
     id: msg.id,
     durationMs,
     startedAt,
-    added: includeAdded ? effectiveAdded : undefined,
+    added: includeAdded ? effectiveAdded.map((quad) => serializeQuad(quad)) : undefined,
     addedCount: effectiveAdded.length,
     warnings,
     errors,

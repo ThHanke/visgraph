@@ -22,6 +22,8 @@ import type {
   ReasoningResult,
   ReasoningWarning,
 } from "./reasoningTypes";
+import { deserializeQuad, serializeQuad } from "./rdfSerialization";
+import type { WorkerQuad } from "./rdfSerialization";
 export type {
   ReasoningError,
   ReasoningInference,
@@ -34,62 +36,6 @@ export type {
 const BATCH_SIZE = 1000;
 
 const { namedNode, literal, quad, blankNode, defaultGraph } = DataFactory;
-
-type ReasoningWorkerPlainQuad = {
-  s: string;
-  p: string;
-  o: { t: "iri" | "bnode" | "lit"; v: string; dt?: string; ln?: string };
-  g?: string;
-};
-
-function quadToWorkerPlain(q: Quad): ReasoningWorkerPlainQuad {
-  const objTerm = q.object;
-  let obj: ReasoningWorkerPlainQuad["o"] = { t: "lit", v: "" };
-  if (objTerm.termType === "NamedNode") {
-    obj = { t: "iri", v: String(objTerm.value) };
-  } else if (objTerm.termType === "BlankNode") {
-    obj = { t: "bnode", v: String(objTerm.value) };
-  } else if (objTerm.termType === "Literal") {
-    obj = {
-      t: "lit",
-      v: String(objTerm.value),
-      dt: objTerm.datatype && objTerm.datatype.value ? String(objTerm.datatype.value) : undefined,
-      ln: objTerm.language || undefined,
-    };
-  } else {
-    obj = { t: "lit", v: String((objTerm as any).value || "") };
-  }
-  const graphTerm = q.graph;
-  const graphValue =
-    graphTerm && graphTerm.termType !== "DefaultGraph"
-      ? String((graphTerm as any).value)
-      : undefined;
-  return {
-    s: String(q.subject.value),
-    p: String(q.predicate.value),
-    o: obj,
-    g: graphValue,
-  };
-}
-
-function plainObjectToTerm(o: ReasoningWorkerPlainQuad["o"]) {
-  if (!o) return literal("");
-  if (o.t === "iri") return namedNode(o.v);
-  if (o.t === "bnode") return blankNode(o.v.replace(/^_:/, ""));
-  if (o.t === "lit") {
-    if (o.dt) return literal(o.v, namedNode(o.dt));
-    if (o.ln) return literal(o.v, o.ln);
-    return literal(o.v);
-  }
-  return literal(o.v);
-}
-
-function plainSubjectToTerm(value: string) {
-  if (/^_:/.test(String(value))) {
-    return blankNode(String(value).replace(/^_:/, ""));
-  }
-  return namedNode(String(value));
-}
 
 /*
   Global N3 Store prototype hook
@@ -845,10 +791,10 @@ export class RDFManagerImpl {
     const id = `reasoning-${start.toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
     const quads = this.store.getQuads(null, null, null, null) || [];
-    const serialized: ReasoningWorkerPlainQuad[] = [];
+    const serialized: WorkerQuad[] = [];
     for (const q of quads) {
       try {
-        serialized.push(quadToWorkerPlain(q));
+        serialized.push(serializeQuad(q));
       } catch (_) {
         /* ignore per-quad serialization errors */
       }
@@ -911,18 +857,19 @@ export class RDFManagerImpl {
         if (msg.type !== "reasoningResult" || msg.id !== id) return;
 
         try {
-          const added = Array.isArray(msg.added) ? (msg.added as ReasoningWorkerPlainQuad[]) : [];
+          const added = Array.isArray(msg.added) ? (msg.added as WorkerQuad[]) : [];
           const dedup = new Set<string>();
           const addsForManager: { subject: any; predicate: any; object: any }[] = [];
-          for (const pq of added) {
+          for (const serializedQuad of added) {
             try {
-              const key = `${pq.s}|${pq.p}|${pq.o ? `${pq.o.t}:${pq.o.v}:${pq.o.dt || ""}:${pq.o.ln || ""}` : ""}`;
+              const quadValue = deserializeQuad(serializedQuad, DataFactory);
+              const key = `${quadValue.subject.value}|${quadValue.predicate.value}|${quadValue.object.termType}:${quadValue.object.value}|${quadValue.graph && quadValue.graph.termType !== "DefaultGraph" ? quadValue.graph.value : ""}`;
               if (dedup.has(key)) continue;
               dedup.add(key);
               addsForManager.push({
-                subject: plainSubjectToTerm(pq.s),
-                predicate: namedNode(String(pq.p)),
-                object: plainObjectToTerm(pq.o),
+                subject: quadValue.subject,
+                predicate: quadValue.predicate,
+                object: quadValue.object,
               });
             } catch (_) {
               /* ignore invalid quad */
@@ -1796,33 +1743,28 @@ export class RDFManagerImpl {
         try { worker.postMessage({ type: "ack", id: loadId }); } catch (_) { /* ignore */ }
       };
 
-      const ingestPlain = (plain: any[]) => {
-        for (const pq of plain) {
+      const ingestWorkerQuads = (serialized: WorkerQuad[]) => {
+        for (const payload of serialized) {
           try {
-            const sTerm = /^_:/.test(String(pq.s || ""))
-              ? blankNode(String(pq.s).replace(/^_:/, ""))
-              : namedNode(String(pq.s));
-            const pTerm = namedNode(String(pq.p));
-            let oTerm: any = null;
-            if (pq.o && pq.o.t === "iri") oTerm = namedNode(String(pq.o.v));
-            else if (pq.o && pq.o.t === "bnode") oTerm = blankNode(String(pq.o.v));
-            else if (pq.o && pq.o.t === "lit") {
-              if (pq.o.dt) oTerm = literal(String(pq.o.v), namedNode(String(pq.o.dt)));
-              else if (pq.o.ln) oTerm = literal(String(pq.o.v), String(pq.o.ln));
-              else oTerm = literal(String(pq.o.v));
-            } else {
-              oTerm = literal(String((pq.o && pq.o.v) || ""));
-            }
-            const gTerm = pq.g ? namedNode(String(pq.g)) : targetGraph;
-            const toAdd = quad(sTerm, pTerm, oTerm, gTerm);
+            const quadValue = deserializeQuad(payload, DataFactory);
+            const graphTerm =
+              quadValue.graph && quadValue.graph.termType !== "DefaultGraph"
+                ? quadValue.graph
+                : targetGraph;
+            const toAdd = DataFactory.quad(
+              quadValue.subject,
+              quadValue.predicate,
+              quadValue.object,
+              graphTerm,
+            );
             try {
-              this.addQuadToStore(toAdd, gTerm, addedQuads);
+              this.addQuadToStore(toAdd, graphTerm, addedQuads);
             } catch (_) {
               this.store.addQuad(toAdd);
               addedQuads.push(toAdd);
             }
           } catch (err) {
-            console.debug("[VG_RDF_WORKER] ingestPlain failed", err);
+            console.debug("[VG_RDF_WORKER] ingestWorkerQuads failed", err);
           }
         }
       };
@@ -1849,7 +1791,7 @@ export class RDFManagerImpl {
         }
 
         if (msg.type === "quads" && Array.isArray(msg.quads)) {
-          ingestPlain(msg.quads);
+          ingestWorkerQuads(msg.quads as WorkerQuad[]);
           ack();
           return;
         }

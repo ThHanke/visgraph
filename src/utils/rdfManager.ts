@@ -19,6 +19,7 @@ import type {
   PlainQuad,
   PlainQuadTerm,
 } from "./rdfManager.workerProtocol";
+import type { WorkerQuad, WorkerTerm } from "./rdfSerialization";
 import { useAppConfigStore } from "../stores/appConfigStore";
 
 export { RDFManagerImpl as RDFManager, enableN3StoreWriteLogging, collectGraphCountsFromStore };
@@ -132,6 +133,42 @@ const quadToPlain = (quad: any): PlainQuad | null => {
   return plain;
 };
 
+const plainObjectToWorkerTerm = (obj: PlainQuadTerm): WorkerTerm => {
+  switch (obj.t) {
+    case "iri":
+      return { termType: "NamedNode", value: obj.v };
+    case "bnode":
+      return { termType: "BlankNode", value: obj.v.replace(/^_:/, "") };
+    case "lit":
+    default: {
+      const term: WorkerTerm = { termType: "Literal", value: obj.v };
+      if (obj.dt) term.datatype = obj.dt;
+      if (obj.ln) term.language = obj.ln;
+      return term;
+    }
+  }
+};
+
+const plainQuadToWorkerQuad = (plain: PlainQuad): WorkerQuad => {
+  const subject: WorkerTerm = plain.s.startsWith("_:")
+    ? { termType: "BlankNode", value: plain.s.slice(2) }
+    : { termType: "NamedNode", value: plain.s };
+  const predicate: WorkerTerm = { termType: "NamedNode", value: plain.p };
+  const graph: WorkerTerm =
+    plain.g && plain.g !== "default"
+      ? { termType: "NamedNode", value: plain.g }
+      : { termType: "DefaultGraph" };
+  const worker: WorkerQuad = {
+    subject,
+    predicate,
+    graph,
+  };
+  if (plain.o) {
+    worker.object = plainObjectToWorkerTerm(plain.o);
+  }
+  return worker;
+};
+
 const collectPlainQuadsFromGraph = (graphName: string): PlainQuad[] => {
   try {
     const store = (baseManager as any).getStore?.();
@@ -156,7 +193,7 @@ const collectPlainQuadsFromGraph = (graphName: string): PlainQuad[] => {
   }
 };
 
-const buildPlainBatchPayload = (
+const buildWorkerBatchPayload = (
   changes: { removes?: any[]; adds?: any[] },
   graphName: string,
 ): RDFWorkerCommandPayloads["syncBatch"] => {
@@ -210,8 +247,8 @@ const buildPlainBatchPayload = (
 
   const payload: RDFWorkerCommandPayloads["syncBatch"] = {
     graphName: graph,
-    adds,
-    removes,
+    adds: adds.map(plainQuadToWorkerQuad),
+    removes: removes.map((plain) => plainQuadToWorkerQuad(plain)),
   };
 
   const options = (changes as any)?.options;
@@ -483,7 +520,7 @@ const rdfManagerProxyHandler: ProxyHandler<RDFManagerImpl> = {
       return async (changes: { removes?: any[]; adds?: any[] }, graphName: string = "urn:vg:data") => {
         await (target as any).applyBatch(changes, graphName);
         if (workerEnabled) {
-          const payload = buildPlainBatchPayload(changes || {}, graphName);
+          const payload = buildWorkerBatchPayload(changes || {}, graphName);
           if ((payload.adds && payload.adds.length > 0) || (payload.removes && payload.removes.length > 0)) {
             try {
               await callWorker("syncBatch", payload);
@@ -706,7 +743,7 @@ const rdfManagerProxyHandler: ProxyHandler<RDFManagerImpl> = {
         if (workerEnabled) {
           try {
             const gName = String(graphName || "urn:vg:data");
-            const quads = collectPlainQuadsFromGraph(gName);
+            const quads = collectPlainQuadsFromGraph(gName).map(plainQuadToWorkerQuad);
             const namespaces =
               (target as any).getNamespaces && typeof (target as any).getNamespaces === "function"
                 ? (target as any).getNamespaces()
@@ -734,7 +771,7 @@ const rdfManagerProxyHandler: ProxyHandler<RDFManagerImpl> = {
         if (workerEnabled) {
           try {
             const gName = String(graphName || "urn:vg:data");
-            const quads = collectPlainQuadsFromGraph(gName);
+            const quads = collectPlainQuadsFromGraph(gName).map(plainQuadToWorkerQuad);
             const namespaces =
               (target as any).getNamespaces && typeof (target as any).getNamespaces === "function"
                 ? (target as any).getNamespaces()
