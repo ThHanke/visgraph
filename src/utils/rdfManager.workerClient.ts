@@ -126,7 +126,10 @@ export class RdfManagerWorkerClient {
 
       if (typeof window === "undefined") {
         try {
-          const { InProcessWorker } = await import("./rdfManager.workerNode.ts");
+          const modulePath = "./rdfManager.workerNode.ts";
+          const { InProcessWorker } = await import(
+            /* @vite-ignore */ modulePath
+          );
           const worker: WorkerLike = new InProcessWorker();
           worker.addEventListener("message", this.handleMessage);
           worker.addEventListener("error", this.handleError);

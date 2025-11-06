@@ -602,10 +602,35 @@ export class RDFManagerImpl {
     const rulesets = Array.isArray(options?.rulesets)
       ? options!.rulesets.map((r) => String(r)).filter(Boolean)
       : [];
+    const resolveBaseUrl = (): string => {
+      try {
+        const envBase =
+          typeof import.meta !== "undefined" &&
+          typeof import.meta.env?.BASE_URL === "string"
+            ? import.meta.env.BASE_URL
+            : undefined;
+        if (envBase && envBase.trim().length > 0) {
+          return envBase;
+        }
+      } catch (_) {
+        /* ignore env lookup failures */
+      }
+      try {
+        if (typeof window !== "undefined" && window.location && typeof window.location.pathname === "string") {
+          const pathName = window.location.pathname || "/";
+          return pathName.endsWith("/") ? pathName : `${pathName}/`;
+        }
+      } catch (_) {
+        /* ignore window lookup failures */
+      }
+      return "/";
+    };
+
     const payload = {
       reasoningId,
       rulesets,
       emitSubjects: true,
+      baseUrl: resolveBaseUrl(),
     };
     const response = await this.worker.call("runReasoning", payload);
     const safe = isPlainObject(response) ? response : {};
