@@ -26,6 +26,7 @@ import {
   normalizeOptionalString,
   normalizeStringArray,
 } from "../utils/normalizers";
+import type { WorkerReconcileSubjectSnapshotPayload } from "../utils/rdfManager.workerProtocol";
 const { namedNode, quad, blankNode, literal } = DataFactory;
 
 /* NOTE: attachPrefixed removed in favor of computing prefixed values locally
@@ -467,11 +468,130 @@ interface OntologyStore {
   clearOntologies: () => void;
   exportGraph: (format: "turtle" | "json-ld" | "rdf-xml") => Promise<string>;
   updateFatMap: (quads?: any[]) => Promise<void>;
+  updateFatMapFromWorker: (snapshot: WorkerReconcileSubjectSnapshotPayload[]) => Promise<void>;
   getRdfManager: () => RDFManager;
   removeLoadedOntology: (url: string) => void;
   // Namespace registry (joined prefix -> namespace -> color) persisted after reconcile
   namespaceRegistry: { prefix: string; namespace: string; color: string }[];
   setNamespaceRegistry: (registry: { prefix: string; namespace: string; color: string }[]) => void;
+}
+
+async function persistFatMapUpdates(
+  set: (updater: any, replace?: boolean) => void,
+  getState: () => OntologyStore,
+  classesMap: Record<string, any>,
+  propsMap: Record<string, any>,
+): Promise<void> {
+  const state = getState();
+  const existingClasses = Array.isArray(state.availableClasses) ? state.availableClasses : [];
+  const classByIri: Record<string, any> = {};
+  for (const c of existingClasses) {
+    if (c && c.iri) classByIri[String(c.iri)] = c;
+  }
+  for (const c of Object.values(classesMap)) {
+    if (!c || !c.iri) continue;
+    const iri = String(c.iri);
+    classByIri[iri] = { ...(classByIri[iri] || {}), ...(c || {}) };
+  }
+
+  const existingProps = Array.isArray(state.availableProperties) ? state.availableProperties : [];
+  const propByIri: Record<string, any> = {};
+  for (const p of existingProps) {
+    if (p && p.iri) propByIri[String(p.iri)] = p;
+  }
+  for (const p of Object.values(propsMap)) {
+    if (!p || !p.iri) continue;
+    const iri = String(p.iri);
+    propByIri[iri] = { ...(propByIri[iri] || {}), ...(p || {}) };
+  }
+
+  try {
+    const mgr = state.rdfManager;
+    const nsMap =
+      mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
+    const prefixes = Object.keys(nsMap || {}).sort();
+    const paletteMap = buildPaletteMap(prefixes || []);
+    const registry = (prefixes || []).map((p) => {
+      try {
+        return {
+          prefix: String(p),
+          namespace: String((nsMap as any)[p] || ""),
+          color: String((paletteMap as any)[p] || ""),
+        };
+      } catch (_) {
+        return {
+          prefix: String(p),
+          namespace: String((nsMap as any)[p] || ""),
+          color: "",
+        };
+      }
+    });
+
+    const computePrefixed = (entry: any) => {
+      try {
+        const iri = String((entry && (entry.iri || entry.key)) || "");
+        const pref = iri ? toPrefixed(String(iri), registry as any) : "";
+        return { ...(entry || {}), prefixed: pref && String(pref) !== String(iri) ? String(pref) : "" };
+      } catch (_) {
+        return { ...(entry || {}), prefixed: "" };
+      }
+    };
+
+    const propsWithPref = Object.values(propByIri).map(computePrefixed);
+    const classesWithPref = Object.values(classByIri).map(computePrefixed);
+
+    set((s: any) => ({
+      availableClasses: classesWithPref,
+      availableProperties: propsWithPref,
+      ontologiesVersion: (s.ontologiesVersion || 0) + 1,
+      namespaceRegistry: registry,
+    }));
+  } catch (_) {
+    try {
+      const propsArr = Object.values(propByIri);
+      const classesArr = Object.values(classByIri);
+
+      const computePrefixed = (entry: any) => {
+        try {
+          const iri = String((entry && (entry.iri || entry.key)) || "");
+          const pref = iri ? toPrefixed(String(iri)) : "";
+          return { ...(entry || {}), prefixed: pref && String(pref) !== String(iri) ? String(pref) : "" };
+        } catch (_) {
+          return { ...(entry || {}), prefixed: "" };
+        }
+      };
+
+      const propsWithPref = propsArr.map(computePrefixed);
+      const classesWithPref = classesArr.map(computePrefixed);
+
+      set((s: any) => ({
+        availableClasses: classesWithPref,
+        availableProperties: propsWithPref,
+        ontologiesVersion: (s.ontologiesVersion || 0) + 1,
+      }));
+    } catch (_) {
+      set((s: any) => ({
+        availableClasses: Object.values(classByIri),
+        availableProperties: Object.values(propByIri),
+        ontologiesVersion: (s.ontologiesVersion || 0) + 1,
+      }));
+    }
+  }
+
+  try {
+    const allClasses = Object.values(classByIri);
+    const classesSample = (allClasses || []).slice(0, 10).map((c: any) => ({
+      iri: c.iri,
+      label: c.label,
+      namespace: c.namespace,
+    }));
+    console.debug("[VG_DEBUG] updateFatMap.availableClasses.sample", {
+      total: Array.isArray(allClasses) ? allClasses.length : 0,
+      sample: classesSample,
+    });
+  } catch (_) {
+    /* ignore logging failures */
+  }
 }
 
 export const useOntologyStore = create<OntologyStore>((set, get) => ({
@@ -1447,109 +1567,85 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       }
     }
 
-    // Upsert: merge parsed results with existing state without deletions
-    const st = (useOntologyStore as any).getState ? (useOntologyStore as any).getState() : null;
-    const existingClasses = st && Array.isArray(st.availableClasses) ? st.availableClasses : [];
-    const classByIri: Record<string, any> = {};
-    for (const c of existingClasses) classByIri[String(c.iri)] = c;
-    for (const c of Object.values(classesMap)) classByIri[String(c.iri)] = { ...(classByIri[String(c.iri)] || {}), ...(c || {}) };
+    await persistFatMapUpdates(set, get, classesMap, propsMap);
+  },
+  updateFatMapFromWorker: async (
+    snapshot: WorkerReconcileSubjectSnapshotPayload[],
+  ): Promise<void> => {
+    if (!Array.isArray(snapshot) || snapshot.length === 0) return;
 
-    const existingProps = st && Array.isArray(st.availableProperties) ? st.availableProperties : [];
-    const propByIri: Record<string, any> = {};
-    for (const p of existingProps) propByIri[String(p.iri)] = p;
-    for (const p of Object.values(propsMap)) propByIri[String(p.iri)] = { ...(propByIri[String(p.iri)] || {}), ...(p || {}) };
+    const classesMap: Record<string, any> = {};
+    const propsMap: Record<string, any> = {};
 
-    // Compute namespace registry now so we can persist classes/properties and registry
-    // in a single atomic state update. This avoids a race where consumers see an
-    // updated fat-map but the namespaceRegistry is not yet persisted (causes missing colors).
-    try {
-      const mgr = get().rdfManager;
-      const nsMap = mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
-      const prefixes = Object.keys(nsMap || []).sort();
-      const paletteMap = buildPaletteMap(prefixes || []);
-      const registry = (prefixes || []).map((p) => {
-        try {
-          return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: String((paletteMap as any)[p] || "") };
-        } catch (_) {
-          return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: "" };
-        }
+    for (const entry of snapshot) {
+      if (!entry || typeof entry.iri !== "string") continue;
+      const iri = entry.iri.trim();
+      if (!iri) continue;
+
+      const typesNormalized = Array.from(
+        new Set(
+          (Array.isArray(entry.types) ? entry.types : [])
+            .map((t) => (typeof t === "string" ? t.trim() : ""))
+            .filter(Boolean),
+        ),
+      );
+
+      let label =
+        typeof entry.label === "string" && entry.label.trim().length > 0
+          ? entry.label.trim()
+          : "";
+      if (!label) label = shortLocalName(iri);
+
+      const nsMatch = iri.match(/^(.*[\/#])/);
+      const namespace = nsMatch && nsMatch[1] ? String(nsMatch[1]) : "";
+
+      const isClass = typesNormalized.some((typeIri) => {
+        if (!typeIri) return false;
+        if (typeIri === "http://www.w3.org/2002/07/owl#Class") return true;
+        const norm = typeIri.replace(/[#\/]+$/, "");
+        return /(^|\/|#)Class$/i.test(typeIri) || /Class$/i.test(norm);
       });
 
-    {
-      const propsArr = Object.values(propByIri);
-      const classesArr = Object.values(classByIri);
-
-      const computePrefixed = (e: any) => {
-        try {
-          const iri = String((e && (e.iri || e.key)) || "");
-          const pref = iri ? toPrefixed(String(iri), registry as any) : "";
-          return { ...(e || {}), prefixed: pref && String(pref) !== String(iri) ? String(pref) : "" };
-        } catch (_) {
-          return { ...(e || {}), prefixed: "" };
+      const isProp = typesNormalized.some((typeIri) => {
+        if (!typeIri) return false;
+        if (
+          typeIri === "http://www.w3.org/2002/07/owl#ObjectProperty" ||
+          typeIri === "http://www.w3.org/2002/07/owl#DatatypeProperty"
+        ) {
+          return true;
         }
-      };
+        const norm = typeIri.replace(/[#\/]+$/, "");
+        return /Property$/i.test(norm);
+      });
 
-      const propsWithPref = (propsArr || []).map(computePrefixed);
-      const classesWithPref = (classesArr || []).map(computePrefixed);
-
-      useOntologyStore.setState((s: any) => ({
-        availableClasses: classesWithPref,
-        availableProperties: propsWithPref,
-        ontologiesVersion: (s.ontologiesVersion || 0) + 1,
-        namespaceRegistry: registry,
-      }));
-    }
-    } catch (_) {
-      // Fallback to previous behavior if registry computation fails (attach prefixed best-effort)
-      try {
-        const propsArr = Object.values(propByIri);
-        const classesArr = Object.values(classByIri);
-
-        const computePrefixed = (e: any) => {
-          try {
-            const iri = String((e && (e.iri || e.key)) || "");
-            const pref = iri ? toPrefixed(String(iri)) : "";
-            return { ...(e || {}), prefixed: pref && String(pref) !== String(iri) ? String(pref) : "" };
-          } catch (_) {
-            return { ...(e || {}), prefixed: "" };
-          }
+      if (isClass) {
+        classesMap[iri] = {
+          iri,
+          label,
+          namespace,
+          properties: [],
+          restrictions: {},
+          source: "worker",
         };
+      }
 
-        const propsWithPref = (propsArr || []).map(computePrefixed);
-        const classesWithPref = (classesArr || []).map(computePrefixed);
-
-        useOntologyStore.setState((s: any) => ({
-          availableClasses: classesWithPref,
-          availableProperties: propsWithPref,
-          ontologiesVersion: (s.ontologiesVersion || 0) + 1,
-        }));
-      } catch (_) {
-        useOntologyStore.setState((s: any) => ({
-          availableClasses: Object.values(classByIri),
-          availableProperties: Object.values(propByIri),
-          ontologiesVersion: (s.ontologiesVersion || 0) + 1,
-        }));
+      if (isProp) {
+        propsMap[iri] = {
+          iri,
+          label,
+          domain: [],
+          range: [],
+          namespace,
+          source: "worker",
+        };
       }
     }
 
-    // Debug: log a small sample of availableClasses when updateFatMap runs with parsed quads.
-    // Keeps output safe for tests by wrapping in try/catch and avoiding heavy object serialization.
-    try {
-      const _allClasses = Object.values(classByIri);
-      const classesSample = (_allClasses || []).slice(0, 10).map((c: any) => ({
-        iri: c.iri,
-        label: c.label,
-        namespace: c.namespace,
-      }));
-      console.debug("[VG_DEBUG] updateFatMap.availableClasses.sample", {
-        total: Array.isArray(_allClasses) ? _allClasses.length : 0,
-        sample: classesSample,
-      });
-    } catch (_) { /* ignore logging failures */ }
+    if (Object.keys(classesMap).length === 0 && Object.keys(propsMap).length === 0) {
+      return;
+    }
 
-
-
-
+    await persistFatMapUpdates(set, get, classesMap, propsMap);
   },
 
   discoverReferencedOntologies: async (options?: {

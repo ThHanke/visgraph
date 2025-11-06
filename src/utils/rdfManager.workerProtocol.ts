@@ -1,6 +1,6 @@
-import type { ReasoningResult } from "./reasoningTypes";
-import type { WorkerQuad, WorkerQuadUpdate, WorkerTerm } from "./rdfSerialization";
-import { isWorkerQuad, isWorkerQuadUpdate, isWorkerTerm } from "./rdfSerialization";
+import type { ReasoningResult } from "./reasoningTypes.ts";
+import type { WorkerQuad, WorkerQuadUpdate, WorkerTerm } from "./rdfSerialization.ts";
+import { isWorkerQuad, isWorkerQuadUpdate, isWorkerTerm } from "./rdfSerialization.ts";
 import {
   assertArray,
   assertBoolean,
@@ -10,7 +10,7 @@ import {
   invariant,
   isPlainObject,
   isStringRecord,
-} from "./guards";
+} from "./guards.ts";
 
 export interface SyncNamespacesPayload {
   namespaces: Record<string, string>;
@@ -43,6 +43,28 @@ export interface SyncRemoveAllQuadsForIriPayload {
   iri: string;
   graphName?: string;
   includePredicate?: boolean;
+}
+
+export interface ImportSerializedPayload {
+  content: string;
+  graphName?: string;
+  contentType?: string;
+  filename?: string;
+  baseIri?: string;
+}
+
+export interface ExportGraphPayload {
+  graphName?: string;
+  format?: string;
+}
+
+export interface RemoveQuadsByNamespacePayload {
+  graphName: string;
+  namespaceUris: string[];
+}
+
+export interface PurgeNamespacePayload {
+  prefixOrUri: string;
 }
 
 export interface FetchQuadsPagePayload {
@@ -91,6 +113,10 @@ export type RDFWorkerCommandPayloads = {
     baseUrl?: string;
     emitSubjects?: boolean;
   };
+  importSerialized: ImportSerializedPayload;
+  exportGraph: ExportGraphPayload;
+  removeQuadsByNamespace: RemoveQuadsByNamespacePayload;
+  purgeNamespace: PurgeNamespacePayload;
 };
 
 export const RDF_WORKER_COMMANDS = [
@@ -110,6 +136,10 @@ export const RDF_WORKER_COMMANDS = [
   "emitAllSubjects",
   "triggerSubjects",
   "runReasoning",
+  "importSerialized",
+  "exportGraph",
+  "removeQuadsByNamespace",
+  "purgeNamespace",
 ] as const;
 
 export type RDFWorkerCommandName = (typeof RDF_WORKER_COMMANDS)[number];
@@ -148,6 +178,11 @@ function assertOptionalStringRecord(value: unknown, message: string) {
 function assertOptionalPlainObject(value: unknown, message: string) {
   if (typeof value === "undefined") return;
   assertPlainObject(value, message);
+}
+
+function assertOptionalStringArray(value: unknown, message: string) {
+  if (typeof value === "undefined" || value === null) return;
+  assertStringArray(value, message);
 }
 
 function assertStringArray(value: unknown, message: string): asserts value is string[] {
@@ -449,6 +484,35 @@ const COMMAND_VALIDATORS: Record<RDFWorkerCommandName, CommandValidator> = {
       assertBoolean(emitSubjects, "runReasoning.emitSubjects must be a boolean when provided");
     }
   },
+  importSerialized(payload) {
+    assertPlainObject(payload, "importSerialized payload must be an object");
+    const { content, graphName, contentType, filename, baseIri } = payload as ImportSerializedPayload;
+    assertString(content, "importSerialized.content must be a string");
+    assertOptionalString(graphName, "importSerialized.graphName must be a string when provided");
+    assertOptionalString(contentType, "importSerialized.contentType must be a string when provided");
+    assertOptionalString(filename, "importSerialized.filename must be a string when provided");
+    assertOptionalString(baseIri, "importSerialized.baseIri must be a string when provided");
+  },
+  exportGraph(payload) {
+    assertPlainObject(payload, "exportGraph payload must be an object");
+    const { graphName, format } = payload as ExportGraphPayload;
+    assertOptionalString(graphName, "exportGraph.graphName must be a string when provided");
+    assertOptionalString(format, "exportGraph.format must be a string when provided");
+  },
+  removeQuadsByNamespace(payload) {
+    assertPlainObject(payload, "removeQuadsByNamespace payload must be an object");
+    const { graphName, namespaceUris } = payload as RemoveQuadsByNamespacePayload;
+    assertString(graphName, "removeQuadsByNamespace.graphName must be a string");
+    assertStringArray(
+      namespaceUris,
+      "removeQuadsByNamespace.namespaceUris must be an array of strings",
+    );
+  },
+  purgeNamespace(payload) {
+    assertPlainObject(payload, "purgeNamespace payload must be an object");
+    const { prefixOrUri } = payload as PurgeNamespacePayload;
+    assertString(prefixOrUri, "purgeNamespace.prefixOrUri must be a string");
+  },
 };
 
 export function validateRdfWorkerCommandInput(
@@ -524,12 +588,47 @@ export interface RDFWorkerAck {
   id: string;
 }
 
+export interface WorkerReconcileSubject {
+  subject: number;
+  types?: number[];
+  label?: number;
+}
+
+export interface WorkerReconcilePayload {
+  subjects: WorkerReconcileSubject[];
+}
+
+export interface WorkerReconcileSubjectSnapshotPayload {
+  iri: string;
+  types: string[];
+  label?: string;
+}
+
+export interface RDFWorkerLoadProgressMessage {
+  type: "loadProgress";
+  id: string;
+  parsedQuads: number;
+}
+
+export interface RDFWorkerLoadCompleteMessage {
+  type: "end";
+  id: string;
+  prefixes?: Record<string, string>;
+  dictionary?: WorkerTerm[];
+  quadIndices?: Uint32Array;
+  quadCount?: number;
+  touchedSubjects?: string[];
+  reconcile?: WorkerReconcilePayload;
+  reconcileSnapshot?: WorkerReconcileSubjectSnapshotPayload[];
+}
+
 export interface RDFWorkerLoadFromUrlMessage {
   type: "loadFromUrl";
   id: string;
   url: string;
   timeoutMs?: number;
   headers?: Record<string, string>;
+  graphName?: string;
 }
 
 export interface RDFWorkerRunReasoningMessage {
@@ -549,7 +648,12 @@ export type RDFWorkerInboundMessage =
   | RDFWorkerLoadFromUrlMessage
   | RDFWorkerRunReasoningMessage;
 
-export type RDFWorkerOutboundMessage = RDFWorkerResponse | RDFWorkerEvent | RDFWorkerAck;
+export type RDFWorkerOutboundMessage =
+  | RDFWorkerResponse
+  | RDFWorkerEvent
+  | RDFWorkerAck
+  | RDFWorkerLoadProgressMessage
+  | RDFWorkerLoadCompleteMessage;
 
 export type RDFWorkerMessage = RDFWorkerInboundMessage | RDFWorkerOutboundMessage;
 

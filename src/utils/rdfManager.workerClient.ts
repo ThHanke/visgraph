@@ -31,13 +31,21 @@ export interface RdfManagerWorkerClientOptions {
   ) => Promise<unknown>;
 }
 
+type WorkerLike = {
+  postMessage: (message: unknown) => void;
+  terminate: () => void | Promise<void>;
+  addEventListener: (type: "message" | "error", listener: (event: any) => void) => void;
+  removeEventListener: (type: "message" | "error", listener: (event: any) => void) => void;
+};
+
 interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (reason?: unknown) => void;
 }
 
 export class RdfManagerWorkerClient {
-  private worker: Worker | null = null;
+  private worker: WorkerLike | null = null;
+  private workerInit: Promise<WorkerLike | null> | null = null;
   private pending: Map<string, PendingRequest> = new Map();
   private events: EventHandlerMap = {
     change: new Set(),
@@ -52,13 +60,11 @@ export class RdfManagerWorkerClient {
   constructor(options?: RdfManagerWorkerClientOptions) {
     this.executor = options?.executor ?? null;
     if (!this.executor) {
-      this.worker = new WorkerFactory();
-      this.worker.addEventListener("message", this.handleMessage);
-      this.worker.addEventListener("error", this.handleError);
+      void this.ensureWorker();
     }
   }
 
-  private handleMessage = (event: MessageEvent<RDFWorkerMessage>) => {
+  private handleMessage = (event: { data: RDFWorkerMessage }) => {
     const data = event.data;
     if (!data) return;
 
@@ -91,9 +97,52 @@ export class RdfManagerWorkerClient {
     }
   };
 
-  private handleError = (event: ErrorEvent) => {
-    console.error("[rdfManager.workerClient] worker runtime error", event.message);
+  private handleError = (event: ErrorEvent | Error) => {
+    const message = event instanceof Error ? event.message : event?.message;
+    console.error("[rdfManager.workerClient] worker runtime error", message);
   };
+
+  private async ensureWorker(): Promise<WorkerLike | null> {
+    if (this.worker) return this.worker;
+    if (this.workerInit) return this.workerInit;
+
+    this.workerInit = (async () => {
+      try {
+        console.debug("[rdfManager.workerClient] ensureWorker start", {
+          hasBrowserWorker: typeof Worker !== "undefined",
+          isNode: typeof window === "undefined",
+        });
+      } catch (_) {
+        /* ignore */
+      }
+
+      if (typeof Worker !== "undefined") {
+        const worker = new WorkerFactory() as unknown as WorkerLike;
+        worker.addEventListener("message", this.handleMessage);
+        worker.addEventListener("error", this.handleError);
+        this.worker = worker;
+        return worker;
+      }
+
+      if (typeof window === "undefined") {
+        try {
+          const { InProcessWorker } = await import("./rdfManager.workerNode.ts");
+          const worker: WorkerLike = new InProcessWorker();
+          worker.addEventListener("message", this.handleMessage);
+          worker.addEventListener("error", this.handleError);
+          this.worker = worker;
+          return worker;
+        } catch (err) {
+          console.error("[rdfManager.workerClient] failed to initialise in-process worker", err);
+          return null;
+        }
+      }
+
+      return null;
+    })();
+
+    return this.workerInit;
+  }
 
   async call<C extends RDFWorkerCommandName, T = unknown>(
     command: C,
@@ -104,6 +153,9 @@ export class RdfManagerWorkerClient {
       if (this.executor) {
         return (this.executor(command, payload as any) as Promise<T>);
       }
+      await this.ensureWorker();
+    }
+    if (!this.worker) {
       throw new Error("rdfManager worker not initialised");
     }
 
@@ -130,16 +182,18 @@ export class RdfManagerWorkerClient {
     set.add(handler);
     if (!this.executor && !this.subscribedEvents.has(event)) {
       this.subscribedEvents.add(event);
-      const subMessage: RDFWorkerSubscriptionRequest = {
-        type: "subscribe",
-        id: event,
-        event,
-      };
-        try {
-          this.worker?.postMessage(subMessage);
-        } catch (err) {
-          console.error("[rdfManager.workerClient] failed to send subscribe", err);
-        }
+      const subMessage: RDFWorkerSubscriptionRequest = { type: "subscribe", id: event, event };
+      this.ensureWorker()
+        .then(() => {
+          try {
+            this.worker?.postMessage(subMessage);
+          } catch (err) {
+            console.error("[rdfManager.workerClient] failed to send subscribe", err);
+          }
+        })
+        .catch((err) => {
+          console.error("[rdfManager.workerClient] worker init failed during subscribe", err);
+        });
     }
     return () => {
       set.delete(handler);

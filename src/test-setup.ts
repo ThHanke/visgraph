@@ -154,10 +154,8 @@ class SimpleDOMMatrixReadOnly {
   before importing UI components.
 */
 void (async () => {
-  {
-    const mod = await import('./stores/appConfigStore');
-    // The store exports a named `useAppConfigStore`. Access it via `any` to avoid
-    // TypeScript errors in the test setup environment.
+  try {
+    const mod = await import('./stores/appConfigStore.ts');
     const useAppConfigStore = (mod as any).useAppConfigStore;
     if (useAppConfigStore && typeof useAppConfigStore.getState === 'function') {
       try {
@@ -166,9 +164,11 @@ void (async () => {
         // ignore if setter not present yet
       }
     }
+  } catch (_) {
+    // ignore (store may not be resolvable in this environment)
   }
 })();
- 
+
 // Additional lightweight polyfills to help React/ReactDOM and reactflow internals in jsdom tests.
 // Provide window.getSelection, document.activeElement helpers and a minimal global React Flow instance
 // so tests that query window.__VG_RF_INSTANCE or inspect selection/activeElement do not crash.

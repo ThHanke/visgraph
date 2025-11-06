@@ -170,6 +170,10 @@ const KnowledgeCanvas: React.FC = () => {
 
   // Palette from RDF manager — used to compute colors without rebuilding palettes.
   const palette = usePaletteFromRdfManager();
+  const paletteRef = useRef(palette);
+  useEffect(() => {
+    paletteRef.current = palette;
+  }, [palette]);
 
 
   // Local editor state driven by React Flow events (node/edge payloads come from RF state).
@@ -278,6 +282,10 @@ const KnowledgeCanvas: React.FC = () => {
       predicateKindLookup.get(String(predicateIri)) ?? "unknown",
     [predicateKindLookup],
   );
+  const predicateClassifierRef = useRef(predicateClassifier);
+  useEffect(() => {
+    predicateClassifierRef.current = predicateClassifier;
+  }, [predicateClassifier]);
 
   // Snapshot of available classes derived from the ontology store so we pass
   // stable references to the mapper/worker and avoid triggering unnecessary work.
@@ -290,6 +298,15 @@ const KnowledgeCanvas: React.FC = () => {
       return [];
     }
   }, [availableClasses, ontologiesVersion]);
+  const availableClassesRef = useRef(availableClassesSnapshot);
+  useEffect(() => {
+    availableClassesRef.current = availableClassesSnapshot;
+  }, [availableClassesSnapshot]);
+
+  const availablePropertiesRef = useRef(availablePropertiesSnapshot);
+  useEffect(() => {
+    availablePropertiesRef.current = availablePropertiesSnapshot;
+  }, [availablePropertiesSnapshot]);
 
   // Namespace registry snapshot used by the mapper. Use ontologiesVersion as a
   // cheap and reliable signal that the registry may have changed.
@@ -787,24 +804,13 @@ const KnowledgeCanvas: React.FC = () => {
   );
 
   useEffect(() => {
-    // Prefer the store-level getter (works with test mocks) then the selector-provided getter.
-    const storeGetter =
-      (useOntologyStore as any).getState &&
-      (useOntologyStore as any).getState().getRdfManager;
     const mgr =
-      (typeof storeGetter === "function" ? storeGetter() : undefined) ||
-      (typeof getRdfManager === "function"
-        ? getRdfManager()
-        : getRdfManagerSafe
-          ? getRdfManagerSafe()
-          : undefined);
+      typeof getRdfManagerSafe === "function" ? getRdfManagerSafe() : undefined;
     if (!mgr) return;
 
     let mounted = true;
     let debounceTimer: number | null = null;
-    // Use the component-level tracked timeout helper so timers are tracked in a single place
-    // and cleared on unmount. This avoids per-effect local arrays that are easy to miss.
-    const setTrackedTimeoutLocal = (fn: any, delay = 0) => setTrackedTimeout(fn, delay);
+    mountedRef.current = true;
     // If a mapping run returns an empty result while we still have a previous snapshot,
     // it's likely a transient race. We schedule a single quick retry and skip applying
     // the empty result to avoid clearing the canvas unexpectedly.
@@ -819,32 +825,42 @@ const KnowledgeCanvas: React.FC = () => {
     const pendingSubjects: Set<string> = new Set<string>();
 
     const translateQuadsToDiagram = async (quads: any[]) => {
-        const state =
-          typeof useOntologyStore === "function" &&
-          typeof (useOntologyStore as any).getState === "function"
-            ? (useOntologyStore as any).getState()
-            : null;
+      const state =
+        typeof useOntologyStore === "function" &&
+        typeof (useOntologyStore as any).getState === "function"
+          ? (useOntologyStore as any).getState()
+          : null;
+      const liveAvailableProps =
+        state && Array.isArray(state.availableProperties)
+          ? state.availableProperties
+          : availablePropertiesRef.current;
+      const liveAvailableClasses =
+        state && Array.isArray(state.availableClasses)
+          ? state.availableClasses
+          : availableClassesRef.current;
+      const registry = state && Array.isArray(state.namespaceRegistry)
+        ? state.namespaceRegistry
+        : [];
 
-        const registry = state && Array.isArray(state.namespaceRegistry)
-          ? state.namespaceRegistry
-          : [];
-        const liveAvailableProps =
-          state && Array.isArray(state.availableProperties)
-            ? state.availableProperties
-            : availableProperties;
-
-        const opts = {
-          predicateKind: predicateClassifier,
-          availableProperties: Array.isArray(liveAvailableProps)
-            ? liveAvailableProps.slice()
+      const opts = {
+        predicateKind:
+          typeof predicateClassifierRef.current === "function"
+            ? predicateClassifierRef.current
+            : predicateClassifier,
+        availableProperties: Array.isArray(liveAvailableProps)
+          ? liveAvailableProps.slice()
+          : [],
+        availableClasses: Array.isArray(liveAvailableClasses)
+          ? liveAvailableClasses.slice()
+          : Array.isArray(availableClassesRef.current)
+            ? (availableClassesRef.current as any[]).slice()
             : [],
-          availableClasses,
-          registry,
-          palette: palette as any,
-        };
-
-        return mapQuadsWithWorker(quads, opts);
+        registry,
+        palette: paletteRef.current as any,
       };
+
+      return mapQuadsWithWorker(quads, opts);
+    };
 
     const runMapping = async () => {
       if (!mounted) return;
@@ -982,13 +998,7 @@ const KnowledgeCanvas: React.FC = () => {
         } catch (_) {/* noop */}
       }
     };
-  }, [
-    getRdfManager,
-    setNodes,
-    setEdges,
-    availableProperties,
-    availableClasses,
-  ]);
+  }, [getRdfManagerSafe, setNodes, setEdges]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
