@@ -76,6 +76,19 @@ const toPrefixedSafe = (value: string): string => {
 };
 
 const SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
+const isAbsoluteIri = (value: string): boolean => {
+  if (!value) return false;
+  const lower = value.toLowerCase();
+  return (
+    value.includes("://") ||
+    lower.startsWith("urn:") ||
+    lower.startsWith("mailto:") ||
+    lower.startsWith("data:") ||
+    lower.startsWith("tel:") ||
+    lower.startsWith("geo:") ||
+    lower.startsWith("doi:")
+  );
+};
 
 const expandUsingNamespace = (term: string, fallback?: string): string => {
   if (!term) return fallback ?? term;
@@ -95,14 +108,14 @@ const ensureExpandedIri = (input: string, mgr: any, context: string): string => 
   const raw = typeof input === "string" ? input.trim() : String(input ?? "").trim();
   if (!raw) return raw;
   if (raw.startsWith("_:")) return raw;
-  if (raw.includes("://") || raw.toLowerCase().startsWith("urn:")) return raw;
+  if (isAbsoluteIri(raw)) return raw;
 
   const attemptCandidate = (candidate: unknown): string | null => {
     if (typeof candidate !== "string") return null;
     const trimmed = candidate.trim();
     if (!trimmed) return null;
     if (trimmed.startsWith("_:")) return trimmed;
-    if (trimmed.includes("://") || trimmed.toLowerCase().startsWith("urn:")) return trimmed;
+    if (isAbsoluteIri(trimmed)) return trimmed;
     return null;
   };
 
@@ -175,7 +188,7 @@ const ensureExpandedIri = (input: string, mgr: any, context: string): string => 
     /* ignore registry fallback failure */
   }
 
-  if (SCHEME_PATTERN.test(raw) && (raw.includes("://") || raw.toLowerCase().startsWith("urn:"))) {
+  if (isAbsoluteIri(raw)) {
     return raw;
   }
 

@@ -571,6 +571,7 @@ export type RDFWorkerEventMap = {
     subjects: string[];
     quads?: Record<string, WorkerQuad[]>;
     snapshot?: WorkerReconcileSubjectSnapshotPayload[];
+    meta?: Record<string, unknown> | null;
   };
   reasoningStage: { id: string; stage: string; meta?: Record<string, unknown> };
   reasoningResult: ReasoningResult;
@@ -773,6 +774,15 @@ export function assertRdfWorkerEvent(value: unknown): asserts value is RDFWorker
           (payload as { snapshot?: unknown }).snapshot,
           "subjects payload.snapshot must be an array of snapshot entries",
         );
+      }
+      if (typeof (payload as { meta?: unknown }).meta !== "undefined") {
+        const metaValue = (payload as { meta?: unknown }).meta;
+        if (metaValue !== null) {
+          assertOptionalPlainObject(
+            metaValue,
+            "subjects payload.meta must be an object when provided",
+          );
+        }
       }
       return;
     case "reasoningStage":

@@ -26,6 +26,7 @@ type SubjectsSubscriber = (
   subjects: string[],
   quads?: WorkerQuad[],
   snapshot?: WorkerReconcileSubjectSnapshotPayload[],
+  meta?: Record<string, unknown> | null,
 ) => void;
 
 const DEFAULT_GRAPH = "urn:vg:data";
@@ -492,6 +493,7 @@ export class RDFManagerImpl {
     subjects: string[],
     quads: WorkerQuad[] | undefined,
     snapshot: WorkerReconcileSubjectSnapshotPayload[] | undefined,
+    meta: Record<string, unknown> | null | undefined,
   ): void {
     for (const cb of Array.from(this.subjectsSubscribers)) {
       try {
@@ -499,6 +501,7 @@ export class RDFManagerImpl {
           subjects,
           quads && quads.length > 0 ? quads : undefined,
           snapshot && snapshot.length > 0 ? snapshot : undefined,
+          meta ?? null,
         );
       } catch (err) {
         console.error("[rdfManager] subjects subscriber failed", err);
@@ -515,6 +518,12 @@ export class RDFManagerImpl {
         ? (payload.quads as Record<string, WorkerQuad[]>)
         : undefined,
     );
+    const rawMeta = payload && typeof payload.meta === "object" && payload.meta !== null
+      ? (payload.meta as Record<string, unknown>)
+      : null;
+    const meta =
+      rawMeta && typeof rawMeta === "object" ? { ...rawMeta } : null;
+
     const snapshotRaw = Array.isArray(payload?.snapshot)
       ? (payload.snapshot as unknown[])
       : [];
@@ -551,14 +560,13 @@ export class RDFManagerImpl {
     if (snapshot.length > 0) {
       reconcilePromise = this.runReconcile(undefined, snapshot);
     } else if (quads.length > 0) {
-      console.debug(
-        "[rdfManager] subjects payload missing snapshot; skipping reconcile for quads-only payload",
-      );
+      reconcilePromise = this.runReconcile(quads);
     } else {
       reconcilePromise = this.runReconcile();
     }
 
-    const finalize = () => this.notifySubjectSubscribers(subjects, quads, snapshot);
+    const finalize = () =>
+      this.notifySubjectSubscribers(subjects, quads, snapshot, meta);
     if (reconcilePromise) {
       reconcilePromise.then(finalize, (err) => {
         console.error("[rdfManager] reconcile during subjects event failed", err);

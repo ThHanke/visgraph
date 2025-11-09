@@ -207,8 +207,11 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
       });
     }
   }
+  let lastChangeMeta: Record<string, unknown> | null = null;
+
   function emitChange(meta?: Record<string, unknown> | null) {
     try {
+      lastChangeMeta = meta ? { ...meta } : null;
       workerChangeCounter += 1;
       post({
         type: "event",
@@ -224,7 +227,15 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
     subjects: string[],
     quadsBySubject?: SubjectQuadMap,
     snapshot?: WorkerReconcileSubjectSnapshotPayload[],
+    meta?: Record<string, unknown> | null,
   ) {
+    const effectiveMeta =
+      typeof meta === "undefined" ? lastChangeMeta : meta;
+    lastChangeMeta = null;
+    const serialisedMeta =
+      effectiveMeta && typeof effectiveMeta === "object"
+        ? { ...effectiveMeta }
+        : effectiveMeta ?? null;
     try {
       post({
         type: "event",
@@ -239,6 +250,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             snapshot && snapshot.length > 0
               ? snapshot
               : undefined,
+          meta: serialisedMeta,
         },
       });
     } catch (err) {
@@ -1592,9 +1604,10 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
               emission.subjects,
               emission.quadsBySubject,
               emission.snapshot,
+              { reason: "emitAllSubjects", graphName },
             );
           }
-          result = { subjects: subjects.length };
+          result = { subjects: emission.subjects.length };
           break;
         }
         case "triggerSubjects": {
@@ -1621,9 +1634,10 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
               emission.subjects,
               emission.quadsBySubject,
               emission.snapshot,
+              { reason: "triggerSubjects" },
             );
           }
-          result = { subjects: subjects.length };
+          result = { subjects: emission.subjects.length };
           break;
         }
         case "fetchQuadsPage": {

@@ -38,6 +38,19 @@ import { generateEdgeId } from "./core/edgeHelpers";
 import { usePaletteFromRdfManager } from "./core/namespacePalette";
 import { expandPrefixed, toPrefixed } from "../../utils/termUtils";
 import { exportSvgFull, exportPngFull } from "./core/downloadHelpers";
+
+const LAYOUT_META_REASONS = new Set<string>([
+  "syncBatch",
+  "syncLoad",
+  "importSerialized",
+  "loadFromUrl",
+  "removeGraph",
+  "removeAllQuadsForIri",
+  "removeQuadsByNamespace",
+  "purgeNamespace",
+  "reasoning",
+  "clear",
+]);
 import {
   exportViewportSvgMinimal,
   exportViewportPngMinimal,
@@ -468,12 +481,34 @@ const KnowledgeCanvas: React.FC = () => {
   const linkSourceRef = useRef<NodeData | null>(null);
   const linkTargetRef = useRef<NodeData | null>(null);
   const getRdfManagerRef = useRef(getRdfManager);
+  const shouldLayoutForMeta = useCallback((meta?: Record<string, unknown> | null) => {
+    if (!meta || typeof meta !== "object") return false;
+    const numericKeys = [
+      "added",
+      "removed",
+      "addedCount",
+      "removedSubjects",
+      "removedObjects",
+    ];
+    for (const key of numericKeys) {
+      const value = (meta as Record<string, unknown>)[key];
+      if (typeof value === "number" && value > 0) return true;
+    }
+    const reason =
+      typeof (meta as Record<string, unknown>).reason === "string"
+        ? String((meta as Record<string, unknown>).reason)
+        : "";
+    if (!reason) return false;
+    return LAYOUT_META_REASONS.has(reason);
+  }, []);
 
   // Small control refs for layout coordination
   const mappingInProgressRef = useRef<boolean>(false);
   const applyRequestedRef = useRef<boolean>(false);
   // One-shot flag to force layout after the next successful mapping run (used by loaders)
   const forceLayoutNextMappingRef = useRef<boolean>(false);
+  const layoutPendingRef = useRef<boolean>(false);
+  const lastLayoutMetaRef = useRef<Record<string, unknown> | null>(null);
 
   // Keep refs in sync with state so other callbacks can read the latest snapshot synchronously.
 
@@ -585,45 +620,6 @@ const KnowledgeCanvas: React.FC = () => {
   },
   [layoutEnabled, config],
 );
-
-  useEffect(() => {
-    const auto = !!(config && (config as any).autoApplyLayout);
-    if (!auto) return;
-    if (skipNextAutoLayoutRef.current) {
-      skipNextAutoLayoutRef.current = false;
-      return;
-    }
-
-    const nodeIds = (nodes || [])
-      .map((n) => String(n.id))
-      .sort()
-      .join(",");
-    const edgeIds = (edges || [])
-      .map((e) => String(e.id))
-      .sort()
-      .join(",");
-    const structFp = `N:${nodeIds}|E:${edgeIds}`;
-
-    if (lastLayoutFingerprintRef.current !== structFp) {
-      lastLayoutFingerprintRef.current = structFp;
-      void doLayout(nodes, edges, false);
-    }
-  }, [
-    nodes.length,
-    edges.length,
-    config && (config as any).autoApplyLayout,
-    doLayout,
-  ]);
-
-  useEffect(() => {
-    const auto = !!(config && (config as any).autoApplyLayout);
-    if (!auto) return;
-    if (skipNextAutoLayoutRef.current) {
-      skipNextAutoLayoutRef.current = false;
-      return;
-    }
-    void doLayout(nodes, edges, false);
-  }, [viewMode, config && (config as any).autoApplyLayout, doLayout]);
 
   const handleToggleLegend = useCallback(() => {
     const newValue = !showLegend;
@@ -995,6 +991,8 @@ const KnowledgeCanvas: React.FC = () => {
       | ((
           subs?: string[] | undefined,
           quads?: any[] | undefined,
+          snapshot?: any[] | undefined,
+          meta?: Record<string, unknown> | null,
         ) => Promise<void>)
       | null = null;
 
@@ -1039,59 +1037,99 @@ const KnowledgeCanvas: React.FC = () => {
       return mapQuadsWithWorker(quads, opts);
     };
 
+    const waitForNextFrame = async () => {
+      await new Promise<void>((resolve) => setTrackedTimeout(resolve, 0));
+    };
+
     const runMapping = async () => {
       if (!mounted) return;
-      if (!pendingQuads || pendingQuads.length === 0) return;
-
-      const dataQuads: any[] = pendingQuads.splice(0, pendingQuads.length);
-      pendingSubjects.clear();
+      const hasPendingQuads = Array.isArray(pendingQuads) && pendingQuads.length > 0;
+      const layoutOrForceRequested =
+        layoutPendingRef.current ||
+        forceLayoutNextMappingRef.current ||
+        applyRequestedRef.current;
+      if (!hasPendingQuads && !layoutOrForceRequested) return;
 
       mappingInProgressRef.current = true;
       try {
-        const diagram = await translateQuadsToDiagram(dataQuads);
-        const mappedNodes: RFNode<NodeData>[] = diagram?.nodes ?? [];
-        const mappedEdges: RFEdge<LinkData>[] = diagram?.edges ?? [];
+        if (hasPendingQuads) {
+          const dataQuads: any[] = pendingQuads.splice(0, pendingQuads.length);
+          pendingSubjects.clear();
+          const diagram = await translateQuadsToDiagram(dataQuads);
+          const mappedNodes: RFNode<NodeData>[] = diagram?.nodes ?? [];
+          const mappedEdges: RFEdge<LinkData>[] = diagram?.edges ?? [];
+          await applyDiagrammChange(mappedNodes, mappedEdges);
+        }
 
-        await applyDiagrammChange(mappedNodes, mappedEdges);
+        await waitForNextFrame();
+        await waitForNextFrame();
+
+        const rfInst = reactFlowInstance?.current ?? null;
+        const nodesForLayout =
+          rfInst && typeof (rfInst as any).getNodes === "function"
+            ? (rfInst as any).getNodes()
+            : nodes;
+        const edgesForLayout =
+          rfInst && typeof (rfInst as any).getEdges === "function"
+            ? (rfInst as any).getEdges()
+            : edges;
+
+        const forceLayoutRequested = forceLayoutNextMappingRef.current;
+        const applyLayoutRequested = applyRequestedRef.current;
+        const autoLayoutRequested =
+          !!config?.autoApplyLayout &&
+          layoutPendingRef.current &&
+          !skipNextAutoLayoutRef.current;
+
+        const shouldRunLayout =
+          forceLayoutRequested || applyLayoutRequested || autoLayoutRequested;
+
+        if (skipNextAutoLayoutRef.current && layoutPendingRef.current) {
+          layoutPendingRef.current = false;
+          lastLayoutMetaRef.current = null;
+        }
+
+        if (shouldRunLayout) {
+          forceLayoutNextMappingRef.current = false;
+          applyRequestedRef.current = false;
+          layoutPendingRef.current = false;
+          const meta = lastLayoutMetaRef.current;
+          lastLayoutMetaRef.current = null;
+          try {
+            console.debug("[KnowledgeCanvas] layout.run", {
+              forceLayoutRequested,
+              applyLayoutRequested,
+              autoLayoutRequested,
+              meta,
+            });
+          } catch (_) {
+            /* ignore logging failures */
+          }
+          await doLayout(nodesForLayout as any, edgesForLayout as any, true);
+          if (
+            forceLayoutRequested &&
+            mountedRef.current &&
+            rfInst &&
+            typeof (rfInst as any).fitView === "function"
+          ) {
+            await new Promise((resolve) => setTrackedTimeout(resolve, 50));
+            await waitForNextFrame();
+            try {
+              (rfInst as any).fitView({ padding: 0.1 });
+            } catch (_) {
+              /* ignore fitView failures */
+            }
+          }
+        } else {
+          layoutPendingRef.current = false;
+          lastLayoutMetaRef.current = null;
+        }
+
+        if (skipNextAutoLayoutRef.current) {
+          skipNextAutoLayoutRef.current = false;
+        }
       } finally {
         mappingInProgressRef.current = false;
-      }
-
-      const rfInst = reactFlowInstance?.current ?? null;
-      const nodesForLayout =
-        rfInst && typeof (rfInst as any).getNodes === 'function'
-          ? (rfInst as any).getNodes()
-          : nodes;
-      const edgesForLayout =
-        rfInst && typeof (rfInst as any).getEdges === 'function'
-          ? (rfInst as any).getEdges()
-          : edges;
-
-      const shouldAutoLayout =
-        config?.autoApplyLayout && !skipNextAutoLayoutRef.current;
-
-      if (forceLayoutNextMappingRef.current) {
-        forceLayoutNextMappingRef.current = false;
-        await doLayout(nodesForLayout as any, edgesForLayout as any, true);
-        await new Promise((resolve) => setTrackedTimeout(resolve, 50));
-        if (
-          mountedRef.current &&
-          rfInst &&
-          typeof (rfInst as any).fitView === 'function'
-        ) {
-          (rfInst as any).fitView({ padding: 0.1 });
-        }
-      } else if (shouldAutoLayout) {
-        await doLayout(nodesForLayout as any, edgesForLayout as any, true);
-      }
-
-      if (applyRequestedRef.current) {
-        applyRequestedRef.current = false;
-        await doLayout(nodesForLayout as any, edgesForLayout as any, true);
-      }
-
-      if (skipNextAutoLayoutRef.current) {
-        skipNextAutoLayoutRef.current = false;
       }
     };
 
@@ -1107,6 +1145,7 @@ const KnowledgeCanvas: React.FC = () => {
       subs?: string[] | undefined,
       quads?: any[] | undefined,
       _snapshot?: any[] | undefined,
+      meta?: Record<string, unknown> | null,
     ) => {
       const incomingSubjects = Array.isArray(subs)
         ? subs.map((value) => String(value))
@@ -1119,6 +1158,24 @@ const KnowledgeCanvas: React.FC = () => {
         for (const quad of quads) {
           pendingQuads.push(quad);
         }
+      }
+
+      try {
+        console.debug("[KnowledgeCanvas] subjectsCallback.received", {
+          subjectCount: incomingSubjects.length,
+          quadCount: Array.isArray(quads) ? quads.length : 0,
+          meta,
+        });
+      } catch (_) {
+        /* ignore logging failures */
+      }
+
+      if (meta && shouldLayoutForMeta(meta)) {
+        layoutPendingRef.current = true;
+        lastLayoutMetaRef.current = { ...meta };
+      } else if (!meta && config?.autoApplyLayout && Array.isArray(quads) && quads.length > 0) {
+        layoutPendingRef.current = true;
+        lastLayoutMetaRef.current = null;
       }
 
       scheduleRunMapping();
@@ -1183,7 +1240,27 @@ const KnowledgeCanvas: React.FC = () => {
         } catch (_) {/* noop */}
       }
     };
-  }, [getRdfManagerSafe, setNodes, setEdges]);
+  }, [getRdfManagerSafe, setNodes, setEdges, config]);
+
+  useEffect(() => {
+    if (!config?.autoApplyLayout) return;
+    if (skipNextAutoLayoutRef.current) {
+      return;
+    }
+    layoutPendingRef.current = false;
+    lastLayoutMetaRef.current = null;
+    const rfInst = reactFlowInstance?.current ?? null;
+    const nodesForLayout =
+      rfInst && typeof (rfInst as any).getNodes === "function"
+        ? (rfInst as any).getNodes()
+        : [];
+    const edgesForLayout =
+      rfInst && typeof (rfInst as any).getEdges === "function"
+        ? (rfInst as any).getEdges()
+        : [];
+    if (!Array.isArray(nodesForLayout) || nodesForLayout.length === 0) return;
+    void doLayout(nodesForLayout as any, edgesForLayout as any, true);
+  }, [config?.autoApplyLayout, viewMode, doLayout]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
