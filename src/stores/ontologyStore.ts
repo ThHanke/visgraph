@@ -1806,7 +1806,9 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     onProgress?: (p: number, message: string) => void;
   }) => {
     const opts = options || {};
-    const graphName = opts.graphName || "urn:vg:data";
+    const requestedGraphName =
+      typeof opts.graphName === "string" && opts.graphName.trim() ? opts.graphName : "urn:vg:data";
+    const graphName = "urn:vg:data";
     const loadMode = typeof opts.load === "undefined" ? "async" : opts.load;
     const timeoutMs = typeof opts.timeoutMs === "number" ? opts.timeoutMs : 15000;
     const concurrency = typeof opts.concurrency === "number" ? opts.concurrency : 6;
@@ -1873,7 +1875,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
     const vgM = vgMeasureModule("discoverReferencedOntologies", { graphName, loadMode, timeoutMs, concurrency });
 
-    console.debug("[VG_DEBUG] discoverReferencedOntologies.invoked", { graphName, loadMode, timeoutMs, concurrency });
+    console.debug("[VG_DEBUG] discoverReferencedOntologies.invoked", {
+      graphName,
+      loadMode,
+      timeoutMs,
+      concurrency,
+      requestedGraphName,
+    });
 
     const mgr = get().rdfManager;
     if (!mgr || typeof (mgr as any).fetchQuadsPage !== "function") {
@@ -1885,30 +1893,45 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     const OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
     const OWL_IMPORTS = "http://www.w3.org/2002/07/owl#imports";
 
-    const graphsToScan = Array.from(
-      new Set(
-        [graphName, "urn:vg:ontologies"].filter((g) => typeof g === "string" && g.length > 0),
-      ),
+    const typeQuads = await fetchSerializedQuads(
+      mgr,
+      graphName,
+      { predicate: RDF_TYPE },
+      2000,
+    );
+    const importQuads = await fetchSerializedQuads(
+      mgr,
+      graphName,
+      { predicate: OWL_IMPORTS },
+      2000,
     );
 
-    const typeQuads = await fetchSerializedQuadsAcrossGraphs(mgr, graphsToScan, {
-      predicate: RDF_TYPE,
-    });
-    const importQuads = await fetchSerializedQuadsAcrossGraphs(mgr, graphsToScan, {
-      predicate: OWL_IMPORTS,
-    });
-
-    const candidateSet = new Set<string>();
-    if (opts && (opts as any).includeOntologySubject) {
-      for (const q of typeQuads) {
-        const subj = q && q.subject ? String(q.subject) : "";
-        const obj = q && q.object ? String(q.object) : "";
-        if (subj && obj === OWL_ONTOLOGY) candidateSet.add(subj);
+    const ontologySubjects = new Set<string>();
+    for (const quad of typeQuads) {
+      if (!quad) continue;
+      const predicate = quad.predicate ? String(quad.predicate) : "";
+      if (predicate !== RDF_TYPE) continue;
+      const object = quad.object ? String(quad.object) : "";
+      if (object === OWL_ONTOLOGY) {
+        const subject = quad.subject ? String(quad.subject) : "";
+        if (subject) ontologySubjects.add(subject);
       }
     }
-    for (const q of importQuads) {
-      const o = q && q.object ? String(q.object) : "";
-      if (o) candidateSet.add(o);
+
+    const candidateSet = new Set<string>();
+    const candidateSources: Record<string, string[]> = {};
+    for (const quad of importQuads) {
+      if (!quad) continue;
+      const subject = quad.subject ? String(quad.subject) : "";
+      if (!subject) continue;
+      const predicate = quad.predicate ? String(quad.predicate) : "";
+      if (predicate !== OWL_IMPORTS) continue;
+      if (!ontologySubjects.has(subject)) continue;
+      if (quad.object && typeof quad.object === "string") {
+        const obj = String(quad.object);
+        candidateSet.add(obj);
+        (candidateSources[obj] = candidateSources[obj] || []).push(subject);
+      }
     }
 
     function normalizeUri(u: string): string {
@@ -1927,38 +1950,46 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       appCfg && appCfg.config && Array.isArray(appCfg.config.disabledAdditionalOntologies)
         ? appCfg.config.disabledAdditionalOntologies
         : [];
-    const disabledNorm = new Set(disabled.map((d) => normalizeUri(d)));
+    const disabledNorm = new Set(
+      disabled.map((d) => normalizeUri(d).toLowerCase()),
+    );
 
     const loadedOntologies = get().loadedOntologies || [];
-    const alreadyLoadedNorm = new Set((loadedOntologies || []).map((o: any) => normalizeUri(String(o.url))));
+    const alreadyLoadedNorm = new Set(
+      (loadedOntologies || []).map((o: any) => normalizeUri(String(o.url)).toLowerCase()),
+    );
 
-    const blacklistedUris = new Set([
+    const blacklistedPrefixes = [
       "http://www.w3.org/2002/07/owl",
+      "https://www.w3.org/2002/07/owl",
       "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+      "https://www.w3.org/1999/02/22-rdf-syntax-ns#",
       "http://www.w3.org/2000/01/rdf-schema#",
+      "https://www.w3.org/2000/01/rdf-schema#",
       "http://www.w3.org/XML/1998/namespace",
+      "https://www.w3.org/XML/1998/namespace",
       "http://www.w3.org/2001/XMLSchema#",
-    ]);
+      "https://www.w3.org/2001/XMLSchema#",
+    ];
 
     const candidates: string[] = [];
     for (const raw of Array.from(candidateSet)) {
       const norm = normalizeUri(raw);
       if (!norm) continue;
-      if (!/^https?:\/\//i.test(norm)) continue;
-      if (disabledNorm.has(norm)) continue;
-      if (alreadyLoadedNorm.has(norm)) continue;
-      let skip = false;
-      for (const b of Array.from(blacklistedUris)) {
-        if (norm.startsWith(b)) {
-          skip = true;
-          break;
-        }
-      }
-      if (skip) continue;
+      const normLower = norm.toLowerCase();
+      if (!normLower.startsWith("http://") && !normLower.startsWith("https://")) continue;
+      if (disabledNorm.has(normLower)) continue;
+      if (alreadyLoadedNorm.has(normLower)) continue;
+      if (blacklistedPrefixes.some((prefix) => norm.startsWith(prefix))) continue;
       if (!candidates.includes(norm)) candidates.push(norm);
     }
 
-    console.debug("[VG_DEBUG] discoverReferencedOntologies.candidates", { graph: graphName, candidates });
+    console.debug("[VG_DEBUG] discoverReferencedOntologies.candidates", {
+      graph: graphName,
+      requestedGraphName,
+      candidates,
+      sources: candidateSources,
+    });
 
     if (candidates.length === 0) {
       vgM && typeof vgM.end === "function" && vgM.end({ reason: "no_candidates", candidateCount: 0 });
@@ -2173,77 +2204,6 @@ async function buildFatMap(rdfMgr?: any): Promise<void> {
 
 
 
-}
-
-/**
- * Extract ontology URIs referenced in RDF content that should be loaded
- */
-function extractReferencedOntologies(rdfContent: string): string[] {
-  const ontologyUris = new Set<string>();
-
-  const namespacePatterns = [
-    /@prefix\s+\w+:\s*<([^>]+)>/g,
-    /xmlns:\w+="([^"]+)"/g,
-    /"@context"[^}]*"([^"]+)"/g,
-  ];
-
-  const wellKnownOntologies = Object.keys(WELL_KNOWN.ontologies);
-
-  namespacePatterns.forEach((pattern) => {
-    let match;
-    while ((match = pattern.exec(rdfContent)) !== null) {
-      const uri = match[1];
-      if (wellKnownOntologies.includes(uri)) {
-        ontologyUris.add(uri);
-      }
-    }
-  });
-
-  {
-    const prefixToOntUrls = new Map<string, string[]>();
-    const wkPrefixes = WELL_KNOWN.prefixes || {};
-    const wkOnt = WELL_KNOWN.ontologies || {};
-
-    Object.entries(wkPrefixes).forEach(([prefix, nsUri]) => {
-      const urls: string[] = [];
-      try {
-        if ((wkOnt as any)[nsUri]) urls.push(nsUri);
-      } catch (_) {
-        /* ignore */
-      }
-
-      Object.entries(wkOnt).forEach(([ontUrl, meta]) => {
-        try {
-          const m = meta as any;
-          if (m && m.namespaces && m.namespaces[prefix] === nsUri) {
-            if (!urls.includes(ontUrl)) urls.push(ontUrl);
-          }
-          if (
-            m &&
-            m.aliases &&
-            Array.isArray(m.aliases) &&
-            m.aliases.includes(nsUri)
-          ) {
-            if (!urls.includes(ontUrl)) urls.push(ontUrl);
-          }
-        } catch (_) {
-          /* ignore per-entry errors */
-        }
-      });
-
-      if (urls.length > 0) prefixToOntUrls.set(prefix, urls);
-    });
-
-    for (const [prefix, urls] of prefixToOntUrls.entries()) {
-      const safe = prefix.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
-      const re = new RegExp(`\\b${safe}:`, "g");
-      if (re.test(rdfContent)) {
-        urls.forEach((u) => ontologyUris.add(u));
-      }
-    }
-  }
-
-  return Array.from(ontologyUris);
 }
 
 /**
