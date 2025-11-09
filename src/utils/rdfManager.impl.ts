@@ -22,7 +22,11 @@ import { useOntologyStore } from "../stores/ontologyStore";
 import { useAppConfigStore } from "../stores/appConfigStore";
 
 type ChangeSubscriber = (count: number, meta?: unknown) => void;
-type SubjectsSubscriber = (subjects: string[], quads?: WorkerQuad[]) => void;
+type SubjectsSubscriber = (
+  subjects: string[],
+  quads?: WorkerQuad[],
+  snapshot?: WorkerReconcileSubjectSnapshotPayload[],
+) => void;
 
 const DEFAULT_GRAPH = "urn:vg:data";
 const IRI_REGEX = /^[a-z][a-z0-9+.-]*:/i;
@@ -484,6 +488,24 @@ export class RDFManagerImpl {
     }
   };
 
+  private notifySubjectSubscribers(
+    subjects: string[],
+    quads: WorkerQuad[] | undefined,
+    snapshot: WorkerReconcileSubjectSnapshotPayload[] | undefined,
+  ): void {
+    for (const cb of Array.from(this.subjectsSubscribers)) {
+      try {
+        cb(
+          subjects,
+          quads && quads.length > 0 ? quads : undefined,
+          snapshot && snapshot.length > 0 ? snapshot : undefined,
+        );
+      } catch (err) {
+        console.error("[rdfManager] subjects subscriber failed", err);
+      }
+    }
+  }
+
   private handleWorkerSubjects = (payload: any) => {
     const subjects = Array.isArray(payload?.subjects)
       ? payload.subjects.map((s: any) => String(s)).filter(Boolean)
@@ -493,15 +515,57 @@ export class RDFManagerImpl {
         ? (payload.quads as Record<string, WorkerQuad[]>)
         : undefined,
     );
-    if (quads.length > 0) {
-      void this.runReconcile(quads);
+    const snapshotRaw = Array.isArray(payload?.snapshot)
+      ? (payload.snapshot as unknown[])
+      : [];
+    const snapshot = snapshotRaw
+      .map((entry) => {
+        if (!entry || typeof entry !== "object") return null;
+        const record = entry as Record<string, unknown>;
+        const iri =
+          typeof record.iri === "string" && record.iri.trim().length > 0
+            ? record.iri.trim()
+            : "";
+        if (!iri) return null;
+        const types =
+          Array.isArray(record.types)
+            ? (record.types as unknown[])
+                .map((value) =>
+                  typeof value === "string" ? value.trim() : String(value ?? "").trim(),
+                )
+                .filter((value) => value.length > 0)
+            : [];
+        const label =
+          typeof record.label === "string" && record.label.trim().length > 0
+            ? record.label.trim()
+            : undefined;
+        return {
+          iri,
+          types,
+          ...(label ? { label } : {}),
+        } as WorkerReconcileSubjectSnapshotPayload;
+      })
+      .filter(Boolean) as WorkerReconcileSubjectSnapshotPayload[];
+
+    let reconcilePromise: Promise<void> | undefined;
+    if (snapshot.length > 0) {
+      reconcilePromise = this.runReconcile(undefined, snapshot);
+    } else if (quads.length > 0) {
+      console.debug(
+        "[rdfManager] subjects payload missing snapshot; skipping reconcile for quads-only payload",
+      );
+    } else {
+      reconcilePromise = this.runReconcile();
     }
-    for (const cb of Array.from(this.subjectsSubscribers)) {
-      try {
-        cb(subjects, quads.length > 0 ? quads : undefined);
-      } catch (err) {
-        console.error("[rdfManager] subjects subscriber failed", err);
-      }
+
+    const finalize = () => this.notifySubjectSubscribers(subjects, quads, snapshot);
+    if (reconcilePromise) {
+      reconcilePromise.then(finalize, (err) => {
+        console.error("[rdfManager] reconcile during subjects event failed", err);
+        finalize();
+      });
+    } else {
+      finalize();
     }
   };
 
@@ -513,13 +577,15 @@ export class RDFManagerImpl {
       try {
         const os = (useOntologyStore as any)?.getState?.();
         if (!os) return;
-        if (snapshot && typeof os.updateFatMapFromWorker === "function") {
+        if (snapshot && snapshot.length > 0 && typeof os.updateFatMapFromWorker === "function") {
           await os.updateFatMapFromWorker(snapshot);
           return;
         }
-        if (Array.isArray(quads) && quads.length > 0 && typeof os.updateFatMap === "function") {
+        if (Array.isArray(quads) && quads.length > 0) {
           const converted = quads.map(workerQuadToFatEntry);
-          await os.updateFatMap(converted);
+          if (typeof os.updateFatMap === "function") {
+            await os.updateFatMap(converted);
+          }
           return;
         }
         if (typeof os.updateFatMap === "function") {
@@ -652,7 +718,11 @@ export class RDFManagerImpl {
     };
   }
 
-  private mergePrefixes(input?: Record<string, string>) {
+  private mergePrefixes(input?: Record<string, string>, graphName?: string) {
+    const targetGraph = graphName || DEFAULT_GRAPH;
+    if (targetGraph !== DEFAULT_GRAPH && targetGraph !== "urn:vg:data") {
+      return;
+    }
     if (!input || typeof input !== "object") return;
     let changed = false;
     for (const [prefix, uri] of Object.entries(input)) {
@@ -694,7 +764,10 @@ export class RDFManagerImpl {
     const result = await this.worker.call("importSerialized", payload);
     if (isPlainObject(result)) {
       if (result && isStringRecord(result.prefixes)) {
-        this.mergePrefixes(result.prefixes as Record<string, string>);
+        this.mergePrefixes(
+          result.prefixes as Record<string, string>,
+          payload.graphName,
+        );
       }
       if (Array.isArray((result as any).quads)) {
         const quads = ((result as any).quads as WorkerQuad[]).filter(isWorkerQuad);
@@ -906,8 +979,8 @@ export class RDFManagerImpl {
   }
 
   setNamespaces(namespaces: Record<string, string>): void {
-    this.namespaces = { ...namespaces };
-    void this.worker.call("setNamespaces", { namespaces: { ...this.namespaces } }).catch((err) => {
+    this.namespaces = { ...this.namespaces, ...namespaces };
+    void this.worker.call("setNamespaces", { namespaces: { ...namespaces } }).catch((err) => {
       console.error("[rdfManager] setNamespaces failed", err);
     });
   }

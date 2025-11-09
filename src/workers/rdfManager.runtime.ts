@@ -15,6 +15,7 @@ import type {
   ImportSerializedPayload,
   PurgeNamespacePayload,
   RemoveQuadsByNamespacePayload,
+  WorkerReconcileSubjectSnapshotPayload,
 } from "../utils/rdfManager.workerProtocol.ts";
 import type { ReasoningResult } from "../utils/reasoningTypes.ts";
 import { deserializeQuad, deserializeTerm, serializeQuad } from "../utils/rdfSerialization.ts";
@@ -22,6 +23,8 @@ import type { WorkerQuad } from "../utils/rdfSerialization.ts";
 import { WELL_KNOWN } from "../utils/wellKnownOntologies.ts";
 
 const BATCH_SIZE = 1000;
+const RDF_TYPE_IRI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+const RDFS_LABEL_IRI = "http://www.w3.org/2000/01/rdf-schema#label";
 
 type SubjectQuadMap = Record<string, WorkerQuad[]>;
 
@@ -217,7 +220,11 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
     }
   }
 
-  function emitSubjects(subjects: string[], quadsBySubject?: SubjectQuadMap) {
+  function emitSubjects(
+    subjects: string[],
+    quadsBySubject?: SubjectQuadMap,
+    snapshot?: WorkerReconcileSubjectSnapshotPayload[],
+  ) {
     try {
       post({
         type: "event",
@@ -227,6 +234,10 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           quads:
             quadsBySubject && Object.keys(quadsBySubject).length > 0
               ? quadsBySubject
+              : undefined,
+          snapshot:
+            snapshot && snapshot.length > 0
+              ? snapshot
               : undefined,
         },
       });
@@ -295,6 +306,37 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
       console.error("[rdfManager.worker] collectWorkerQuadsForSubject failed", err);
       return [];
     }
+  }
+
+  function snapshotEntryFromQuads(
+    subject: string,
+    quads: WorkerQuad[] | undefined,
+  ): WorkerReconcileSubjectSnapshotPayload | null {
+    const iri = String(subject || "").trim();
+    if (!iri) return null;
+    const types = new Set<string>();
+    let label: string | undefined;
+    for (const quad of quads || []) {
+      if (!quad || !quad.predicate) continue;
+      const predicate = String(quad.predicate.value || "");
+      if (!predicate) continue;
+      if (predicate === RDF_TYPE_IRI && quad.object) {
+        const objectValue = String((quad.object as any).value || "");
+        if (objectValue) types.add(objectValue);
+        continue;
+      }
+      if (!label && predicate === RDFS_LABEL_IRI && quad.object) {
+        const term = quad.object as any;
+        if (typeof term.value === "string" && term.value.trim().length > 0) {
+          label = term.value;
+        }
+      }
+    }
+    return {
+      iri,
+      types: Array.from(types),
+      ...(label ? { label } : {}),
+    };
   }
 
   function termToString(term: any): string {
@@ -477,26 +519,35 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
     subjectSet: Set<string>,
     store: any,
     DataFactory: any,
-  ): { subjects: string[]; quadsBySubject: SubjectQuadMap } {
+  ): {
+    subjects: string[];
+    quadsBySubject: SubjectQuadMap;
+    snapshot: WorkerReconcileSubjectSnapshotPayload[];
+  } {
     const subjects: string[] = [];
     const quadsBySubject: SubjectQuadMap = {};
+    const snapshot: WorkerReconcileSubjectSnapshotPayload[] = [];
     for (const raw of subjectSet) {
       try {
         const subject = String(raw || "").trim();
         if (!subject) continue;
         if (isBlacklistedIri(subject)) continue;
         subjects.push(subject);
-        quadsBySubject[subject] = collectWorkerQuadsForSubject(subject, store, DataFactory);
+        const quads = collectWorkerQuadsForSubject(subject, store, DataFactory);
+        quadsBySubject[subject] = quads;
+        const entry = snapshotEntryFromQuads(subject, quads);
+        if (entry) snapshot.push(entry);
       } catch (err) {
         console.error("[rdfManager.worker] prepareSubjectEmissionFromSet item failed", err);
       }
     }
-    return { subjects, quadsBySubject };
+    return { subjects, quadsBySubject, snapshot };
   }
 
   function prepareSubjectEmissionFromQuads(quads: Quad[]): {
     subjects: string[];
     quadsBySubject: SubjectQuadMap;
+    snapshot: WorkerReconcileSubjectSnapshotPayload[];
   } {
     const map = new Map<string, WorkerQuad[]>();
     for (const q of quads || []) {
@@ -516,7 +567,12 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
     for (const subject of subjects) {
       quadsBySubject[subject] = map.get(subject)!;
     }
-    return { subjects, quadsBySubject };
+    const snapshot: WorkerReconcileSubjectSnapshotPayload[] = [];
+    for (const subject of subjects) {
+      const entry = snapshotEntryFromQuads(subject, quadsBySubject[subject]);
+      if (entry) snapshot.push(entry);
+    }
+    return { subjects, quadsBySubject, snapshot };
   }
 
   function collectShaclResults(all: Quad[]): { warnings: ReasoningWarning[]; errors: ReasoningError[] } {
@@ -920,7 +976,11 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           DataFactory,
         );
         if (emission.subjects.length > 0) {
-          emitSubjects(emission.subjects, emission.quadsBySubject);
+          emitSubjects(
+            emission.subjects,
+            emission.quadsBySubject,
+            emission.snapshot,
+          );
         }
       }
 
@@ -984,10 +1044,9 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           result = { ...workerNamespaces };
           break;
         case "setNamespaces":
-          workerNamespaces =
-            payload && typeof payload === "object" && payload.namespaces && typeof payload.namespaces === "object"
-              ? { ...payload.namespaces }
-              : {};
+          if (payload && typeof payload === "object" && payload.namespaces && typeof payload.namespaces === "object") {
+            workerNamespaces = { ...workerNamespaces, ...(payload.namespaces as Record<string, string>) };
+          }
           result = { ...workerNamespaces };
           break;
         case "getBlacklist":
@@ -1050,18 +1109,32 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             }
           }
 
-          if (payload && payload.prefixes && typeof payload.prefixes === "object") {
-            workerNamespaces = { ...workerNamespaces, ...(payload.prefixes as Record<string, string>) };
+          if (
+            payload &&
+            payload.prefixes &&
+            typeof payload.prefixes === "object" &&
+            graphName === "urn:vg:data"
+          ) {
+            workerNamespaces = {
+              ...workerNamespaces,
+              ...(payload.prefixes as Record<string, string>),
+            };
           }
 
-          const { subjects, quadsBySubject } = prepareSubjectEmissionFromSet(
+          const emission = prepareSubjectEmissionFromSet(
             touchedSubjects,
             store,
             DataFactory,
           );
 
           emitChange({ reason: "syncLoad", graphName, added, removed });
-          if (subjects.length > 0) emitSubjects(subjects, quadsBySubject);
+          if (emission.subjects.length > 0) {
+            emitSubjects(
+              emission.subjects,
+              emission.quadsBySubject,
+              emission.snapshot,
+            );
+          }
 
           result = { graphName, added, removed };
           break;
@@ -1091,13 +1164,19 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             }
           }
           if (removed > 0) {
-            const { subjects, quadsBySubject } = prepareSubjectEmissionFromSet(
+            const emission = prepareSubjectEmissionFromSet(
               touchedSubjects,
               store,
               DataFactory,
             );
             emitChange({ reason: "removeGraph", graphName, removed });
-            if (subjects.length > 0) emitSubjects(subjects, quadsBySubject);
+            if (emission.subjects.length > 0) {
+              emitSubjects(
+                emission.subjects,
+                emission.quadsBySubject,
+                emission.snapshot,
+              );
+            }
           }
           result = { graphName, removed };
           break;
@@ -1161,7 +1240,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           }
 
           if (removedSubjects > 0 || removedObjects > 0) {
-            const { subjects, quadsBySubject } = prepareSubjectEmissionFromSet(
+            const emission = prepareSubjectEmissionFromSet(
               touchedSubjects,
               store,
               DataFactory,
@@ -1173,7 +1252,13 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
               removedSubjects,
               removedObjects,
             });
-            if (subjects.length > 0) emitSubjects(subjects, quadsBySubject);
+            if (emission.subjects.length > 0) {
+              emitSubjects(
+                emission.subjects,
+                emission.quadsBySubject,
+                emission.snapshot,
+              );
+            }
           }
 
           result = { removedSubjects, removedObjects };
@@ -1288,7 +1373,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             });
           });
 
-          if (Object.keys(prefixes).length > 0) {
+          if (Object.keys(prefixes).length > 0 && graphName === "urn:vg:data") {
             workerNamespaces = { ...workerNamespaces, ...prefixes };
           }
 
@@ -1299,7 +1384,13 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
               store,
               DataFactory,
             );
-            if (emission.subjects.length > 0) emitSubjects(emission.subjects, emission.quadsBySubject);
+            if (emission.subjects.length > 0) {
+              emitSubjects(
+                emission.subjects,
+                emission.quadsBySubject,
+                emission.snapshot,
+              );
+            }
           }
 
           result = {
@@ -1397,7 +1488,13 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           if (removed > 0) {
             emitChange({ reason: "removeQuadsByNamespace", graphName, removed });
             const emission = prepareSubjectEmissionFromSet(touchedSubjects, store, DataFactory);
-            if (emission.subjects.length > 0) emitSubjects(emission.subjects, emission.quadsBySubject);
+            if (emission.subjects.length > 0) {
+              emitSubjects(
+                emission.subjects,
+                emission.quadsBySubject,
+                emission.snapshot,
+              );
+            }
           }
           result = { graphName, removed };
           break;
@@ -1465,7 +1562,13 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           if (removed > 0) {
             emitChange({ reason: "purgeNamespace", namespaceUri, removed });
             const emission = prepareSubjectEmissionFromSet(touchedSubjects, store, DataFactory);
-            if (emission.subjects.length > 0) emitSubjects(emission.subjects, emission.quadsBySubject);
+            if (emission.subjects.length > 0) {
+              emitSubjects(
+                emission.subjects,
+                emission.quadsBySubject,
+                emission.snapshot,
+              );
+            }
           }
           result = { removed, namespaceUri, prefixRemoved };
           break;
@@ -1483,8 +1586,14 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
               ? DataFactory.namedNode(String(graphName))
               : DataFactory.defaultGraph();
           const quads = store.getQuads(null, null, null, graphTerm) || [];
-          const { subjects, quadsBySubject } = prepareSubjectEmissionFromQuads(quads);
-          if (subjects.length > 0) emitSubjects(subjects, quadsBySubject);
+          const emission = prepareSubjectEmissionFromQuads(quads);
+          if (emission.subjects.length > 0) {
+            emitSubjects(
+              emission.subjects,
+              emission.quadsBySubject,
+              emission.snapshot,
+            );
+          }
           result = { subjects: subjects.length };
           break;
         }
@@ -1502,12 +1611,18 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             if (!value) continue;
             subjectSet.add(value);
           }
-          const { subjects, quadsBySubject } = prepareSubjectEmissionFromSet(
+          const emission = prepareSubjectEmissionFromSet(
             subjectSet,
             store,
             DataFactory,
           );
-          if (subjects.length > 0) emitSubjects(subjects, quadsBySubject);
+          if (emission.subjects.length > 0) {
+            emitSubjects(
+              emission.subjects,
+              emission.quadsBySubject,
+              emission.snapshot,
+            );
+          }
           result = { subjects: subjects.length };
           break;
         }
@@ -1686,6 +1801,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             !payload?.options || payload.options.suppressSubjects !== true;
           let emissionSubjects: string[] = [];
           let emissionQuads: SubjectQuadMap = {};
+          let emissionSnapshot: WorkerReconcileSubjectSnapshotPayload[] = [];
           if (shouldEmitSubjects) {
             const emission = prepareSubjectEmissionFromSet(
               touchedSubjects,
@@ -1694,12 +1810,13 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             );
             emissionSubjects = emission.subjects;
             emissionQuads = emission.quadsBySubject;
+            emissionSnapshot = emission.snapshot;
           }
 
           if (added > 0 || removed > 0) {
             emitChange({ reason: "syncBatch", graphName, added, removed });
             if (shouldEmitSubjects && emissionSubjects.length > 0) {
-              emitSubjects(emissionSubjects, emissionQuads);
+              emitSubjects(emissionSubjects, emissionQuads, emissionSnapshot);
             }
           }
 
@@ -2177,7 +2294,11 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           DataFactory,
         );
         if (emission.subjects.length > 0) {
-          emitSubjects(emission.subjects, emission.quadsBySubject);
+          emitSubjects(
+            emission.subjects,
+            emission.quadsBySubject,
+            emission.snapshot,
+          );
         }
       }
     }

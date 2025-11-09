@@ -213,6 +213,22 @@ function assertWorkerQuadRecord(
   }
 }
 
+function assertWorkerSnapshotArray(
+  value: unknown,
+  message: string,
+): asserts value is WorkerReconcileSubjectSnapshotPayload[] {
+  assertArray(value, message);
+  for (const entry of value as unknown[]) {
+    assertPlainObject(entry, `${message} (invalid snapshot entry)`);
+    const record = entry as Record<string, unknown>;
+    assertString(record.iri, `${message} (snapshot iri must be a string)`);
+    assertStringArray(record.types, `${message} (snapshot types must be an array of strings)`);
+    if (typeof record.label !== "undefined") {
+      assertString(record.label, `${message} (snapshot label must be a string when provided)`);
+    }
+  }
+}
+
 function assertReasoningError(
   value: unknown,
   message: string,
@@ -551,7 +567,11 @@ export function assertRdfWorkerCommand(value: unknown): asserts value is RDFWork
 
 export type RDFWorkerEventMap = {
   change: { changeCount: number; meta?: Record<string, unknown> | null };
-  subjects: { subjects: string[]; quads?: Record<string, WorkerQuad[]> };
+  subjects: {
+    subjects: string[];
+    quads?: Record<string, WorkerQuad[]>;
+    snapshot?: WorkerReconcileSubjectSnapshotPayload[];
+  };
   reasoningStage: { id: string; stage: string; meta?: Record<string, unknown> };
   reasoningResult: ReasoningResult;
   reasoningError: { message: string; stack?: string };
@@ -746,6 +766,12 @@ export function assertRdfWorkerEvent(value: unknown): asserts value is RDFWorker
         assertWorkerQuadRecord(
           (payload as { quads?: unknown }).quads,
           "subjects payload.quads must be a record of WorkerQuad arrays",
+        );
+      }
+      if (typeof (payload as { snapshot?: unknown }).snapshot !== "undefined") {
+        assertWorkerSnapshotArray(
+          (payload as { snapshot?: unknown }).snapshot,
+          "subjects payload.snapshot must be an array of snapshot entries",
         );
       }
       return;

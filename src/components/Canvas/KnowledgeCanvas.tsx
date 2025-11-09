@@ -36,6 +36,7 @@ import ObjectPropertyEdge from "./ObjectPropertyEdge";
 import FloatingConnectionLine from "./FloatingConnectionLine";
 import { generateEdgeId } from "./core/edgeHelpers";
 import { usePaletteFromRdfManager } from "./core/namespacePalette";
+import { expandPrefixed, toPrefixed } from "../../utils/termUtils";
 import { exportSvgFull, exportPngFull } from "./core/downloadHelpers";
 import {
   exportViewportSvgMinimal,
@@ -111,6 +112,34 @@ const KnowledgeCanvas: React.FC = () => {
   const [nodes, setNodes] = useNodesState<RFNode<NodeData>>([]);
   const [edges, setEdges] = useEdgesState<RFEdge<LinkData>>([]);
   const reactFlowInstance = useRef<ReactFlowInstance | null>(null);
+  const flowWrapperRef = useRef<HTMLDivElement | null>(null);
+  const viewportRef = useRef<{ x: number; y: number; zoom: number }>({
+    x: 0,
+    y: 0,
+    zoom: 1,
+  });
+  const skipNextAutoLayoutRef = useRef(false);
+  const updateViewportRef = useCallback(
+    (viewport?: { x: number; y: number; zoom: number }) => {
+      if (
+        viewport &&
+        typeof viewport.x === "number" &&
+        typeof viewport.y === "number" &&
+        typeof viewport.zoom === "number" &&
+        viewport.zoom !== 0 &&
+        Number.isFinite(viewport.x) &&
+        Number.isFinite(viewport.y) &&
+        Number.isFinite(viewport.zoom)
+      ) {
+        viewportRef.current = {
+          x: viewport.x,
+          y: viewport.y,
+          zoom: viewport.zoom,
+        };
+      }
+    },
+    [],
+  );
   const { state: canvasState, actions: canvasActions } = useCanvasState();
 
   const {
@@ -382,8 +411,28 @@ const KnowledgeCanvas: React.FC = () => {
   }, [clearAllTrackedTimeouts]);
 
   const mapQuadsWithWorker = useCallback(
-    (quads: any[], opts: Parameters<typeof mapQuadsToDiagram>[1]) =>
-      mapQuadsToDiagram(quads, opts),
+    (quads: any[], opts: Parameters<typeof mapQuadsToDiagram>[1]) => {
+      try {
+        console.debug("[KnowledgeCanvas] mapQuadsToDiagram.input", {
+          quadCount: Array.isArray(quads) ? quads.length : 0,
+          sample: (quads || []).slice(0, 5),
+        });
+      } catch (_) {
+        /* ignore logging failures */
+      }
+      const result = mapQuadsToDiagram(quads, opts);
+      try {
+        console.debug("[KnowledgeCanvas] mapQuadsToDiagram.output", {
+          nodeCount: Array.isArray(result?.nodes) ? result.nodes.length : 0,
+          edgeCount: Array.isArray(result?.edges) ? result.edges.length : 0,
+          sampleNodes: (result?.nodes || []).slice(0, 5),
+          sampleEdges: (result?.edges || []).slice(0, 5),
+        });
+      } catch (_) {
+        /* ignore logging failures */
+      }
+      return result;
+    },
     [],
   );
   const loadTriggerRef = useRef(false);
@@ -540,6 +589,10 @@ const KnowledgeCanvas: React.FC = () => {
   useEffect(() => {
     const auto = !!(config && (config as any).autoApplyLayout);
     if (!auto) return;
+    if (skipNextAutoLayoutRef.current) {
+      skipNextAutoLayoutRef.current = false;
+      return;
+    }
 
     const nodeIds = (nodes || [])
       .map((n) => String(n.id))
@@ -565,6 +618,10 @@ const KnowledgeCanvas: React.FC = () => {
   useEffect(() => {
     const auto = !!(config && (config as any).autoApplyLayout);
     if (!auto) return;
+    if (skipNextAutoLayoutRef.current) {
+      skipNextAutoLayoutRef.current = false;
+      return;
+    }
     void doLayout(nodes, edges, false);
   }, [viewMode, config && (config as any).autoApplyLayout, doLayout]);
 
@@ -742,6 +799,119 @@ const KnowledgeCanvas: React.FC = () => {
     [setCurrentLayout, setCurrentLayoutState, doLayout, nodes, edges],
   );
 
+  const computeCanvasCenter = useCallback(() => {
+    const fallback = () => {
+      try {
+        if (typeof window !== "undefined") {
+          const projected = projectClient(
+            window.innerWidth / 2,
+            window.innerHeight / 2,
+          );
+          if (
+            projected &&
+            typeof projected.x === "number" &&
+            typeof projected.y === "number"
+          ) {
+            return projected;
+          }
+        }
+      } catch (_) {
+        // ignore fallback failures
+      }
+      return { x: 100, y: 100 };
+    };
+
+    try {
+      const inst = reactFlowInstance.current;
+      if (!inst) return fallback();
+
+      const wrapper = flowWrapperRef.current;
+      const width = wrapper?.clientWidth ?? 0;
+      const height = wrapper?.clientHeight ?? 0;
+      const { x: tx, y: ty, zoom } = viewportRef.current;
+
+      if (
+        width > 0 &&
+        height > 0 &&
+        zoom &&
+        Number.isFinite(zoom)
+      ) {
+        const centerX = (width / 2 - tx) / zoom;
+        const centerY = (height / 2 - ty) / zoom;
+        if (Number.isFinite(centerX) && Number.isFinite(centerY)) {
+          return { x: centerX, y: centerY };
+        }
+      }
+
+      const container =
+        wrapper ||
+        (typeof document !== "undefined"
+          ? (document.querySelector(".react-flow") as HTMLElement | null)
+          : null);
+
+      const rect = container?.getBoundingClientRect();
+
+      const screenCenter = rect
+        ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+        : typeof window !== "undefined"
+        ? { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+        : null;
+
+      if (
+        screenCenter &&
+        typeof (inst as any).screenToFlowPosition === "function"
+      ) {
+        const projected = (inst as any).screenToFlowPosition(screenCenter);
+        if (
+          projected &&
+          typeof projected.x === "number" &&
+          typeof projected.y === "number"
+        ) {
+          return projected;
+        }
+      }
+
+      if (rect && typeof (inst as any).project === "function") {
+        const projected = (inst as any).project({
+          x: rect.width / 2,
+          y: rect.height / 2,
+        });
+        if (
+          projected &&
+          typeof projected.x === "number" &&
+          typeof projected.y === "number"
+        ) {
+          return projected;
+        }
+      }
+
+      if (rect && typeof (inst as any).getViewport === "function") {
+        const viewport = (inst as any).getViewport();
+        if (
+          viewport &&
+          typeof viewport.x === "number" &&
+          typeof viewport.y === "number" &&
+          typeof viewport.zoom === "number" &&
+          viewport.zoom !== 0
+        ) {
+          const localWidth = rect.width || width || 0;
+          const localHeight = rect.height || height || 0;
+          if (localWidth > 0 && localHeight > 0) {
+            const centerX = (localWidth / 2 - viewport.x) / viewport.zoom;
+            const centerY = (localHeight / 2 - viewport.y) / viewport.zoom;
+            if (Number.isFinite(centerX) && Number.isFinite(centerY)) {
+              return { x: centerX, y: centerY };
+            }
+          }
+        }
+      }
+    } catch (_) {
+      // ignore and use fallback
+    }
+
+    return fallback();
+  }, []);
+
   const onInit = useCallback((instance: ReactFlowInstance) => {
     reactFlowInstance.current = instance;
     // Ensure the LayoutManager has access to the React Flow instance so it can
@@ -752,7 +922,14 @@ const KnowledgeCanvas: React.FC = () => {
     }
     if (typeof window !== "undefined")
       (window as any).__VG_RF_INSTANCE = instance;
-  }, []);
+    try {
+      if (typeof (instance as any).getViewport === "function") {
+        updateViewportRef((instance as any).getViewport());
+      }
+    } catch (_) {
+      // ignore viewport bootstrap failures
+    }
+  }, [updateViewportRef]);
 
   const onSelectionChange = useCallback(
     (selection: { nodes?: any[]; edges?: any[] } = {}) => {
@@ -890,6 +1067,9 @@ const KnowledgeCanvas: React.FC = () => {
           ? (rfInst as any).getEdges()
           : edges;
 
+      const shouldAutoLayout =
+        config?.autoApplyLayout && !skipNextAutoLayoutRef.current;
+
       if (forceLayoutNextMappingRef.current) {
         forceLayoutNextMappingRef.current = false;
         await doLayout(nodesForLayout as any, edgesForLayout as any, true);
@@ -901,13 +1081,17 @@ const KnowledgeCanvas: React.FC = () => {
         ) {
           (rfInst as any).fitView({ padding: 0.1 });
         }
-      } else if (config?.autoApplyLayout) {
+      } else if (shouldAutoLayout) {
         await doLayout(nodesForLayout as any, edgesForLayout as any, true);
       }
 
       if (applyRequestedRef.current) {
         applyRequestedRef.current = false;
         await doLayout(nodesForLayout as any, edgesForLayout as any, true);
+      }
+
+      if (skipNextAutoLayoutRef.current) {
+        skipNextAutoLayoutRef.current = false;
       }
     };
 
@@ -922,6 +1106,7 @@ const KnowledgeCanvas: React.FC = () => {
     subjectsCallback = async (
       subs?: string[] | undefined,
       quads?: any[] | undefined,
+      _snapshot?: any[] | undefined,
     ) => {
       const incomingSubjects = Array.isArray(subs)
         ? subs.map((value) => String(value))
@@ -2305,8 +2490,22 @@ const KnowledgeCanvas: React.FC = () => {
               typeof getRdfManager === "function" ? getRdfManager() : undefined;
             if (mgr && typeof (mgr as any).expandPrefix === "function") {
               const expanded = (mgr as any).expandPrefix(normalizedUri);
-              if (expanded && typeof expanded === "string")
+              if (expanded && typeof expanded === "string") {
                 normalizedUri = expanded;
+              }
+            }
+          }
+
+          if (!/^https?:\/\//i.test(normalizedUri)) {
+            try {
+              const registry = (useOntologyStore.getState().namespaceRegistry ||
+                []) as Array<{ prefix: string; namespace: string }>;
+              const expanded = expandPrefixed(normalizedUri, registry);
+              if (expanded && /^https?:\/\//i.test(expanded)) {
+                normalizedUri = expanded;
+              }
+            } catch (_) {
+              /* ignore registry expansion failures */
             }
           }
 
@@ -2314,52 +2513,53 @@ const KnowledgeCanvas: React.FC = () => {
 
           const id = String(normalizedUri);
 
-          // compute viewport center robustly in canvas coordinates using shared helper
-          let startPos = { x: 100, y: 100 };
-          try {
-            const container = document.querySelector(".react-flow") as HTMLElement | null;
-            if (container) {
-              const rect = container.getBoundingClientRect();
-              const clientX = rect.left + rect.width / 2;
-              const clientY = rect.top + rect.height / 2;
-              const projected = projectClient(clientX, clientY);
-              if (projected && typeof projected.x === "number" && typeof projected.y === "number") {
-                startPos = { x: projected.x, y: projected.y };
-              }
-            } else if (typeof window !== "undefined") {
-              // Fallback to viewport center of the window if react-flow container not found
-              const projected = projectClient(window.innerWidth / 2, window.innerHeight / 2);
-              if (projected && typeof projected.x === "number" && typeof projected.y === "number") {
-                startPos = { x: projected.x, y: projected.y };
-              }
-            }
-          } catch (_) {
-            // ignore projection failures and fall back to default startPos
-          }
+          const startPos = computeCanvasCenter();
+          skipNextAutoLayoutRef.current = true;
 
           // Preserve any rdfTypes / classCandidate / annotationProperties passed from the editor payload
           const rdfTypes = Array.isArray(payload && payload.rdfTypes) ? payload.rdfTypes.slice() : (payload && payload.classCandidate ? [payload.classCandidate] : []);
           const namespace = payload?.namespace ? String(payload.namespace) : "";
 
-          setNodes((nds) => [
-            ...nds,
-            {
-              id,
-              type: "ontology",
-              position: startPos,
-              data: {
-                key: id,
-                iri: normalizedUri,
-                rdfTypes: rdfTypes || [],
-                literalProperties: [],
-                annotationProperties: payload?.annotationProperties || [],
-                visible: true,
-                hasReasoningError: false,
-                namespace,
-                label: normalizedUri,
-              } as NodeData,
-            },
-          ]);
+          const displayLabel = (() => {
+            try {
+              const pref = toPrefixed(normalizedUri, registrySnapshot as any);
+              return pref && pref.trim().length > 0 ? pref : normalizedUri;
+            } catch (_) {
+              return normalizedUri;
+            }
+          })();
+
+          setNodes((nds) => {
+            const existing = Array.isArray(nds) ? nds : [];
+            const filtered = existing.filter(
+              (node) =>
+                String(node.id) !== id &&
+                String(node.id) !== displayLabel,
+            );
+            return [
+              ...filtered,
+              {
+                id,
+                type: "ontology",
+                position: startPos,
+                data: {
+                  key: id,
+                  iri: normalizedUri,
+                  displayPrefixed: displayLabel,
+                  rdfTypes: rdfTypes || [],
+                  literalProperties: [],
+                  annotationProperties: payload?.annotationProperties || [],
+                  visible: true,
+                  hasReasoningError: false,
+                  namespace,
+                  label: displayLabel,
+                } as NodeData,
+              },
+            ];
+          });
+          setTrackedTimeout(() => {
+            skipNextAutoLayoutRef.current = false;
+          }, 0);
         }}
         onToggleLegend={handleToggleLegend}
         showLegend={showLegend}
@@ -2387,7 +2587,7 @@ const KnowledgeCanvas: React.FC = () => {
         }}
         viewMode={viewMode}
         onViewModeChange={handleViewModeChange}
-        onLayoutChange={handleLayoutChange}
+          onLayoutChange={handleLayoutChange}
         currentLayout={currentLayout}
         layoutEnabled={layoutEnabled}
         onToggleLayoutEnabled={handleToggleLayoutEnabled}
@@ -2399,7 +2599,10 @@ const KnowledgeCanvas: React.FC = () => {
       ) : null}
       
 
-      <div className="w-full h-full pb-[5.5rem] md:pb-[4.5rem]">
+      <div
+        className="w-full h-full pb-[5.5rem] md:pb-[4.5rem]"
+        ref={flowWrapperRef}
+      >
           <ReactFlow
           nodes={safeNodes}
           edges={memoEdges}
@@ -2414,11 +2617,14 @@ const KnowledgeCanvas: React.FC = () => {
           onEdgeDoubleClick={onEdgeDoubleClickStrict}
           onConnect={onConnectStrict}
           onSelectionChange={onSelectionChange}
+          onMove={(_, vp) => updateViewportRef(vp as any)}
+          onMoveEnd={(_, vp) => updateViewportRef(vp as any)}
           nodeTypes={memoNodeTypes}
           edgeTypes={memoEdgeTypes}
           connectionLineComponent={memoConnectionLine}
           connectOnClick={false}
           minZoom={0.1}
+          nodeOrigin={[0.5, 0.5]}
           className="knowledge-graph-canvas bg-canvas-bg"
         >
           <Controls

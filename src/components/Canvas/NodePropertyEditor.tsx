@@ -39,7 +39,7 @@ import {
 import EntityAutoComplete from "../ui/EntityAutoComplete";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { useOntologyStore } from "../../stores/ontologyStore";
-import { toPrefixed } from "../../utils/termUtils";
+import { toPrefixed, expandPrefixed } from "../../utils/termUtils";
 import { X, Plus, Info } from "lucide-react";
 // React Flow selection hook — allow editor to derive node when no explicit prop provided
 
@@ -73,6 +73,115 @@ const toPrefixedSafe = (value: string): string => {
   } catch {
     return value;
   }
+};
+
+const SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
+
+const expandUsingNamespace = (term: string, fallback?: string): string => {
+  if (!term) return fallback ?? term;
+  try {
+    const expanded = expandPrefixed(term);
+    if (expanded !== term) return expanded;
+    if (term.startsWith("_:") || SCHEME_PATTERN.test(term)) {
+      return term;
+    }
+  } catch (_) {
+    /* ignore expansion failures and fall back */
+  }
+  return fallback ?? term;
+};
+
+const ensureExpandedIri = (input: string, mgr: any, context: string): string => {
+  const raw = typeof input === "string" ? input.trim() : String(input ?? "").trim();
+  if (!raw) return raw;
+  if (raw.startsWith("_:")) return raw;
+  if (raw.includes("://") || raw.toLowerCase().startsWith("urn:")) return raw;
+
+  const attemptCandidate = (candidate: unknown): string | null => {
+    if (typeof candidate !== "string") return null;
+    const trimmed = candidate.trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith("_:")) return trimmed;
+    if (trimmed.includes("://") || trimmed.toLowerCase().startsWith("urn:")) return trimmed;
+    return null;
+  };
+
+  const tryExpandViaMap = (map: Record<string, string> | undefined | null): string | null => {
+    if (!map || typeof map !== "object") return null;
+    const idx = raw.indexOf(":");
+    if (idx < 0) return null;
+    const prefix = raw.slice(0, idx);
+    const local = raw.slice(idx + 1);
+    const candidates: string[] = [];
+    if (Object.prototype.hasOwnProperty.call(map, prefix)) {
+      candidates.push(String(map[prefix] ?? ""));
+    }
+    if ((prefix === "" || prefix === ":") && Object.prototype.hasOwnProperty.call(map, "")) {
+      candidates.push(String(map[""] ?? ""));
+    }
+    if ((prefix === "" || prefix === ":") && Object.prototype.hasOwnProperty.call(map, ":")) {
+      candidates.push(String(map[":"] ?? ""));
+    }
+    for (const namespace of candidates) {
+      if (typeof namespace === "string" && namespace.trim().length > 0) {
+        const candidate = attemptCandidate(`${namespace}${local}`);
+        if (candidate) return candidate;
+      }
+    }
+    return null;
+  };
+
+  try {
+    const candidate = attemptCandidate(expandUsingNamespace(raw));
+    if (candidate) return candidate;
+  } catch (_) {
+    /* ignore expansion failure */
+  }
+
+  if (mgr && typeof (mgr as any).expandPrefix === "function") {
+    try {
+      const candidate = attemptCandidate((mgr as any).expandPrefix(raw));
+      if (candidate) return candidate;
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  if (mgr && typeof (mgr as any).getNamespaces === "function") {
+    try {
+      const candidate = tryExpandViaMap((mgr as any).getNamespaces());
+      if (candidate) return candidate;
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  try {
+    const registry = useOntologyStore.getState().namespaceRegistry || [];
+    const map = registry.reduce((acc: Record<string, string>, entry: any) => {
+      if (
+        entry &&
+        typeof entry.prefix === "string" &&
+        typeof entry.namespace === "string" &&
+        entry.namespace.trim().length > 0
+      ) {
+        acc[entry.prefix] = entry.namespace;
+      }
+      return acc;
+    }, {} as Record<string, string>);
+    const candidate = tryExpandViaMap(map);
+    if (candidate) return candidate;
+  } catch (_) {
+    /* ignore registry fallback failure */
+  }
+
+  if (SCHEME_PATTERN.test(raw) && (raw.includes("://") || raw.toLowerCase().startsWith("urn:"))) {
+    return raw;
+  }
+
+  throw new Error(
+    `Unable to expand prefixed term "${raw}" (${context}). Provide a full IRI or register the namespace.`,
+  );
 };
 
 function cloneLiteralProperty(source: LiteralProperty): LiteralProperty {
@@ -314,7 +423,8 @@ export const NodePropertyEditor = ({
     }
 
     // Subject IRI (allow empty during "create" flows — we will generate a blank node id)
-    let subjIri = String(nodeIri || "");
+    const rawSubjectInput = String(nodeIri || "").trim();
+    let subjIri = rawSubjectInput;
     const isCreate = !(nodeData && (nodeData.iri || nodeData.id || nodeData.key));
     let generatedBlank = false;
     if (!subjIri && isCreate) {
@@ -338,6 +448,12 @@ export const NodePropertyEditor = ({
       throw new Error("RDF manager unavailable or does not support applyBatch; cannot persist node properties.");
     }
 
+    const expandIri = (term: string, ctx: string) => ensureExpandedIri(term, mgr, ctx);
+
+    if (!generatedBlank) {
+      subjIri = expandIri(subjIri, "node IRI");
+    }
+
     // Compute annotation property diffs from initial snapshot (no RDF lookups)
     const { toAdd: propsToAdd, toRemove: propsToRemove } = diffProperties(
       initialPropertiesRef.current || [],
@@ -359,9 +475,64 @@ export const NodePropertyEditor = ({
 
     // Prepare removes/adds in the shape expected by rdfManager.applyBatch.
     // Prefer existing native Term objects (objectTerm / predicateTerm) when present.
-    const rdfTypePred = typeof (mgr as any).expandPrefix === "function"
-      ? String((mgr as any).expandPrefix("rdf:type"))
-      : "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
+    const annotationProperties = (properties || [])
+      .filter((p) => p && typeof p.key === "string" && p.key.trim().length > 0)
+      .map((p) => {
+        const key = String(p.key).trim();
+        const expandedKey = expandIri(key, "annotation property predicate");
+        return {
+          propertyUri: expandedKey,
+          key,
+          value: p.value,
+          type: p.type || DISPLAY_DATATYPE,
+        };
+      });
+
+    let createPayloadDelivered = false;
+    if (
+      rawSubjectInput &&
+      rawSubjectInput !== subjIri &&
+      rawSubjectInput.includes(":") &&
+      !rawSubjectInput.includes("://") &&
+      mgr &&
+      typeof (mgr as any).removeAllQuadsForIri === "function"
+    ) {
+      try {
+        await (mgr as any).removeAllQuadsForIri(
+          rawSubjectInput,
+          "urn:vg:data",
+        );
+      } catch (_) {
+        /* ignore cleanup failures */
+      }
+    }
+
+    if (isCreate && typeof onSave === "function") {
+      try {
+        const createPayload = {
+          iri: subjIri,
+          classCandidate: nodeType ? String(nodeType) : undefined,
+          namespace: undefined,
+          annotationProperties,
+          rdfTypes: currentTypes || [],
+        };
+        onSave(createPayload);
+        createPayloadDelivered = true;
+      } catch (_) {
+        /* ignore parent onSave errors; persistence will still attempt */
+      }
+    }
+
+    const rdfTypePred = expandUsingNamespace(
+      "rdf:type",
+      "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+    );
+    let expandedRdfTypePred = rdfTypePred;
+    try {
+      expandedRdfTypePred = expandIri("rdf:type", "rdf:type predicate");
+    } catch (_) {
+      expandedRdfTypePred = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+    }
 
     const valueToTerm = (val: any, type?: string) => {
       try {
@@ -378,15 +549,13 @@ export const NodePropertyEditor = ({
         if (type && String(type).trim()) {
           try {
             const maybePref = String(type).trim();
-            const dtIri =
-              typeof (mgr as any).expandPrefix === "function"
-                ? String((mgr as any).expandPrefix(maybePref))
-                : maybePref;
+            const dtIri = expandIri(maybePref, "datatype IRI");
             return literal(s, namedNode(dtIri));
           } catch (_) {
             // fallthrough to typed literal by string
             try {
-              return literal(s, namedNode(String(type)));
+              const fallback = expandIri(String(type), "datatype IRI");
+              return literal(s, namedNode(fallback));
             } catch (_) {
               // continue
             }
@@ -394,7 +563,10 @@ export const NodePropertyEditor = ({
         }
 
         // Treat any scheme-like string (urn:, http:, https:, etc.) as a NamedNode.
-        if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return namedNode(s);
+        if (/^[a-z][a-z0-9+.-]*:/i.test(s)) {
+          const expandedObj = expandIri(s, "object IRI");
+          return namedNode(expandedObj);
+        }
         // Fallback: literal (no datatype)
         return literal(s);
       } catch (_) {
@@ -404,28 +576,34 @@ export const NodePropertyEditor = ({
 
     const removesPrepared = (propsToRemove || []).map((p: any) => {
       try {
-          const objTerm =
-            p &&
-            p.objectTerm &&
-            ((p.objectTerm as any).termType || (p.objectTerm as any).termType === 0)
-              ? p.objectTerm
-              : valueToTerm(p.value, p.lang ? `@${p.lang}` : p.type);
-        const pred = String(p.key || p.property || (p.predicateTerm && p.predicateTerm.value) || "");
+        const objTerm =
+          p &&
+          p.objectTerm &&
+          ((p.objectTerm as any).termType || (p.objectTerm as any).termType === 0)
+            ? p.objectTerm
+            : valueToTerm(p.value, p.lang ? `@${p.lang}` : p.type);
+        const rawPred = String(p.key || p.property || (p.predicateTerm && p.predicateTerm.value) || "").trim();
+        if (!rawPred) return null;
+        const pred = expandIri(rawPred, "removal predicate");
         return {
           subject: subjIri,
           predicate: pred,
           object: objTerm,
         };
       } catch (_) {
-        return { subject: subjIri, predicate: String(p.key || p.property || ""), object: literal(String(p.value || "")) };
+        return null;
       }
-    });
+    }).filter(Boolean) as any[];
 
     // RDF type removals (use NamedNode for types)
     for (const t of typesToRemove || []) {
       try {
-        const typeFull = typeof (mgr as any).expandPrefix === "function" ? String((mgr as any).expandPrefix(String(t))) : String(t);
-        removesPrepared.push({ subject: subjIri, predicate: rdfTypePred, object: namedNode(typeFull) });
+        const typeFull = expandIri(String(t), "rdf:type removal object");
+        removesPrepared.push({
+          subject: subjIri,
+          predicate: expandedRdfTypePred,
+          object: namedNode(typeFull),
+        });
       } catch (_) { /* ignore per-item */ }
     }
 
@@ -434,55 +612,52 @@ export const NodePropertyEditor = ({
         const objTerm = p && p.objectTerm && (p.objectTerm.termType || p.objectTerm.termType === 0)
           ? p.objectTerm
           : valueToTerm(p.value, p.lang ? `@${p.lang}` : p.type);
-        const pred = String(p.key || p.property || (p.predicateTerm && p.predicateTerm.value) || "");
+        const rawPred = String(p.key || p.property || (p.predicateTerm && p.predicateTerm.value) || "").trim();
+        if (!rawPred) return null;
+        const pred = expandIri(rawPred, "addition predicate");
         return {
           subject: subjIri,
           predicate: pred,
           object: objTerm,
         };
       } catch (_) {
-        return { subject: subjIri, predicate: String(p.key || p.property || ""), object: literal(String(p.value || "")) };
+        return null;
       }
-    });
+    }).filter(Boolean) as any[];
 
     for (const t of typesToAdd || []) {
       try {
-        const typeFull = typeof (mgr as any).expandPrefix === "function" ? String((mgr as any).expandPrefix(String(t))) : String(t);
-        addsPrepared.push({ subject: subjIri, predicate: rdfTypePred, object: namedNode(typeFull) });
+        const typeFull = expandIri(String(t), "rdf:type addition object");
+        addsPrepared.push({
+          subject: subjIri,
+          predicate: expandedRdfTypePred,
+          object: namedNode(typeFull),
+        });
       } catch (_) { /* ignore per-item */ }
     }
     // Apply batch (manager will accept Term objects directly)
     try {
+      try {
+        console.debug("[NodePropertyEditor] applyBatch payload", {
+          subject: subjIri,
+          removes: removesPrepared,
+          adds: addsPrepared,
+        });
+      } catch (_) {
+        /* ignore logging failures */
+      }
       await (mgr as any).applyBatch({ removes: removesPrepared, adds: addsPrepared }, "urn:vg:data");
     } catch (err) {
+      if (createPayloadDelivered && typeof onDelete === "function") {
+        try { onDelete(String(subjIri)); } catch (_) { /* ignore */ }
+      }
       try { console.warn("NodePropertyEditor.applyBatch.failed", err); } catch (_) { void 0; }
       try { canvasActions.setLoading(false, 0, ""); } catch (_) {/* noop */}
       throw err;
     }
 
-    // Notify parent about saved properties.
-    const annotationProperties = properties.map((p) => ({
-      propertyUri: p.key,
-      key: p.key,
-      value: p.value,
-      type: p.type || DISPLAY_DATATYPE,
-    }));
-
-    // For create flows, provide a richer payload including the subject IRI (which
-    // may be a generated blank node), selected class candidate and rdfTypes.
-    if (isCreate) {
-      const createPayload = {
-        iri: subjIri,
-        classCandidate: nodeType ? String(nodeType) : undefined,
-        namespace: undefined,
-        annotationProperties,
-        rdfTypes: currentTypes || [],
-      };
-      if (typeof onSave === "function") onSave(createPayload);
-    } else {
-      // Preserve existing contract for edit flows (legacy behavior)
-      if (typeof onSave === "function") onSave(annotationProperties);
-    }
+    // Preserve existing contract for edit flows (legacy behavior)
+    if (!isCreate && typeof onSave === "function") onSave(annotationProperties);
 
     // Close dialog (manager already emits change notifications)
     onOpenChange(false);

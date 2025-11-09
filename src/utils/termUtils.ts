@@ -246,16 +246,20 @@ export function expandPrefixed(
   const term = normalizeString(value, "expandPrefixed.value");
   if (term.includes("://") || term.startsWith("_:")) return term;
   const idx = term.indexOf(":");
-  invariant(idx >= 0, `Value '${term}' is not a prefixed name`);
+  if (idx < 0) return term;
   const prefix = term.slice(0, idx);
   const local = term.slice(idx + 1);
   const { namespaceRegistry } = resolveTermData({ registry: registryInput });
-  invariant(
-    namespaceRegistry.length > 0,
-    `Namespace registry is empty; cannot expand '${term}'`,
-  );
-  const entry = namespaceRegistry.find((candidate) => candidate.prefix === prefix);
-  invariant(entry, `Unknown prefix '${prefix}' while expanding '${term}'`);
+  if (!namespaceRegistry.length) return term;
+  const entry = namespaceRegistry.find((candidate) => {
+    if (!candidate.namespace) return false;
+    if (candidate.prefix === prefix) return true;
+    if (prefix === ":" || prefix === "") {
+      return candidate.prefix === ":" || candidate.prefix === "";
+    }
+    return false;
+  });
+  if (!entry) return term;
   return `${entry.namespace}${local}`;
 }
 

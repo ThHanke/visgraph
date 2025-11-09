@@ -337,27 +337,27 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
     }
   };
 
-  const handleAddNode = () => {
-    // Prefer explicit IRI input if provided, otherwise fall back to selected class IRI.
-    const iriToAdd = (newNodeIri && String(newNodeIri).trim()) ? String(newNodeIri).trim() : String(newNodeClass || '').trim();
-    if (!iriToAdd) return;
+  // const handleAddNode = () => {
+  //   // Prefer explicit IRI input if provided, otherwise fall back to selected class IRI.
+  //   const iriToAdd = (newNodeIri && String(newNodeIri).trim()) ? String(newNodeIri).trim() : String(newNodeClass || '').trim();
+  //   if (!iriToAdd) return;
 
-    try {
-      onAddNode({
-        iri: iriToAdd,
-        classCandidate: newNodeClass ? String(newNodeClass) : undefined,
-        namespace: newNodeNamespace ? String(newNodeNamespace) : undefined,
-      } as any);
-      setNewNodeClass('');
-      setNewNodeNamespace('');
-      setNewNodeIri('');
-      setIsAddNodeOpen(false);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : String(error ?? 'Unknown error');
-      toast.error(`Failed to add node: ${message}`);
-    }
-  };
+  //   try {
+  //     onAddNode({
+  //       iri: iriToAdd,
+  //       classCandidate: newNodeClass ? String(newNodeClass) : undefined,
+  //       namespace: newNodeNamespace ? String(newNodeNamespace) : undefined,
+  //     } as any);
+  //     setNewNodeClass('');
+  //     setNewNodeNamespace('');
+  //     setNewNodeIri('');
+  //     setIsAddNodeOpen(false);
+  //   } catch (error) {
+  //     const message =
+  //       error instanceof Error ? error.message : String(error ?? 'Unknown error');
+  //     toast.error(`Failed to add node: ${message}`);
+  //   }
+  // };
 
   const handleConfirmClearData = () => {
     try {
@@ -493,16 +493,6 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
                 annotationProperties: payload.annotationProperties,
                 rdfTypes: payload.rdfTypes,
               });
-            } else {
-              // fallback: use toolbar inputs if editor returned legacy shape
-              const iriToAdd = (newNodeIri && String(newNodeIri).trim()) ? String(newNodeIri).trim() : String(newNodeClass || '').trim();
-              if (iriToAdd) {
-                onAddNode({
-                  iri: iriToAdd,
-                  classCandidate: newNodeClass ? String(newNodeClass) : undefined,
-                  namespace: newNodeNamespace ? String(newNodeNamespace) : undefined,
-                });
-              }
             }
           } catch (_) {
             // ignore add failures here — caller will handle

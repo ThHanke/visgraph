@@ -476,11 +476,61 @@ interface OntologyStore {
   setNamespaceRegistry: (registry: { prefix: string; namespace: string; color: string }[]) => void;
 }
 
+function filterNamespacesToCandidates(
+  nsMap: Record<string, string>,
+  iriCandidates?: Set<string>,
+  existingRegistry?: { prefix: string; namespace: string; color?: string }[],
+): Record<string, string> {
+  const seeded: Record<string, string> = {};
+  if (Array.isArray(existingRegistry)) {
+    for (const entry of existingRegistry) {
+      if (
+        entry &&
+        typeof entry.prefix === "string" &&
+        entry.prefix.length > 0 &&
+        typeof entry.namespace === "string" &&
+        entry.namespace.length > 0
+      ) {
+        seeded[entry.prefix] = entry.namespace;
+      }
+    }
+  }
+  if (!nsMap || typeof nsMap !== "object") {
+    return seeded;
+  }
+  if (!iriCandidates || iriCandidates.size === 0) {
+    return { ...seeded, ...nsMap };
+  }
+
+  const iriList = Array.from(iriCandidates).filter((iri) => typeof iri === "string" && iri.trim().length > 0);
+  if (iriList.length === 0) return { ...nsMap };
+
+  const matchesNamespace = (namespace: string): boolean => {
+    if (typeof namespace !== "string" || namespace.length === 0) return false;
+    return iriList.some((iri) => iri.startsWith(namespace));
+  };
+
+  const filtered: Record<string, string> = { ...seeded };
+  try {
+    for (const [prefix, namespace] of Object.entries(nsMap || {})) {
+      if (typeof namespace !== "string" || namespace.length === 0) continue;
+      if (matchesNamespace(namespace)) {
+        filtered[prefix] = namespace;
+      }
+    }
+  } catch (_) {
+    return { ...seeded, ...nsMap };
+  }
+
+  return filtered;
+}
+
 async function persistFatMapUpdates(
   set: (updater: any, replace?: boolean) => void,
   getState: () => OntologyStore,
   classesMap: Record<string, any>,
   propsMap: Record<string, any>,
+  iriCandidates?: Set<string>,
 ): Promise<void> {
   const state = getState();
   const existingClasses = Array.isArray(state.availableClasses) ? state.availableClasses : [];
@@ -508,44 +558,85 @@ async function persistFatMapUpdates(
   try {
     const mgr = state.rdfManager;
     const nsMap =
-      mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
-    const prefixes = Object.keys(nsMap || {}).sort();
-    const paletteMap = buildPaletteMap(prefixes || []);
-    const registry = (prefixes || []).map((p) => {
-      try {
-        return {
-          prefix: String(p),
-          namespace: String((nsMap as any)[p] || ""),
-          color: String((paletteMap as any)[p] || ""),
-        };
-      } catch (_) {
-        return {
-          prefix: String(p),
-          namespace: String((nsMap as any)[p] || ""),
-          color: "",
-        };
-      }
+      mgr && typeof (mgr as any).getNamespaces === "function"
+        ? (mgr as any).getNamespaces()
+        : {};
+
+    const existingRegistry =
+      Array.isArray(getState().namespaceRegistry) ? getState().namespaceRegistry : [];
+
+    const filteredNsMap = filterNamespacesToCandidates(
+      nsMap || {},
+      iriCandidates,
+      existingRegistry,
+    );
+  const mergedRegistryMap = new Map<string, { prefix: string; namespace: string; color: string }>();
+  for (const entry of existingRegistry || []) {
+    if (!entry || typeof entry.prefix !== "string") continue;
+    mergedRegistryMap.set(entry.prefix, {
+      prefix: String(entry.prefix),
+      namespace: String(entry.namespace || ""),
+      color: String(entry.color || ""),
     });
+  }
 
-    const computePrefixed = (entry: any) => {
-      try {
-        const iri = String((entry && (entry.iri || entry.key)) || "");
-        const pref = iri ? toPrefixed(String(iri), registry as any) : "";
-        return { ...(entry || {}), prefixed: pref && String(pref) !== String(iri) ? String(pref) : "" };
-      } catch (_) {
-        return { ...(entry || {}), prefixed: "" };
-      }
-    };
+  const prefixes = Object.keys(filteredNsMap || {}).sort();
+  for (const p of prefixes || []) {
+    const prefixKey = String(p);
+    const namespaceValue = String((filteredNsMap as any)[p] || "");
+    if (!mergedRegistryMap.has(prefixKey)) {
+      mergedRegistryMap.set(prefixKey, {
+        prefix: prefixKey,
+        namespace: namespaceValue,
+        color: "",
+      });
+    } else {
+      const existing = mergedRegistryMap.get(prefixKey)!;
+      mergedRegistryMap.set(prefixKey, {
+        prefix: prefixKey,
+        namespace: namespaceValue,
+        color: existing.color || "",
+      });
+    }
+  }
 
-    const propsWithPref = Object.values(propByIri).map(computePrefixed);
-    const classesWithPref = Object.values(classByIri).map(computePrefixed);
+  const paletteMap = buildPaletteMap(
+    Array.from(mergedRegistryMap.entries())
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+      .map(([prefix]) => prefix),
+  );
+  for (const [pref, entry] of mergedRegistryMap) {
+    if (!entry.color || entry.color.trim().length === 0) {
+      mergedRegistryMap.set(pref, {
+        ...entry,
+        color: String((paletteMap as any)[pref] || entry.color || ""),
+      });
+    }
+  }
 
-    set((s: any) => ({
-      availableClasses: classesWithPref,
-      availableProperties: propsWithPref,
-      ontologiesVersion: (s.ontologiesVersion || 0) + 1,
-      namespaceRegistry: registry,
-    }));
+  const registry = Array.from(mergedRegistryMap.values()).sort((a, b) =>
+    String(a.prefix || "").localeCompare(String(b.prefix || "")),
+  );
+
+  const computePrefixed = (entry: any) => {
+    try {
+      const iri = String((entry && (entry.iri || entry.key)) || "");
+      const pref = iri ? toPrefixed(String(iri), registry as any) : "";
+      return { ...(entry || {}), prefixed: pref && String(pref) !== String(iri) ? String(pref) : "" };
+    } catch (_) {
+      return { ...(entry || {}), prefixed: "" };
+    }
+  };
+
+  const propsWithPref = Object.values(propByIri).map(computePrefixed);
+  const classesWithPref = Object.values(classByIri).map(computePrefixed);
+
+  set((s: any) => ({
+    availableClasses: classesWithPref,
+    availableProperties: propsWithPref,
+    ontologiesVersion: (s.ontologiesVersion || 0) + 1,
+    namespaceRegistry: registry,
+  }));
   } catch (_) {
     try {
       const propsArr = Object.values(propByIri);
@@ -1485,15 +1576,53 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
     const parsedTypesBySubject: Record<string, Set<any>> = {};
     const parsedLabelBySubject: Record<string, string> = {};
+    const namespaceIriCandidates = new Set<string>();
+    const dataGraphSubjects = new Set<string>();
+    const addCandidate = (value: string) => {
+      if (!value) return;
+      const trimmed = String(value).trim();
+      if (!trimmed) return;
+      if (/^[a-z][a-z0-9+.\-]*:/i.test(trimmed)) {
+        namespaceIriCandidates.add(trimmed);
+      }
+    };
+    const normalizeGraphIri = (graphTerm: any): string => {
+      if (graphTerm === null || typeof graphTerm === "undefined") return "";
+      if (typeof graphTerm === "string") return graphTerm.trim();
+      if (typeof graphTerm === "object") {
+        const value =
+          typeof (graphTerm as any).value === "string"
+            ? (graphTerm as any).value
+            : typeof (graphTerm as any).id === "string"
+              ? (graphTerm as any).id
+              : "";
+        return String(value || "").trim();
+      }
+      return "";
+    };
+    const isDataGraphTerm = (graphTerm: any) => {
+      const value = normalizeGraphIri(graphTerm);
+      if (!value) return true;
+      const lowered = value.toLowerCase();
+      if (lowered === "default") return true;
+      return lowered === "urn:vg:data";
+    };
 
     for (const q of parsedQuads) {
       const s = q && q.subject && (q.subject.value || q.subject);
       const p = q && q.predicate && (q.predicate.value || q.predicate);
       const o = q && q.object ? q.object : undefined;
+      const graphTerm = q && (q.graph || (q as any).graph);
+      const isDataGraph = isDataGraphTerm(graphTerm);
       if (!s || !p) continue;
       const subj = String(s);
       const pred = String(p);
       const objTerm = typeof o !== "undefined" && o !== null ? o : undefined;
+      if (isDataGraph) {
+        addCandidate(normalizeTermIri(subj));
+        addCandidate(normalizeTermIri(pred));
+        dataGraphSubjects.add(subj);
+      }
 
       if (pred === "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" || /rdf:type$/i.test(pred)) {
         parsedTypesBySubject[subj] = parsedTypesBySubject[subj] || new Set<any>();
@@ -1503,6 +1632,14 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       if (pred === "http://www.w3.org/2000/01/rdf-schema#label" || /rdfs:label$/i.test(pred)) {
         if (objTerm && typeof (objTerm as any).value === "string") parsedLabelBySubject[subj] = String((objTerm as any).value);
         else if (typeof objTerm === "string") parsedLabelBySubject[subj] = String(objTerm);
+      }
+
+      if (isDataGraph && objTerm) {
+        if (typeof objTerm === "object" && typeof (objTerm as any).value === "string") {
+          addCandidate(normalizeTermIri((objTerm as any).value));
+        } else if (typeof objTerm === "string") {
+          addCandidate(normalizeTermIri(objTerm));
+        }
       }
     }
 
@@ -1530,6 +1667,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
       const nsMatch = String(subjStr || "").match(/^(.*[\/#])/);
       const namespace = nsMatch && nsMatch[1] ? String(nsMatch[1]) : "";
+      if (namespace && dataGraphSubjects.has(subjStr)) addCandidate(namespace);
 
       const isClass = typesNormalized.some((iri: string) => {
         if (!iri) return false;
@@ -1567,7 +1705,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       }
     }
 
-    await persistFatMapUpdates(set, get, classesMap, propsMap);
+    await persistFatMapUpdates(set, get, classesMap, propsMap, namespaceIriCandidates);
   },
   updateFatMapFromWorker: async (
     snapshot: WorkerReconcileSubjectSnapshotPayload[],
@@ -1576,11 +1714,21 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
     const classesMap: Record<string, any> = {};
     const propsMap: Record<string, any> = {};
+    const namespaceIriCandidates = new Set<string>();
+    const addCandidate = (value: string) => {
+      if (!value) return;
+      const trimmed = String(value).trim();
+      if (!trimmed) return;
+      if (/^[a-z][a-z0-9+.\-]*:/i.test(trimmed)) {
+        namespaceIriCandidates.add(trimmed);
+      }
+    };
 
     for (const entry of snapshot) {
       if (!entry || typeof entry.iri !== "string") continue;
       const iri = entry.iri.trim();
       if (!iri) continue;
+      addCandidate(iri);
 
       const typesNormalized = Array.from(
         new Set(
@@ -1589,6 +1737,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             .filter(Boolean),
         ),
       );
+      typesNormalized.forEach(addCandidate);
 
       let label =
         typeof entry.label === "string" && entry.label.trim().length > 0
@@ -1598,6 +1747,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
       const nsMatch = iri.match(/^(.*[\/#])/);
       const namespace = nsMatch && nsMatch[1] ? String(nsMatch[1]) : "";
+      if (namespace) addCandidate(namespace);
 
       const isClass = typesNormalized.some((typeIri) => {
         if (!typeIri) return false;
@@ -1645,7 +1795,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       return;
     }
 
-    await persistFatMapUpdates(set, get, classesMap, propsMap);
+    await persistFatMapUpdates(set, get, classesMap, propsMap, namespaceIriCandidates);
   },
 
   discoverReferencedOntologies: async (options?: {
@@ -1887,6 +2037,16 @@ async function buildFatMap(rdfMgr?: any): Promise<void> {
 
   const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
   const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
+  const namespaceIriCandidates = new Set<string>();
+  const dataGraphSubjects = new Set<string>();
+  const addCandidate = (value: string) => {
+    if (!value) return;
+    const trimmed = String(value).trim();
+    if (!trimmed) return;
+    if (/^[a-z][a-z0-9+.\-]*:/i.test(trimmed)) {
+      namespaceIriCandidates.add(trimmed);
+    }
+  };
 
   const subjectIndex = new Map<string, SerializedQuad[]>();
   for (const quad of allQuads) {
@@ -1894,6 +2054,14 @@ async function buildFatMap(rdfMgr?: any): Promise<void> {
     if (!subj) continue;
     if (!subjectIndex.has(subj)) subjectIndex.set(subj, []);
     subjectIndex.get(subj)!.push(quad);
+
+    const graphId = quad && quad.graph ? String(quad.graph) : "";
+    if (graphId && graphId !== "urn:vg:data") continue;
+    const subjValue = String(quad.subject || "");
+    addCandidate(subjValue);
+    addCandidate(String(quad.predicate || ""));
+    if (typeof quad.object === "string") addCandidate(String(quad.object));
+    if (subjValue) dataGraphSubjects.add(subjValue);
   }
 
   const propsMap: Record<string, any> = {};
@@ -1916,6 +2084,7 @@ async function buildFatMap(rdfMgr?: any): Promise<void> {
     const label = labelQuad ? String(labelQuad.object || "") : "";
     const nsMatch = String(subject || "").match(/^(.*[\/#])/);
     const namespace = nsMatch && nsMatch[1] ? String(nsMatch[1]) : "";
+    if (namespace && dataGraphSubjects.has(String(subject))) addCandidate(namespace);
 
     if (isProp) {
       propsMap[String(subject)] = {
@@ -1947,13 +2116,18 @@ async function buildFatMap(rdfMgr?: any): Promise<void> {
   // that rely on both availableClasses/availableProperties and namespaceRegistry see a consistent state.
     try {
       const nsMap = mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
-      const prefixes = Object.keys(nsMap || []).sort();
+      const existingRegistry =
+        Array.isArray(useOntologyStore.getState().namespaceRegistry)
+          ? useOntologyStore.getState().namespaceRegistry
+          : [];
+      const filteredNsMap = filterNamespacesToCandidates(nsMap || {}, namespaceIriCandidates, existingRegistry);
+      const prefixes = Object.keys(filteredNsMap || []).sort();
       const paletteMap = buildPaletteMap(prefixes || []);
       const registry = (prefixes || []).map((p) => {
         try {
-          return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: String((paletteMap as any)[p] || "") };
+          return { prefix: String(p), namespace: String((filteredNsMap as any)[p] || ""), color: String((paletteMap as any)[p] || "") };
         } catch (_) {
-          return { prefix: String(p), namespace: String((nsMap as any)[p] || ""), color: "" };
+          return { prefix: String(p), namespace: String((filteredNsMap as any)[p] || ""), color: "" };
         }
       });
 

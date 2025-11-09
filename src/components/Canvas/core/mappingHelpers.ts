@@ -1,7 +1,11 @@
 import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
 import { generateEdgeId } from "./edgeHelpers";
 import initializeEdge from "./edgeStyle";
-import { shortLocalName, toPrefixed, getNodeColor } from "../../../utils/termUtils";
+import {
+  shortLocalName,
+  toPrefixed,
+  getNodeColor,
+} from "../../../utils/termUtils";
 import type { NodeData, LinkData } from "../../../types/canvas";
 
 /**
@@ -314,10 +318,14 @@ export function mapQuadsToDiagram(
     if (predicateIri !== RDF_TYPE) continue;
     const objectIri = normalized.object;
     if (!objectIri) continue;
-    if (!typesBySubject.has(normalized.subject)) {
-      typesBySubject.set(normalized.subject, new Set<string>());
+    const subjectId = normalized.subject;
+    if (!subjectId) continue;
+    const objectId = objectIri;
+    if (!objectId) continue;
+    if (!typesBySubject.has(subjectId)) {
+      typesBySubject.set(subjectId, new Set<string>());
     }
-    typesBySubject.get(normalized.subject)!.add(objectIri);
+    typesBySubject.get(subjectId)!.add(objectId);
   }
 
   const propertyLabelByIri = new Map<string, string>();
@@ -363,10 +371,12 @@ export function mapQuadsToDiagram(
     const normalized = normalizedByRef.get(quad) ?? coerceQuad(quad);
     if (!normalized) continue;
 
-    ensureNode(normalized.subject);
-    const entry = nodeMap.get(normalized.subject)!;
+    const subjectIri = normalized.subject;
+    if (!subjectIri) continue;
+    ensureNode(subjectIri);
+    const entry = nodeMap.get(subjectIri)!;
 
-    const subjectTypesSet = typesBySubject.get(normalized.subject);
+    const subjectTypesSet = typesBySubject.get(subjectIri);
     const subjectTypes = subjectTypesSet
       ? Array.from(subjectTypesSet)
       : Array.isArray(entry.rdfTypes)
@@ -379,12 +389,15 @@ export function mapQuadsToDiagram(
     entry.forceIsTBox = !hasAboxType;
 
     const predicateIri = normalized.predicate;
+    if (!predicateIri) continue;
     const predicateTerm = (quad as { predicate?: TermLike }).predicate ?? null;
     const objectTerm = (quad as { object?: TermLike }).object ?? null;
 
     if (predicateIri === RDF_TYPE) {
       const typeValue = termValue(objectTerm);
-      if (typeValue) entry.rdfTypes.push(typeValue);
+      if (typeValue) {
+        entry.rdfTypes.push(typeValue);
+      }
       continue;
     }
 
@@ -435,11 +448,12 @@ export function mapQuadsToDiagram(
         predicateKindLocal === "unknown" ||
         isBlankNodeReferenced(bn, dataQuads)
       ) {
-        ensureNode(bn);
-        const objEntry = nodeMap.get(bn);
+        const canonicalBn = bn;
+        ensureNode(canonicalBn);
+        const objEntry = nodeMap.get(canonicalBn);
         if (objEntry) objEntry.forceIsTBox = entry.forceIsTBox;
 
-        const edgeId = String(generateEdgeId(normalized.subject, bn, predicateIri));
+        const edgeId = String(generateEdgeId(subjectIri, canonicalBn, predicateIri));
         const propertyPrefixed =
           safeToPrefixed(predicateIri, options?.registry) ?? predicateIri;
         const propertyLabel = propertyLabelByIri.get(predicateIri);
@@ -449,13 +463,13 @@ export function mapQuadsToDiagram(
           rfEdges.push(
             initializeEdge({
               id: edgeId,
-              source: normalized.subject,
-              target: bn,
+              source: subjectIri,
+              target: canonicalBn,
               type: "floating",
               data: {
                 key: edgeId,
-                from: normalized.subject,
-                to: bn,
+                from: subjectIri,
+                to: canonicalBn,
                 propertyUri: predicateIri,
                 propertyPrefixed,
                 propertyType: "",
@@ -482,11 +496,12 @@ export function mapQuadsToDiagram(
       if (!objectIri) continue;
 
       if (predicateKindLocal === "object" || predicateKindLocal === "unknown") {
-        ensureNode(objectIri);
-        const objEntry = nodeMap.get(objectIri);
+        const canonicalObject = objectIri;
+        ensureNode(canonicalObject);
+        const objEntry = nodeMap.get(canonicalObject);
         if (objEntry) objEntry.forceIsTBox = entry.forceIsTBox;
 
-        const edgeId = String(generateEdgeId(normalized.subject, objectIri, predicateIri));
+        const edgeId = String(generateEdgeId(subjectIri, canonicalObject, predicateIri));
         const propertyPrefixed =
           safeToPrefixed(predicateIri, options?.registry) ?? predicateIri;
         const propertyLabel = propertyLabelByIri.get(predicateIri);
@@ -496,13 +511,13 @@ export function mapQuadsToDiagram(
           rfEdges.push(
             initializeEdge({
               id: edgeId,
-              source: normalized.subject,
-              target: objectIri,
+              source: subjectIri,
+              target: canonicalObject,
               type: "floating",
               data: {
                 key: edgeId,
-                from: normalized.subject,
-                to: objectIri,
+                from: subjectIri,
+                to: canonicalObject,
                 propertyUri: predicateIri,
                 propertyPrefixed,
                 propertyType: "",

@@ -35,9 +35,10 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
       const m: Record<string, string> = {};
       (namespaceRegistry || []).forEach((entry: any) => {
         try {
-          const p = entry && (entry.prefix !== undefined && entry.prefix !== null) ? String(entry.prefix) : "";
+          if (!entry || entry.prefix === undefined || entry.prefix === null) return;
+          const p = String(entry.prefix);
           const c = entry && (entry.color !== undefined && entry.color !== null) ? String(entry.color) : "";
-          if (p) m[p] = c || "";
+          m[p] = c || "";
         } catch (_) {
           /* ignore per-entry */
         }
@@ -56,9 +57,10 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
       try {
         (namespaceRegistry || []).forEach((e: any) => {
           try {
-            const p = e && (e.prefix !== undefined && e.prefix !== null) ? String(e.prefix) : "";
+            if (!e || e.prefix === undefined || e.prefix === null) return;
+            const p = String(e.prefix);
             const u = e && (e.namespace !== undefined && e.namespace !== null) ? String(e.namespace) : "";
-            if (p) mapFromRegistry[p] = u;
+            mapFromRegistry[p] = u;
           } catch (_) { /* ignore per-entry */ }
         });
       } catch (_) { /* ignore registry read errors */ }
@@ -214,9 +216,10 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
                       try {
                         (namespaceRegistry || []).forEach((entry: any) => {
                           try {
-                            const key = entry && (entry.prefix !== undefined && entry.prefix !== null) ? String(entry.prefix) : "";
+                            if (!entry || entry.prefix === undefined || entry.prefix === null) return;
+                            const key = String(entry.prefix);
                             const uri = entry && (entry.namespace !== undefined && entry.namespace !== null) ? String(entry.namespace) : "";
-                            if (key) currentNsMap[key] = uri;
+                            currentNsMap[key] = uri;
                           } catch (_) { /* ignore per-entry */ }
                         });
                       } catch (_) { /* ignore */ }

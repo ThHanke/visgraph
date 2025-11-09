@@ -246,9 +246,10 @@ export function usePaletteFromRdfManager() {
       const map: Record<string,string> = {};
       (registry || []).forEach((entry: any) => {
         try {
-          const p = String(entry?.prefix || "");
-          const c = String(entry?.color || "");
-          if (p) map[p] = c || "";
+          if (!entry || entry.prefix === undefined || entry.prefix === null) return;
+          const p = String(entry.prefix);
+          const colorValue = entry && entry.color !== undefined && entry.color !== null ? String(entry.color) : "";
+          map[p] = colorValue;
         } catch (_) { void 0; }
       });
       return map;
