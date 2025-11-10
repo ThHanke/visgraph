@@ -728,7 +728,11 @@ export class RDFManagerImpl {
 
   private mergePrefixes(input?: Record<string, string>, graphName?: string) {
     const targetGraph = graphName || DEFAULT_GRAPH;
-    if (targetGraph !== DEFAULT_GRAPH && targetGraph !== "urn:vg:data") {
+    if (
+      targetGraph !== DEFAULT_GRAPH &&
+      targetGraph !== "urn:vg:data" &&
+      targetGraph !== "urn:vg:ontologies"
+    ) {
       return;
     }
     if (!input || typeof input !== "object") return;

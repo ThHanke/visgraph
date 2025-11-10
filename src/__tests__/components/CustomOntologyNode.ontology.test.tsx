@@ -31,6 +31,7 @@ vi.mock("../../stores/ontologyStore", () => {
           { prefix: "dcterms", namespace: "http://purl.org/dc/terms/", color: "" },
           { prefix: "owl", namespace: "http://www.w3.org/2002/07/owl#", color: "" },
           { prefix: "rdfs", namespace: "http://www.w3.org/2000/01/rdf-schema#", color: "" },
+          { prefix: "rdf", namespace: "http://www.w3.org/1999/02/22-rdf-syntax-ns#", color: "" },
         ],
       };
       // When a selector function is passed, call it with the store object (Zustand-like)

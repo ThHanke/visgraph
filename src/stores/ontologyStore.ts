@@ -562,81 +562,138 @@ async function persistFatMapUpdates(
         ? (mgr as any).getNamespaces()
         : {};
 
+    const namespaceCandidates = new Set<string>();
+    const addNamespaceCandidate = (value: unknown) => {
+      if (typeof value !== "string") return;
+      const trimmed = value.trim();
+      if (!trimmed) return;
+      if (!/^[a-z][a-z0-9+.\-]*:/i.test(trimmed)) return;
+      namespaceCandidates.add(trimmed);
+    };
+
+    if (iriCandidates && iriCandidates.size > 0) {
+      for (const candidate of iriCandidates) {
+        addNamespaceCandidate(candidate);
+      }
+    }
+
+    try {
+      if (mgr && typeof (mgr as any).fetchQuadsPage === "function") {
+        const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+        const OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
+        const ontologyTypeQuads = await fetchSerializedQuads(
+          mgr,
+          "urn:vg:ontologies",
+          { predicate: RDF_TYPE },
+        );
+        for (const quadEntry of ontologyTypeQuads || []) {
+          const object = quadEntry && quadEntry.object ? String(quadEntry.object) : "";
+          if (object !== OWL_ONTOLOGY) continue;
+          const subject = quadEntry && quadEntry.subject ? String(quadEntry.subject) : "";
+          addNamespaceCandidate(subject);
+        }
+      }
+    } catch (_) {
+      /* ignore ontology candidate extraction failures */
+    }
+
+    if (namespaceCandidates.size === 0) {
+      try {
+        const loadedOntologies = Array.isArray(state.loadedOntologies)
+          ? state.loadedOntologies
+          : [];
+        for (const ontology of loadedOntologies || []) {
+          if (!ontology || typeof ontology !== "object") continue;
+          if (typeof (ontology as any).url === "string") {
+            addNamespaceCandidate((ontology as any).url);
+          }
+          const aliases = (ontology as any).aliases;
+          if (Array.isArray(aliases)) {
+            for (const alias of aliases) {
+              addNamespaceCandidate(alias);
+            }
+          }
+        }
+      } catch (_) {
+        /* ignore ontology metadata fallback errors */
+      }
+    }
+
     const existingRegistry =
       Array.isArray(getState().namespaceRegistry) ? getState().namespaceRegistry : [];
 
     const filteredNsMap = filterNamespacesToCandidates(
       nsMap || {},
-      iriCandidates,
+      namespaceCandidates.size > 0 ? namespaceCandidates : undefined,
       existingRegistry,
     );
-  const mergedRegistryMap = new Map<string, { prefix: string; namespace: string; color: string }>();
-  for (const entry of existingRegistry || []) {
-    if (!entry || typeof entry.prefix !== "string") continue;
-    mergedRegistryMap.set(entry.prefix, {
-      prefix: String(entry.prefix),
-      namespace: String(entry.namespace || ""),
-      color: String(entry.color || ""),
-    });
-  }
-
-  const prefixes = Object.keys(filteredNsMap || {}).sort();
-  for (const p of prefixes || []) {
-    const prefixKey = String(p);
-    const namespaceValue = String((filteredNsMap as any)[p] || "");
-    if (!mergedRegistryMap.has(prefixKey)) {
-      mergedRegistryMap.set(prefixKey, {
-        prefix: prefixKey,
-        namespace: namespaceValue,
-        color: "",
-      });
-    } else {
-      const existing = mergedRegistryMap.get(prefixKey)!;
-      mergedRegistryMap.set(prefixKey, {
-        prefix: prefixKey,
-        namespace: namespaceValue,
-        color: existing.color || "",
+    const mergedRegistryMap = new Map<string, { prefix: string; namespace: string; color: string }>();
+    for (const entry of existingRegistry || []) {
+      if (!entry || typeof entry.prefix !== "string") continue;
+      mergedRegistryMap.set(entry.prefix, {
+        prefix: String(entry.prefix),
+        namespace: String(entry.namespace || ""),
+        color: String(entry.color || ""),
       });
     }
-  }
 
-  const paletteMap = buildPaletteMap(
-    Array.from(mergedRegistryMap.entries())
-      .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
-      .map(([prefix]) => prefix),
-  );
-  for (const [pref, entry] of mergedRegistryMap) {
-    if (!entry.color || entry.color.trim().length === 0) {
-      mergedRegistryMap.set(pref, {
-        ...entry,
-        color: String((paletteMap as any)[pref] || entry.color || ""),
-      });
+    const prefixes = Object.keys(filteredNsMap || {}).sort();
+    for (const p of prefixes || []) {
+      const prefixKey = String(p);
+      const namespaceValue = String((filteredNsMap as any)[p] || "");
+      if (!mergedRegistryMap.has(prefixKey)) {
+        mergedRegistryMap.set(prefixKey, {
+          prefix: prefixKey,
+          namespace: namespaceValue,
+          color: "",
+        });
+      } else {
+        const existing = mergedRegistryMap.get(prefixKey)!;
+        mergedRegistryMap.set(prefixKey, {
+          prefix: prefixKey,
+          namespace: namespaceValue,
+          color: existing.color || "",
+        });
+      }
     }
-  }
 
-  const registry = Array.from(mergedRegistryMap.values()).sort((a, b) =>
-    String(a.prefix || "").localeCompare(String(b.prefix || "")),
-  );
-
-  const computePrefixed = (entry: any) => {
-    try {
-      const iri = String((entry && (entry.iri || entry.key)) || "");
-      const pref = iri ? toPrefixed(String(iri), registry as any) : "";
-      return { ...(entry || {}), prefixed: pref && String(pref) !== String(iri) ? String(pref) : "" };
-    } catch (_) {
-      return { ...(entry || {}), prefixed: "" };
+    const paletteMap = buildPaletteMap(
+      Array.from(mergedRegistryMap.entries())
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+        .map(([prefix]) => prefix),
+    );
+    for (const [pref, entry] of mergedRegistryMap) {
+      if (!entry.color || entry.color.trim().length === 0) {
+        mergedRegistryMap.set(pref, {
+          ...entry,
+          color: String((paletteMap as any)[pref] || entry.color || ""),
+        });
+      }
     }
-  };
 
-  const propsWithPref = Object.values(propByIri).map(computePrefixed);
-  const classesWithPref = Object.values(classByIri).map(computePrefixed);
+    const registry = Array.from(mergedRegistryMap.values()).sort((a, b) =>
+      String(a.prefix || "").localeCompare(String(b.prefix || "")),
+    );
 
-  set((s: any) => ({
-    availableClasses: classesWithPref,
-    availableProperties: propsWithPref,
-    ontologiesVersion: (s.ontologiesVersion || 0) + 1,
-    namespaceRegistry: registry,
-  }));
+    const computePrefixed = (entry: any) => {
+      try {
+        const iri = String((entry && (entry.iri || entry.key)) || "");
+        const pref = iri ? toPrefixed(String(iri), registry as any) : "";
+        return { ...(entry || {}), prefixed: pref && String(pref) !== String(iri) ? String(pref) : "" };
+      } catch (_) {
+        return { ...(entry || {}), prefixed: "" };
+      }
+    };
+
+    const propsWithPref = Object.values(propByIri).map(computePrefixed);
+    const classesWithPref = Object.values(classByIri).map(computePrefixed);
+
+    set((s: any) => ({
+      availableClasses: classesWithPref,
+      availableProperties: propsWithPref,
+      ontologiesVersion: (s.ontologiesVersion || 0) + 1,
+      namespaceRegistry: registry,
+    }));
   } catch (_) {
     try {
       const propsArr = Object.values(propByIri);
@@ -2068,6 +2125,7 @@ async function buildFatMap(rdfMgr?: any): Promise<void> {
 
   const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
   const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
+  const OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
   const namespaceIriCandidates = new Set<string>();
   const dataGraphSubjects = new Set<string>();
   const addCandidate = (value: string) => {
@@ -2087,12 +2145,48 @@ async function buildFatMap(rdfMgr?: any): Promise<void> {
     subjectIndex.get(subj)!.push(quad);
 
     const graphId = quad && quad.graph ? String(quad.graph) : "";
-    if (graphId && graphId !== "urn:vg:data") continue;
+    if (graphId && graphId !== "urn:vg:data") {
+      if (graphId === "urn:vg:ontologies") {
+        const predicate = String(quad.predicate || "");
+        const object = typeof quad.object === "string" ? quad.object : String(quad.object || "");
+        if (predicate === RDF_TYPE && object === OWL_ONTOLOGY) {
+          const subjValue = String(quad.subject || "");
+          addCandidate(subjValue);
+        }
+      }
+      continue;
+    }
     const subjValue = String(quad.subject || "");
     addCandidate(subjValue);
     addCandidate(String(quad.predicate || ""));
     if (typeof quad.object === "string") addCandidate(String(quad.object));
     if (subjValue) dataGraphSubjects.add(subjValue);
+  }
+
+  if (namespaceIriCandidates.size === 0) {
+    try {
+      const storeState =
+        useOntologyStore && typeof useOntologyStore.getState === "function"
+          ? useOntologyStore.getState()
+          : null;
+      const loadedOntologies = storeState && Array.isArray(storeState.loadedOntologies)
+        ? storeState.loadedOntologies
+        : [];
+      for (const ontology of loadedOntologies || []) {
+        if (!ontology || typeof ontology !== "object") continue;
+        if (typeof (ontology as any).url === "string") {
+          addCandidate((ontology as any).url);
+        }
+        const aliases = (ontology as any).aliases;
+        if (Array.isArray(aliases)) {
+          for (const alias of aliases) {
+            addCandidate(alias as string);
+          }
+        }
+      }
+    } catch (_) {
+      /* ignore ontology metadata fallback errors */
+    }
   }
 
   const propsMap: Record<string, any> = {};

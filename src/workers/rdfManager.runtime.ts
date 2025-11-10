@@ -1125,7 +1125,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             payload &&
             payload.prefixes &&
             typeof payload.prefixes === "object" &&
-            graphName === "urn:vg:data"
+            (graphName === "urn:vg:data" || graphName === "urn:vg:ontologies")
           ) {
             workerNamespaces = {
               ...workerNamespaces,
@@ -1385,7 +1385,10 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             });
           });
 
-          if (Object.keys(prefixes).length > 0 && graphName === "urn:vg:data") {
+          if (
+            Object.keys(prefixes).length > 0 &&
+            (graphName === "urn:vg:data" || graphName === "urn:vg:ontologies")
+          ) {
             workerNamespaces = { ...workerNamespaces, ...prefixes };
           }
 

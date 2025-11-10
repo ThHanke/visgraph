@@ -84,3 +84,92 @@ test("rdfManager triggers store.updateFatMap at end of batch ontology load", asy
 
   expect(found).toBe(true);
 });
+
+test("ontology namespace is registered when owl:Ontology subject is present", async () => {
+  rdfManager.clear();
+  useOntologyStore.setState({
+    availableProperties: [],
+    availableClasses: [],
+    loadedOntologies: [],
+    namespaceRegistry: [],
+    ontologiesVersion: 0,
+  } as any);
+
+  const ontologyTtl = `
+@prefix ex: <http://example.org/onto#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+ex:MyOntology a owl:Ontology ;
+  rdfs:label "My Ontology" .
+
+ex:MyClass a owl:Class ;
+  rdfs:label "My Class" .
+`;
+
+  await rdfManager.loadRDFIntoGraph(ontologyTtl, "urn:vg:ontologies", "text/turtle");
+
+  // Force a rebuild so the namespace registry picks up the ontology namespace.
+  await useOntologyStore.getState().updateFatMap();
+
+  expect(rdfManager.getNamespaces()).toMatchObject({
+    ex: "http://example.org/onto#",
+  });
+
+  const registryFound = await waitForCondition(() => {
+    const registry = useOntologyStore.getState().namespaceRegistry || [];
+    return registry.some(
+      (entry: any) => String(entry.namespace || "") === "http://example.org/onto#",
+    );
+  }, 2000, 50);
+
+  expect(registryFound).toBe(true);
+});
+
+test("ontology namespace falls back to loadedOntologies metadata when owl:Ontology triple missing", async () => {
+  rdfManager.clear();
+  useOntologyStore.setState({
+    availableProperties: [],
+    availableClasses: [],
+    namespaceRegistry: [],
+    ontologiesVersion: 0,
+    loadedOntologies: [
+      {
+        url: "http://example.org/no-owl",
+        name: "No OWL Ontology",
+        classes: [],
+        properties: [],
+        namespaces: {},
+        source: "autoload",
+        graphName: "urn:vg:ontologies",
+        loadStatus: "ok",
+      },
+    ],
+  } as any);
+
+  const ontologyTtl = `
+@prefix ex: <http://example.org/no-owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+
+ex:ClassX a owl:Class ;
+  rdfs:label "Class X" .
+`;
+
+  await rdfManager.loadRDFIntoGraph(ontologyTtl, "urn:vg:ontologies", "text/turtle");
+
+  await useOntologyStore.getState().updateFatMap();
+
+  expect(rdfManager.getNamespaces()).toMatchObject({
+    ex: "http://example.org/no-owl#",
+  });
+
+  const registryFound = await waitForCondition(() => {
+    const registry = useOntologyStore.getState().namespaceRegistry || [];
+    return registry.some(
+      (entry: any) => String(entry.namespace || "") === "http://example.org/no-owl#",
+    );
+  }, 2000, 50);
+
+  expect(registryFound).toBe(true);
+});
