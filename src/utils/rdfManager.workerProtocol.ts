@@ -14,6 +14,7 @@ import {
 
 export interface SyncNamespacesPayload {
   namespaces: Record<string, string>;
+  replace?: boolean;
 }
 
 export interface SyncBlacklistPayload {
@@ -359,10 +360,13 @@ const COMMAND_VALIDATORS: Record<RDFWorkerCommandName, CommandValidator> = {
   },
   setNamespaces(payload) {
     assertPlainObject(payload, "setNamespaces payload must be an object");
-    const { namespaces } = payload as SyncNamespacesPayload;
+    const { namespaces, replace } = payload as SyncNamespacesPayload;
     invariant(isStringRecord(namespaces), "setNamespaces.namespaces must be a string record", {
       namespaces,
     });
+    if (typeof replace !== "undefined") {
+      assertBoolean(replace, "setNamespaces.replace must be a boolean when provided");
+    }
   },
   setBlacklist(payload) {
     assertPlainObject(payload, "setBlacklist payload must be an object");

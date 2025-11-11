@@ -14,6 +14,12 @@ import { WELL_KNOWN } from "../utils/wellKnownOntologies";
 import { DataFactory, Quad } from "n3";
 import { toast } from "sonner";
 import { buildPaletteMap } from "../components/Canvas/core/namespacePalette";
+import {
+  ensureDefaultRegistry,
+  DEFAULT_NAMESPACE_ENTRY,
+  DEFAULT_NAMESPACE_PREFIX,
+  DEFAULT_NAMESPACE_URI,
+} from "../constants/namespaces";
 import { shortLocalName, toPrefixed } from "../utils/termUtils";
 import {
   assertArray,
@@ -751,18 +757,28 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
   // incremented whenever availableProperties/availableClasses are updated from the RDF store
   ontologiesVersion: 0,
   // persisted namespace registry (joined prefix, namespace, color) populated after reconcile
-  namespaceRegistry: [],
+  namespaceRegistry: [{ ...DEFAULT_NAMESPACE_ENTRY }],
   setNamespaceRegistry: (registry: { prefix: string; namespace: string; color: string }[]) => {
     try {
-      // Persist the provided namespace registry only. Fat-map consumers should be
-      // updated via the authoritative updateFatMap/reconcile path which computes
-      // prefixed fields using the registry at update time.
-      set((st: any) => ({
-        namespaceRegistry: Array.isArray(registry) ? registry.slice() : [],
+      const nextRegistry = ensureDefaultRegistry(
+        Array.isArray(registry) ? registry : [],
+      ).map((entry) => ({
+        prefix: entry.prefix,
+        namespace: entry.namespace,
+        color: entry.color ?? "",
       }));
-
+      set(() => ({
+        namespaceRegistry: nextRegistry,
+      }));
     } catch (_) {
-      try { set({ namespaceRegistry: [] }); } catch (_) { void 0; }
+      try {
+        const fallbackRegistry = ensureDefaultRegistry([]).map((entry) => ({
+          prefix: entry.prefix,
+          namespace: entry.namespace,
+          color: entry.color ?? "",
+        }));
+        set({ namespaceRegistry: fallbackRegistry });
+      } catch (_) { void 0; }
     }
   },
 
@@ -2106,6 +2122,23 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     return rdfManager;
   },
 }));
+
+try {
+  const existingNamespaces =
+    typeof rdfManager.getNamespaces === "function" ? rdfManager.getNamespaces() : {};
+  if (
+    existingNamespaces === null ||
+    typeof existingNamespaces !== "object" ||
+    !Object.prototype.hasOwnProperty.call(existingNamespaces, DEFAULT_NAMESPACE_PREFIX)
+  ) {
+    rdfManager.setNamespaces(
+      { [DEFAULT_NAMESPACE_PREFIX]: DEFAULT_NAMESPACE_URI },
+      { replace: false },
+    );
+  }
+} catch (_) {
+  /* ignore initialization failures */
+}
 
 /**
  * Full rebuild helper: authoritative rebuild using the provided RDF manager (or module-level rdfManager).

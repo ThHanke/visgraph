@@ -11,12 +11,13 @@
  * - Ensure the content area is overflow-auto so long lists scroll instead of overflowing
  */
 
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import NamespaceLegendCore from "./NamespaceLegendCore";
 import { useOntologyStore } from "@/stores/ontologyStore";
 import { GripVertical } from "lucide-react";
 import { Input } from "../ui/input";
 import { buildPaletteMap } from "./core/namespacePalette";
+import { ensureDefaultNamespaceMap } from "@/constants/namespaces";
 
 interface ResizableNamespaceLegendProps {
   namespaces?: Record<string, string>;
@@ -29,33 +30,87 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
   const namespaceRegistry = useOntologyStore((s) => (Array.isArray(s.namespaceRegistry) ? s.namespaceRegistry : []));
   const setNamespaceRegistry = useOntologyStore((s) => s.setNamespaceRegistry);
 
-  // Build palette map directly from persisted registry (store-only).
-  const palette = (() => {
-    try {
-      const m: Record<string, string> = {};
-      (namespaceRegistry || []).forEach((entry: any) => {
-        try {
-          if (!entry || entry.prefix === undefined || entry.prefix === null) return;
-          const p = String(entry.prefix);
-          const c = entry && (entry.color !== undefined && entry.color !== null) ? String(entry.color) : "";
-          m[p] = c || "";
-        } catch (_) {
-          /* ignore per-entry */
+  const registryEntries = Array.isArray(namespaceRegistry) ? namespaceRegistry : [];
+
+  const commitRegistryUpdate = useCallback(
+    (mutator: (draft: Map<string, { namespace: string; color: string }>) => void): Record<string, string> => {
+      const draft = new Map<string, { namespace: string; color: string }>();
+      try {
+        for (const entry of registryEntries) {
+          if (!entry || entry.prefix === undefined || entry.prefix === null) continue;
+          const prefix = String(entry.prefix);
+          const namespace = entry && entry.namespace !== undefined && entry.namespace !== null ? String(entry.namespace) : "";
+          const color = entry && entry.color !== undefined && entry.color !== null ? String(entry.color) : "";
+          draft.set(prefix, { namespace, color });
         }
+      } catch (_) {
+        /* ignore prepopulation errors */
+      }
+
+      mutator(draft);
+
+      const prefixes = Array.from(draft.keys()).sort((a, b) => a.localeCompare(b));
+      const paletteMap = buildPaletteMap(prefixes);
+      const nextRegistry = prefixes.map((prefix) => {
+        const info = draft.get(prefix)!;
+        const preservedColor = typeof info.color === "string" ? info.color : "";
+        const color =
+          preservedColor && preservedColor.trim().length > 0
+            ? preservedColor
+            : String(paletteMap[prefix] ?? "");
+        draft.set(prefix, { namespace: info.namespace, color });
+        return {
+          prefix,
+          namespace: info.namespace,
+          color,
+        };
       });
-      return m;
+
+      try {
+        if (typeof setNamespaceRegistry === "function") {
+          setNamespaceRegistry(nextRegistry);
+        } else if ((useOntologyStore as any).setState && typeof (useOntologyStore as any).setState === "function") {
+          (useOntologyStore as any).setState(() => ({ namespaceRegistry: nextRegistry }));
+        }
+      } catch (_) {
+        /* ignore setter failures */
+      }
+
+      const nsMap: Record<string, string> = {};
+      for (const prefix of prefixes) {
+        const info = draft.get(prefix);
+        if (!info) continue;
+        nsMap[prefix] = info.namespace;
+      }
+      return ensureDefaultNamespaceMap(nsMap);
+    },
+    [registryEntries, setNamespaceRegistry],
+  );
+
+  const palette = useMemo(() => {
+    const colorMap: Record<string, string> = {};
+    try {
+      for (const entry of registryEntries) {
+        if (!entry || entry.prefix === undefined || entry.prefix === null) continue;
+        const prefix = String(entry.prefix);
+        const color = entry && entry.color !== undefined && entry.color !== null ? String(entry.color) : "";
+        colorMap[prefix] = color || "";
+      }
     } catch (_) {
-      return {};
+      /* ignore palette derivation errors */
     }
-  })();
+    return colorMap;
+  }, [registryEntries]);
 
   const displayNamespaces = useMemo(() => {
     try {
-      if (namespaces && Object.keys(namespaces).length > 0) return namespaces;
+      if (namespaces && Object.keys(namespaces).length > 0) {
+        return ensureDefaultNamespaceMap(namespaces);
+      }
 
       const mapFromRegistry: Record<string, string> = {};
       try {
-        (namespaceRegistry || []).forEach((e: any) => {
+        (registryEntries || []).forEach((e: any) => {
           try {
             if (!e || e.prefix === undefined || e.prefix === null) return;
             const p = String(e.prefix);
@@ -65,17 +120,19 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
         });
       } catch (_) { /* ignore registry read errors */ }
 
-      return mapFromRegistry;
+      return ensureDefaultNamespaceMap(mapFromRegistry);
     } catch (_) {
-      return namespaces || {};
+      return ensureDefaultNamespaceMap(namespaces || {});
     }
-  }, [namespaces, namespaceRegistry, ontologiesVersion]);
+  }, [namespaces, registryEntries, ontologiesVersion]);
 
-  const entries = useMemo(() => {
+  const realEntries = useMemo(() => {
     return Object.entries(displayNamespaces)
       .map(([p, u]) => [String(p ?? ""), String(u ?? "")] as [string, string])
       .sort(([a], [b]) => a.localeCompare(b));
-  }, [displayNamespaces, ontologiesVersion, palette]);
+  }, [displayNamespaces, ontologiesVersion]);
+
+  const entries = realEntries;
 
   // Compute a reasonable default width based on viewport (used to position the legend initially).
   const calculateInitialWidth = () => {
@@ -92,7 +149,6 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
   const [newPrefix, setNewPrefix] = useState("");
   const [newUri, setNewUri] = useState("");
   const [error, setError] = useState("");
-  const [tick, setTick] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -144,7 +200,46 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
     };
   }, [isDragging, dragStart]);
 
-  if (!entries || entries.length === 0) return null;
+  const handleRemoveNamespace = useCallback(
+    (prefix: string, uri: string) => {
+      const targetPrefix = String(prefix ?? "");
+      const targetUri = String(uri ?? "");
+
+      const nextMap = commitRegistryUpdate((draft) => {
+        if (targetPrefix && draft.has(targetPrefix)) {
+          draft.delete(targetPrefix);
+          return;
+        }
+        if (targetUri) {
+          for (const [key, info] of draft.entries()) {
+            if (info.namespace === targetUri) {
+              draft.delete(key);
+            }
+          }
+        }
+      });
+
+      try {
+        if (rdfManager && typeof rdfManager.setNamespaces === "function") {
+          rdfManager.setNamespaces(nextMap, { replace: true });
+        }
+      } catch (_) {
+        /* ignore namespace sync failures */
+      }
+
+      try {
+        if (rdfManager && typeof (rdfManager as any).emitAllSubjects === "function") {
+          const result = (rdfManager as any).emitAllSubjects();
+          if (result && typeof result.catch === "function") {
+            result.catch(() => {});
+          }
+        }
+      } catch (_) {
+        /* ignore emit failures */
+      }
+    },
+    [commitRegistryUpdate, rdfManager],
+  );
 
   return (
     <div
@@ -212,53 +307,57 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
                         setError("Namespace must be an absolute http(s) URI");
                         return;
                       }
-                      const currentNsMap: Record<string, string> = {};
-                      try {
-                        (namespaceRegistry || []).forEach((entry: any) => {
-                          try {
-                            if (!entry || entry.prefix === undefined || entry.prefix === null) return;
-                            const key = String(entry.prefix);
-                            const uri = entry && (entry.namespace !== undefined && entry.namespace !== null) ? String(entry.namespace) : "";
-                            currentNsMap[key] = uri;
-                          } catch (_) { /* ignore per-entry */ }
-                        });
-                      } catch (_) { /* ignore */ }
-                      if (currentNsMap && Object.prototype.hasOwnProperty.call(currentNsMap, p)) {
-                        setError("Prefix already registered");
-                        return;
+                      const existingUri = Object.prototype.hasOwnProperty.call(displayNamespaces, p)
+                        ? String(displayNamespaces[p] ?? "")
+                        : undefined;
+                      if (existingUri !== undefined) {
+                        const message =
+                          existingUri === u
+                            ? `Namespace "${p}" already points to "${u}". Replace it anyway?`
+                            : `Namespace "${p}" is currently "${existingUri}". Replace with "${u}"?`;
+                        const confirmFn =
+                          typeof globalThis !== "undefined" &&
+                          typeof (globalThis as any).confirm === "function"
+                            ? (globalThis as any).confirm.bind(globalThis)
+                            : null;
+                        const shouldOverwrite = confirmFn ? confirmFn(message) : true;
+                        if (!shouldOverwrite) {
+                          return;
+                        }
                       }
+                      const nsMap = commitRegistryUpdate((draft) => {
+                        draft.set(p, {
+                          namespace: u,
+                          color: draft.get(p)?.color ?? "",
+                        });
+                      });
                       try {
                         if (rdfManager && typeof rdfManager.addNamespace === "function") {
-                          try { rdfManager.addNamespace(p, u); } catch (_) { /* ignore */ }
+                          rdfManager.addNamespace(p, u);
                         }
                       } catch (_) { /* ignore */ }
 
-                      // Update the persisted namespace registry in the store so the legend refreshes immediately.
                       try {
-                        const mgr = rdfManager;
-                        const nsMap = mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
-                        const prefixes = Object.keys(nsMap || []).sort();
-                        const paletteMap = buildPaletteMap(prefixes || []);
-                        const registry = (prefixes || []).map((pr) => {
-                          try {
-                            return { prefix: String(pr), namespace: String((nsMap as any)[pr] || ""), color: String((paletteMap as any)[pr] || "") };
-                          } catch (_) {
-                            return { prefix: String(pr), namespace: String((nsMap as any)[pr] || ""), color: "" };
-                          }
-                        });
-                        try {
-                          if (typeof setNamespaceRegistry === "function") setNamespaceRegistry(registry);
-                          else if ((useOntologyStore as any).setState && typeof (useOntologyStore as any).setState === "function") {
-                            try { (useOntologyStore as any).setState((s:any) => ({ namespaceRegistry: registry })); } catch (_) { /* ignore */ }
-                          }
-                        } catch (_) { /* ignore */ }
+                        if (rdfManager && typeof rdfManager.setNamespaces === "function") {
+                          rdfManager.setNamespaces(nsMap, { replace: true });
+                        }
                       } catch (_) { /* ignore */ }
+
+                      try {
+                        if (rdfManager && typeof (rdfManager as any).emitAllSubjects === "function") {
+                          const result = (rdfManager as any).emitAllSubjects();
+                          if (result && typeof result.catch === "function") {
+                            result.catch(() => {});
+                          }
+                        }
+                      } catch (_) {
+                        /* ignore emit failures */
+                      }
 
                       setShowAdd(false);
                       setNewPrefix("");
                       setNewUri("");
                       setError("");
-                      setTick((t) => t + 1);
                     } catch (e) {
                       setError("Failed to add namespace");
                     }
@@ -297,7 +396,17 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
         // Use a slightly larger subtraction to account for header + add-form heights when open.
         style={{ maxHeight: "calc(60vh - 10rem)" }}
       >
-        <NamespaceLegendCore entries={entries} palette={palette} />
+        {entries.length > 0 ? (
+          <NamespaceLegendCore
+            entries={entries}
+            palette={palette}
+            onRemoveEntry={handleRemoveNamespace}
+          />
+        ) : (
+          <div className="text-xs text-muted-foreground">
+            No namespaces yet. Use "Add namespace" above to register one.
+          </div>
+        )}
       </div>
     </div>
   );

@@ -244,14 +244,6 @@ export function mapQuadsToDiagram(
     "http://www.w3.org/2002/07/owl#ObjectProperty",
     "http://www.w3.org/2002/07/owl#DatatypeProperty",
     "http://www.w3.org/2002/07/owl#AnnotationProperty",
-    "http://www.w3.org/2002/07/owl#FunctionalProperty",
-    "http://www.w3.org/2002/07/owl#InverseFunctionalProperty",
-    "http://www.w3.org/2002/07/owl#TransitiveProperty",
-    "http://www.w3.org/2002/07/owl#SymmetricProperty",
-    "http://www.w3.org/2002/07/owl#Ontology"
-  ]);
-  const ABOX_TYPE_IRIS = new Set<string>([
-    "http://www.w3.org/2002/07/owl#NamedIndividual",
   ]);
 
   // small local cache for classifier results to avoid repeated work per-predicate
@@ -377,16 +369,13 @@ export function mapQuadsToDiagram(
     const entry = nodeMap.get(subjectIri)!;
 
     const subjectTypesSet = typesBySubject.get(subjectIri);
-    const subjectTypes = subjectTypesSet
-      ? Array.from(subjectTypesSet)
-      : Array.isArray(entry.rdfTypes)
-      ? entry.rdfTypes.slice()
-      : [];
-
-    const hasAboxType =
-      subjectTypes.length === 0 ||
-      subjectTypes.some((type) => ABOX_TYPE_IRIS.has(type));
-    entry.forceIsTBox = !hasAboxType;
+    const alignedTypes =
+      subjectTypesSet && subjectTypesSet.size > 0
+        ? Array.from(subjectTypesSet)
+        : entry.rdfTypes.length > 0
+        ? entry.rdfTypes.slice()
+        : [];
+    entry.forceIsTBox = alignedTypes.some((type) => TBOX_TYPE_IRIS.has(type));
 
     const predicateIri = normalized.predicate;
     if (!predicateIri) continue;
@@ -598,7 +587,7 @@ export function mapQuadsToDiagram(
     }
 
     const namespace = extractNamespace(iri);
-    const isTBox = typeof info.forceIsTBox === "boolean" ? info.forceIsTBox : true;
+    const isTBox = typeof info.forceIsTBox === "boolean" ? info.forceIsTBox : false;
 
     // compute node color using classType (preferred) or the node iri as fallback
     let nodeColor: string | undefined;

@@ -48,6 +48,16 @@ test("mappingHelpers tbox/annotation property examples - human friendly output",
   const nodes = diagram.nodes || [];
   const edges = diagram.edges || [];
 
+  const annotationNode = nodes.find((n: any) => String(n.id) === "http://www.w3.org/2000/01/rdf-schema#label");
+  expect(annotationNode).toBeTruthy();
+  expect(annotationNode?.data?.isTBox).toBe(true);
+  const classNode = nodes.find((n: any) => String(n.id) === "http://example.org/TestClass");
+  expect(classNode).toBeTruthy();
+  expect(classNode?.data?.isTBox).toBe(true);
+  const instanceNode = nodes.find((n: any) => String(n.id) === "http://example.com/instance1");
+  expect(instanceNode).toBeTruthy();
+  expect(instanceNode?.data?.isTBox).toBe(false);
+
   // Human-friendly output
   console.log("");
   console.log("=== mappingHelpers tbox test - human friendly output ===");

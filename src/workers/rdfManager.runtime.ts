@@ -21,6 +21,7 @@ import type { ReasoningResult } from "../utils/reasoningTypes.ts";
 import { deserializeQuad, deserializeTerm, serializeQuad } from "../utils/rdfSerialization.ts";
 import type { WorkerQuad } from "../utils/rdfSerialization.ts";
 import { WELL_KNOWN } from "../utils/wellKnownOntologies.ts";
+import { ensureDefaultNamespaceMap } from "../constants/namespaces.ts";
 
 const BATCH_SIZE = 1000;
 const RDF_TYPE_IRI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
@@ -1057,7 +1058,12 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           break;
         case "setNamespaces":
           if (payload && typeof payload === "object" && payload.namespaces && typeof payload.namespaces === "object") {
-            workerNamespaces = { ...workerNamespaces, ...(payload.namespaces as Record<string, string>) };
+            const normalized = ensureDefaultNamespaceMap(payload.namespaces as Record<string, string>);
+            if (payload.replace === true) {
+              workerNamespaces = { ...normalized };
+            } else {
+              workerNamespaces = ensureDefaultNamespaceMap({ ...workerNamespaces, ...normalized });
+            }
           }
           result = { ...workerNamespaces };
           break;

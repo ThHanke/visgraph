@@ -20,6 +20,7 @@ import {
 } from "./rdfSerialization";
 import { useOntologyStore } from "../stores/ontologyStore";
 import { useAppConfigStore } from "../stores/appConfigStore";
+import { ensureDefaultNamespaceMap } from "../constants/namespaces";
 
 type ChangeSubscriber = (count: number, meta?: unknown) => void;
 type SubjectsSubscriber = (
@@ -435,7 +436,7 @@ export class RDFManagerImpl {
   private subjectsSubscribers = new Set<SubjectsSubscriber>();
   private changeCount = 0;
   private reconcileInProgress: Promise<void> | null = null;
-  private namespaces: Record<string, string> = {};
+  private namespaces: Record<string, string> = ensureDefaultNamespaceMap({});
   private blacklistPrefixes: Set<string> = new Set(DEFAULT_BLACKLIST_PREFIXES);
   private blacklistUris: string[] = [...DEFAULT_BLACKLIST_URIS];
   private workerChangeUnsub: (() => void) | null = null;
@@ -452,7 +453,7 @@ export class RDFManagerImpl {
     try {
       const namespaces = await this.worker.call("getNamespaces");
       if (isStringRecord(namespaces)) {
-        this.namespaces = { ...namespaces };
+        this.namespaces = ensureDefaultNamespaceMap(namespaces as Record<string, string>);
       }
     } catch (err) {
       console.debug("[rdfManager] bootstrapState.getNamespaces failed", err);
@@ -745,6 +746,7 @@ export class RDFManagerImpl {
       }
     }
     if (changed) {
+      this.namespaces = ensureDefaultNamespaceMap(this.namespaces);
       const appConfig = (useAppConfigStore as any)?.getState?.();
       if (appConfig && typeof appConfig.setConfig === "function") {
         try {
@@ -987,12 +989,20 @@ export class RDFManagerImpl {
   }
 
   getNamespaces(): Record<string, string> {
+    this.namespaces = ensureDefaultNamespaceMap(this.namespaces);
     return { ...this.namespaces };
   }
 
-  setNamespaces(namespaces: Record<string, string>): void {
-    this.namespaces = { ...this.namespaces, ...namespaces };
-    void this.worker.call("setNamespaces", { namespaces: { ...namespaces } }).catch((err) => {
+  setNamespaces(namespaces: Record<string, string>, options?: { replace?: boolean }): void {
+    const replace = options?.replace === true;
+    const normalized = ensureDefaultNamespaceMap(namespaces);
+    if (replace) {
+      this.namespaces = { ...normalized };
+    } else {
+      this.namespaces = ensureDefaultNamespaceMap({ ...this.namespaces, ...normalized });
+    }
+    const payloadNamespaces = replace ? this.namespaces : normalized;
+    void this.worker.call("setNamespaces", { namespaces: { ...payloadNamespaces }, replace }).catch((err) => {
       console.error("[rdfManager] setNamespaces failed", err);
     });
   }
@@ -1001,8 +1011,11 @@ export class RDFManagerImpl {
     if (prefix === null || typeof prefix === "undefined") return;
     const term = toWorkerObjectTerm(uri);
     if (!term || term.termType !== "NamedNode") return;
-    this.namespaces[prefix] = term.value || "";
-    this.setNamespaces(this.namespaces);
+    this.namespaces = ensureDefaultNamespaceMap({
+      ...this.namespaces,
+      [prefix]: term.value || "",
+    });
+    this.setNamespaces(this.namespaces, { replace: true });
   }
 
   removeNamespaceAndQuads(prefixOrUri: string): void {
