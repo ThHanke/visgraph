@@ -42,7 +42,32 @@ export function applyDagreLayout(
 
   // Check node measurements and add nodes to the dagre graph
   let nodesWithMeasurements = 0;
-  const measurementInfo: Array<{ id: string; hasWidth: boolean; hasHeight: boolean; width: number; height: number }> = [];
+  const measurementInfo: Array<{ id: string; hasWidth: boolean; hasHeight: boolean; width: number; height: number; __rf: any }> = [];
+
+  // Track first node's measurements over time
+  if (nodes.length > 0) {
+    const firstNode = nodes[0];
+    const firstMeta = (firstNode as any).__rf || {};
+    const tracker = (window as any).__VG_MEASUREMENT_TRACKER || { lastMeta: null, changeCount: 0 };
+    
+    const currentSnapshot = JSON.stringify({
+      width: firstMeta.width,
+      height: firstMeta.height,
+      position: firstMeta.position
+    });
+    
+    if (tracker.lastMeta !== currentSnapshot) {
+      tracker.changeCount++;
+      console.log(`[dagre] First node measurement change #${tracker.changeCount}:`, {
+        nodeId: firstNode.id,
+        __rf: firstMeta,
+        hadMeasurements: !!tracker.lastMeta && tracker.lastMeta !== '{}',
+        hasMeasurements: !!(firstMeta.width && firstMeta.height)
+      });
+      tracker.lastMeta = currentSnapshot;
+      (window as any).__VG_MEASUREMENT_TRACKER = tracker;
+    }
+  }
 
   for (const n of nodes) {
     const meta = (n as any).__rf || {};
@@ -60,7 +85,8 @@ export function applyDagreLayout(
       hasWidth: !!hasWidth,
       hasHeight: !!hasHeight,
       width: w,
-      height: h
+      height: h,
+      __rf: meta
     });
 
     g.setNode(n.id, { width: w, height: h });

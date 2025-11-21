@@ -395,33 +395,20 @@ function RDFNodeImpl(props: NodeProps) {
           </div>
         </TooltipContent>
       </Tooltip>
-      {/* In this case we don't need to use useUpdateNodeInternals, since !isConnecting is true at the beginning and all handles are rendered initially. */}
+      {/* Conditional handles for proper edge creation workflow */}
       {showHandles && (
         <Handle
           className="customHandle"
           position={Position.Right}
           type="source"
-          onPointerDown={() => {
-            { console.log("[VG_DEBUG] handle pointerdown", { nodeId: id, handle: "source" }); }
-          }}
-          onPointerUp={() => {
-            { console.log("[VG_DEBUG] handle pointerup", { nodeId: id, handle: "source" }); }
-          }}
         />
       )}
-      {/* We want to disable the target handle, if the connection was started from this node */}
       {(showHandles || isTarget) && (
         <Handle
           className="customHandle"
           position={Position.Left}
           type="target"
           isConnectableStart={false}
-          onPointerDown={() => {
-            { console.log("[VG_DEBUG] handle pointerdown", { nodeId: id, handle: "target" }); }
-          }}
-          onPointerUp={() => {
-            { console.log("[VG_DEBUG] handle pointerup", { nodeId: id, handle: "target" }); }
-          }}
         />
       )}
 

@@ -641,7 +641,7 @@ const KnowledgeCanvas: React.FC = () => {
       layoutInProgressRef.current = false;
     }
   },
-  [layoutEnabled, config],
+  [layoutEnabled, config, setNodes, setTrackedTimeout],
 );
 
   const handleToggleLegend = useCallback(() => {
@@ -1000,6 +1000,7 @@ const KnowledgeCanvas: React.FC = () => {
     },
     [],
   );
+
 
   // One-time initialization: emit all subjects once on mount
   useEffect(() => {
@@ -2066,11 +2067,11 @@ const KnowledgeCanvas: React.FC = () => {
         suppressSelectionRef.current = false;
       }, 0);
 
-      // Trigger an update for edges attached to the moved node so their custom
-      // edge components recompute their control points (using persisted shift).
+      // Force React Flow to recalculate edge paths after node movement
       try {
         const movedId = node && node.id ? String(node.id) : null;
         if (movedId) {
+
           setEdges((prev = []) => {
             // Identify affected edges and replace them to force React Flow to re-render them.
             const affected = new Set<string>();
@@ -2448,6 +2449,8 @@ const KnowledgeCanvas: React.FC = () => {
       const edgesList = Array.isArray(incomingEdges) ? incomingEdges : [];
 
       if (nodesList.length > 0 || edgesList.length > 0) {
+        const addedNodeIds: string[] = [];
+        
         setNodes((prev = []) => {
           const current = prev || [];
           const currentById = new Map(
@@ -2495,6 +2498,7 @@ const KnowledgeCanvas: React.FC = () => {
               };
               delete (mergedNode as any).selected;
               changes.push({ id, type: 'replace', item: mergedNode });
+              addedNodeIds.push(id);
             } else {
               const newNode = {
                 ...(node as any),
@@ -2503,6 +2507,7 @@ const KnowledgeCanvas: React.FC = () => {
               delete (newNode as any).selected;
               changes.push({ type: 'add', item: newNode });
               knownIds.add(String(newNode.id));
+              addedNodeIds.push(String(newNode.id));
             }
           }
 
@@ -2526,6 +2531,7 @@ const KnowledgeCanvas: React.FC = () => {
                 },
               },
             });
+            addedNodeIds.push(id);
           };
 
           for (const edge of edgesList) {
@@ -2535,6 +2541,9 @@ const KnowledgeCanvas: React.FC = () => {
 
           return applyNodeChanges(changes as any, current);
         });
+
+        // React Flow measurement is now handled by useUpdateNodeInternals hook
+        // inside RDFNode component, which triggers when handles visibility changes
       }
 
       if (edgesList.length > 0) {
@@ -2693,7 +2702,7 @@ const KnowledgeCanvas: React.FC = () => {
       {showLegend ? (
         <ResizableNamespaceLegend onClose={() => handleToggleLegend()} />
       ) : null}
-      
+
 
       <div
         className="w-full h-full pb-[5.5rem] md:pb-[4.5rem]"
