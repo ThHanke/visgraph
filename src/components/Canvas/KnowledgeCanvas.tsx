@@ -570,8 +570,31 @@ const KnowledgeCanvas: React.FC = () => {
         },
       );
       if (Array.isArray(nodeChanges) && nodeChanges.length > 0) {
+        // Convert to position-only changes to avoid triggering remapping
+        // This preserves __rf metadata and prevents subject emissions
+        const positionOnlyChanges = (nodeChanges || []).map((change: any) => {
+          try {
+            const position = change.position || (change.item && change.item.position) || { x: 0, y: 0 };
+            return {
+              id: String(change.id),
+              type: 'position',
+              position: {
+                x: typeof position.x === 'number' ? position.x : 0,
+                y: typeof position.y === 'number' ? position.y : 0
+              }
+            };
+          } catch (_) {
+            // Fallback for malformed changes
+            return {
+              id: String(change.id || ''),
+              type: 'position',
+              position: { x: 0, y: 0 }
+            };
+          }
+        });
+
         try {
-          setNodes((prev) => applyNodeChanges(nodeChanges as any, prev || []));
+          setNodes((prev) => applyNodeChanges(positionOnlyChanges as any, prev || []));
         } catch {
           setNodes((prev = []) => {
             const prevById = new Map((prev || []).map((p) => [String(p.id), p]));
@@ -978,6 +1001,16 @@ const KnowledgeCanvas: React.FC = () => {
     [],
   );
 
+  // One-time initialization: emit all subjects once on mount
+  useEffect(() => {
+    const mgr = getRdfManagerSafe();
+    if (mgr && typeof (mgr as any).emitAllSubjects === "function") {
+      void (mgr as any).emitAllSubjects("urn:vg:data").catch((e: any) => {
+        console.warn("KnowledgeCanvas initial emitAllSubjects failed", e);
+      });
+    }
+  }, [getRdfManagerSafe]);
+
   useEffect(() => {
     const mgr =
       typeof getRdfManagerSafe === "function" ? getRdfManagerSafe() : undefined;
@@ -1189,22 +1222,6 @@ const KnowledgeCanvas: React.FC = () => {
         mgr.onSubjectsChange(subjectsCallback as any);
       } catch (err) {
         console.warn("KnowledgeCanvas subject subscription failed", err);
-      }
-
-      // Safety-net: after registering, request an immediate subject emission for
-      // any subjects already present in the store so late subscribers receive a snapshot.
-      try {
-        if (mgr && typeof (mgr as any).emitAllSubjects === "function") {
-          void (async () => {
-            try {
-              await (mgr as any).emitAllSubjects("urn:vg:data");
-            } catch (e) {
-              console.warn("KnowledgeCanvas emitAllSubjects failed", e);
-            }
-          })();
-        }
-      } catch (_) {
-        /* ignore */
       }
     } else {
       console.warn(

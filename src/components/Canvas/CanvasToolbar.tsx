@@ -702,40 +702,28 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
             <div
               className="flex items-center gap-2 px-2 py-1 bg-card/80 border border-border rounded-md"
               onPointerUp={() => {
-                {
-                  runAsync(() => {
-                    try {
-                      const v = tempLayoutSpacing;
-                      setLayoutSpacing(v);
-                      onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: v });
-                      toast.success(`Saved spacing: ${v}px`);
-                    } catch (_) { /* ignore */ }
-                  }, 0);
-                }
+                try {
+                  const v = tempLayoutSpacing;
+                  setLayoutSpacing(v);
+                  onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: v });
+                  toast.success(`Saved spacing: ${v}px`);
+                } catch (_) { /* ignore */ }
               }}
               onTouchEnd={() => {
-                {
-                  runAsync(() => {
-                    try {
-                      const v = tempLayoutSpacing;
-                      setLayoutSpacing(v);
-                      onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: v });
-                      toast.success(`Saved spacing: ${v}px`);
-                    } catch (_) { /* ignore */ }
-                  }, 0);
-                }
+                try {
+                  const v = tempLayoutSpacing;
+                  setLayoutSpacing(v);
+                  onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: v });
+                  toast.success(`Saved spacing: ${v}px`);
+                } catch (_) { /* ignore */ }
               }}
               onMouseUp={() => {
-                {
-                  runAsync(() => {
-                    try {
-                      const v = tempLayoutSpacing;
-                      setLayoutSpacing(v);
-                      onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: v });
-                      toast.success(`Saved spacing: ${v}px`);
-                    } catch (_) { /* ignore */ }
-                  }, 0);
-                }
+                try {
+                  const v = tempLayoutSpacing;
+                  setLayoutSpacing(v);
+                  onLayoutChange?.(currentLayout || 'horizontal', true, { nodeSpacing: v });
+                  toast.success(`Saved spacing: ${v}px`);
+                } catch (_) { /* ignore */ }
               }}
             >
               <div className="text-xs text-muted-foreground">Spacing</div>

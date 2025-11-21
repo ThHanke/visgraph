@@ -40,51 +40,50 @@ export function applyDagreLayout(
   });
   g.setDefaultEdgeLabel(() => ({}));
 
-  // Add nodes to the dagre graph. Provide width/height estimates if not available.
+  // Check node measurements and add nodes to the dagre graph
+  let nodesWithMeasurements = 0;
+  const measurementInfo: Array<{ id: string; hasWidth: boolean; hasHeight: boolean; width: number; height: number }> = [];
+
   for (const n of nodes) {
     const meta = (n as any).__rf || {};
-    const w = (meta.width && typeof meta.width === 'number') ? meta.width : 180;
-    const h = (meta.height && typeof meta.height === 'number') ? meta.height : 64;
+    const hasWidth = meta.width && typeof meta.width === 'number';
+    const hasHeight = meta.height && typeof meta.height === 'number';
+    const w = hasWidth ? meta.width : 180;
+    const h = hasHeight ? meta.height : 64;
+
+    if (hasWidth && hasHeight) {
+      nodesWithMeasurements++;
+    }
+
+    measurementInfo.push({
+      id: n.id,
+      hasWidth: !!hasWidth,
+      hasHeight: !!hasHeight,
+      width: w,
+      height: h
+    });
+
     g.setNode(n.id, { width: w, height: h });
   }
 
-  // Compute maximum node dimensions and adjust spacing so layout is node-size-aware.
-  // We add the max lateral size to rank separation and the max cross size to node separation.
-  // This is an additive change (no opt-in, no padding/scaling) as requested.
-  {
-    let maxWidth = 0;
-    let maxHeight = 0;
-    const allNodeIds = g.nodes() || [];
-    for (const id of allNodeIds) {
-      const v: any = g.node(id);
-      if (!v) continue;
-      if (typeof v.width === 'number' && v.width > maxWidth) maxWidth = v.width;
-      if (typeof v.height === 'number' && v.height > maxHeight) maxHeight = v.height;
-    }
+  // Calculate measurement coverage
+  const totalNodes = nodes.length;
+  const measurementCoverage = totalNodes > 0 ? (nodesWithMeasurements / totalNodes) * 100 : 0;
 
-    // Determine final separations depending on layout direction.
-    let finalNodeSep = nodeSep;
-    let finalRankSep = rankSep;
-    if (direction === 'LR' || direction === 'RL') {
-      // Horizontal layout: ranks progress left->right; add max node width to rank separation (X axis)
-      // and add max node height to nodesep (Y-axis spacing within a rank).
-      finalRankSep = (rankSep ?? 0) + maxWidth;
-      finalNodeSep = (nodeSep ?? 0) + maxHeight;
-    } else {
-      // Vertical layout: ranks progress top->bottom; add max node height to rank separation (Y axis)
-      // and add max node width to nodesep (X-axis spacing within a rank).
-      finalRankSep = (rankSep ?? 0) + maxHeight;
-      finalNodeSep = (nodeSep ?? 0) + maxWidth;
-    }
+  // Log measurement status
+  console.debug('[dagre] Layout measurement check:', {
+    totalNodes,
+    nodesWithMeasurements,
+    coveragePercent: Math.round(measurementCoverage),
+    direction,
+    nodeSep,
+    rankSep,
+    sampleMeasurements: measurementInfo.slice(0, 3)
+  });
 
-    // Update graph layout settings with the computed separations.
-    g.setGraph({
-      rankdir: direction,
-      nodesep: finalNodeSep,
-      ranksep: finalRankSep,
-      marginx: marginX,
-      marginy: marginY,
-    });
+  // If less than 80% of nodes have measurements, warn but proceed with fallbacks
+  if (measurementCoverage < 80 && totalNodes > 0) {
+    console.warn(`[dagre] Only ${Math.round(measurementCoverage)}% of nodes have measurements. Layout may not be optimal. Consider retrying after nodes render.`);
   }
 
   // Add edges
