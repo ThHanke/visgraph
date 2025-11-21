@@ -11,6 +11,11 @@ export interface DagreOptions {
   marginY?: number;
 }
 
+export interface NodeMeasurement {
+  width: number;
+  height: number;
+}
+
 /**
  * applyDagreLayout
  * Computes node positions using dagre and returns a new nodes array with updated positions.
@@ -18,11 +23,13 @@ export interface DagreOptions {
  * Notes:
  * - Nodes/edges are the React Flow node/edge objects. Node sizes are estimated when not provided.
  * - The returned nodes preserve all existing node properties but set `position` to the computed layout coords.
+ * - Accepts optional manualMeasurements from direct DOM queries for accurate sizing.
  */
 export function applyDagreLayout(
   nodes: RFNode<NodeData>[],
   edges: RFEdge<LinkData>[],
-  opts: DagreOptions = {}
+  opts: DagreOptions = {},
+  manualMeasurements?: Map<string, NodeMeasurement>
 ): RFNode<NodeData>[] {
   const direction = opts.direction || 'LR';
   const nodeSep = opts.nodeSep ?? 50;
@@ -70,26 +77,45 @@ export function applyDagreLayout(
   }
 
   for (const n of nodes) {
-    const meta = (n as any).__rf || {};
-    const hasWidth = meta.width && typeof meta.width === 'number';
-    const hasHeight = meta.height && typeof meta.height === 'number';
-    const w = hasWidth ? meta.width : 180;
-    const h = hasHeight ? meta.height : 64;
-
-    if (hasWidth && hasHeight) {
+    const nodeId = String(n.id);
+    
+    // Priority: 1. Manual DOM measurements, 2. React Flow __rf metadata, 3. Fallback
+    let w: number;
+    let h: number;
+    let hasWidth = false;
+    let hasHeight = false;
+    
+    // Check manual measurements first (most accurate)
+    const manual = manualMeasurements?.get(nodeId);
+    if (manual && typeof manual.width === 'number' && typeof manual.height === 'number') {
+      w = manual.width;
+      h = manual.height;
+      hasWidth = true;
+      hasHeight = true;
       nodesWithMeasurements++;
+    } else {
+      // Fall back to React Flow metadata
+      const meta = (n as any).__rf || {};
+      hasWidth = meta.width && typeof meta.width === 'number';
+      hasHeight = meta.height && typeof meta.height === 'number';
+      w = hasWidth ? meta.width : 180;
+      h = hasHeight ? meta.height : 64;
+      
+      if (hasWidth && hasHeight) {
+        nodesWithMeasurements++;
+      }
     }
 
     measurementInfo.push({
-      id: n.id,
+      id: nodeId,
       hasWidth: !!hasWidth,
       hasHeight: !!hasHeight,
       width: w,
       height: h,
-      __rf: meta
+      __rf: (n as any).__rf || {}
     });
 
-    g.setNode(n.id, { width: w, height: h });
+    g.setNode(nodeId, { width: w, height: h });
   }
 
   // Calculate measurement coverage
@@ -143,18 +169,18 @@ export function applyDagreLayout(
   }
 
   // Map computed positions back to nodes
+  // Note: dagre returns center coordinates (x, y) and React Flow uses nodeOrigin=[0.5, 0.5]
+  // which means it also expects center coordinates, so we pass them directly without conversion
   const positioned = nodes.map(n => {
     const v = g.node(n.id);
     if (!v) {
       return { ...n };
     }
-    const width = v.width || 180;
-    const height = v.height || 64;
     return {
       ...n,
       position: {
-        x: Math.round(v.x - width / 2),
-        y: Math.round(v.y - height / 2)
+        x: Math.round(v.x),
+        y: Math.round(v.y)
       }
     };
   });

@@ -118,7 +118,7 @@ export class LayoutManager {
   async applyLayout(
     layoutType: LayoutType,
     options: LayoutOptions = {},
-    context?: { nodes?: any[]; edges?: any[] },
+    context?: { nodes?: any[]; edges?: any[]; manualMeasurements?: Map<string, { width: number; height: number }> },
   ): Promise<Array<any>> {
     try {
       // Prefer context-provided nodes/edges, fall back to internal diagram when present.
@@ -259,11 +259,16 @@ export class LayoutManager {
           const nodeSep = baseSpacing;
           const rankSep = baseSpacing;
 
-          const positioned = applyDagreLayout(diagramNodes, diagramEdges || [], {
-            direction: direction as any,
-            nodeSep,
-            rankSep,
-          });
+          const positioned = applyDagreLayout(
+            diagramNodes,
+            diagramEdges || [],
+            {
+              direction: direction as any,
+              nodeSep,
+              rankSep,
+            },
+            context?.manualMeasurements
+          );
 
           // Return position change objects (caller will apply them via applyNodeChanges)
           return (positioned || []).map((n: any) => ({ id: String(n.id), type: "position", position: n.position }));

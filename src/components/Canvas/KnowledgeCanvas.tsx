@@ -512,6 +512,48 @@ const KnowledgeCanvas: React.FC = () => {
 
   // Keep refs in sync with state so other callbacks can read the latest snapshot synchronously.
 
+  /**
+   * measureNodesFromDOM - Directly measure all React Flow nodes from the DOM
+   * Returns a Map of nodeId -> {width, height} for use in layout calculations.
+   * This is faster and more reliable than waiting for React Flow's async measurement cycle.
+   */
+  const measureNodesFromDOM = useCallback((): Map<string, { width: number; height: number }> => {
+    const measurements = new Map<string, { width: number; height: number }>();
+
+    try {
+      // Query all node elements from the DOM
+      const nodeElements = document.querySelectorAll('.react-flow__node');
+
+      for (const element of Array.from(nodeElements)) {
+        try {
+          const nodeId = element.getAttribute('data-id');
+          if (!nodeId) continue;
+
+          // Use getBoundingClientRect for accurate dimensions
+          const rect = element.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            measurements.set(nodeId, {
+              width: rect.width,
+              height: rect.height
+            });
+          }
+        } catch (err) {
+          // Skip individual nodes that fail to measure
+          console.debug('[measureNodesFromDOM] Failed to measure node', err);
+        }
+      }
+
+      console.debug('[measureNodesFromDOM] Measured nodes:', {
+        total: measurements.size,
+        sample: Array.from(measurements.entries()).slice(0, 3)
+      });
+    } catch (err) {
+      console.warn('[measureNodesFromDOM] DOM measurement failed', err);
+    }
+
+    return measurements;
+  }, []);
+
   const doLayout = useCallback(
     async (
       candidateNodes: RFNode<NodeData>[],
@@ -554,6 +596,17 @@ const KnowledgeCanvas: React.FC = () => {
 
     layoutInProgressRef.current = true;
     try {
+      // Measure nodes from DOM for accurate dimensions before layout
+      const domMeasurements = measureNodesFromDOM();
+      
+      console.debug('[doLayout] Using DOM measurements:', {
+        measuredCount: domMeasurements.size,
+        totalNodes: candidateNodes.length,
+        coverage: candidateNodes.length > 0 
+          ? Math.round((domMeasurements.size / candidateNodes.length) * 100) + '%'
+          : '0%'
+      });
+
       const layoutType =
         layoutTypeOverride ||
         (config && config.currentLayout) ||
@@ -567,6 +620,7 @@ const KnowledgeCanvas: React.FC = () => {
         {
           nodes: candidateNodes || [],
           edges: candidateEdges || [],
+          manualMeasurements: domMeasurements,
         },
       );
       if (Array.isArray(nodeChanges) && nodeChanges.length > 0) {
