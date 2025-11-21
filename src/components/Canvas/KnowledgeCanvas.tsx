@@ -744,30 +744,32 @@ const KnowledgeCanvas: React.FC = () => {
             // Re-throw so outer handler deals with error reporting
             throw err;
           }
-        } else {
-          // Inline file content -> read and parse via existing loadKnowledgeGraph path
-          text = await file.text();
-          canvasActions.setLoading(true, 30, "Parsing RDF...");
- 
-          loadTriggerRef.current = true;
-          loadFitRef.current = true;
- 
-          // Ensure the next mapping run performs layout for this user-initiated load
-          forceLayoutNextMappingRef.current = true;
- 
-          await loadKnowledgeGraph(text, {
-            onProgress: (progress: number, message: string) => {
-              canvasActions.setLoading(true, Math.max(progress, 30), message);
-            },
-            timeout: 30000,
-          });
-          toast.success("Knowledge graph loaded successfully");
- 
-          setTrackedTimeout(() => {
-            void doLayout(nodes, edges, true);
-          }, 300);
+      } else {
+        // Inline file content -> read and parse via existing loadKnowledgeGraph path
+        text = await file.text();
+        canvasActions.setLoading(true, 30, "Parsing RDF...");
+
+        loadTriggerRef.current = true;
+        loadFitRef.current = true;
+
+        // Ensure the next mapping run performs layout for this user-initiated load
+        forceLayoutNextMappingRef.current = true;
+
+        // Pass the filename so RDF parser can determine content type
+        await loadKnowledgeGraph(text, {
+          onProgress: (progress: number, message: string) => {
+            canvasActions.setLoading(true, Math.max(progress, 30), message);
+          },
+          timeout: 30000,
+          filename: file.name || undefined,
+        });
+        toast.success("Knowledge graph loaded successfully");
+
+        setTrackedTimeout(() => {
           void doLayout(nodes, edges, true);
-        }
+        }, 300);
+        void doLayout(nodes, edges, true);
+      }
       } finally {
         canvasActions.setLoading(false, 0, "");
       }

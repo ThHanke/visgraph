@@ -443,12 +443,14 @@ interface OntologyStore {
     onProgress?: (progress: number, message: string) => void,
     preserveGraph?: boolean,
     graphName?: string,
+    filename?: string,
   ) => Promise<void>;
   loadKnowledgeGraph: (
     source: string,
     options?: {
       onProgress?: (progress: number, message: string) => void;
       timeout?: number;
+      filename?: string;
     },
   ) => Promise<void>;
   loadAdditionalOntologies: (
@@ -1342,6 +1344,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         options?.onProgress,
         true,
         "urn:vg:data",
+        options?.filename,
       );
       // (get().rdfManager as any).addNamespace(":", "http://file.local");
       options?.onProgress?.(100, "RDF loaded");
