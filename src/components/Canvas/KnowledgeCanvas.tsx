@@ -1102,11 +1102,13 @@ const KnowledgeCanvas: React.FC = () => {
       try {
         if (hasPendingQuads) {
           const dataQuads: any[] = pendingQuads.splice(0, pendingQuads.length);
+          // Track which subjects were updated so we can reconcile their edges
+          const updatedSubjects = new Set(pendingSubjects);
           pendingSubjects.clear();
           const diagram = await translateQuadsToDiagram(dataQuads);
           const mappedNodes: RFNode<NodeData>[] = diagram?.nodes ?? [];
           const mappedEdges: RFEdge<LinkData>[] = diagram?.edges ?? [];
-          await applyDiagrammChange(mappedNodes, mappedEdges);
+          await applyDiagrammChange(mappedNodes, mappedEdges, updatedSubjects);
         }
 
         await waitForNextFrame();
@@ -2456,6 +2458,7 @@ const KnowledgeCanvas: React.FC = () => {
     async (
       incomingNodes?: RFNode<NodeData>[],
       incomingEdges?: RFEdge<LinkData>[],
+      updatedSubjects?: Set<string>,
     ) => {
       const nodesList = Array.isArray(incomingNodes) ? incomingNodes : [];
       const edgesList = Array.isArray(incomingEdges) ? incomingEdges : [];
@@ -2558,35 +2561,53 @@ const KnowledgeCanvas: React.FC = () => {
         // inside RDFNode component, which triggers when handles visibility changes
       }
 
-      if (edgesList.length > 0) {
-        setEdges((prev = []) => {
-          const current = prev || [];
-          const currentById = new Map(
-            current.map((edge: any) => [String(edge.id), edge]),
-          );
-          const changes: any[] = [];
+      // Process edges with smart reconciliation:
+      // - Add/replace incoming edges
+      // - Remove edges touching updated subjects that aren't in the new output
+      setEdges((prev = []) => {
+        const current = prev || [];
+        const currentById = new Map(
+          current.map((edge: any) => [String(edge.id), edge]),
+        );
+        const incomingIds = new Set(edgesList.map((e) => String(e.id)));
+        const changes: any[] = [];
 
-          for (const edge of edgesList) {
-            const id = String(edge.id);
-            const existing = currentById.get(id);
-            const mergedEdge = {
-              ...(existing ?? {}),
-              ...(edge as any),
-              data: {
-                ...(existing?.data ?? {}),
-                ...((edge as any).data ?? {}),
-              },
-            };
-            if (existing) {
-              changes.push({ id, type: 'replace', item: mergedEdge });
-            } else {
-              changes.push({ type: 'add', item: mergedEdge });
+        // Add or replace incoming edges
+        for (const edge of edgesList) {
+          const id = String(edge.id);
+          const existing = currentById.get(id);
+          const mergedEdge = {
+            ...(existing ?? {}),
+            ...(edge as any),
+            data: {
+              ...(existing?.data ?? {}),
+              ...((edge as any).data ?? {}),
+            },
+          };
+          if (existing) {
+            changes.push({ id, type: 'replace', item: mergedEdge });
+          } else {
+            changes.push({ type: 'add', item: mergedEdge });
+          }
+        }
+
+        // Remove edges touching updated subjects that aren't in the mapper output
+        if (updatedSubjects && updatedSubjects.size > 0) {
+          for (const existing of current) {
+            const id = String(existing.id);
+            const source = String(existing.source);
+            const target = String(existing.target);
+            
+            // Only remove if this edge touches an updated subject AND isn't in new output
+            const touchesUpdatedSubject = updatedSubjects.has(source) || updatedSubjects.has(target);
+            if (touchesUpdatedSubject && !incomingIds.has(id)) {
+              changes.push({ id, type: 'remove' });
             }
           }
+        }
 
-          return applyEdgeChanges(changes as any, current);
-        });
-      }
+        return applyEdgeChanges(changes as any, current);
+      });
 
       await new Promise<void>((resolve) => {
         setTrackedTimeout(resolve, 0);

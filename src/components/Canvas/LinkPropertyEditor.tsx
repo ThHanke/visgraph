@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { useOntologyStore } from '../../stores/ontologyStore';
-import { toPrefixed } from '../../utils/termUtils';
+import { toPrefixed, expandPrefixed } from '../../utils/termUtils';
 import { rdfManager as fallbackRdfManager } from '../../utils/rdfManager';
 
 interface LinkPropertyEditorProps {
@@ -166,26 +166,36 @@ export const LinkPropertyEditor = ({
     const oldPredIRI = linkData.data?.propertyUri;
     const graphName = "urn:vg:data";
     if (mgr && subjIri && objIri) {
-      const expand = (value: string | undefined | null) => {
+      // Use centralized expandPrefixed from termUtils
+      const registry = useOntologyStore.getState().namespaceRegistry || [];
+      const expand = (value: string | undefined | null): string => {
         if (!value) return "";
-        if (typeof mgr.expandPrefix === "function") {
-          try {
-            const expanded = mgr.expandPrefix(value);
-            if (expanded) return String(expanded);
-          } catch (_) {
-            /* ignore expansion failures */
-          }
-        }
-        return String(value);
+        const trimmed = String(value).trim();
+        if (!trimmed) return "";
+        // If already a full IRI, return as-is
+        if (trimmed.includes("://")) return trimmed;
+        // Expand using namespace registry
+        return expandPrefixed(trimmed, registry as any);
       };
 
       const nextPredicate = expand(String(uriToSave));
       const previousPredicate = oldPredIRI ? expand(String(oldPredIRI)) : "";
 
+      console.debug('[VG] LinkPropertyEditor.handleSave expanded IRIs', {
+        subjIri,
+        nextPredicate,
+        previousPredicate,
+        objIri,
+        graphName
+      });
+
       const removes: Array<{ subject: string; predicate: string; object: string }> = [];
       const adds: Array<{ subject: string; predicate: string; object: string }> = [];
 
-      if (previousPredicate && previousPredicate !== nextPredicate) {
+      // For create operations, previousPredicate might be set (from UI state) but we still need to add the triple
+      const isCreateOperation = linkData?.operation === 'create';
+
+      if (previousPredicate && previousPredicate !== nextPredicate && !isCreateOperation) {
         removes.push({
           subject: String(subjIri),
           predicate: previousPredicate,
@@ -193,7 +203,7 @@ export const LinkPropertyEditor = ({
         });
       }
 
-      if (!previousPredicate || previousPredicate !== nextPredicate) {
+      if (isCreateOperation || !previousPredicate || previousPredicate !== nextPredicate) {
         adds.push({
           subject: String(subjIri),
           predicate: nextPredicate,
@@ -201,11 +211,20 @@ export const LinkPropertyEditor = ({
         });
       }
 
+      console.debug('[VG] LinkPropertyEditor.handleSave batch', {
+        removes,
+        adds,
+        hasApplyBatch: typeof mgr.applyBatch === "function"
+      });
+
       if (removes.length === 0 && adds.length === 0) {
+        console.debug('[VG] LinkPropertyEditor.handleSave: no changes to apply');
         /* No effective change requested */
       } else if (typeof mgr.applyBatch === "function") {
         try {
+          console.debug('[VG] LinkPropertyEditor calling applyBatch', { removes, adds, graphName });
           await mgr.applyBatch({ removes, adds }, graphName);
+          console.debug('[VG] LinkPropertyEditor applyBatch completed successfully');
         } catch (err) {
           console.error("[LinkPropertyEditor] applyBatch failed, falling back to primitive ops", err);
           if (removes.length && typeof mgr.removeTriple === "function") {
@@ -268,12 +287,27 @@ export const LinkPropertyEditor = ({
     const subjIri = (sourceNode && ((sourceNode as any).iri));
     const objIri = (targetNode && ((targetNode as any).iri));
     const predicateRaw = selectedProperty || displayValue;
-    const predFull = mgr && typeof mgr.expandPrefix === 'function' ? String(mgr.expandPrefix(predicateRaw)) : String(predicateRaw);
+    // Use centralized expandPrefixed from termUtils
+    const registry = useOntologyStore.getState().namespaceRegistry || [];
+    const predFull = predicateRaw && predicateRaw.includes("://")
+      ? String(predicateRaw)
+      : expandPrefixed(String(predicateRaw), registry as any);
+
+    console.debug('[VG] LinkPropertyEditor.handleDelete', {
+      subjIri,
+      predicateRaw,
+      predFull,
+      objIri,
+      graphName: g
+    });
+
     if (mgr && subjIri && objIri && predFull) {
       const removes = [{ subject: String(subjIri), predicate: predFull, object: String(objIri) }];
+      console.debug('[VG] LinkPropertyEditor.handleDelete calling applyBatch', { removes, graphName: g });
       if (typeof mgr.applyBatch === "function") {
         try {
           await mgr.applyBatch({ removes, adds: [] }, g);
+          console.debug('[VG] LinkPropertyEditor.handleDelete applyBatch completed');
         } catch (err) {
           console.error("[LinkPropertyEditor] applyBatch remove failed, falling back to removeTriple", err);
           if (typeof mgr.removeTriple === "function") {

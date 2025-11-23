@@ -75,126 +75,23 @@ const toPrefixedSafe = (value: string): string => {
   }
 };
 
-const SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
-const isAbsoluteIri = (value: string): boolean => {
-  if (!value) return false;
-  const lower = value.toLowerCase();
-  return (
-    value.includes("://") ||
-    lower.startsWith("urn:") ||
-    lower.startsWith("mailto:") ||
-    lower.startsWith("data:") ||
-    lower.startsWith("tel:") ||
-    lower.startsWith("geo:") ||
-    lower.startsWith("doi:")
-  );
-};
-
-const expandUsingNamespace = (term: string, fallback?: string): string => {
-  if (!term) return fallback ?? term;
-  try {
-    const expanded = expandPrefixed(term);
-    if (expanded !== term) return expanded;
-    if (term.startsWith("_:") || SCHEME_PATTERN.test(term)) {
-      return term;
-    }
-  } catch (_) {
-    /* ignore expansion failures and fall back */
-  }
-  return fallback ?? term;
-};
-
-const ensureExpandedIri = (input: string, mgr: any, context: string): string => {
+/**
+ * Expand a prefixed IRI or return as-is if already absolute.
+ * Blank nodes (starting with _:) pass through unchanged.
+ */
+const expandIriIfNeeded = (input: string): string => {
   const raw = typeof input === "string" ? input.trim() : String(input ?? "").trim();
   if (!raw) return raw;
   if (raw.startsWith("_:")) return raw;
-  if (isAbsoluteIri(raw)) return raw;
+  if (raw.includes("://")) return raw;
 
-  const attemptCandidate = (candidate: unknown): string | null => {
-    if (typeof candidate !== "string") return null;
-    const trimmed = candidate.trim();
-    if (!trimmed) return null;
-    if (trimmed.startsWith("_:")) return trimmed;
-    if (isAbsoluteIri(trimmed)) return trimmed;
-    return null;
-  };
+  // Try to expand using the namespace registry
+  const registry = useOntologyStore.getState().namespaceRegistry || [];
+  const expanded = expandPrefixed(raw, registry as any);
 
-  const tryExpandViaMap = (map: Record<string, string> | undefined | null): string | null => {
-    if (!map || typeof map !== "object") return null;
-    const idx = raw.indexOf(":");
-    if (idx < 0) return null;
-    const prefix = raw.slice(0, idx);
-    const local = raw.slice(idx + 1);
-    const candidates: string[] = [];
-    if (Object.prototype.hasOwnProperty.call(map, prefix)) {
-      candidates.push(String(map[prefix] ?? ""));
-    }
-    if ((prefix === "" || prefix === ":") && Object.prototype.hasOwnProperty.call(map, "")) {
-      candidates.push(String(map[""] ?? ""));
-    }
-    if ((prefix === "" || prefix === ":") && Object.prototype.hasOwnProperty.call(map, ":")) {
-      candidates.push(String(map[":"] ?? ""));
-    }
-    for (const namespace of candidates) {
-      if (typeof namespace === "string" && namespace.trim().length > 0) {
-        const candidate = attemptCandidate(`${namespace}${local}`);
-        if (candidate) return candidate;
-      }
-    }
-    return null;
-  };
-
-  try {
-    const candidate = attemptCandidate(expandUsingNamespace(raw));
-    if (candidate) return candidate;
-  } catch (_) {
-    /* ignore expansion failure */
-  }
-
-  if (mgr && typeof (mgr as any).expandPrefix === "function") {
-    try {
-      const candidate = attemptCandidate((mgr as any).expandPrefix(raw));
-      if (candidate) return candidate;
-    } catch (_) {
-      /* ignore */
-    }
-  }
-
-  if (mgr && typeof (mgr as any).getNamespaces === "function") {
-    try {
-      const candidate = tryExpandViaMap((mgr as any).getNamespaces());
-      if (candidate) return candidate;
-    } catch (_) {
-      /* ignore */
-    }
-  }
-
-  try {
-    const registry = useOntologyStore.getState().namespaceRegistry || [];
-    const map = registry.reduce((acc: Record<string, string>, entry: any) => {
-      if (
-        entry &&
-        typeof entry.prefix === "string" &&
-        typeof entry.namespace === "string" &&
-        entry.namespace.trim().length > 0
-      ) {
-        acc[entry.prefix] = entry.namespace;
-      }
-      return acc;
-    }, {} as Record<string, string>);
-    const candidate = tryExpandViaMap(map);
-    if (candidate) return candidate;
-  } catch (_) {
-    /* ignore registry fallback failure */
-  }
-
-  if (isAbsoluteIri(raw)) {
-    return raw;
-  }
-
-  throw new Error(
-    `Unable to expand prefixed term "${raw}" (${context}). Provide a full IRI or register the namespace.`,
-  );
+  // If expansion didn't change the value and it contains a colon, it's a prefixed IRI
+  // that we couldn't expand - return it as-is (let RDF manager handle it)
+  return expanded;
 };
 
 function cloneLiteralProperty(source: LiteralProperty): LiteralProperty {
@@ -461,10 +358,9 @@ export const NodePropertyEditor = ({
       throw new Error("RDF manager unavailable or does not support applyBatch; cannot persist node properties.");
     }
 
-    const expandIri = (term: string, ctx: string) => ensureExpandedIri(term, mgr, ctx);
-
+    // Use our simplified expansion helper for non-blank nodes
     if (!generatedBlank) {
-      subjIri = expandIri(subjIri, "node IRI");
+      subjIri = expandIriIfNeeded(subjIri);
     }
 
     // Compute annotation property diffs from initial snapshot (no RDF lookups)
@@ -492,7 +388,7 @@ export const NodePropertyEditor = ({
       .filter((p) => p && typeof p.key === "string" && p.key.trim().length > 0)
       .map((p) => {
         const key = String(p.key).trim();
-        const expandedKey = expandIri(key, "annotation property predicate");
+        const expandedKey = expandIriIfNeeded(key);
         return {
           propertyUri: expandedKey,
           key,
@@ -536,16 +432,8 @@ export const NodePropertyEditor = ({
       }
     }
 
-    const rdfTypePred = expandUsingNamespace(
-      "rdf:type",
-      "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-    );
-    let expandedRdfTypePred = rdfTypePred;
-    try {
-      expandedRdfTypePred = expandIri("rdf:type", "rdf:type predicate");
-    } catch (_) {
-      expandedRdfTypePred = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-    }
+    // rdf:type is well-known, just use the full IRI directly
+    const expandedRdfTypePred = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 
     const valueToTerm = (val: any, type?: string) => {
       try {
@@ -560,24 +448,13 @@ export const NodePropertyEditor = ({
 
         // If a datatype is provided prefer it (expand prefixed types if manager supports it)
         if (type && String(type).trim()) {
-          try {
-            const maybePref = String(type).trim();
-            const dtIri = expandIri(maybePref, "datatype IRI");
-            return literal(s, namedNode(dtIri));
-          } catch (_) {
-            // fallthrough to typed literal by string
-            try {
-              const fallback = expandIri(String(type), "datatype IRI");
-              return literal(s, namedNode(fallback));
-            } catch (_) {
-              // continue
-            }
-          }
+          const dtIri = expandIriIfNeeded(String(type).trim());
+          return literal(s, namedNode(dtIri));
         }
 
         // Treat any scheme-like string (urn:, http:, https:, etc.) as a NamedNode.
         if (/^[a-z][a-z0-9+.-]*:/i.test(s)) {
-          const expandedObj = expandIri(s, "object IRI");
+          const expandedObj = expandIriIfNeeded(s);
           return namedNode(expandedObj);
         }
         // Fallback: literal (no datatype)
@@ -597,7 +474,7 @@ export const NodePropertyEditor = ({
             : valueToTerm(p.value, p.lang ? `@${p.lang}` : p.type);
         const rawPred = String(p.key || p.property || (p.predicateTerm && p.predicateTerm.value) || "").trim();
         if (!rawPred) return null;
-        const pred = expandIri(rawPred, "removal predicate");
+        const pred = expandIriIfNeeded(rawPred);
         return {
           subject: subjIri,
           predicate: pred,
@@ -611,7 +488,7 @@ export const NodePropertyEditor = ({
     // RDF type removals (use NamedNode for types)
     for (const t of typesToRemove || []) {
       try {
-        const typeFull = expandIri(String(t), "rdf:type removal object");
+        const typeFull = expandIriIfNeeded(String(t));
         removesPrepared.push({
           subject: subjIri,
           predicate: expandedRdfTypePred,
@@ -627,7 +504,7 @@ export const NodePropertyEditor = ({
           : valueToTerm(p.value, p.lang ? `@${p.lang}` : p.type);
         const rawPred = String(p.key || p.property || (p.predicateTerm && p.predicateTerm.value) || "").trim();
         if (!rawPred) return null;
-        const pred = expandIri(rawPred, "addition predicate");
+        const pred = expandIriIfNeeded(rawPred);
         return {
           subject: subjIri,
           predicate: pred,
@@ -640,7 +517,7 @@ export const NodePropertyEditor = ({
 
     for (const t of typesToAdd || []) {
       try {
-        const typeFull = expandIri(String(t), "rdf:type addition object");
+        const typeFull = expandIriIfNeeded(String(t));
         addsPrepared.push({
           subject: subjIri,
           predicate: expandedRdfTypePred,
