@@ -515,19 +515,26 @@ const KnowledgeCanvas: React.FC = () => {
   /**
    * measureNodesFromDOM - Directly measure all React Flow nodes from the DOM
    * Returns a Map of nodeId -> {width, height} for use in layout calculations.
-   * This is faster and more reliable than waiting for React Flow's async measurement cycle.
    */
   const measureNodesFromDOM = useCallback((): Map<string, { width: number; height: number }> => {
     const measurements = new Map<string, { width: number; height: number }>();
 
     try {
-      // Query all node elements from the DOM
+      // Build a set of valid node IDs from the current nodes array
+      const validNodeIds = new Set<string>(nodes.map(n => String(n.id)));
+
+      // Query node elements from DOM
       const nodeElements = document.querySelectorAll('.react-flow__node');
 
       for (const element of Array.from(nodeElements)) {
         try {
           const nodeId = element.getAttribute('data-id');
           if (!nodeId) continue;
+
+          // CRITICAL: Only measure nodes that exist in the graph (not legend entries!)
+          if (!validNodeIds.has(nodeId)) {
+            continue;
+          }
 
           // Use getBoundingClientRect for accurate dimensions
           const rect = element.getBoundingClientRect();
@@ -543,16 +550,12 @@ const KnowledgeCanvas: React.FC = () => {
         }
       }
 
-      console.debug('[measureNodesFromDOM] Measured nodes:', {
-        total: measurements.size,
-        sample: Array.from(measurements.entries()).slice(0, 3)
-      });
     } catch (err) {
-      console.warn('[measureNodesFromDOM] DOM measurement failed', err);
+      console.warn('[measureNodesFromDOM] Failed to measure nodes from DOM', err);
     }
 
     return measurements;
-  }, []);
+  }, [nodes]);
 
   const doLayout = useCallback(
     async (
@@ -598,14 +601,6 @@ const KnowledgeCanvas: React.FC = () => {
     try {
       // Measure nodes from DOM for accurate dimensions before layout
       const domMeasurements = measureNodesFromDOM();
-      
-      console.debug('[doLayout] Using DOM measurements:', {
-        measuredCount: domMeasurements.size,
-        totalNodes: candidateNodes.length,
-        coverage: candidateNodes.length > 0 
-          ? Math.round((domMeasurements.size / candidateNodes.length) * 100) + '%'
-          : '0%'
-      });
 
       const layoutType =
         layoutTypeOverride ||
@@ -624,58 +619,21 @@ const KnowledgeCanvas: React.FC = () => {
         },
       );
       if (Array.isArray(nodeChanges) && nodeChanges.length > 0) {
-        // Convert to position-only changes to avoid triggering remapping
-        // This preserves __rf metadata and prevents subject emissions
-        const positionOnlyChanges = (nodeChanges || []).map((change: any) => {
-          try {
-            const position = change.position || (change.item && change.item.position) || { x: 0, y: 0 };
-            return {
-              id: String(change.id),
-              type: 'position',
-              position: {
-                x: typeof position.x === 'number' ? position.x : 0,
-                y: typeof position.y === 'number' ? position.y : 0
-              }
+        // Apply position changes using proper React Flow position change format
+        setNodes((prev = []) => {
+          const changes = (nodeChanges || []).map((nc: any) => {
+            const id = String(nc.id);
+            const pos = nc.position || { x: 0, y: 0 };
+            // Use proper React Flow position change type
+            return { 
+              id, 
+              type: "position", 
+              position: pos,
+              dragging: false
             };
-          } catch (_) {
-            // Fallback for malformed changes
-            return {
-              id: String(change.id || ''),
-              type: 'position',
-              position: { x: 0, y: 0 }
-            };
-          }
-        });
-
-        try {
-          setNodes((prev) => applyNodeChanges(positionOnlyChanges as any, prev || []));
-        } catch {
-          setNodes((prev = []) => {
-            const prevById = new Map((prev || []).map((p) => [String(p.id), p]));
-            const changes = (nodeChanges || []).map((nc: any) => {
-              const id = String(nc.id);
-              const pos = nc.position || (nc.item && nc.item.position) || { x: 0, y: 0 };
-              const existing = prevById.get(id);
-              const item = existing
-                ? {
-                    ...(existing as any),
-                    position: pos,
-                    data: {
-                      ...(existing as any).data,
-                      ...(nc.item && nc.item.data ? nc.item.data : {}),
-                    },
-                  }
-                : {
-                    id,
-                    type: "ontology",
-                    position: pos,
-                    data: (nc.item && nc.item.data) || {},
-                  };
-              return { id, type: "reset", item };
-            });
-            return applyNodeChanges(changes as any, prev || []);
           });
-        }
+          return applyNodeChanges(changes as any, prev || []);
+        });
       }
     } catch (err) {
       layoutInProgressRef.current = false;

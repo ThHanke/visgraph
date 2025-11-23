@@ -7,6 +7,7 @@ export interface DagreOptions {
   direction?: 'LR' | 'TB' | 'RL' | 'BT';
   nodeSep?: number;
   rankSep?: number;
+  spacing?: number; // Base spacing to add to max node dimensions for auto-calculated sep values
   marginX?: number;
   marginY?: number;
 }
@@ -32,49 +33,16 @@ export function applyDagreLayout(
   manualMeasurements?: Map<string, NodeMeasurement>
 ): RFNode<NodeData>[] {
   const direction = opts.direction || 'LR';
-  const nodeSep = opts.nodeSep ?? 50;
-  const rankSep = opts.rankSep ?? 50;
   const marginX = opts.marginX ?? 20;
   const marginY = opts.marginY ?? 20;
-
-  const g = new dagre.graphlib.Graph();
-  g.setGraph({
-    rankdir: direction,
-    nodesep: nodeSep,
-    ranksep: rankSep,
-    marginx: marginX,
-    marginy: marginY,
-  });
-  g.setDefaultEdgeLabel(() => ({}));
 
   // Check node measurements and add nodes to the dagre graph
   let nodesWithMeasurements = 0;
   const measurementInfo: Array<{ id: string; hasWidth: boolean; hasHeight: boolean; width: number; height: number; __rf: any }> = [];
-
-  // Track first node's measurements over time
-  if (nodes.length > 0) {
-    const firstNode = nodes[0];
-    const firstMeta = (firstNode as any).__rf || {};
-    const tracker = (window as any).__VG_MEASUREMENT_TRACKER || { lastMeta: null, changeCount: 0 };
-    
-    const currentSnapshot = JSON.stringify({
-      width: firstMeta.width,
-      height: firstMeta.height,
-      position: firstMeta.position
-    });
-    
-    if (tracker.lastMeta !== currentSnapshot) {
-      tracker.changeCount++;
-      console.log(`[dagre] First node measurement change #${tracker.changeCount}:`, {
-        nodeId: firstNode.id,
-        __rf: firstMeta,
-        hadMeasurements: !!tracker.lastMeta && tracker.lastMeta !== '{}',
-        hasMeasurements: !!(firstMeta.width && firstMeta.height)
-      });
-      tracker.lastMeta = currentSnapshot;
-      (window as any).__VG_MEASUREMENT_TRACKER = tracker;
-    }
-  }
+  
+  // Track max dimensions for dynamic spacing calculation
+  let maxWidth = 0;
+  let maxHeight = 0;
 
   for (const n of nodes) {
     const nodeId = String(n.id);
@@ -87,7 +55,7 @@ export function applyDagreLayout(
     
     // Check manual measurements first (most accurate)
     const manual = manualMeasurements?.get(nodeId);
-    if (manual && typeof manual.width === 'number' && typeof manual.height === 'number') {
+    if (manual && typeof manual.width === 'number' && typeof manual.height === 'number' && manual.width > 0 && manual.height > 0) {
       w = manual.width;
       h = manual.height;
       hasWidth = true;
@@ -96,8 +64,8 @@ export function applyDagreLayout(
     } else {
       // Fall back to React Flow metadata
       const meta = (n as any).__rf || {};
-      hasWidth = meta.width && typeof meta.width === 'number';
-      hasHeight = meta.height && typeof meta.height === 'number';
+      hasWidth = meta.width && typeof meta.width === 'number' && meta.width > 0;
+      hasHeight = meta.height && typeof meta.height === 'number' && meta.height > 0;
       w = hasWidth ? meta.width : 180;
       h = hasHeight ? meta.height : 64;
       
@@ -115,27 +83,60 @@ export function applyDagreLayout(
       __rf: (n as any).__rf || {}
     });
 
-    g.setNode(nodeId, { width: w, height: h });
+    // Track max dimensions
+    maxWidth = Math.max(maxWidth, w);
+    maxHeight = Math.max(maxHeight, h);
   }
 
-  // Calculate measurement coverage
-  const totalNodes = nodes.length;
-  const measurementCoverage = totalNodes > 0 ? (nodesWithMeasurements / totalNodes) * 100 : 0;
+  // Calculate dynamic spacing based on node dimensions and layout direction
+  // Use the spacing config parameter to add to max node dimensions
+  const spacingConfig = opts.spacing ?? 120; // Default spacing between nodes
 
-  // Log measurement status
-  console.debug('[dagre] Layout measurement check:', {
-    totalNodes,
-    nodesWithMeasurements,
-    coveragePercent: Math.round(measurementCoverage),
-    direction,
-    nodeSep,
-    rankSep,
-    sampleMeasurements: measurementInfo.slice(0, 3)
+  const isHorizontal = direction === 'LR' || direction === 'RL';
+
+  // Calculate nodeSep: spacing between nodes in the same rank
+  let nodeSep: number;
+  if (opts.nodeSep !== undefined) {
+    // Explicit override provided
+    nodeSep = opts.nodeSep;
+  } else if (isHorizontal) {
+    // Horizontal layout: nodes flow left-to-right in vertical ranks
+    // Nodes in same rank are arranged vertically, so nodeSep is vertical spacing
+    nodeSep = maxHeight + spacingConfig;
+  } else {
+    // Vertical layout: nodes flow top-to-bottom in horizontal ranks
+    // Nodes in same rank are arranged horizontally, so nodeSep is horizontal spacing
+    nodeSep = maxWidth + spacingConfig;
+  }
+
+  // Calculate rankSep: spacing between ranks
+  let rankSep: number;
+  if (opts.rankSep !== undefined) {
+    // Explicit override provided
+    rankSep = opts.rankSep;
+  } else if (isHorizontal) {
+    // Horizontal layout: ranks are arranged horizontally
+    // rankSep is horizontal spacing between ranks
+    rankSep = maxWidth + spacingConfig;
+  } else {
+    // Vertical layout: ranks are arranged vertically
+    // rankSep is vertical spacing between ranks
+    rankSep = maxHeight + spacingConfig;
+  }
+
+  const g = new dagre.graphlib.Graph();
+  g.setGraph({
+    rankdir: direction,
+    nodesep: nodeSep,
+    ranksep: rankSep,
+    marginx: marginX,
+    marginy: marginY,
   });
+  g.setDefaultEdgeLabel(() => ({}));
 
-  // If less than 80% of nodes have measurements, warn but proceed with fallbacks
-  if (measurementCoverage < 80 && totalNodes > 0) {
-    console.warn(`[dagre] Only ${Math.round(measurementCoverage)}% of nodes have measurements. Layout may not be optimal. Consider retrying after nodes render.`);
+  // Add nodes to dagre graph
+  for (const info of measurementInfo) {
+    g.setNode(info.id, { width: info.width, height: info.height });
   }
 
   // Add edges

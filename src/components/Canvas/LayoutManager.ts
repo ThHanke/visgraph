@@ -252,20 +252,17 @@ export class LayoutManager {
         try {
           const { applyDagreLayout } = await import('./layout/dagreLayout');
           const direction = layoutType === 'horizontal' ? 'LR' : 'TB';
-          // Use the single spacing parameter from the layout dialog as the base spacing.
-          // Pass it as both nodeSep and rankSep so the dagre helper can add node-size
-          // adjustments internally (final separation = baseSpacing + max node size).
-          const baseSpacing = options.nodeSpacing ?? (options.layoutSpecific && options.layoutSpecific.nodeSep) ?? 60;
-          const nodeSep = baseSpacing;
-          const rankSep = baseSpacing;
+          // Use the spacing parameter to let dagre calculate optimal sep values
+          // based on actual node dimensions (final separation = spacing + max node size)
+          // Default to 120 to match config.layoutSpacing default
+          const spacing = options.nodeSpacing ?? (options.layoutSpecific && options.layoutSpecific.spacing) ?? 120;
 
           const positioned = applyDagreLayout(
             diagramNodes,
             diagramEdges || [],
             {
               direction: direction as any,
-              nodeSep,
-              rankSep,
+              spacing,
             },
             context?.manualMeasurements
           );
