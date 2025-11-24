@@ -54,6 +54,7 @@ import { ConfigurationPanel } from './ConfigurationPanel';
 import { Popover, PopoverTrigger, PopoverContent } from '../ui/popover';
 import { toast } from 'sonner';
 import { useShallow } from 'zustand/react/shallow';
+import { toPrefixed } from '../../utils/termUtils';
 
 interface CanvasToolbarProps {
   onAddNode: (payload: any) => void;
@@ -127,7 +128,6 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
     loadKnowledgeGraph,
     getRdfManager,
     loadOntologyFromRDF,
-    loadOntologyRDFtoGraph,
     loadedOntologies,
   } = useOntologyStore(
     useShallow((state) => ({
@@ -136,37 +136,15 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
       loadKnowledgeGraph: state.loadKnowledgeGraph,
       getRdfManager: state.getRdfManager,
       loadOntologyFromRDF: state.loadOntologyFromRDF,
-      loadOntologyRDFtoGraph: state.loadOntologyRDFtoGraph,
       loadedOntologies: state.loadedOntologies ?? [],
     })),
   );
-  const loadOntologyFromRDFFn =
-    typeof loadOntologyFromRDF === 'function'
-      ? loadOntologyFromRDF
-      : typeof loadOntologyRDFtoGraph === 'function'
-        ? loadOntologyRDFtoGraph
-        : undefined;
+  const loadOntologyFromRDFFn = loadOntologyFromRDF;
   // registeredCount excludes core vocabularies; configuredCount shows user-configured autoload list size
   // Count all loaded ontologies except explicit core vocabularies.
   // Some entries may not have a 'source' field set reliably, so detect core
   // vocabularies by URL as a fallback (W3C RDF/RDFS/OWL namespaces).
-  const isCoreUrl = (u?: string | null) => {
-    if (!u) return false;
-    try {
-      const s = String(u);
-      return (
-        s.includes("www.w3.org/2002/07/owl") ||
-        s.includes("www.w3.org/1999/02/22-rdf-syntax-ns") ||
-        s.includes("www.w3.org/2000/01/rdf-schema") ||
-        s.includes("www.w3.org/XML/1998/namespace") ||
-        s.includes("www.w3.org/2001/XMLSchema")
-      );
-    } catch {
-      return false;
-    }
-  };
-
-  // Count non-core loaded ontologies robustly.
+  // Count all loaded ontologies (including auto-loaded ones like owl, rdf, rdfs)
   // Strategy:
   // - Consider loadedOntologies entries that are not 'core' and whose URL is not a core W3C URL.
   // - Also consider configured additionalOntologies that are "present" (either registered in loadedOntologies
@@ -200,18 +178,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   };
 
   // Build set of loaded non-core ontology keys
-  const loadedNonCore = (loadedList || []).filter((o: any) => {
-    try {
-      if (!o) return false;
-      if ((o.source as any) && String(o.source) === "core") return false;
-      if (isCoreUrl(o.url)) return false;
-      return true;
-    } catch {
-      return false;
-    }
-  });
-
-  const loadedKeys = new Set<string>((loadedNonCore || []).map((o: any) => normalizeForCompare(o.url)));
+  const loadedKeys = new Set<string>((loadedList || []).map((o: any) => normalizeForCompare(o.url)));
 
   // Namespaces currently known to the RDF manager (use as additional evidence an ontology was loaded)
   const rdfMgr = (typeof getRdfManager === "function" && getRdfManager && getRdfManager()) || null;
@@ -232,24 +199,24 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
     }
   });
 
-  // Only count/store the explicitly-registered ontologies created by user-requested or fetched loads.
-  // This makes the toolbar show exactly what's been intentionally added (requested || fetched).
-  const explicitLoaded = (loadedList || []).filter((o: any) => {
-    try {
-      const s = (o && (o.source as any)) || "";
-      // Only consider entries that were explicitly requested or fetched AND are not marked as failed.
-      // This prevents failed autoload placeholders (CORS/network/parse failures) from being counted as loaded.
-      const isSourceOk = String(s) === "requested" || String(s) === "fetched";
-      const status = (o && (o as any).loadStatus) || undefined;
-      const isNotFailed = String(status || "") !== "fail";
-      return isSourceOk && isNotFailed;
-    } catch {
-      return false;
-    }
-  });
+  // Show ALL loaded ontologies including auto-loaded, discovered, fetched, and failures
+  const explicitLoaded = loadedList || [];
+
+  // Count successes and failures for display
+  const successCount = explicitLoaded.filter((o: any) => {
+    const status = (o && (o as any).loadStatus) || "ok";
+    return String(status) === "ok" || !status;
+  }).length;
+  const failedCount = explicitLoaded.filter((o: any) => {
+    const status = (o && (o as any).loadStatus) || undefined;
+    return String(status) === "fail";
+  }).length;
+  const pendingCount = explicitLoaded.filter((o: any) => {
+    const status = (o && (o as any).loadStatus) || undefined;
+    return String(status) === "pending";
+  }).length;
 
   const registeredCount = explicitLoaded.length;
-
   const configuredCount = configuredList.length;
 
   // Build a merged list of namespaces: prefer namespaces discovered in the RDF manager
@@ -997,51 +964,165 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
             ) : (
               explicitLoaded.map((ont, idx) => {
                 const isAuto = (useAppConfigStore.getState().config.additionalOntologies || []).some((a) => canonical(a) === canonical(ont.url));
+                const status = (ont as any).loadStatus || "ok";
+                const source = (ont as any).source || "requested";
+                const loadError = (ont as any).loadError;
+
+                // Use toPrefixed to get a proper prefixed name for the ontology URL
+                const getPrefixedName = (url: string): string => {
+                  try {
+                    const namespaceRegistry = useOntologyStore.getState().namespaceRegistry || [];
+
+                    // Try matching with the URL as-is
+                    let prefixed = toPrefixed(url, namespaceRegistry);
+
+                    // If no match, try with trailing slash (common discrepancy)
+                    if (prefixed === url && !url.endsWith('/')) {
+                      prefixed = toPrefixed(url + '/', namespaceRegistry);
+                    }
+
+                    // If still no match, try without trailing slash
+                    if (prefixed === url && url.endsWith('/')) {
+                      prefixed = toPrefixed(url.slice(0, -1), namespaceRegistry);
+                    }
+
+                    // If still no match, try with http/https protocol swap (common discrepancy)
+                    if (prefixed === url || prefixed === url + '/' || prefixed === url.slice(0, -1)) {
+                      const swappedUrl = url.startsWith('https://') ? url.replace('https://', 'http://') :
+                                        url.startsWith('http://') ? url.replace('http://', 'https://') : url;
+                      if (swappedUrl !== url) {
+                        prefixed = toPrefixed(swappedUrl, namespaceRegistry);
+                        // Also try swapped URL with trailing slash variations
+                        if (prefixed === swappedUrl && !swappedUrl.endsWith('/')) {
+                          prefixed = toPrefixed(swappedUrl + '/', namespaceRegistry);
+                        }
+                        if (prefixed === swappedUrl && swappedUrl.endsWith('/')) {
+                          prefixed = toPrefixed(swappedUrl.slice(0, -1), namespaceRegistry);
+                        }
+                      }
+                    }
+
+                    // Check if toPrefixed actually found a prefix (result is different and is NOT a URL)
+                    const isUrl = prefixed.toLowerCase().startsWith('http://') || prefixed.toLowerCase().startsWith('https://');
+                    if (!isUrl && prefixed.includes(':')) {
+                      // Extract just the prefix part (before the colon) and capitalize it
+                      const prefix = prefixed.split(':')[0];
+                      return prefix ? prefix.toUpperCase() + ':' : url;
+                    }
+                    // If no prefix found (toPrefixed returns the URL unchanged), return the URL
+                    return url;
+                  } catch {
+                    return url;
+                  }
+                };
+
+                const prefixedName = getPrefixedName(ont.url);
+                // Use prefixedName directly (it will be either the capitalized prefix or the full URL)
+                const displayName = prefixedName;
+
                 return (
-                      <div key={`${ont.url}-${idx}`} className="flex items-center justify-between gap-2 p-2 rounded hover:bg-accent/5">
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium" title={ont.url}>
-                            {ont.name || ont.url.split('/').pop() || ont.url}
+                      <div key={`${ont.url}-${idx}`} className="flex flex-col gap-1 p-2 rounded hover:bg-accent/5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-medium" title={ont.url}>
+                              {displayName}
+                            </div>
+                            <div className="text-xs text-muted-foreground truncate" title={ont.url}>{ont.url}</div>
                           </div>
-                          <div className="text-xs text-muted-foreground truncate" title={ont.url}>{ont.url}</div>
+                          <div className="flex items-center gap-2">
+                            {status === "fail" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs h-6 px-2"
+                                onClick={async () => {
+                                  try {
+                                    await loadOntology(ont.url, { autoload: false });
+                                    toast.success('Retry successful');
+                                  } catch (e) {
+                                    toast.error('Retry failed');
+                                  }
+                                }}
+                                title="Retry loading"
+                              >
+                                🔄
+                              </Button>
+                            )}
+                            {isAuto ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs"
+                                onClick={() => {
+                                  try {
+                                    useAppConfigStore.getState().removeAdditionalOntology(ont.url);
+                                    toast.success('Removed from auto-load');
+                                  } catch (e) {
+                                    toast.error('Failed to update');
+                                  }
+                                }}
+                              >
+                                Auto (Remove)
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs"
+                                onClick={() => {
+                                  try {
+                                    useAppConfigStore.getState().addAdditionalOntology(ont.url);
+                                    toast.success('Added to auto-load');
+                                  } catch (e) {
+                                    toast.error('Failed to update');
+                                  }
+                                }}
+                              >
+                                Add Auto
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {isAuto ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-xs"
-                              onClick={() => {
-                                try {
-                                  useAppConfigStore.getState().removeAdditionalOntology(ont.url);
-                                  toast.success('Removed ontology from auto-load list');
-                                } catch (e) {
-                                  console.warn('Failed to remove additional ontology', e);
-                                  toast.error('Failed to update auto-load list');
-                                }
-                              }}
-                            >
-                              Auto (Remove)
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-xs"
-                              onClick={() => {
-                                try {
-                                  useAppConfigStore.getState().addAdditionalOntology(ont.url);
-                                  toast.success('Added ontology to auto-load list');
-                                } catch (e) {
-                                  console.warn('Failed to add additional ontology', e);
-                                  toast.error('Failed to update auto-load list');
-                                }
-                              }}
-                            >
-                              Add Auto
-                            </Button>
+                        <div className="flex flex-wrap gap-1">
+                          {/* Load status badge - shown first */}
+                          {status === "ok" && (
+                            <Badge variant="outline" className="text-xs px-1 py-0 bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-400 dark:border-green-800">
+                              ✓ Loaded
+                            </Badge>
+                          )}
+                          {status === "fail" && (
+                            <Badge variant="outline" className="text-xs px-1 py-0 bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-800">
+                              ✗ Failed
+                            </Badge>
+                          )}
+                          {status === "pending" && (
+                            <Badge variant="outline" className="text-xs px-1 py-0 bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-400 dark:border-yellow-800">
+                              ⏳ Pending
+                            </Badge>
+                          )}
+
+                          {/* Source type badge - shown second */}
+                          {source === "auto" && (
+                            <Badge variant="outline" className="text-xs px-1 py-0 bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-800">
+                              ⚡ Auto
+                            </Badge>
+                          )}
+                          {source === "discovered" && (
+                            <Badge variant="outline" className="text-xs px-1 py-0 bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-400 dark:border-orange-800">
+                              🔍 Discovered
+                            </Badge>
+                          )}
+                          {(source === "fetched" || source === "requested") && !isAuto && (
+                            <Badge variant="outline" className="text-xs px-1 py-0 bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-950 dark:text-gray-400 dark:border-gray-800">
+                              Manual
+                            </Badge>
                           )}
                         </div>
+                        {status === "fail" && loadError && (
+                          <div className="text-xs text-red-600 dark:text-red-400" title={loadError}>
+                            {loadError}
+                          </div>
+                        )}
                       </div>
                 );
               })

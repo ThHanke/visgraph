@@ -396,8 +396,8 @@ interface LoadedOntology {
   // 'requested' - user requested / explicit load
   // 'fetched'   - autoload/fetch finished and was registered
   // 'discovered' - inferred/canonicalized from parsed namespaces
-  // 'core'      - core vocabularies (rdf/rdfs/owl)
-  source?: "requested" | "fetched" | "discovered" | "core" | string;
+  // 'auto'      - auto-loaded vocabularies (rdf/rdfs/owl)
+  source?: "requested" | "fetched" | "discovered" | "auto" | string;
   // Optional fields to indicate the result of an attempted load (useful for UI / diagnostics)
   loadStatus?: "ok" | "fail" | "pending";
   loadError?: string;
@@ -437,7 +437,7 @@ interface OntologyStore {
   // Returns a Promise to allow async rdfManager implementations; tests call this as async.
   updateNode: (entityUri: string, updates: any) => Promise<void>;
 
-  loadOntology: (url: string, options?: { autoload?: boolean }) => Promise<LoadResult>;
+  loadOntology: (url: string, options?: { autoload?: boolean; discovered?: boolean }) => Promise<LoadResult>;
   loadOntologyFromRDF: (
     rdfContent: string,
     onProgress?: (progress: number, message: string) => void,
@@ -873,9 +873,10 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     }
   },
 
-  loadOntology: async (url: string, options?: { autoload?: boolean }) => {
+  loadOntology: async (url: string, options?: { autoload?: boolean; discovered?: boolean }) => {
     logCallGraph?.("loadOntology:start", url);
     const autoload = !!(options && (options as any).autoload);
+    const discovered = !!(options && (options as any).discovered);
     try {
       const { rdfManager: mgr } = get();
 
@@ -918,7 +919,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
               // LoadedOntology must not be coupled to the runtime namespace map.
               // Do not populate namespaces here; namespaceRegistry is authoritative.
               namespaces: {},
-              source: wkEntry && (wkEntry as any).isCore ? "core" : "requested",
+              source: wkEntry && (wkEntry as any).isCore ? "auto" : "requested",
               graphName: "urn:vg:ontologies",
               // mark placeholder as pending so consumers know this load is in-flight
               loadStatus: "pending",
@@ -987,11 +988,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         return { success: false, url: normRequestedUrl, error: String(err && err.message ? err.message : String(err)) };
       }
 
-      // After a successful fetch/parse, mark any placeholder as succeeded and update any previously-registered lightweight
-      // LoadedOntology entries (e.g. well-known placeholders) with the manager's
-      // current namespace snapshot so consumers see the actual prefixes discovered
-      // during parsing. This operation is idempotent and may be a no-op if no
-      // placeholder was registered earlier.
+      // After a successful fetch/parse, register the fetched URL as a primary entry if not already present
       try {
         set((s: any) => {
           try {
@@ -999,6 +996,17 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
             const norm = (function (u: string) {
               try { return new URL(String(u)).toString(); } catch { return String(u).trim().replace(/\/+$/, ""); }
             })(normRequestedUrl);
+            
+            // Check if the fetched URL is already registered
+            const alreadyRegistered = (list || []).some((o: any) => {
+              try {
+                return urlsEquivalent(o.url, norm);
+              } catch (_) {
+                return String(o.url) === String(norm);
+              }
+            });
+            
+            // Update existing entry if found, otherwise create new entry for the fetched URL
             const mapped = (list || []).map((o: any) => {
               try {
                 if (urlsEquivalent(o.url, norm)) {
@@ -1007,6 +1015,34 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
               } catch (_) {/* noop */}
               return o;
             });
+            
+            // If not already registered, add the fetched URL as a new entry
+            if (!alreadyRegistered) {
+              // Check if this is a well-known core ontology
+              const wkForFetched = WELL_KNOWN.ontologies[norm as keyof typeof WELL_KNOWN.ontologies];
+              const isAutoCore = wkForFetched && (wkForFetched as any).isCore;
+
+              const meta: LoadedOntology = {
+                url: norm,
+                name: deriveOntologyName(String(norm || "")),
+                classes: [],
+                properties: [],
+                namespaces: {},
+                source: isAutoCore ? "auto" : (discovered ? "discovered" : (autoload ? "fetched" : "requested")),
+                graphName: "urn:vg:ontologies",
+                loadStatus: "ok",
+                loadError: undefined,
+              };
+              console.debug("[VG_DEBUG] loadOntology.registerFetchedUrl", {
+                url: norm,
+                name: meta.name,
+                source: meta.source,
+                autoload,
+                isAutoCore,
+              });
+              mapped.push(meta);
+            }
+            
             return {
               loadedOntologies: mapped,
               ontologiesVersion: (s.ontologiesVersion || 0) + 1,
@@ -1016,99 +1052,9 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           }
         });
       } catch (_) { /* ignore */ }
-          try {
-            try {
-              // Do not write runtime namespace snapshots into loadedOntologies.
-              // loadedOntologies should only track ontology metadata (url, name, aliases, source, graphName).
-              // Leave existing entries unchanged here.
-              set((state: any) => {
-                try {
-                  // No-op update to loadedOntologies regarding namespaces; preserve existing entries.
-                  return {};
-                } catch (_) {
-                  return {};
-                }
-              });
-            } catch (_) { /* ignore snapshot persist failures */ }
-          } catch (_) { /* ignore */ }
 
-      // After successful load, attempt to discover declared ontology IRI in the ontologies graph
-      try {
-        const readMgr =
-          mgr && typeof (mgr as any).fetchQuadsPage === "function"
-            ? mgr
-            : typeof rdfManager !== "undefined" &&
-                rdfManager &&
-                typeof (rdfManager as any).fetchQuadsPage === "function"
-              ? (rdfManager as any)
-              : null;
-
-        if (readMgr) {
-          const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-          const OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
-          const ontQuads = await fetchSerializedQuads(readMgr, "urn:vg:ontologies", {
-            predicate: RDF_TYPE,
-          });
-          const subjects = Array.from(
-            new Set(
-              (ontQuads || [])
-                .filter((q) => String(q.object || "") === OWL_ONTOLOGY)
-                .map((q) => q.subject)
-                .filter(Boolean),
-            ),
-          );
-
-          if (subjects.length > 0) {
-            const canonical = subjects.find((s: any) => /^https?:\/\//i.test(String(s))) || subjects[0];
-            const canonicalStr = canonical ? String(canonical) : "";
-            try {
-              canonicalNorm = new URL(canonicalStr).toString();
-            } catch {
-              canonicalNorm = canonicalStr.replace(/\/+$/, "");
-            }
-
-            const already = (get().loadedOntologies || []).some((o: any) => {
-              try {
-                return urlsEquivalent(o.url, canonicalNorm);
-              } catch (_) {
-                return String(o.url) === String(canonicalNorm);
-              }
-            });
-
-            if (!already) {
-              const aliases: string[] = [];
-              try {
-                if (normRequestedUrl && !urlsEquivalent(normRequestedUrl, canonicalNorm)) aliases.push(normRequestedUrl);
-              } catch (_) { /* ignore */ }
-
-              const namespaces = {};
-
-              try {
-                set((state: any) => {
-                  const meta: LoadedOntology = {
-                    url: canonicalNorm,
-                    name: deriveOntologyName(String(canonicalNorm || "")),
-                    classes: [],
-                    properties: [],
-                    namespaces: {},
-                    aliases: aliases.length ? aliases : undefined,
-                    source: "discovered",
-                    graphName: "urn:vg:ontologies",
-                    loadStatus: "ok",
-                    loadError: undefined,
-                  };
-                  return {
-                    loadedOntologies: [...(state.loadedOntologies || []), meta],
-                    ontologiesVersion: (state.ontologiesVersion || 0) + 1,
-                  };
-                });
-              } catch (_) { /* ignore registration failures */ }
-            }
-          }
-        }
-      } catch (_) {
-        /* best-effort only */
-      }
+      // The fetched URL has already been registered above - no additional discovery needed
+      // We only register actual fetched ontology URLs, not arbitrary owl:Ontology subjects from data
 
       // After a successful ontology load via loadOntology (explicit user request),
       // re-emit subject-level notifications for the data graph so UI consumers
@@ -1344,7 +1290,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         options?.onProgress,
         true,
         "urn:vg:data",
-        options?.filename,
+        undefined,
       );
       // (get().rdfManager as any).addNamespace(":", "http://file.local");
       options?.onProgress?.(100, "RDF loaded");
@@ -2083,7 +2029,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       const url = candidates[i];
       const pct = Math.min(95, Math.round(((i) / Math.max(1, candidates.length)) * 90) + 5);
       onProgress && onProgress(pct, `Loading referenced ontology ${i + 1}/${candidates.length}: ${deriveOntologyName(url)}`);
-      const loadRes = await get().loadOntology(url, { autoload: true });
+      const loadRes = await get().loadOntology(url, { autoload: true, discovered: true });
       if (!loadRes || (loadRes as any).success !== true) {
         const errMsg = loadRes && (loadRes as any).error ? String((loadRes as any).error) : `Load failed for ${url}`;
         results.push({ url, status: "fail", error: errMsg });

@@ -17,14 +17,16 @@ export const WELL_KNOWN_PREFIXES = [
     prefix: "rdf",
     url: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
     name: "RDF - The RDF Concepts Vocabulary",
+    isCore: true,
   },
   {
     prefix: "rdfs",
     url: "http://www.w3.org/2000/01/rdf-schema#",
     name: "RDFS - The RDF Schema Vocabulary",
+    isCore: true,
   },
-  { prefix: "owl", url: "http://www.w3.org/2002/07/owl#", name: "OWL" },
-  { prefix: "xsd", url: "http://www.w3.org/2001/XMLSchema#", name: "XSD" },
+  { prefix: "owl", url: "http://www.w3.org/2002/07/owl#", name: "OWL", isCore: true },
+  { prefix: "xsd", url: "http://www.w3.org/2001/XMLSchema#", name: "XSD", isCore: true },
   { prefix: "skos", url: "http://www.w3.org/2004/02/skos/core#", name: "SKOS" },
   {
     prefix: "dcterms",
