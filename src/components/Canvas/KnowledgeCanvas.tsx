@@ -210,6 +210,10 @@ const KnowledgeCanvas: React.FC = () => {
     () => !!(config && config.autoApplyLayout),
   );
 
+  // Separate viewport state for ABox and TBox views
+  const aboxViewportRef = useRef<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
+  const tboxViewportRef = useRef<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
+
   // Palette from RDF manager — used to compute colors without rebuilding palettes.
   const palette = usePaletteFromRdfManager();
   const paletteRef = useRef(palette);
@@ -509,53 +513,11 @@ const KnowledgeCanvas: React.FC = () => {
   const forceLayoutNextMappingRef = useRef<boolean>(false);
   const layoutPendingRef = useRef<boolean>(false);
   const lastLayoutMetaRef = useRef<Record<string, unknown> | null>(null);
+  // Track which views have been laid out so we know when to clear the pending flag
+  const layoutedViewsRef = useRef<Set<'abox' | 'tbox'>>(new Set());
 
   // Keep refs in sync with state so other callbacks can read the latest snapshot synchronously.
 
-  /**
-   * measureNodesFromDOM - Directly measure all React Flow nodes from the DOM
-   * Returns a Map of nodeId -> {width, height} for use in layout calculations.
-   */
-  const measureNodesFromDOM = useCallback((): Map<string, { width: number; height: number }> => {
-    const measurements = new Map<string, { width: number; height: number }>();
-
-    try {
-      // Build a set of valid node IDs from the current nodes array
-      const validNodeIds = new Set<string>(nodes.map(n => String(n.id)));
-
-      // Query node elements from DOM
-      const nodeElements = document.querySelectorAll('.react-flow__node');
-
-      for (const element of Array.from(nodeElements)) {
-        try {
-          const nodeId = element.getAttribute('data-id');
-          if (!nodeId) continue;
-
-          // CRITICAL: Only measure nodes that exist in the graph (not legend entries!)
-          if (!validNodeIds.has(nodeId)) {
-            continue;
-          }
-
-          // Use getBoundingClientRect for accurate dimensions
-          const rect = element.getBoundingClientRect();
-          if (rect.width > 0 && rect.height > 0) {
-            measurements.set(nodeId, {
-              width: rect.width,
-              height: rect.height
-            });
-          }
-        } catch (err) {
-          // Skip individual nodes that fail to measure
-          console.debug('[measureNodesFromDOM] Failed to measure node', err);
-        }
-      }
-
-    } catch (err) {
-      console.warn('[measureNodesFromDOM] Failed to measure nodes from DOM', err);
-    }
-
-    return measurements;
-  }, [nodes]);
 
   const doLayout = useCallback(
     async (
@@ -599,14 +561,13 @@ const KnowledgeCanvas: React.FC = () => {
 
     layoutInProgressRef.current = true;
     try {
-      // Measure nodes from DOM for accurate dimensions before layout
-      const domMeasurements = measureNodesFromDOM();
-
       const layoutType =
         layoutTypeOverride ||
         (config && config.currentLayout) ||
         lm.suggestOptimalLayout();
 
+      // React Flow now handles node measurements automatically via __rf metadata
+      // since all visible nodes are rendered to the DOM
       const nodeChanges = await lm.applyLayout(
         layoutType as any,
         {
@@ -615,7 +576,6 @@ const KnowledgeCanvas: React.FC = () => {
         {
           nodes: candidateNodes || [],
           edges: candidateEdges || [],
-          manualMeasurements: domMeasurements,
         },
       );
       if (Array.isArray(nodeChanges) && nodeChanges.length > 0) {
@@ -1115,15 +1075,7 @@ const KnowledgeCanvas: React.FC = () => {
         await waitForNextFrame();
 
         const rfInst = reactFlowInstance?.current ?? null;
-        const nodesForLayout =
-          rfInst && typeof (rfInst as any).getNodes === "function"
-            ? (rfInst as any).getNodes()
-            : nodes;
-        const edgesForLayout =
-          rfInst && typeof (rfInst as any).getEdges === "function"
-            ? (rfInst as any).getEdges()
-            : edges;
-
+        
         const forceLayoutRequested = forceLayoutNextMappingRef.current;
         const applyLayoutRequested = applyRequestedRef.current;
         const autoLayoutRequested =
@@ -1134,6 +1086,18 @@ const KnowledgeCanvas: React.FC = () => {
         const shouldRunLayout =
           forceLayoutRequested || applyLayoutRequested || autoLayoutRequested;
 
+        // Always use measured nodes from React Flow - only rendered nodes have measurements
+        // The layout pending flag will ensure both views get laid out when they're rendered
+        const nodesForLayout =
+          rfInst && typeof (rfInst as any).getNodes === "function"
+            ? (rfInst as any).getNodes()
+            : [];
+        
+        const edgesForLayout =
+          rfInst && typeof (rfInst as any).getEdges === "function"
+            ? (rfInst as any).getEdges()
+            : [];
+
         if (skipNextAutoLayoutRef.current && layoutPendingRef.current) {
           layoutPendingRef.current = false;
           lastLayoutMetaRef.current = null;
@@ -1142,7 +1106,7 @@ const KnowledgeCanvas: React.FC = () => {
         if (shouldRunLayout) {
           forceLayoutNextMappingRef.current = false;
           applyRequestedRef.current = false;
-          layoutPendingRef.current = false;
+          // Don't clear layoutPendingRef yet - keep it active until both views are laid out
           const meta = lastLayoutMetaRef.current;
           lastLayoutMetaRef.current = null;
           try {
@@ -1155,7 +1119,11 @@ const KnowledgeCanvas: React.FC = () => {
           } catch (_) {
             /* ignore logging failures */
           }
+
+          // Layout currently visible nodes
+          // Note: We can only layout nodes that are rendered to DOM (React Flow can measure them)
           await doLayout(nodesForLayout as any, edgesForLayout as any, true);
+
           if (
             forceLayoutRequested &&
             mountedRef.current &&
@@ -1510,61 +1478,60 @@ const KnowledgeCanvas: React.FC = () => {
     };
   }, [loadKnowledgeGraph]);
 
+  // Viewport persistence: save viewport when it changes
+  const onMoveHandler = useCallback((event: any, viewport: { x: number; y: number; zoom: number }) => {
+    updateViewportRef(viewport);
+    if (viewMode === 'abox') {
+      aboxViewportRef.current = viewport;
+    } else {
+      tboxViewportRef.current = viewport;
+    }
+  }, [viewMode, updateViewportRef]);
+
+  // Restore viewport when switching views
   useEffect(() => {
-    const nodeHiddenById = new Map<string, boolean>();
+    const viewport = viewMode === 'abox' ? aboxViewportRef.current : tboxViewportRef.current;
+    const inst = reactFlowInstance.current;
+    if (inst && typeof (inst as any).setViewport === 'function') {
+      try {
+        (inst as any).setViewport(viewport);
+      } catch (_) {
+        // ignore viewport restore failures
+      }
+    }
+  }, [viewMode]);
 
-    setNodes((prev) =>
-      (prev || []).map((n) => {
-        try {
-          const isTBox = !!(n.data && (n.data as any).isTBox);
-          const visibleFlag =
-            n.data && typeof (n.data as any).visible === "boolean"
-              ? (n.data as any).visible
-              : true;
-          const shouldBeVisible =
-            visibleFlag && (viewMode === "tbox" ? isTBox : !isTBox);
-          const hidden = !shouldBeVisible;
-          nodeHiddenById.set(String(n.id), hidden);
-          return hidden === !!(n as any).hidden ? n : { ...n, hidden };
-        } catch {
-          return n;
-        }
-      }),
-    );
-
-    setEdges((prev) =>
-      (prev || []).map((e) => {
-        try {
-          const s = String(e.source);
-          const t = String(e.target);
-          const sHidden = nodeHiddenById.get(s) || false;
-          const tHidden = nodeHiddenById.get(t) || false;
-
-          let hidden = !!sHidden || !!tHidden;
-
-          if (!hidden) {
-            const sNode = nodes.find((nn) => String(nn.id) === s);
-            const tNode = nodes.find((nn) => String(nn.id) === t);
-            if (!sNode || !tNode) {
-              hidden = true;
-            } else {
-              const sIsT = !!(sNode.data && (sNode.data as any).isTBox);
-              const tIsT = !!(tNode.data && (tNode.data as any).isTBox);
-              if (sIsT !== tIsT) hidden = true;
-              else {
-                const shouldBeTBox = viewMode === "tbox";
-                if (sIsT !== shouldBeTBox) hidden = true;
+  // Trigger layout on view switch if layout is still pending
+  // This ensures both ABox and TBox views get laid out after data loads
+  useEffect(() => {
+    if (layoutPendingRef.current) {
+      const rfInst = reactFlowInstance.current;
+      if (rfInst && typeof (rfInst as any).getNodes === 'function') {
+        const visibleNodes = (rfInst as any).getNodes();
+        const visibleEdges = (rfInst as any).getEdges?.() || [];
+        if (visibleNodes.length > 0) {
+          // Give React Flow time to render and measure the newly visible nodes
+          setTrackedTimeout(() => {
+            doLayout(visibleNodes, visibleEdges, true).then(() => {
+              // Track that this view has been laid out
+              layoutedViewsRef.current.add(viewMode);
+              
+              // Only clear the pending flag after both views have been laid out
+              if (layoutedViewsRef.current.has('abox') && layoutedViewsRef.current.has('tbox')) {
+                layoutPendingRef.current = false;
+                layoutedViewsRef.current.clear();
               }
-            }
-          }
-
-          return hidden === !!(e as any).hidden ? e : { ...e, hidden };
-        } catch {
-          return e;
+            }).catch((err) => {
+              console.warn('Layout failed on view switch:', err);
+              // On error, still clear to avoid getting stuck
+              layoutPendingRef.current = false;
+              layoutedViewsRef.current.clear();
+            });
+          }, 100);
         }
-      }),
-    );
-  }, [viewMode, nodes.length, edges.length, setNodes, setEdges]);
+      }
+    }
+  }, [viewMode, doLayout, setTrackedTimeout]);
 
   const triggerReasoningStrict = useCallback(
     async (_ns: RFNode<NodeData>[], _es: RFEdge<LinkData>[], force = false) => {
@@ -2393,8 +2360,37 @@ const KnowledgeCanvas: React.FC = () => {
     [FloatingConnectionLine],
   );
 
+  // Filter nodes by viewMode - only show nodes matching the current view
+  const filteredNodes = useMemo(() => {
+    return (nodes || []).filter((n) => {
+      try {
+        const isTBox = !!(n.data && (n.data as any).isTBox);
+        const visibleFlag =
+          n.data && typeof (n.data as any).visible === "boolean"
+            ? (n.data as any).visible
+            : true;
+        if (!visibleFlag) return false;
+        return viewMode === "tbox" ? isTBox : !isTBox;
+      } catch {
+        return true;
+      }
+    });
+  }, [nodes, viewMode]);
+
+  // Filter edges - only show edges where both endpoints are in the current view
+  const filteredEdges = useMemo(() => {
+    const nodeIds = new Set(filteredNodes.map((n) => String(n.id)));
+    return (edges || []).filter((e) => {
+      try {
+        return nodeIds.has(String(e.source)) && nodeIds.has(String(e.target));
+      } catch {
+        return false;
+      }
+    });
+  }, [edges, filteredNodes]);
+
   const safeNodes = useMemo(() => {
-    return (nodes || []).map((n) => {
+    return (filteredNodes || []).map((n) => {
       if (
         !n ||
         !n.position ||
@@ -2405,7 +2401,7 @@ const KnowledgeCanvas: React.FC = () => {
       }
       return n;
     });
-  }, [nodes]);
+  }, [filteredNodes]);
 
   // Memoize edges to provide a stable reference into ReactFlow and avoid
   // unnecessary reprocessing when edge list content hasn't materially changed.
@@ -2612,8 +2608,23 @@ const KnowledgeCanvas: React.FC = () => {
       await new Promise<void>((resolve) => {
         setTrackedTimeout(resolve, 0);
       });
+
+      // Debug: Log first node's measurements after applying changes
+      try {
+        const firstNode = nodes[0];
+        if (firstNode) {
+          console.log('[Canvas Debug] First node after mapping:', {
+            id: firstNode.id,
+            __rf: (firstNode as any).__rf,
+            width: (firstNode as any).__rf?.width,
+            height: (firstNode as any).__rf?.height
+          });
+        }
+      } catch (err) {
+        console.warn('[Canvas Debug] Failed to log first node after mapping', err);
+      }
     },
-    [setNodes, setEdges, setTrackedTimeout],
+    [setNodes, setEdges, setTrackedTimeout, nodes],
   );
 
   return (
@@ -2743,7 +2754,7 @@ const KnowledgeCanvas: React.FC = () => {
       >
           <ReactFlow
           nodes={safeNodes}
-          edges={memoEdges}
+          edges={filteredEdges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onInit={onInit}
@@ -2755,14 +2766,15 @@ const KnowledgeCanvas: React.FC = () => {
           onEdgeDoubleClick={onEdgeDoubleClickStrict}
           onConnect={onConnectStrict}
           onSelectionChange={onSelectionChange}
-          onMove={(_, vp) => updateViewportRef(vp as any)}
-          onMoveEnd={(_, vp) => updateViewportRef(vp as any)}
+          onMove={onMoveHandler}
+          onMoveEnd={onMoveHandler}
           nodeTypes={memoNodeTypes}
           edgeTypes={memoEdgeTypes}
           connectionLineComponent={memoConnectionLine}
           connectOnClick={false}
           minZoom={0.1}
           nodeOrigin={[0.5, 0.5]}
+          onlyRenderVisibleElements={true}
           className="knowledge-graph-canvas bg-canvas-bg"
         >
           <Controls
