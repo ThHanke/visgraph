@@ -2587,22 +2587,121 @@ const KnowledgeCanvas: React.FC = () => {
           }
         }
 
-        // Remove edges touching updated subjects that aren't in the mapper output
+        // Remove edges FROM updated subjects that aren't in the mapper output
+        // Note: We only check if SOURCE is updated, not target, because the mapper
+        // only returns outgoing edges from the subjects being updated. Checking target
+        // would incorrectly remove incoming edges from other (non-updated) subjects.
         if (updatedSubjects && updatedSubjects.size > 0) {
           for (const existing of current) {
             const id = String(existing.id);
             const source = String(existing.source);
-            const target = String(existing.target);
-            
-            // Only remove if this edge touches an updated subject AND isn't in new output
-            const touchesUpdatedSubject = updatedSubjects.has(source) || updatedSubjects.has(target);
-            if (touchesUpdatedSubject && !incomingIds.has(id)) {
+
+            // Only remove if this edge's source was updated AND the edge isn't in new output
+            const sourceWasUpdated = updatedSubjects.has(source);
+            if (sourceWasUpdated && !incomingIds.has(id)) {
               changes.push({ id, type: 'remove' });
             }
           }
         }
 
-        return applyEdgeChanges(changes as any, current);
+        // Apply React Flow changes to get the new edge state
+        const newEdgeState = applyEdgeChanges(changes as any, current);
+
+        // Now apply bidirectional offsets to the complete edge set
+        // This must happen after reconciliation so we see the full picture
+        const BASE_BIDIRECTIONAL_OFFSET = 40;
+        const PARALLEL_EDGE_SHIFT_STEP = 60;
+
+        const indexToShift = (index: number) => {
+          if (index === 0) return 0;
+          const magnitude = Math.ceil(index / 2);
+          const direction = index % 2 === 1 ? 1 : -1;
+          return direction * magnitude * PARALLEL_EDGE_SHIFT_STEP;
+        };
+
+        // Group edges by unordered node pairs to detect bidirectional relationships
+        const bidirectionalGroups = new Map<string, typeof newEdgeState>();
+
+        for (const edge of newEdgeState) {
+          if (!edge) continue;
+          const source = String(edge.source);
+          const target = String(edge.target);
+
+          // Create canonical key (alphabetically sorted) to group A→B with B→A
+          const canonicalKey = source < target
+            ? `${source}||${target}`
+            : `${target}||${source}`;
+
+          if (!bidirectionalGroups.has(canonicalKey)) {
+            bidirectionalGroups.set(canonicalKey, []);
+          }
+          bidirectionalGroups.get(canonicalKey)!.push(edge);
+        }
+
+        // Process each bidirectional group and apply offsets
+        const edgesWithOffsets = newEdgeState.map((edge): RFEdge<LinkData> => {
+          const source = String(edge.source);
+          const target = String(edge.target);
+          const canonicalKey = source < target
+            ? `${source}||${target}`
+            : `${target}||${source}`;
+
+          const pairEdges = bidirectionalGroups.get(canonicalKey) || [];
+
+          // Split edges by direction
+          const directions = new Map<string, typeof pairEdges>();
+          for (const e of pairEdges) {
+            const dirKey = `${e.source}→${e.target}`;
+            if (!directions.has(dirKey)) {
+              directions.set(dirKey, []);
+            }
+            directions.get(dirKey)!.push(e);
+          }
+
+          // Get the base shift from mapper (parallel edge offset)
+          const baseShift = (edge.data as any)?.shift ?? 0;
+
+          if (directions.size === 2) {
+            // Bidirectional case: separate opposite directions into their own ranges
+            const dirKey = `${edge.source}→${edge.target}`;
+            const dirEdges = directions.get(dirKey) || [];
+
+            // Sort edges to determine index
+            const sortedDirEdges = [...dirEdges].sort((a, b) =>
+              String(a.id).localeCompare(String(b.id))
+            );
+            const edgeIndex = sortedDirEdges.findIndex((e) => String(e.id) === String(edge.id));
+
+            // Determine which direction this is (first or second)
+            const directionKeys = Array.from(directions.keys()).sort();
+            const directionIndex = directionKeys.indexOf(dirKey);
+
+            // Both directions use positive offsets (right side of edge direction)
+            // Direction 0: +40, +100, +160, +220, +280...
+            // Direction 1: +40, +100, +160, +220, +280, +340...
+            const baseOffset = BASE_BIDIRECTIONAL_OFFSET;
+
+            // Apply parallel spacing WITHIN the direction
+            // Multiple edges in same direction spread out: 0, 60, 120, 180...
+            const parallelOffset = edgeIndex * PARALLEL_EDGE_SHIFT_STEP;
+
+            // Combine: base offset + parallel spacing (always positive)
+            const finalShift = baseOffset + parallelOffset;
+
+            return {
+              ...edge,
+              data: {
+                ...edge.data,
+                shift: finalShift,
+              },
+            } as RFEdge<LinkData>;
+          }
+
+          // Unidirectional: keep the shift from mapper
+          return edge;
+        });
+
+        return edgesWithOffsets;
       });
 
       await new Promise<void>((resolve) => {
