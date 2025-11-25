@@ -38,6 +38,7 @@ import { generateEdgeId } from "./core/edgeHelpers";
 import { usePaletteFromRdfManager } from "./core/namespacePalette";
 import { expandPrefixed, toPrefixed } from "../../utils/termUtils";
 import { exportSvgFull, exportPngFull } from "./core/downloadHelpers";
+import { applyDiagramChangeSmart } from "./core/diagramChangeHelpers";
 
 const LAYOUT_META_REASONS = new Set<string>([
   "syncBatch",
@@ -2445,12 +2446,35 @@ const KnowledgeCanvas: React.FC = () => {
     [setEdges],
   );
 
-  // Centralized helper that accepts mapper-style arrays of node and edge instances
-  // and turns them into React Flow change objects (add/replace). This preserves
-  // runtime metadata for existing nodes (position, __rf, etc.) while applying
-  // mapper-provided positions for newly added nodes. Placeholders for missing
-  // edge endpoints are also created automatically.
+  // Centralized helper using optimized chunked processing for large updates
   const applyDiagrammChange = useCallback(
+    async (
+      incomingNodes?: RFNode<NodeData>[],
+      incomingEdges?: RFEdge<LinkData>[],
+      updatedSubjects?: Set<string>,
+    ) => {
+      const nodesList = Array.isArray(incomingNodes) ? incomingNodes : [];
+      const edgesList = Array.isArray(incomingEdges) ? incomingEdges : [];
+
+      // Use optimized smart helper (auto-chunks large updates)
+      // Create yield function that returns a Promise
+      const yieldFn = (ms: number) => new Promise<void>((resolve) => setTrackedTimeout(resolve, ms));
+
+      await applyDiagramChangeSmart(
+        nodesList,
+        edgesList,
+        updatedSubjects,
+        setNodes,
+        setEdges,
+        canvasActions,
+        yieldFn,
+      );
+    },
+    [setNodes, setEdges, canvasActions, setTrackedTimeout],
+  );
+
+  // Legacy implementation kept below for reference - can be removed after testing
+  const applyDiagrammChangeLegacy = useCallback(
     async (
       incomingNodes?: RFNode<NodeData>[],
       incomingEdges?: RFEdge<LinkData>[],
