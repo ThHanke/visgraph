@@ -1290,7 +1290,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         options?.onProgress,
         true,
         "urn:vg:data",
-        undefined,
+        options?.filename,
       );
       // (get().rdfManager as any).addNamespace(":", "http://file.local");
       options?.onProgress?.(100, "RDF loaded");

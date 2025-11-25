@@ -2507,8 +2507,14 @@ const KnowledgeCanvas: React.FC = () => {
                   { x: 0, y: 0 },
                 data: mergeData(existing.data, (node as any).data),
               };
-              delete (mergedNode as any).selected;
-              changes.push({ id, type: 'replace', item: mergedNode });
+              
+              // Memory optimization: only create change if data actually changed
+              // This prevents unnecessary React Flow diffs and re-renders
+              const dataChanged = mergedNode.data !== existing.data;
+              if (dataChanged) {
+                delete (mergedNode as any).selected;
+                changes.push({ id, type: 'replace', item: mergedNode });
+              }
               addedNodeIds.push(id);
             } else {
               const newNode = {
