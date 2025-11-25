@@ -616,29 +616,38 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
         q.graph && q.graph.termType !== "DefaultGraph" ? String(q.graph.value) : "";
       const key = `${graphIri}|${String(q.subject.value)}`;
       const subjectQuads = bySubject.get(key) || [];
-      const focus = subjectQuads.find((sq) => sq.predicate.value === SH_FOCUS);
+      
+      // Find ALL focus nodes (N3 reasoner may create multiple sh:focusNode triples)
+      const focusNodes = subjectQuads
+        .filter((sq) => sq.predicate.value === SH_FOCUS)
+        .map((sq) => termToString(sq.object))
+        .filter(Boolean);
+      
       const message = subjectQuads.find((sq) => sq.predicate.value === SH_MESSAGE);
       const severityQuad = subjectQuads.find((sq) => sq.predicate.value === SH_SEVERITY);
 
-      const nodeId = focus ? termToString(focus.object) : undefined;
       const messageText = message ? termToString(message.object) || "Validation issue" : "Validation issue";
       const severityUri = severityQuad ? termToString(severityQuad.object) : "";
       const severity =
         severityUri && severityUri.includes("Violation") ? "critical" : "warning";
-      if (severity === "critical") {
-        errors.push({
-          nodeId,
-          message: messageText,
-          rule: "sh:ValidationResult",
-          severity: "critical",
-        });
-      } else {
-        warnings.push({
-          nodeId,
-          message: messageText,
-          rule: "sh:ValidationResult",
-          severity: severity === "warning" ? "warning" : "info",
-        });
+      
+      // Create separate error/warning for each focus node
+      for (const nodeId of focusNodes) {
+        if (severity === "critical") {
+          errors.push({
+            nodeId,
+            message: messageText,
+            rule: "sh:ValidationResult",
+            severity: "critical",
+          });
+        } else {
+          warnings.push({
+            nodeId,
+            message: messageText,
+            rule: "sh:ValidationResult",
+            severity: severity === "warning" ? "warning" : "info",
+          });
+        }
       }
     }
 
