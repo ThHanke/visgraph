@@ -202,9 +202,9 @@ export function mapQuadsToDiagram(
       iri: string;
       rdfTypes: string[];
       literalProperties: Array<{ key: string; value: string; type: string }>;
-      // annotationProperties now carry native Term objects (predicate/object) in addition to legacy string fields
-      annotationProperties: Array<{ property: string; value: string; predicateTerm?: any; objectTerm?: any; type?: string }>;
-      inferredProperties: Array<{ property: string; value: string; predicateTerm?: any; objectTerm?: any; type?: string }>;
+      // Memory optimized: only primitive values, no Term objects
+      annotationProperties: Array<{ property: string; value: string; type?: string }>;
+      inferredProperties: Array<{ property: string; value: string; type?: string }>;
       label?: string | undefined;
       // optional override used to propagate subject view (TBox/ABox) to objects created due to unknown/object predicates
       forceIsTBox?: boolean | undefined;
@@ -379,7 +379,6 @@ export function mapQuadsToDiagram(
 
     const predicateIri = normalized.predicate;
     if (!predicateIri) continue;
-    const predicateTerm = (quad as { predicate?: TermLike }).predicate ?? null;
     const objectTerm = (quad as { object?: TermLike }).object ?? null;
 
     if (predicateIri === RDF_TYPE) {
@@ -398,8 +397,6 @@ export function mapQuadsToDiagram(
       entry.annotationProperties.push({
         property: predicateIri,
         value,
-        predicateTerm,
-        objectTerm,
         ...(type ? { type } : {}),
       });
       continue;
@@ -410,8 +407,6 @@ export function mapQuadsToDiagram(
       entry.annotationProperties.push({
         property: predicateIri,
         value: literal.value,
-        predicateTerm,
-        objectTerm,
         ...(literal.type ? { type: literal.type } : {}),
       });
       continue;
@@ -422,8 +417,6 @@ export function mapQuadsToDiagram(
       entry.annotationProperties.push({
         property: predicateIri,
         value: literal.value,
-        predicateTerm,
-        objectTerm,
         ...(literal.type ? { type: literal.type } : {}),
       });
       continue;
@@ -473,8 +466,6 @@ export function mapQuadsToDiagram(
         entry.annotationProperties.push({
           property: predicateIri,
           value: bn,
-          predicateTerm,
-          objectTerm,
         });
       }
       continue;
@@ -521,8 +512,6 @@ export function mapQuadsToDiagram(
         entry.annotationProperties.push({
           property: predicateIri,
           value: objectIri,
-          predicateTerm,
-          objectTerm,
         });
       }
       continue;
@@ -531,8 +520,6 @@ export function mapQuadsToDiagram(
     entry.annotationProperties.push({
       property: predicateIri,
       value: termValue(objectTerm) ?? "",
-      predicateTerm,
-      objectTerm,
     });
   }
 
@@ -543,7 +530,6 @@ export function mapQuadsToDiagram(
     if (!nodeMap.has(normalized.subject)) continue;
 
     const entry = nodeMap.get(normalized.subject)!;
-    const predicateTerm = (quad as { predicate?: TermLike }).predicate ?? null;
     const objectTerm = (quad as { object?: TermLike }).object ?? null;
     const value = termValue(objectTerm) ?? "";
 
@@ -557,16 +543,12 @@ export function mapQuadsToDiagram(
       entry.annotationProperties.push({
         property: normalized.predicate,
         value: literal.value,
-        predicateTerm,
-        objectTerm,
         ...(literal.type ? { type: literal.type } : {}),
       });
     } else {
       entry.annotationProperties.push({
         property: normalized.predicate,
         value,
-        predicateTerm,
-        objectTerm,
       });
     }
   }
@@ -579,7 +561,7 @@ export function mapQuadsToDiagram(
       primaryTypeIri = String(info.rdfTypes[0]);
     }
     let classType: string | undefined = undefined;
-    const typesArr = Array.isArray(info.rdfTypes) ? info.rdfTypes.map(String) : [];
+    const typesArr = info.rdfTypes || [];
     if (typesArr.includes(OWL_NAMED_INDIVIDUAL)) {
       classType = typesArr.find((t) => t !== OWL_NAMED_INDIVIDUAL) ?? primaryTypeIri;
     } else {
@@ -606,7 +588,7 @@ export function mapQuadsToDiagram(
       iri,
       titleIri: iri,
       primaryTypeIri,
-      rdfTypes: Array.isArray(info.rdfTypes) ? info.rdfTypes.map(String) : [],
+      rdfTypes: info.rdfTypes || [],
       label: info.label || iri,
       displayPrefixed: safeToPrefixed(iri, options?.registry),
       displayShort: shortLocalName(iri),
@@ -614,32 +596,7 @@ export function mapQuadsToDiagram(
       namespace,
       classType,
       color: nodeColor || undefined,
-      properties: [
-        ...(Array.isArray(info.literalProperties)
-          ? info.literalProperties.map((lp: any) => {
-              const propertyId =
-                typeof lp?.key === "string"
-                  ? lp.key
-                  : typeof lp?.property === "string"
-                  ? lp.property
-                  : typeof lp?.propertyUri === "string"
-                  ? lp.propertyUri
-                  : "";
-              return { property: propertyId, value: lp?.value };
-            })
-          : []),
-        ...(Array.isArray(info.annotationProperties)
-          ? (info.annotationProperties as any[]).map((ap) => {
-              const propertyId =
-                typeof ap?.property === "string"
-                  ? ap.property
-                  : typeof ap?.propertyUri === "string"
-                  ? ap.propertyUri
-                  : "";
-              return { property: propertyId, value: ap?.value };
-            })
-          : []),
-      ],
+      // Memory optimized: properties array removed (was triplicating data)
       literalProperties: info.literalProperties || [],
       annotationProperties: info.annotationProperties || [],
       inferredProperties: info.inferredProperties || [],
@@ -718,6 +675,10 @@ export function mapQuadsToDiagram(
       } as LinkData;
     });
   }
+
+  // Memory optimization: clear arrays to allow garbage collection
+  dataQuads.length = 0;
+  inferredQuads.length = 0;
 
   return { nodes: rfNodes, edges: rfEdgesFiltered };
 }
