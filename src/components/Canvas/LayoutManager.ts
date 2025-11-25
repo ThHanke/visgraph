@@ -1,4 +1,6 @@
-export type LayoutType = 'horizontal' | 'vertical';
+import { ELK_ALGORITHMS } from './layout/elkLayoutConfig';
+
+export type LayoutType = 'horizontal' | 'vertical' | 'elk-layered' | 'elk-force' | 'elk-stress';
 
 export interface LayoutOptions {
   animationDuration?: number;
@@ -50,8 +52,8 @@ export class LayoutManager {
 
   // Return a conservative set of supported layouts for the UI
   getAvailableLayouts(): LayoutConfig[] {
-    // Reduced set: provide two explicit dagre-driven layouts exposed to the UI.
-    return [
+    // Dagre layouts (existing)
+    const dagreLayouts: LayoutConfig[] = [
       {
         type: 'horizontal',
         label: 'Horizontal (Dagre)',
@@ -65,6 +67,16 @@ export class LayoutManager {
         icon: 'TreePine',
       },
     ];
+
+    // ELK layouts (new)
+    const elkLayouts: LayoutConfig[] = Object.entries(ELK_ALGORITHMS).map(([key, config]: [string, any]) => ({
+      type: `elk-${key}` as LayoutType,
+      label: config.label,
+      description: config.description,
+      icon: config.icon,
+    }));
+
+    return [...dagreLayouts, ...elkLayouts];
   }
 
   suggestOptimalLayout(): LayoutType {
@@ -271,6 +283,32 @@ export class LayoutManager {
           return (positioned || []).map((n: any) => ({ id: String(n.id), type: "position", position: n.position }));
         } catch (err) {
           // swallow dagre/layout failures and continue to fallback grid layout
+        }
+      }
+
+      // Handle ELK-driven layouts when nodes array available
+      if (Array.isArray(diagramNodes) && layoutType.startsWith('elk-')) {
+        try {
+          const { applyElkLayout } = await import('./layout/elkLayout');
+          // Extract algorithm name from layout type (e.g., 'elk-layered' -> 'layered')
+          const algorithm = layoutType.replace('elk-', '');
+          const spacing = options.nodeSpacing ?? (options.layoutSpecific && options.layoutSpecific.spacing) ?? 120;
+
+          const positioned = await applyElkLayout(
+            diagramNodes,
+            diagramEdges || [],
+            {
+              algorithm,
+              spacing,
+            },
+            context?.manualMeasurements
+          );
+
+          // Return position change objects (caller will apply them via applyNodeChanges)
+          return (positioned || []).map((n: any) => ({ id: String(n.id), type: "position", position: n.position }));
+        } catch (err) {
+          console.error('ELK layout failed:', err);
+          // swallow elk/layout failures and continue to fallback grid layout
         }
       }
 
