@@ -1553,7 +1553,11 @@ const KnowledgeCanvas: React.FC = () => {
       const runStart = Date.now();
 
       try {
-        const result: ReasoningResult | null = await (mgr as any).runReasoning();
+        // Get configured rulesets from app config
+        const cfg = useAppConfigStore.getState().config;
+        const rulesets = Array.isArray(cfg?.reasoningRulesets) ? cfg.reasoningRulesets : [];
+        
+        const result: ReasoningResult | null = await (mgr as any).runReasoning({ rulesets });
         if (result) {
           setCurrentReasoning(result);
           setReasoningHistory((prev) => [result, ...prev].slice(0, 10));

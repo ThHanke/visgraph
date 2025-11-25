@@ -30,18 +30,17 @@ const InferredTriplesTable = () => {
 
   // Fetch the page items lazily from the rdfManager's indexed API
   const fetchPage = useCallback(async (p: number, ps: number) => {
+    setLoading(true);
     try {
-      setLoading(true);
-      try {
-        const offset = Math.max(0, (p - 1) * ps);
-        const res = await rdfManager.fetchQuadsPage('urn:vg:inferred', offset, ps, { serialize: true });
-        setTotal(res && typeof res.total === 'number' ? res.total : 0);
-        setPageItems(Array.isArray(res.items) ? res.items : []);
-      } catch (innerErr) {
-        console.error("rdfManager.fetchQuadsPage failed", innerErr);
-        setPageItems([]);
-        setTotal(0);
-      }
+      const offset = Math.max(0, (p - 1) * ps);
+      const res = await rdfManager.fetchQuadsPage({
+        graphName: 'urn:vg:inferred',
+        offset,
+        limit: ps,
+        serialize: true
+      });
+      setTotal(res && typeof res.total === 'number' ? res.total : 0);
+      setPageItems(Array.isArray(res.items) ? res.items : []);
     } catch (e) {
       console.error("Failed to fetch inferred triples page", e);
       setPageItems([]);

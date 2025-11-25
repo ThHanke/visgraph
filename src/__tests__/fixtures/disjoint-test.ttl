@@ -1,0 +1,86 @@
+@prefix : <http://example.org/test#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+# Ontology Declaration
+: a owl:Ontology ;
+    rdfs:label "Disjoint Class Test Ontology" .
+
+# Class Definitions
+:Vehicle a owl:Class ;
+    rdfs:label "Vehicle" ;
+    rdfs:comment "Any type of vehicle" .
+
+:Person a owl:Class ;
+    rdfs:label "Person" ;
+    rdfs:comment "A human being" .
+
+:Building a owl:Class ;
+    rdfs:label "Building" ;
+    rdfs:comment "A physical structure" .
+
+:Animal a owl:Class ;
+    rdfs:label "Animal" ;
+    rdfs:comment "A living animal" .
+
+# Declare Disjoint Classes
+:Vehicle owl:disjointWith :Person, :Building, :Animal .
+:Person owl:disjointWith :Vehicle, :Building, :Animal .
+:Building owl:disjointWith :Vehicle, :Person, :Animal .
+:Animal owl:disjointWith :Vehicle, :Person, :Building .
+
+# Subclasses for more interesting tests
+:Car a owl:Class ;
+    rdfs:subClassOf :Vehicle ;
+    rdfs:label "Car" .
+
+:Bicycle a owl:Class ;
+    rdfs:subClassOf :Vehicle ;
+    rdfs:label "Bicycle" .
+
+:Dog a owl:Class ;
+    rdfs:subClassOf :Animal ;
+    rdfs:label "Dog" .
+
+:Cat a owl:Class ;
+    rdfs:subClassOf :Animal ;
+    rdfs:label "Cat" .
+
+# Valid Individuals (no violations)
+:myBike a :Bicycle ;
+    rdfs:label "My Bicycle" ;
+    rdfs:comment "A valid individual - only one type" .
+
+:johnDoe a :Person ;
+    rdfs:label "John Doe" ;
+    rdfs:comment "A valid person - only one type" .
+
+:myHouse a :Building ;
+    rdfs:label "My House" ;
+    rdfs:comment "A valid building - only one type" .
+
+# INVALID: Individual with disjoint classes (SHOULD TRIGGER VIOLATION)
+:confusedEntity a :Vehicle, :Person ;
+    rdfs:label "Confused Entity" ;
+    rdfs:comment "INVALID: This is both a Vehicle and a Person (disjoint classes!)" .
+
+# INVALID: Another disjoint violation
+:strangeObject a :Building, :Animal ;
+    rdfs:label "Strange Object" ;
+    rdfs:comment "INVALID: This is both a Building and an Animal (disjoint classes!)" .
+
+# INVALID: Three-way violation
+:impossibleThing a :Vehicle, :Person, :Animal ;
+    rdfs:label "Impossible Thing" ;
+    rdfs:comment "INVALID: This violates multiple disjoint constraints" .
+
+# Additional individuals for testing
+:myCar a :Car ;
+    rdfs:label "My Car" ;
+    rdfs:comment "Valid - subclass of Vehicle" .
+
+:myDog a :Dog ;
+    rdfs:label "My Dog" ;
+    rdfs:comment "Valid - subclass of Animal" .

@@ -1,5 +1,34 @@
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-@prefix dct: <http://purl.org/dc/terms/> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
 
+# Best Practice: Detect disjoint class violations
+# An individual cannot be an instance of two classes that are declared disjoint
+# Rule 1: Check ?class1 owl:disjointWith ?class2
+{
+  ?individual rdf:type ?class1 .
+  ?individual rdf:type ?class2 .
+  ?class1 owl:disjointWith ?class2 .
+}
+=>
+{
+  _:validation a sh:ValidationResult ;
+    sh:focusNode ?individual ;
+    sh:resultMessage "Individual is member of disjoint classes" ;
+    sh:resultSeverity sh:Violation .
+} .
+
+# Rule 2: Check the reverse direction ?class2 owl:disjointWith ?class1
+{
+  ?individual rdf:type ?class1 .
+  ?individual rdf:type ?class2 .
+  ?class2 owl:disjointWith ?class1 .
+}
+=>
+{
+  _:validation a sh:ValidationResult ;
+    sh:focusNode ?individual ;
+    sh:resultMessage "Individual is member of disjoint classes" ;
+    sh:resultSeverity sh:Violation .
+} .

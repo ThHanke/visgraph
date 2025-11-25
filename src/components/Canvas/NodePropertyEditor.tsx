@@ -269,6 +269,39 @@ export const NodePropertyEditor = ({
     initialPropertiesRef.current = normalizedProps.map(cloneLiteralProperty);
   }, [open, nodeData]);
 
+  // Handlers for RDF types
+  const handleAddType = (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setRdfTypesState((prev) => [...prev, ""]);
+  };
+
+  const handleRemoveType = (index: number, e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setRdfTypesState((prev) => {
+      const updated = prev.filter((_, i) => i !== index);
+      // Update nodeType to be the first type if we removed the current nodeType
+      if (updated.length > 0 && nodeType === prev[index]) {
+        setNodeType(updated[0]);
+      } else if (updated.length === 0) {
+        setNodeType("");
+      }
+      return updated;
+    });
+  };
+
+  const handleUpdateType = (index: number, value: string) => {
+    setRdfTypesState((prev) => {
+      const updated = prev.map((t, i) => (i === index ? value : t));
+      // Sync nodeType with the first type
+      if (index === 0) {
+        setNodeType(value);
+      }
+      return updated;
+    });
+  };
+
   // Handlers for properties
   const handleAddProperty = (e?: React.MouseEvent) => {
     e?.preventDefault();
@@ -673,6 +706,45 @@ export const NodePropertyEditor = ({
               onChange={(e) => setNodeIri(e.target.value)}
               placeholder="https://example.com/entity"
             />
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label>RDF Types (rdf:type assertions)</Label>
+              <Button type="button" variant="outline" size="sm" onClick={(e) => handleAddType(e)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Type
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              {rdfTypesState.map((type, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <EntityAutoComplete
+                    mode="classes"
+                    optionsLimit={5}
+                    value={type}
+                    onChange={(ent: any) => handleUpdateType(index, ent ? String(ent.iri || '') : '')}
+                    placeholder="Type to search for classes..."
+                    emptyMessage="No OWL classes found. Load an ontology first."
+                    className="flex-1"
+                  />
+                  <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveType(index, e)} className="h-9 px-2">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+
+              {rdfTypesState.length === 0 && (
+                <div className="text-center py-4 text-muted-foreground border-2 border-dashed border-border/20 rounded-lg">
+                  <p className="text-sm">No RDF types assigned</p>
+                  <p className="text-xs">Click "Add Type" to assign type(s) to this individual</p>
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Multiple types can trigger disjoint class violation warnings if classes are declared disjoint.
+            </p>
           </div>
 
           <div className="space-y-4">

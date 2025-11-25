@@ -1701,7 +1701,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
                 subject: subjectTermToString(q.subject),
                 predicate: termToString(q.predicate),
                 object: termToString(q.object),
-                graph: q.graph && q.graph.value ? String(q.graph.value) : graphName,
+                graph: q.graph && q.graph.value ? String(q.graph.value) : "default",
               }))
             : slice.map((q: Quad) => serializeQuad(q));
           result = { total, offset, limit, items, serialize: shouldSerialize };
@@ -2053,33 +2053,6 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           });
         }
       }
-    } else if (parser) {
-      const defaultNames = ["best-practice.n3", "owl-rl.n3"];
-      for (const name of defaultNames) {
-        try {
-          const text = await fetchRuleText(name);
-          if (text && text.trim()) {
-            const quads = parser.parse(text);
-            if (Array.isArray(quads) && quads.length > 0) {
-              parsedRules.push(...quads);
-              ruleDiagnostics.push({ name, quadCount: quads.length });
-              reasoningStage({
-                type: "reasoningStage",
-                id: msg.id,
-                stage: "default-rules-parsed",
-                meta: { name, quadCount: quads.length },
-              });
-            }
-          }
-        } catch (err) {
-          reasoningStage({
-            type: "reasoningStage",
-            id: msg.id,
-            stage: "default-rules-error",
-            meta: { name, error: String((err as Error).message || err) },
-          });
-        }
-      }
     }
 
     try {
@@ -2160,6 +2133,12 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
     }
 
     const capturedInsertions = captureReasonerInsertions();
+
+    console.debug("[VG_REASONING_WORKER] captured insertions summary", {
+      id: msg.id,
+      capturedCount: capturedInsertions.length,
+      usedReasoner,
+    });
 
     if (!usedReasoner) {
       reasoningStage({
@@ -2274,13 +2253,13 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             }
           }
           try {
-            insertedIntoShared =
-              sharedStoreRef.addQuad(
-                subjectTerm,
-                predicateTerm,
-                objectTerm,
-                inferredGraphTerm,
-              ) !== false;
+            const inferredQuad = DataFactory.quad(
+              subjectTerm,
+              predicateTerm,
+              objectTerm,
+              inferredGraphTerm,
+            );
+            insertedIntoShared = sharedStoreRef.addQuad(inferredQuad) !== false;
           } catch (_) {
             insertedIntoShared = false;
           }

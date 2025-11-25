@@ -234,6 +234,14 @@ export function mapQuadsToDiagram(
   const XSD_STRING = "http://www.w3.org/2001/XMLSchema#string";
   const OWL_NAMED_INDIVIDUAL = "http://www.w3.org/2002/07/owl#NamedIndividual";
   const OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
+  
+  // SHACL validation predicates
+  const SH_VALIDATION_RESULT = "http://www.w3.org/ns/shacl#ValidationResult";
+  const SH_FOCUS_NODE = "http://www.w3.org/ns/shacl#focusNode";
+  const SH_RESULT_MESSAGE = "http://www.w3.org/ns/shacl#resultMessage";
+  const SH_RESULT_SEVERITY = "http://www.w3.org/ns/shacl#resultSeverity";
+  const SH_VIOLATION = "http://www.w3.org/ns/shacl#Violation";
+  const SH_WARNING = "http://www.w3.org/ns/shacl#Warning";
 
   // Whitelist of rdf:type IRIs that we treat as TBox (schema-level) entities.
   // Per request: only explicit declared types from this list are considered TBox.
@@ -318,6 +326,56 @@ export function mapQuadsToDiagram(
       typesBySubject.set(subjectId, new Set<string>());
     }
     typesBySubject.get(subjectId)!.add(objectId);
+  }
+
+  // Pre-scan for SHACL validation results and extract errors/warnings per focusNode
+  const reasoningErrorsByNode = new Map<string, string[]>();
+  const reasoningWarningsByNode = new Map<string, string[]>();
+  
+  // Find all sh:ValidationResult individuals
+  const validationResults = new Set<string>();
+  for (const quad of [...dataQuads, ...inferredQuads]) {
+    const normalized = normalizedByRef.get(quad) ?? coerceQuad(quad);
+    if (!normalized) continue;
+    if (normalized.predicate === RDF_TYPE && normalized.object === SH_VALIDATION_RESULT) {
+      validationResults.add(normalized.subject);
+    }
+  }
+
+  // For each validation result, extract focusNode, message, and severity
+  for (const validationIri of validationResults) {
+    let focusNode: string | null = null;
+    let message: string | null = null;
+    let severity: string | null = null;
+
+    for (const quad of [...dataQuads, ...inferredQuads]) {
+      const normalized = normalizedByRef.get(quad) ?? coerceQuad(quad);
+      if (!normalized || normalized.subject !== validationIri) continue;
+
+      if (normalized.predicate === SH_FOCUS_NODE) {
+        focusNode = normalized.object;
+      } else if (normalized.predicate === SH_RESULT_MESSAGE) {
+        const objectTerm = (quad as { object?: TermLike }).object ?? null;
+        message = termValue(objectTerm);
+      } else if (normalized.predicate === SH_RESULT_SEVERITY) {
+        severity = normalized.object;
+      }
+    }
+
+    // Add to appropriate map based on severity
+    if (focusNode && message) {
+      if (severity === SH_VIOLATION) {
+        if (!reasoningErrorsByNode.has(focusNode)) {
+          reasoningErrorsByNode.set(focusNode, []);
+        }
+        reasoningErrorsByNode.get(focusNode)!.push(message);
+      } else if (severity === SH_WARNING) {
+        if (!reasoningWarningsByNode.has(focusNode)) {
+          reasoningWarningsByNode.set(focusNode, []);
+        }
+        reasoningWarningsByNode.get(focusNode)!.push(message);
+      }
+    }
   }
 
   const propertyLabelByIri = new Map<string, string>();
@@ -583,6 +641,10 @@ export function mapQuadsToDiagram(
       });
     }
 
+    // Get reasoning errors/warnings for this node
+    const reasoningErrors = reasoningErrorsByNode.get(iri) || [];
+    const reasoningWarnings = reasoningWarningsByNode.get(iri) || [];
+
     const nodeData: NodeData & any = {
       key: iri,
       iri,
@@ -600,8 +662,11 @@ export function mapQuadsToDiagram(
       literalProperties: info.literalProperties || [],
       annotationProperties: info.annotationProperties || [],
       inferredProperties: info.inferredProperties || [],
+      reasoningErrors,
+      reasoningWarnings,
       visible: true,
-      hasReasoningError: false,
+      hasReasoningError: reasoningErrors.length > 0,
+      hasReasoningWarning: reasoningWarnings.length > 0,
       isTBox: !!isTBox,
     };
 
