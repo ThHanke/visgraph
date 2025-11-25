@@ -252,7 +252,10 @@ export async function applyDiagramChangeChunked(
   setEdges: (updater: any) => void,
   canvasActions?: { setLoading: (loading: boolean, progress: number, message: string) => void },
   yieldFn: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+  suppressLayoutFn?: (suppress: boolean) => void,
 ): Promise<void> {
+  // Signal to suppress layout during chunked update
+  if (suppressLayoutFn) suppressLayoutFn(true);
   const totalNodes = nodesList.length;
 
   // Show progress for large updates
@@ -291,10 +294,14 @@ export async function applyDiagramChangeChunked(
   if (totalNodes > 500 && canvasActions) {
     canvasActions.setLoading(false, 0, '');
   }
+
+  // Re-enable layout after all chunks complete
+  if (suppressLayoutFn) suppressLayoutFn(false);
 }
 
 /**
  * Main entry point: decides between immediate or chunked apply
+ * Returns true if chunking was used (caller should defer layout)
  */
 export async function applyDiagramChangeSmart(
   nodesList: RFNode<NodeData>[],
@@ -304,7 +311,8 @@ export async function applyDiagramChangeSmart(
   setEdges: (updater: any) => void,
   canvasActions?: { setLoading: (loading: boolean, progress: number, message: string) => void },
   yieldFn?: (ms: number) => Promise<void>,
-): Promise<void> {
+  suppressLayoutFn?: (suppress: boolean) => void,
+): Promise<boolean> {
   // Small updates: apply immediately (fast path)
   if (nodesList.length < CHUNK_THRESHOLD) {
     setNodes((prev: RFNode<NodeData>[]) => {
@@ -351,7 +359,7 @@ export async function applyDiagramChangeSmart(
       return applyBidirectionalOffsets(newEdgeState);
     });
 
-    return;
+    return false; // No chunking used
   }
 
   // Large updates: use chunked processing
@@ -363,5 +371,8 @@ export async function applyDiagramChangeSmart(
     setEdges,
     canvasActions,
     yieldFn,
+    suppressLayoutFn,
   );
+
+  return true; // Chunking was used
 }

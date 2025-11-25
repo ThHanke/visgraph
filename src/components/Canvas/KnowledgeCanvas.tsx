@@ -516,6 +516,8 @@ const KnowledgeCanvas: React.FC = () => {
   const lastLayoutMetaRef = useRef<Record<string, unknown> | null>(null);
   // Track which views have been laid out so we know when to clear the pending flag
   const layoutedViewsRef = useRef<Set<'abox' | 'tbox'>>(new Set());
+  // Suppress layout during chunked updates
+  const suppressLayoutDuringChunksRef = useRef<boolean>(false);
 
   // Keep refs in sync with state so other callbacks can read the latest snapshot synchronously.
 
@@ -527,6 +529,11 @@ const KnowledgeCanvas: React.FC = () => {
       force = false,
       layoutTypeOverride?: string,
     ) => {
+      // Skip layout if suppressed during chunked update
+      if (suppressLayoutDuringChunksRef.current && !force) {
+        return;
+      }
+
       if (!force && (!layoutEnabled || !(config && config.autoApplyLayout)))
         return;
       if (layoutInProgressRef.current) {
@@ -2460,7 +2467,12 @@ const KnowledgeCanvas: React.FC = () => {
       // Create yield function that returns a Promise
       const yieldFn = (ms: number) => new Promise<void>((resolve) => setTrackedTimeout(resolve, ms));
 
-      await applyDiagramChangeSmart(
+      // Pass suppressLayout function to helper
+      const suppressLayoutFn = (suppress: boolean) => {
+        suppressLayoutDuringChunksRef.current = suppress;
+      };
+
+      const wasChunked = await applyDiagramChangeSmart(
         nodesList,
         edgesList,
         updatedSubjects,
@@ -2468,7 +2480,14 @@ const KnowledgeCanvas: React.FC = () => {
         setEdges,
         canvasActions,
         yieldFn,
+        suppressLayoutFn,
       );
+
+      // After chunked update completes, trigger layout once if it was pending
+      if (wasChunked && (layoutPendingRef.current || forceLayoutNextMappingRef.current)) {
+        // Yield to allow React Flow to process all node changes first
+        await new Promise<void>((resolve) => setTrackedTimeout(resolve, 50));
+      }
     },
     [setNodes, setEdges, canvasActions, setTrackedTimeout],
   );
