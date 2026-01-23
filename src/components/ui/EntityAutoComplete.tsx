@@ -74,36 +74,17 @@ export default function EntityAutoComplete({
     setOpen(Boolean(autoOpen));
   }, [autoOpen]);
 
-  // Ensure the in-field display reflects the selected entity's prefixed value on init
-  // and whenever the resolved selectedEntity or value changes — but only when the user
-  // is not actively typing (query is empty).
+  // Display the value using toPrefixed (which returns full IRI as fallback).
+  // The fat-map is only used for searching/matching, not for display.
   useEffect(() => {
-    try {
-      if (String(query || "").trim() !== "") return;
+    if (String(query || "").trim() !== "") return;
 
-      if (value) {
-        if (selectedEntity && selectedEntity.prefixed && String(selectedEntity.prefixed).trim()) {
-          setInitialDisplay(String(selectedEntity.prefixed));
-          return;
-        }
-
-        try {
-          const computed = toPrefixed(String(value));
-          // Only accept computed prefixed if it is non-empty and not the same as the input IRI.
-          if (computed && String(computed).trim() !== "" && String(computed) !== String(value)) {
-            setInitialDisplay(String(computed));
-            return;
-          }
-        } catch (_) {
-          // toPrefixed may throw if registry missing; ignore and fall through to clearing display.
-        }
-      }
-
-      setInitialDisplay("");
-    } catch (_) {
+    if (value) {
+      setInitialDisplay(toPrefixed(String(value)));
+    } else {
       setInitialDisplay("");
     }
-  }, [value, selectedEntity, query]);
+  }, [value, query]);
 
   // Build filtered list based on query; match against label, prefixed, computed prefixed, and iri
   // IMPORTANT: do not show any suggestions when the query is empty — suggestions are shown only

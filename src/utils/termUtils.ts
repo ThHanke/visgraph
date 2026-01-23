@@ -275,6 +275,17 @@ export function toPrefixed(
   if (target.startsWith("_:")) return target;
   const entry = findRegistryEntryForIri(target, registryInput);
   if (!entry) return target;
+
+  // Check if this is an exact match (entity-specific prefix, not a namespace base)
+  // If the namespace exactly matches the IRI, return just the prefix with colon
+  if (entry.namespace === target) {
+    const prefix = entry.prefix ?? "";
+    if (!prefix || prefix === ":") {
+      return `:`;
+    }
+    return `${prefix}:`;
+  }
+
   const local =
     target.startsWith(entry.namespace) && entry.namespace.length < target.length
       ? target.slice(entry.namespace.length)
@@ -368,20 +379,27 @@ export function computeTermDisplay(
     availableClasses.find((entry) => entry.iri === iri);
 
   if (!fatMatch) {
+    const prefixed = toPrefixed(iri, options?.registry);
     const local = shortLocalName(iri);
+    // For entity-specific prefixes (ending with :), use that as the label
+    const label = prefixed.endsWith(':') ? prefixed : local;
     return {
       iri,
-      prefixed: toPrefixed(iri, options?.registry),
+      prefixed,
       short: local,
-      tooltipLines: [local],
+      tooltipLines: [label],
       color: undefined,
-      label: local,
+      label,
       labelSource: "computed",
     };
   }
 
-  const label = fatMatch.label ?? shortLocalName(iri);
   const prefixed = toPrefixed(iri, options?.registry);
+  // For entity-specific prefixes (ending with :), use that as the label
+  // Otherwise use the fat-map label or fall back to short local name
+  const label = prefixed.endsWith(':')
+    ? prefixed
+    : (fatMatch.label ?? shortLocalName(iri));
   const namespaceEntry =
     namespaceRegistry.find(
       (entry) => entry.namespace === fatMatch.namespace,

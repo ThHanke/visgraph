@@ -452,31 +452,49 @@ export function mapQuadsToDiagram(
     if (predicateIri === RDFS_LABEL && isLiteral(objectTerm)) {
       const { value, type } = resolveLiteral(objectTerm, XSD_STRING);
       if (value) entry.label = value;
-      entry.annotationProperties.push({
-        property: predicateIri,
-        value,
-        ...(type ? { type } : {}),
-      });
+      // Check for duplicate before adding
+      const isDuplicate = entry.annotationProperties.some(
+        (ap) => ap.property === predicateIri && ap.value === value
+      );
+      if (!isDuplicate) {
+        entry.annotationProperties.push({
+          property: predicateIri,
+          value,
+          ...(type ? { type } : {}),
+        });
+      }
       continue;
     }
 
     if (predicateKindLocal === "annotation") {
       const literal = resolveLiteral(objectTerm, XSD_STRING);
-      entry.annotationProperties.push({
-        property: predicateIri,
-        value: literal.value,
-        ...(literal.type ? { type: literal.type } : {}),
-      });
+      // Check for duplicate before adding
+      const isDuplicate = entry.annotationProperties.some(
+        (ap) => ap.property === predicateIri && ap.value === literal.value
+      );
+      if (!isDuplicate) {
+        entry.annotationProperties.push({
+          property: predicateIri,
+          value: literal.value,
+          ...(literal.type ? { type: literal.type } : {}),
+        });
+      }
       continue;
     }
 
     if (isLiteral(objectTerm)) {
       const literal = resolveLiteral(objectTerm, XSD_STRING);
-      entry.annotationProperties.push({
-        property: predicateIri,
-        value: literal.value,
-        ...(literal.type ? { type: literal.type } : {}),
-      });
+      // Check for duplicate before adding
+      const isDuplicate = entry.annotationProperties.some(
+        (ap) => ap.property === predicateIri && ap.value === literal.value
+      );
+      if (!isDuplicate) {
+        entry.annotationProperties.push({
+          property: predicateIri,
+          value: literal.value,
+          ...(literal.type ? { type: literal.type } : {}),
+        });
+      }
       continue;
     }
 
@@ -645,6 +663,19 @@ export function mapQuadsToDiagram(
     const reasoningErrors = reasoningErrorsByNode.get(iri) || [];
     const reasoningWarnings = reasoningWarningsByNode.get(iri) || [];
 
+    // Merge literalProperties and annotationProperties into the properties field
+    // that RDFNode.tsx expects for display
+    const mergedProperties: Array<{ property: string; value: any }> = [
+      ...(info.literalProperties || []).map((lit) => ({
+        property: lit.key || "",
+        value: lit.value,
+      })),
+      ...(info.annotationProperties || []).map((ann) => ({
+        property: ann.property,
+        value: ann.value,
+      })),
+    ];
+
     const nodeData: NodeData & any = {
       key: iri,
       iri,
@@ -658,7 +689,8 @@ export function mapQuadsToDiagram(
       namespace,
       classType,
       color: nodeColor || undefined,
-      // Memory optimized: properties array removed (was triplicating data)
+      // Merged properties for display in RDFNode component
+      properties: mergedProperties,
       literalProperties: info.literalProperties || [],
       annotationProperties: info.annotationProperties || [],
       inferredProperties: info.inferredProperties || [],

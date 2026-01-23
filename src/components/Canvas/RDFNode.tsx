@@ -74,17 +74,17 @@ function RDFNodeImpl(props: NodeProps) {
 
     let computedHeader = headerCandidate;
     let computedBadge = badgeCandidate;
-    if (!computedHeader || !computedBadge) {
+    if (!computedHeader) {
       if (typeof iri === "string" && iri.trim().length > 0) {
         try {
           const display = computeTermDisplay(iri);
-          if (!computedHeader) computedHeader = display.prefixed || display.short || display.iri;
-          if (!computedBadge) computedBadge = display.label ?? display.short;
+          computedHeader = display.prefixed || display.short || display.iri;
         } catch {
           // Safe fallback: keep provided values if normalization fails, render remains stable.
         }
       }
     }
+    // Badge should only show the type - don't derive it from the node IRI
 
     return {
       badgeText: computedBadge ?? "",
