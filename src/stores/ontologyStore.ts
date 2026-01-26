@@ -14,6 +14,7 @@ import { WELL_KNOWN } from "../utils/wellKnownOntologies";
 import { DataFactory, Quad } from "n3";
 import { toast } from "sonner";
 import { buildPaletteMap } from "../components/Canvas/core/namespacePalette";
+import { RDF_TYPE, RDFS_LABEL, OWL_ONTOLOGY, OWL_IMPORTS } from "../constants/vocabularies";
 import {
   ensureDefaultRegistry,
   DEFAULT_NAMESPACE_ENTRY,
@@ -616,8 +617,7 @@ async function persistFatMapUpdates(
 
     try {
       if (mgr && typeof (mgr as any).fetchQuadsPage === "function") {
-        const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-        const OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
+        // Use imported constants from vocabularies.ts
         const ontologyTypeQuads = await fetchSerializedQuads(
           mgr,
           "urn:vg:ontologies",
@@ -1645,12 +1645,12 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         dataGraphSubjects.add(subj);
       }
 
-      if (pred === "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" || /rdf:type$/i.test(pred)) {
+      if (pred === RDF_TYPE || /rdf:type$/i.test(pred)) {
         parsedTypesBySubject[subj] = parsedTypesBySubject[subj] || new Set<any>();
         parsedTypesBySubject[subj].add(objTerm);
       }
 
-      if (pred === "http://www.w3.org/2000/01/rdf-schema#label" || /rdfs:label$/i.test(pred)) {
+      if (pred === RDFS_LABEL || /rdfs:label$/i.test(pred)) {
         if (objTerm && typeof (objTerm as any).value === "string") parsedLabelBySubject[subj] = String((objTerm as any).value);
         else if (typeof objTerm === "string") parsedLabelBySubject[subj] = String(objTerm);
       }
@@ -1908,9 +1908,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       throw new Error("discoverReferencedOntologies: rdf manager unavailable for worker fetch");
     }
 
-    const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-    const OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
-    const OWL_IMPORTS = "http://www.w3.org/2002/07/owl#imports";
+    // Use imported constants from vocabularies.ts
 
     const typeQuads = await fetchSerializedQuads(
       mgr,
@@ -2091,9 +2089,7 @@ async function buildFatMap(rdfMgr?: any): Promise<void> {
     return;
   }
 
-  const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-  const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
-  const OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
+  // Use imported constants from vocabularies.ts
   const namespaceIriCandidates = new Set<string>();
   const dataGraphSubjects = new Set<string>();
   const addCandidate = (value: string) => {

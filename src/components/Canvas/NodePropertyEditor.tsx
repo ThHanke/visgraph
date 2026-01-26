@@ -16,6 +16,7 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import { DataFactory } from "n3";
 const { namedNode, blankNode, literal } = DataFactory;
 import { useCanvasState } from "../../hooks/useCanvasState";
+import { RDF_TYPE, OWL_NAMED_INDIVIDUAL } from "../../constants/vocabularies";
 
 // Module-scoped counter for generated blank-node identifiers used when creating new nodes
 let __vg_blank_counter = 1;
@@ -404,9 +405,8 @@ export const NodePropertyEditor = ({
     const currentTypes = (Array.isArray(rdfTypesState) && rdfTypesState.length > 0) ? rdfTypesState.slice() : (nodeType ? [String(nodeType)] : []);
     // If requested by caller, add owl:NamedIndividual for create flows without pre-setting it in the UI.
     try {
-      const NI = "http://www.w3.org/2002/07/owl#NamedIndividual";
       if (isCreate && addNamedIndividualOnSave) {
-        if (!currentTypes.includes(NI)) currentTypes.push(NI);
+        if (!currentTypes.includes(OWL_NAMED_INDIVIDUAL)) currentTypes.push(OWL_NAMED_INDIVIDUAL);
       }
     } catch (_) { /* ignore */ }
     const initialTypes = Array.isArray(initialRdfTypesRef.current) ? initialRdfTypesRef.current.slice() : [];
@@ -464,7 +464,7 @@ export const NodePropertyEditor = ({
     }
 
     // rdf:type is well-known, just use the full IRI directly
-    const expandedRdfTypePred = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+    const expandedRdfTypePred = RDF_TYPE;
 
     const valueToTerm = (val: any, type?: string) => {
       try {

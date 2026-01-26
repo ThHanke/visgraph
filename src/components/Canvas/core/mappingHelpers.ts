@@ -7,6 +7,14 @@ import {
   getNodeColor,
 } from "../../../utils/termUtils";
 import type { NodeData, LinkData } from "../../../types/canvas";
+import {
+  RDF_TYPE,
+  RDFS_LABEL,
+  XSD_STRING,
+  OWL_NAMED_INDIVIDUAL,
+  OWL_ONTOLOGY,
+  SHACL,
+} from "../../../constants/vocabularies";
 
 /**
  * Lightweight, pure mapping helpers
@@ -229,19 +237,13 @@ export function mapQuadsToDiagram(
     }
   };
 
-  const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-  const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
-  const XSD_STRING = "http://www.w3.org/2001/XMLSchema#string";
-  const OWL_NAMED_INDIVIDUAL = "http://www.w3.org/2002/07/owl#NamedIndividual";
-  const OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
-  
-  // SHACL validation predicates
-  const SH_VALIDATION_RESULT = "http://www.w3.org/ns/shacl#ValidationResult";
-  const SH_FOCUS_NODE = "http://www.w3.org/ns/shacl#focusNode";
-  const SH_RESULT_MESSAGE = "http://www.w3.org/ns/shacl#resultMessage";
-  const SH_RESULT_SEVERITY = "http://www.w3.org/ns/shacl#resultSeverity";
-  const SH_VIOLATION = "http://www.w3.org/ns/shacl#Violation";
-  const SH_WARNING = "http://www.w3.org/ns/shacl#Warning";
+  // Use imported constants from vocabularies.ts
+  const SH_VALIDATION_RESULT = SHACL.ValidationResult;
+  const SH_FOCUS_NODE = SHACL.focusNode;
+  const SH_RESULT_MESSAGE = SHACL.resultMessage;
+  const SH_RESULT_SEVERITY = SHACL.resultSeverity;
+  const SH_VIOLATION = SHACL.Violation;
+  const SH_WARNING = SHACL.Warning;
 
   // Whitelist of rdf:type IRIs that we treat as TBox (schema-level) entities.
   // Per request: only explicit declared types from this list are considered TBox.
@@ -797,10 +799,7 @@ export function mapDiagramToQuads(
   edges: Array<LinkData | any> = []
 ): QuadLike[] {
   const quads: QuadLike[] = [];
-  const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-  const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
-  const XSD_STRING = "http://www.w3.org/2001/XMLSchema#string";
-
+  // Use imported constants from vocabularies.ts
   const nodeSources = Array.isArray(nodes) ? nodes : [];
   for (const node of nodeSources) {
     const src =

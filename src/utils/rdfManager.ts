@@ -11,7 +11,7 @@ export type {
   ReasoningWarning,
 } from "./reasoningTypes";
 
-import { RDFManagerImpl, enableN3StoreWriteLogging, collectGraphCountsFromStore } from "./rdfManager.impl";
+import { RDFManagerImpl } from "./rdfManager.impl";
 import { createRdfManagerWorkerClient } from "./rdfManager.workerClient";
 
 let sharedWorkerClient: ReturnType<typeof createRdfManagerWorkerClient> | null = null;
@@ -25,4 +25,4 @@ const getWorkerClient = () => {
 
 export const rdfManager = new RDFManagerImpl({ workerClient: getWorkerClient() });
 
-export { RDFManagerImpl as RDFManager, enableN3StoreWriteLogging, collectGraphCountsFromStore };
+export { RDFManagerImpl as RDFManager };

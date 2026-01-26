@@ -1081,34 +1081,3 @@ export class RDFManagerImpl {
     }
   }
 }
-
-export function enableN3StoreWriteLogging(enable: boolean = true) {
-  try {
-    (globalThis as any).__VG_RDF_WRITE_LOGGING_ENABLED = !!enable;
-    if (typeof window !== "undefined") {
-      (window as any).__VG_LOG_RDF_WRITES = !!enable;
-    }
-    return !!enable;
-  } catch (_) {
-    return false;
-  }
-}
-
-export function collectGraphCountsFromStore(store: any): Record<string, number> {
-  try {
-    if (!store || typeof store.getQuads !== "function") return {};
-    const quads = store.getQuads(null, null, null, null) || [];
-    const counts: Record<string, number> = {};
-    for (const q of quads) {
-      try {
-        const graphValue = q && q.graph && (q.graph as any).value ? String((q.graph as any).value) : "default";
-        counts[graphValue] = (counts[graphValue] || 0) + 1;
-      } catch (_) {
-        /* ignore */
-      }
-    }
-    return counts;
-  } catch (_) {
-    return {};
-  }
-}

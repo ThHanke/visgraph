@@ -22,10 +22,11 @@ import { deserializeQuad, deserializeTerm, serializeQuad } from "../utils/rdfSer
 import type { WorkerQuad } from "../utils/rdfSerialization.ts";
 import { WELL_KNOWN } from "../utils/wellKnownOntologies.ts";
 import { ensureDefaultNamespaceMap } from "../constants/namespaces.ts";
+import { RDF_TYPE, RDFS_LABEL, SHACL } from "../constants/vocabularies.ts";
 
 const BATCH_SIZE = 1000;
-const RDF_TYPE_IRI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-const RDFS_LABEL_IRI = "http://www.w3.org/2000/01/rdf-schema#label";
+const RDF_TYPE_IRI = RDF_TYPE;
+const RDFS_LABEL_IRI = RDFS_LABEL;
 
 /**
  * Create a graph term from a graph name string.
@@ -599,12 +600,12 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
   }
 
   function collectShaclResults(all: Quad[]): { warnings: ReasoningWarning[]; errors: ReasoningError[] } {
-    const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-    const SH_RESULT = "http://www.w3.org/ns/shacl#ValidationResult";
-    const SH_FOCUS = "http://www.w3.org/ns/shacl#focusNode";
-    const SH_MESSAGE = "http://www.w3.org/ns/shacl#resultMessage";
-    const SH_SEVERITY = "http://www.w3.org/ns/shacl#resultSeverity";
-    const SEVERITY_VIOLATION = "http://www.w3.org/ns/shacl#Violation";
+    // Use imported constants from vocabularies.ts
+    const SH_RESULT = SHACL.ValidationResult;
+    const SH_FOCUS = SHACL.focusNode;
+    const SH_MESSAGE = SHACL.resultMessage;
+    const SH_SEVERITY = SHACL.resultSeverity;
+    const SEVERITY_VIOLATION = SHACL.Violation;
 
     const bySubject = new Map<string, Quad[]>();
     for (const q of all) {
