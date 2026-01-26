@@ -403,6 +403,42 @@ interface LoadedOntology {
   loadError?: string;
 }
 
+/**
+ * Normalize a URI for consistent comparison and storage.
+ * Converts http:// to https://, parses URL if possible, otherwise trims and removes trailing slashes.
+ */
+function normalizeOntologyUri(u: string): string {
+  if (typeof u === "string" && u.trim().toLowerCase().startsWith("http://")) {
+    return u.trim().replace(/^http:\/\//i, "https://");
+  }
+  try {
+    return new URL(String(u)).toString();
+  } catch {
+    return String(u).trim().replace(/\/+$/, "");
+  }
+}
+
+/**
+ * Add a valid IRI candidate to a set if it matches the IRI pattern.
+ */
+function addIriCandidate(value: unknown, targetSet: Set<string>): void {
+  if (!value) return;
+  const trimmed = String(value).trim();
+  if (!trimmed) return;
+  if (/^[a-z][a-z0-9+.\-]*:/i.test(trimmed)) {
+    targetSet.add(trimmed);
+  }
+}
+
+/**
+ * Extract namespace from an IRI by matching up to the last # or /.
+ * Returns empty string if no namespace delimiter is found.
+ */
+function extractNamespace(iri: string | unknown): string {
+  const nsMatch = String(iri || "").match(/^(.*[\/#])/);
+  return nsMatch && nsMatch[1] ? String(nsMatch[1]) : "";
+}
+
 type LoadResult =
   | { success: true; url: string; canonicalUrl?: string }
   | { success: false; url: string; error: string };
@@ -571,17 +607,10 @@ async function persistFatMapUpdates(
         : {};
 
     const namespaceCandidates = new Set<string>();
-    const addNamespaceCandidate = (value: unknown) => {
-      if (typeof value !== "string") return;
-      const trimmed = value.trim();
-      if (!trimmed) return;
-      if (!/^[a-z][a-z0-9+.\-]*:/i.test(trimmed)) return;
-      namespaceCandidates.add(trimmed);
-    };
 
     if (iriCandidates && iriCandidates.size > 0) {
       for (const candidate of iriCandidates) {
-        addNamespaceCandidate(candidate);
+        addIriCandidate(candidate, namespaceCandidates);
       }
     }
 
@@ -598,7 +627,7 @@ async function persistFatMapUpdates(
           const object = quadEntry && quadEntry.object ? String(quadEntry.object) : "";
           if (object !== OWL_ONTOLOGY) continue;
           const subject = quadEntry && quadEntry.subject ? String(quadEntry.subject) : "";
-          addNamespaceCandidate(subject);
+          addIriCandidate(subject, namespaceCandidates);
         }
       }
     } catch (_) {
@@ -613,12 +642,12 @@ async function persistFatMapUpdates(
         for (const ontology of loadedOntologies || []) {
           if (!ontology || typeof ontology !== "object") continue;
           if (typeof (ontology as any).url === "string") {
-            addNamespaceCandidate((ontology as any).url);
+            addIriCandidate((ontology as any).url, namespaceCandidates);
           }
           const aliases = (ontology as any).aliases;
           if (Array.isArray(aliases)) {
             for (const alias of aliases) {
-              addNamespaceCandidate(alias);
+              addIriCandidate(alias, namespaceCandidates);
             }
           }
         }
@@ -881,21 +910,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       const { rdfManager: mgr } = get();
 
       // normalize requested URL (http -> https, trim)
-      const normRequestedUrl = (function (u: string) {
-        try {
-          const s = String(u).trim();
-          if (s.toLowerCase().startsWith("http://")) {
-            return s.replace(/^http:\/\//i, "https://");
-          }
-          try {
-            return new URL(s).toString();
-          } catch {
-            return s.replace(/\/+$/, "");
-          }
-        } catch (_) {
-          return String(u || "");
-        }
-      })(url);
+      const normRequestedUrl = normalizeOntologyUri(url);
       let canonicalNorm: string | undefined = undefined;
 
       // If well-known, register a lightweight entry so UI shows it immediately
@@ -1349,22 +1364,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     const { loadedOntologies } = get();
     const alreadyLoaded = new Set(loadedOntologies.map((o) => o.url));
 
-    function normalizeUri(u: string): string {
-      try {
-        if (
-          typeof u === "string" &&
-          u.trim().toLowerCase().startsWith("http://")
-        ) {
-          return u.trim().replace(/^http:\/\//i, "https://");
-        }
-        return new URL(String(u)).toString();
-      } catch {
-        return typeof u === "string"
-          ? String(u).trim().replace(/\/+$/, "")
-          : String(u);
-      }
-    }
-
     const appCfg = useAppConfigStore.getState();
     const disabled =
       appCfg &&
@@ -1372,13 +1371,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       Array.isArray(appCfg.config.disabledAdditionalOntologies)
         ? appCfg.config.disabledAdditionalOntologies
         : [];
-    const disabledNorm = new Set(disabled.map((d) => normalizeUri(d)));
+    const disabledNorm = new Set(disabled.map((d) => normalizeOntologyUri(d)));
     const alreadyLoadedNorm = new Set(
-      Array.from(alreadyLoaded).map((u) => normalizeUri(String(u))),
+      Array.from(alreadyLoaded).map((u) => normalizeOntologyUri(String(u))),
     );
 
     const toLoad = ontologyUris.filter((uri) => {
-      const norm = normalizeUri(uri);
+      const norm = normalizeOntologyUri(uri);
       return !alreadyLoadedNorm.has(norm) && !disabledNorm.has(norm);
     });
 
@@ -1393,7 +1392,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       const uri = toLoad[i];
       const wkEntry =
         WELL_KNOWN.ontologies[
-          normalizeUri(uri) as keyof typeof WELL_KNOWN.ontologies
+          normalizeOntologyUri(uri) as keyof typeof WELL_KNOWN.ontologies
         ];
       const ontologyName = wkEntry ? wkEntry.name : undefined;
 
@@ -1687,8 +1686,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       // Do not query the RDF manager for labels; prefer parsed label or default to the short local name.
       if (!label) label = shortLocalName(subjStr);
 
-      const nsMatch = String(subjStr || "").match(/^(.*[\/#])/);
-      const namespace = nsMatch && nsMatch[1] ? String(nsMatch[1]) : "";
+      const namespace = extractNamespace(subjStr);
       if (namespace && dataGraphSubjects.has(subjStr)) addCandidate(namespace);
 
       const isClass = typesNormalized.some((iri: string) => {
@@ -1767,8 +1765,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           : "";
       if (!label) label = shortLocalName(iri);
 
-      const nsMatch = iri.match(/^(.*[\/#])/);
-      const namespace = nsMatch && nsMatch[1] ? String(nsMatch[1]) : "";
+      const namespace = extractNamespace(iri);
       if (namespace) addCandidate(namespace);
 
       const isClass = typesNormalized.some((typeIri) => {
@@ -1956,29 +1953,18 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       }
     }
 
-    function normalizeUri(u: string): string {
-      if (typeof u === "string" && u.trim().toLowerCase().startsWith("http://")) {
-        return u.trim().replace(/^http:\/\//i, "https://");
-      }
-      try {
-        return new URL(String(u)).toString();
-      } catch {
-        return String(u).trim().replace(/\/+$/, "");
-      }
-    }
-
     const appCfg = useAppConfigStore.getState();
     const disabled =
       appCfg && appCfg.config && Array.isArray(appCfg.config.disabledAdditionalOntologies)
         ? appCfg.config.disabledAdditionalOntologies
         : [];
     const disabledNorm = new Set(
-      disabled.map((d) => normalizeUri(d).toLowerCase()),
+      disabled.map((d) => normalizeOntologyUri(d).toLowerCase()),
     );
 
     const loadedOntologies = get().loadedOntologies || [];
     const alreadyLoadedNorm = new Set(
-      (loadedOntologies || []).map((o: any) => normalizeUri(String(o.url)).toLowerCase()),
+      (loadedOntologies || []).map((o: any) => normalizeOntologyUri(String(o.url)).toLowerCase()),
     );
 
     const blacklistedPrefixes = [
@@ -1996,7 +1982,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
     const candidates: string[] = [];
     for (const raw of Array.from(candidateSet)) {
-      const norm = normalizeUri(raw);
+      const norm = normalizeOntologyUri(raw);
       if (!norm) continue;
       const normLower = norm.toLowerCase();
       if (!normLower.startsWith("http://") && !normLower.startsWith("https://")) continue;
@@ -2189,8 +2175,7 @@ async function buildFatMap(rdfMgr?: any): Promise<void> {
 
     const labelQuad = (quads || []).find((q) => q && q.predicate === RDFS_LABEL);
     const label = labelQuad ? String(labelQuad.object || "") : "";
-    const nsMatch = String(subject || "").match(/^(.*[\/#])/);
-    const namespace = nsMatch && nsMatch[1] ? String(nsMatch[1]) : "";
+    const namespace = extractNamespace(subject);
     if (namespace && dataGraphSubjects.has(String(subject))) addCandidate(namespace);
 
     if (isProp) {

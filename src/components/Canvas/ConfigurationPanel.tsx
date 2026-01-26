@@ -33,6 +33,7 @@ import { useOntologyStore } from '../../stores/ontologyStore';
 import { WELL_KNOWN } from '../../utils/wellKnownOntologies';
 import { fallback } from '../../utils/startupDebug';
 import { toast } from 'sonner';
+import { getRdfManager } from '../../utils/storeHelpers';
 
 
 
@@ -488,10 +489,10 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
                         setBlacklistEnabledLocal(val);
                         setBlacklistEnabled(val);
                         try {
-                          const mgr = useOntologyStore.getState().getRdfManager();
+                          const mgr = getRdfManager();
                           const prefixes = (prefixesText || "").split(",").map(s=>s.trim()).filter(Boolean);
                           const uris = (urisText || "").split(",").map(s=>s.trim()).filter(Boolean);
-                          mgr.setBlacklist(prefixes, uris);
+                          if (mgr) mgr.setBlacklist(prefixes, uris);
                         } catch (_) { /* ignore */ }
                         toast.success(`Blacklist ${val ? 'enabled' : 'disabled'}`);
                       } catch (e) {
@@ -512,8 +513,8 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
                         const prefixes = (v || "").split(",").map(s=>s.trim()).filter(Boolean);
                         setBlacklistedPrefixes(prefixes);
                         const uris = (urisText || "").split(",").map(s=>s.trim()).filter(Boolean);
-                        const mgr = useOntologyStore.getState().getRdfManager();
-                        mgr.setBlacklist(prefixes, uris);
+                        const mgr = getRdfManager();
+                        if (mgr) mgr.setBlacklist(prefixes, uris);
                       }
                     }}
                     className="text-xs"
@@ -532,8 +533,8 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
                         const uris = (v || "").split(",").map(s=>s.trim()).filter(Boolean);
                         setBlacklistedUris(uris);
                         const prefixes = (prefixesText || "").split(",").map(s=>s.trim()).filter(Boolean);
-                        const mgr = useOntologyStore.getState().getRdfManager();
-                        mgr.setBlacklist(prefixes, uris);
+                        const mgr = getRdfManager();
+                        if (mgr) mgr.setBlacklist(prefixes, uris);
                       }
                     }}
                     className="text-xs"
@@ -549,7 +550,7 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
                   <div className="mt-2 text-xs">
                     {(() => {
                       try {
-                        const mgr = useOntologyStore.getState().getRdfManager();
+                        const mgr = getRdfManager();
                         const ns = (mgr && typeof mgr.getNamespaces === 'function') ? mgr.getNamespaces() : {};
                         const wkPrefixes = (WELL_KNOWN && (WELL_KNOWN as any).prefixes) ? (WELL_KNOWN as any).prefixes : {};
                         const prefixes = (prefixesText || "").split(",").map(s=>s.trim()).filter(Boolean);

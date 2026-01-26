@@ -40,6 +40,7 @@ import EntityAutoComplete from "../ui/EntityAutoComplete";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { toPrefixed, expandPrefixed } from "../../utils/termUtils";
+import { getNamespaceRegistry, getRdfManager } from "../../utils/storeHelpers";
 import { X, Plus, Info } from "lucide-react";
 // React Flow selection hook — allow editor to derive node when no explicit prop provided
 
@@ -86,7 +87,7 @@ const expandIriIfNeeded = (input: string): string => {
   if (raw.includes("://")) return raw;
 
   // Try to expand using the namespace registry
-  const registry = useOntologyStore.getState().namespaceRegistry || [];
+  const registry = getNamespaceRegistry();
   const expanded = expandPrefixed(raw, registry as any);
 
   // If expansion didn't change the value and it contains a colon, it's a prefixed IRI
@@ -229,13 +230,13 @@ export const NodePropertyEditor = ({
         : "";
     setNodeIri(iri);
 
-    const rdfTypes = Array.isArray(sourceNode.rdfTypes)
-      ? sourceNode.rdfTypes.filter((type: unknown): type is string => typeof type === "string")
-      : sourceNode.rdfType
-      ? [String(sourceNode.rdfType)]
-      : [];
-    setRdfTypesState(rdfTypes);
-    initialRdfTypesRef.current = rdfTypes.slice();
+      const rdfTypes: string[] = Array.isArray(sourceNode.rdfTypes)
+        ? sourceNode.rdfTypes.filter((type: unknown): type is string => typeof type === "string")
+        : sourceNode.rdfType
+        ? [String(sourceNode.rdfType)]
+        : [];
+      setRdfTypesState(rdfTypes);
+      initialRdfTypesRef.current = rdfTypes.slice();
 
     const chosenType =
       rdfTypes.length > 0
@@ -381,10 +382,7 @@ export const NodePropertyEditor = ({
     }
 
     // Acquire RDF manager (must exist)
-    const mgrState = useOntologyStore.getState();
-    const mgr = typeof (mgrState as any).getRdfManager === "function"
-      ? (mgrState as any).getRdfManager()
-      : (mgrState as any).rdfManager;
+    const mgr = getRdfManager();
 
     if (!mgr || typeof (mgr as any).applyBatch !== "function") {
       try { canvasActions.setLoading(false, 0, ""); } catch (_) {/* noop */}
@@ -599,19 +597,7 @@ export const NodePropertyEditor = ({
     if (!confirm(`Delete node ${nodeIri}? This will remove triples in urn:vg:data where this IRI is subject or object.`)) return;
 
     try {
-      const mgrState = useOntologyStore.getState();
-      let mgr: any = undefined;
-      if (typeof (mgrState as any).getRdfManager === "function") {
-        try {
-          mgr = (mgrState as any).getRdfManager();
-        } catch (_) {
-          mgr = undefined;
-        }
-      }
-      if (!mgr) {
-        mgr = (mgrState as any).rdfManager || (await import("../../utils/rdfManager").then(m => m.rdfManager).catch(() => undefined));
-      }
-
+      const mgr = getRdfManager();
       if (mgr && typeof (mgr as any).removeAllQuadsForIri === "function") {
         try {
           await (mgr as any).removeAllQuadsForIri(String(nodeIri), "urn:vg:data");

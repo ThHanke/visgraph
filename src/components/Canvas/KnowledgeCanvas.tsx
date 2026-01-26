@@ -38,6 +38,7 @@ import { generateEdgeId } from "./core/edgeHelpers";
 import { usePaletteFromRdfManager } from "./core/namespacePalette";
 import { expandPrefixed, toPrefixed } from "../../utils/termUtils";
 import { exportSvgFull, exportPngFull } from "./core/downloadHelpers";
+import { getNamespaceRegistry } from "../../utils/storeHelpers";
 import { applyDiagramChangeSmart } from "./core/diagramChangeHelpers";
 
 const LAYOUT_META_REASONS = new Set<string>([
@@ -2799,8 +2800,7 @@ const KnowledgeCanvas: React.FC = () => {
 
           if (!/^https?:\/\//i.test(normalizedUri)) {
             try {
-              const registry = (useOntologyStore.getState().namespaceRegistry ||
-                []) as Array<{ prefix: string; namespace: string }>;
+              const registry = getNamespaceRegistry();
               const expanded = expandPrefixed(normalizedUri, registry);
               if (expanded && /^https?:\/\//i.test(expanded)) {
                 normalizedUri = expanded;

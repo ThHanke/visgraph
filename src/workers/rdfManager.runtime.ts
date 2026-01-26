@@ -27,6 +27,16 @@ const BATCH_SIZE = 1000;
 const RDF_TYPE_IRI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 const RDFS_LABEL_IRI = "http://www.w3.org/2000/01/rdf-schema#label";
 
+/**
+ * Create a graph term from a graph name string.
+ * Returns defaultGraph() for "default" or null/undefined, otherwise creates a namedNode.
+ */
+function createGraphTerm(graphName: string | null | undefined, DataFactory: any): any {
+  return graphName && graphName !== "default"
+    ? DataFactory.namedNode(String(graphName))
+    : DataFactory.defaultGraph();
+}
+
 type SubjectQuadMap = Record<string, WorkerQuad[]>;
 
 type ReasoningStageMessage = {
@@ -1104,10 +1114,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             payload && typeof payload === "object" && typeof payload.graphName === "string"
               ? payload.graphName
               : "urn:vg:data";
-          const graphTerm =
-            graphName && graphName !== "default"
-              ? DataFactory.namedNode(String(graphName))
-              : DataFactory.defaultGraph();
+          const graphTerm = createGraphTerm(graphName, DataFactory);
           const existing = store.getQuads(null, null, null, graphTerm) || [];
           const touchedSubjects = new Set<string>();
           let removed = 0;
@@ -1174,10 +1181,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             payload && typeof payload === "object" && typeof payload.graphName === "string"
               ? payload.graphName
               : "urn:vg:data";
-          const graphTerm =
-            graphName && graphName !== "default"
-              ? DataFactory.namedNode(String(graphName))
-              : DataFactory.defaultGraph();
+          const graphTerm = createGraphTerm(graphName, DataFactory);
           const quads = store.getQuads(null, null, null, graphTerm) || [];
           const touchedSubjects = new Set<string>();
           let removed = 0;
@@ -1224,10 +1228,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             payload && typeof payload === "object" && typeof payload.graphName === "string"
               ? payload.graphName
               : "urn:vg:data";
-          const graphTerm =
-            graphName && graphName !== "default"
-              ? DataFactory.namedNode(String(graphName))
-              : DataFactory.defaultGraph();
+          const graphTerm = createGraphTerm(graphName, DataFactory);
           const subjTerm = /^_:/i.test(String(iri))
             ? DataFactory.blankNode(String(iri).replace(/^_:/, ""))
             : DataFactory.namedNode(String(iri));
@@ -1442,10 +1443,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           const formatInfo = normalizeExportFormat(
             payload && typeof payload === "object" ? (payload as ExportGraphPayload).format : undefined,
           );
-          const graphTerm =
-            graphName && graphName !== "default"
-              ? DataFactory.namedNode(String(graphName))
-              : DataFactory.defaultGraph();
+          const graphTerm = createGraphTerm(graphName, DataFactory);
           const quads = store.getQuads(null, null, null, graphTerm) || [];
           const writer = new (N3 as any).Writer({
             prefixes: { ...workerNamespaces },
@@ -1491,10 +1489,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             result = { graphName, removed: 0 };
             break;
           }
-          const graphTerm =
-            graphName && graphName !== "default"
-              ? DataFactory.namedNode(String(graphName))
-              : DataFactory.defaultGraph();
+          const graphTerm = createGraphTerm(graphName, DataFactory);
           const quads = store.getQuads(null, null, null, graphTerm) || [];
           const touchedSubjects = new Set<string>();
           let removed = 0;
@@ -1611,10 +1606,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             payload && typeof payload === "object" && typeof payload.graphName === "string"
               ? payload.graphName
               : "urn:vg:data";
-          const graphTerm =
-            graphName && graphName !== "default"
-              ? DataFactory.namedNode(String(graphName))
-              : DataFactory.defaultGraph();
+          const graphTerm = createGraphTerm(graphName, DataFactory);
           const quads = store.getQuads(null, null, null, graphTerm) || [];
           const emission = prepareSubjectEmissionFromQuads(quads);
           if (emission.subjects.length > 0) {
@@ -1666,10 +1658,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             payload && typeof payload === "object" && typeof payload.graphName === "string"
               ? payload.graphName
               : "urn:vg:data";
-          const graphTerm =
-            graphName && graphName !== "default"
-              ? DataFactory.namedNode(String(graphName))
-              : DataFactory.defaultGraph();
+          const graphTerm = createGraphTerm(graphName, DataFactory);
           const all = store.getQuads(null, null, null, graphTerm) || [];
           const filter =
             payload && typeof payload === "object" && payload.filter ? payload.filter : undefined;
@@ -1724,12 +1713,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             payload && typeof payload === "object" && typeof payload.graphName === "string"
               ? payload.graphName
               : null;
-          const graphTerm =
-            graphName && graphName !== "default"
-              ? DataFactory.namedNode(String(graphName))
-              : graphName === null
-                ? null
-                : DataFactory.defaultGraph();
+          const graphTerm = graphName === null ? null : createGraphTerm(graphName, DataFactory);
           const subjectTerm =
             payload && typeof payload === "object" && typeof payload.subject === "string"
               ? payload.subject.startsWith("_:")
@@ -1756,10 +1740,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             payload && typeof payload === "object" && typeof payload.graphName === "string"
               ? payload.graphName
               : "urn:vg:data";
-          const graphTerm =
-            graphName && graphName !== "default"
-              ? DataFactory.namedNode(String(graphName))
-              : DataFactory.defaultGraph();
+          const graphTerm = createGraphTerm(graphName, DataFactory);
           const touchedSubjects = new Set<string>();
           let added = 0;
           let removed = 0;

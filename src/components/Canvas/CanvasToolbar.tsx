@@ -55,6 +55,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '../ui/popover';
 import { toast } from 'sonner';
 import { useShallow } from 'zustand/react/shallow';
 import { toPrefixed } from '../../utils/termUtils';
+import { getRdfManager, getNamespaceRegistry } from '../../utils/storeHelpers';
 
 interface CanvasToolbarProps {
   onAddNode: (payload: any) => void;
@@ -181,7 +182,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
   const loadedKeys = new Set<string>((loadedList || []).map((o: any) => normalizeForCompare(o.url)));
 
   // Namespaces currently known to the RDF manager (use as additional evidence an ontology was loaded)
-  const rdfMgr = (typeof getRdfManager === "function" && getRdfManager && getRdfManager()) || null;
+  const rdfMgr = getRdfManager();
   const rdfNsVals = (rdfMgr && typeof rdfMgr.getNamespaces === "function")
     ? Object.values(rdfMgr.getNamespaces() || {}).map((v: any) => normalizeForCompare(String(v)))
     : [];
@@ -328,7 +329,7 @@ export const CanvasToolbar = ({ onAddNode, onToggleLegend, showLegend, onExport,
 
   const handleConfirmClearData = () => {
     try {
-      const mgr = (typeof getRdfManager === 'function' && getRdfManager && getRdfManager()) || null;
+      const mgr = getRdfManager();
       if (!mgr) {
         toast.error('RDF manager not available');
         setIsClearDataOpen(false);

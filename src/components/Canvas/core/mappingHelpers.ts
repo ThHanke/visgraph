@@ -441,7 +441,9 @@ export function mapQuadsToDiagram(
 
     if (predicateIri === RDF_TYPE) {
       const typeValue = termValue(objectTerm);
-      if (typeValue) {
+      // Check for duplicate before adding to prevent duplicate types when
+      // the same subject is emitted multiple times in overlapping batches
+      if (typeValue && !entry.rdfTypes.includes(typeValue)) {
         entry.rdfTypes.push(typeValue);
       }
       continue;

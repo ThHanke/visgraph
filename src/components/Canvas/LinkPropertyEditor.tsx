@@ -15,6 +15,7 @@ import {
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { toPrefixed, expandPrefixed } from '../../utils/termUtils';
 import { rdfManager as fallbackRdfManager } from '../../utils/rdfManager';
+import { getNamespaceRegistry, getRdfManager } from '../../utils/storeHelpers';
 
 interface LinkPropertyEditorProps {
   open: boolean;
@@ -148,18 +149,7 @@ export const LinkPropertyEditor = ({
     }
 
     // Resolve manager + subject/object IRIs (endpoints must come from props)
-    const mgrState = useOntologyStore.getState();
-    let mgr: any = undefined;
-    if (typeof (mgrState as any).getRdfManager === "function") {
-      try {
-        mgr = (mgrState as any).getRdfManager();
-      } catch (_) {
-        mgr = undefined;
-      }
-    }
-    if (!mgr) {
-      mgr = (mgrState as any).rdfManager || fallbackRdfManager;
-    }
+    const mgr = getRdfManager() || fallbackRdfManager;
 
     const subjIri = (sourceNode && ((sourceNode as any).iri));
     const objIri = (targetNode && ((targetNode as any).iri));
@@ -167,7 +157,7 @@ export const LinkPropertyEditor = ({
     const graphName = "urn:vg:data";
     if (mgr && subjIri && objIri) {
       // Use centralized expandPrefixed from termUtils
-      const registry = useOntologyStore.getState().namespaceRegistry || [];
+      const registry = getNamespaceRegistry();
       const expand = (value: string | undefined | null): string => {
         if (!value) return "";
         const trimmed = String(value).trim();
@@ -270,25 +260,14 @@ export const LinkPropertyEditor = ({
     }
 
     // Mirror handleSave's robust manager resolution: prefer store-provided manager, fall back to a global rdfManager helper.
-    const mgrState = useOntologyStore.getState();
-    let mgr: any = undefined;
-    if (typeof (mgrState as any).getRdfManager === "function") {
-      try {
-        mgr = (mgrState as any).getRdfManager();
-      } catch (_) {
-        mgr = undefined;
-      }
-    }
-    if (!mgr) {
-      mgr = (mgrState as any).rdfManager || fallbackRdfManager;
-    }
+    const mgr = getRdfManager() || fallbackRdfManager;
 
     const g = "urn:vg:data";
     const subjIri = (sourceNode && ((sourceNode as any).iri));
     const objIri = (targetNode && ((targetNode as any).iri));
     const predicateRaw = selectedProperty || displayValue;
     // Use centralized expandPrefixed from termUtils
-    const registry = useOntologyStore.getState().namespaceRegistry || [];
+    const registry = getNamespaceRegistry();
     const predFull = predicateRaw && predicateRaw.includes("://")
       ? String(predicateRaw)
       : expandPrefixed(String(predicateRaw), registry as any);
