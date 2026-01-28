@@ -1445,7 +1445,24 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
   clearOntologies: () => {
     const { rdfManager } = get();
-    rdfManager.clear();
+    // Clear all graphs if the method exists
+    if (rdfManager && typeof (rdfManager as any).clear === 'function') {
+      try {
+        (rdfManager as any).clear();
+      } catch (_) {
+        /* ignore clear failures */
+      }
+    } else if (rdfManager) {
+      // Fallback: try to remove specific graphs
+      try {
+        if (typeof (rdfManager as any).removeGraph === 'function') {
+          try { (rdfManager as any).removeGraph('urn:vg:data'); } catch (_) {}
+          try { (rdfManager as any).removeGraph('urn:vg:ontologies'); } catch (_) {}
+        }
+      } catch (_) {
+        /* ignore removeGraph failures */
+      }
+    }
     set({
       loadedOntologies: [],
       availableClasses: [],
@@ -1454,6 +1471,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       currentGraph: { nodes: [], edges: [] },
     });
   },
+
 
   removeLoadedOntology: (url: string) => {
     try {
@@ -2056,21 +2074,31 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
   },
 }));
 
+// Module-level namespace initialization: attempt to register the default namespace
+// if not already present. This is best-effort only; if the worker is not initialized
+// (common in tests), silently skip this initialization. Tests and application code
+// will initialize the worker explicitly as needed.
 try {
-  const existingNamespaces =
-    typeof rdfManager.getNamespaces === "function" ? rdfManager.getNamespaces() : {};
-  if (
-    existingNamespaces === null ||
-    typeof existingNamespaces !== "object" ||
-    !Object.prototype.hasOwnProperty.call(existingNamespaces, DEFAULT_NAMESPACE_PREFIX)
-  ) {
-    rdfManager.setNamespaces(
-      { [DEFAULT_NAMESPACE_PREFIX]: DEFAULT_NAMESPACE_URI },
-      { replace: false },
-    );
+  // Check if the worker is initialized before attempting namespace operations
+  if (rdfManager && typeof (rdfManager as any).isInitialized === 'function') {
+    const initialized = (rdfManager as any).isInitialized();
+    if (initialized) {
+      const existingNamespaces =
+        typeof rdfManager.getNamespaces === "function" ? rdfManager.getNamespaces() : {};
+      if (
+        existingNamespaces === null ||
+        typeof existingNamespaces !== "object" ||
+        !Object.prototype.hasOwnProperty.call(existingNamespaces, DEFAULT_NAMESPACE_PREFIX)
+      ) {
+        rdfManager.setNamespaces(
+          { [DEFAULT_NAMESPACE_PREFIX]: DEFAULT_NAMESPACE_URI },
+          { replace: false },
+        );
+      }
+    }
   }
 } catch (_) {
-  /* ignore initialization failures */
+  /* ignore initialization failures - worker may not be ready in test environments */
 }
 
 /**

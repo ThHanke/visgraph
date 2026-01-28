@@ -1,10 +1,13 @@
 import React from "react";
 import { describe, test, expect, beforeEach, vi } from "vitest";
+import { initRdfManagerWorker } from "../utils/initRdfManagerWorker";
+import { findQuads, getQuadCount, waitForOperation } from "../utils/testHelpers";
 import { render, waitFor, act } from "@testing-library/react";
 import KnowledgeCanvas from "../../../src/components/Canvas/KnowledgeCanvas";
 import { rdfManager } from "../../../src/utils/rdfManager";
 import { FIXTURES } from "../fixtures/rdfFixtures";
 import { DataFactory } from "n3";
+
 const { namedNode } = DataFactory;
 
 /**
@@ -28,7 +31,8 @@ const { namedNode } = DataFactory;
  * - Verifies the FOAF namespace and foaf:Person appear after ontology load.
  */
 describe("KnowledgeCanvas incremental mapping preserves data (reworked)", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await initRdfManagerWorker();
     // Ensure a fresh RDF manager / store before each test
     { rdfManager.clear(); }
   });
@@ -54,12 +58,12 @@ describe("KnowledgeCanvas incremental mapping preserves data (reworked)", () => 
     expect(exportedBefore).toContain("Specimen");
 
     // Record data-graph quad count
-    const dataGraph = namedNode("urn:vg:data");
-    const beforeQuads = rdfManager.getStore().getQuads(null, null, null, dataGraph) || [];
-    const beforeCount = beforeQuads.length;
+    await waitForOperation();
+    const beforeCount = await getQuadCount("urn:vg:data");
 
     // Now load FOAF ontology into ontologies graph (local fixture)
     await rdfManager.loadRDFIntoGraph(FIXTURES.foaf_test_data, "urn:vg:ontologies", "text/turtle");
+    await waitForOperation();
 
     // Export again. FOAF ontology triples are stored in the ontologies graph (urn:vg:ontologies),
     // while exports may only include the data graph. Accept presence of FOAF via:
@@ -69,19 +73,17 @@ describe("KnowledgeCanvas incremental mapping preserves data (reworked)", () => 
     const exportedAfter = await rdfManager.exportToTurtle();
     const registry = (await import("../../../src/stores/ontologyStore")).useOntologyStore.getState().namespaceRegistry || [];
     const regMap = (registry || []).reduce((acc:any, e:any) => { acc[String(e.prefix||"")] = String(e.namespace||""); return acc; }, {});
-    const ontStore = rdfManager;
-    const ontQuads = ontStore && typeof ontStore.getStore === "function" ? (ontStore.getStore().getQuads(null, null, null, namedNode("urn:vg:ontologies")) || []) : [];
+    const ontQuads = await findQuads({}, "urn:vg:ontologies");
     const ontHasFoaf = (ontQuads || []).some((q:any) =>
-      String((q && q.subject && (q.subject as any).value) || "").includes("http://xmlns.com/foaf/0.1/") ||
-      String((q && q.predicate && (q.predicate as any).value) || "").includes("http://xmlns.com/foaf/0.1/") ||
-      String((q && q.object && (q.object as any).value) || "").includes("http://xmlns.com/foaf/0.1/")
+      String(q.subject || "").includes("http://xmlns.com/foaf/0.1/") ||
+      String(q.predicate || "").includes("http://xmlns.com/foaf/0.1/") ||
+      String(q.object || "").includes("http://xmlns.com/foaf/0.1/")
     );
     const hasFoaf = Boolean(regMap["foaf"]) || ontHasFoaf || Boolean(exportedAfter && String(exportedAfter).includes("http://xmlns.com/foaf/0.1/"));
     expect(hasFoaf).toBe(true);
 
     // Data-graph quad count should not decrease after ontology load
-    const afterQuads = rdfManager.getStore().getQuads(null, null, null, dataGraph) || [];
-    const afterCount = afterQuads.length;
+    const afterCount = await getQuadCount("urn:vg:data");
     expect(afterCount).toBeGreaterThanOrEqual(beforeCount);
 
     // Also verify FOAF presence via either rdfManager.getNamespaces, the persisted registry,
@@ -90,11 +92,11 @@ describe("KnowledgeCanvas incremental mapping preserves data (reworked)", () => 
     const registryAfter = (await import("../../../src/stores/ontologyStore")).useOntologyStore.getState().namespaceRegistry || [];
     const regMapAfter = (registryAfter || []).reduce((acc:any, e:any) => { acc[String(e.prefix||"")] = String(e.namespace||""); return acc; }, {});
 
-    const ontQuadsAfter = rdfManager && rdfManager.getStore ? (rdfManager.getStore().getQuads(null, null, null, namedNode("urn:vg:ontologies")) || []) : [];
+    const ontQuadsAfter = await findQuads({}, "urn:vg:ontologies");
     const ontHasFoafAfter = (ontQuadsAfter || []).some((q:any) =>
-      String((q && q.subject && (q.subject as any).value) || "").includes("http://xmlns.com/foaf/0.1/") ||
-      String((q && q.predicate && (q.predicate as any).value) || "").includes("http://xmlns.com/foaf/0.1/") ||
-      String((q && q.object && (q.object as any).value) || "").includes("http://xmlns.com/foaf/0.1/")
+      String(q.subject || "").includes("http://xmlns.com/foaf/0.1/") ||
+      String(q.predicate || "").includes("http://xmlns.com/foaf/0.1/") ||
+      String(q.object || "").includes("http://xmlns.com/foaf/0.1/")
     );
 
     const nsPresent = Boolean(namespaces && Object.keys(namespaces).includes("foaf")) || Boolean(regMapAfter["foaf"]) || ontHasFoafAfter;

@@ -1,45 +1,75 @@
 /**
- * Tests for RDFManager mutation APIs: addTriple, removeTriple, applyBatch, applyParsedNodes, removeGraph, updateNode
+ * Tests for RDFManager mutation APIs: addTriple, removeTriple, applyBatch, removeGraph, updateNode
  *
- * These are integration-style unit tests that exercise a fresh RDFManager instance
- * (not the shared singleton) so state is isolated between tests.
+ * These tests use the shared rdfManager singleton with worker initialization.
  */
 
 import { describe, test, expect, beforeEach } from "vitest";
-import { RDFManager } from "../../utils/rdfManager";
+import { initRdfManagerWorker } from "../utils/initRdfManagerWorker";
+import { rdfManager } from "../../utils/rdfManager";
+import { RDF_TYPE } from "../../constants/vocabularies";
 
 describe("RDFManager mutation APIs", () => {
-  let mgr: RDFManager;
-
-  beforeEach(() => {
-    mgr = new RDFManager();
-    // Ensure store clean state
-    mgr.clear();
+  beforeEach(async () => {
+    await initRdfManagerWorker();
+    // Clear the store and wait for it to complete
+    rdfManager.clear();
+    await new Promise(resolve => setTimeout(resolve, 100));
   });
 
-  test("addTriple adds a triple to urn:vg:data", () => {
+  test("addTriple adds a triple to urn:vg:data", async () => {
     const subj = "http://example.com/s1";
     const pred = "http://example.com/p1";
     const obj = "http://example.com/o1";
 
-    mgr.addTriple(subj, pred, obj, "urn:vg:data");
-    const quads = mgr.getStore().getQuads(null, null, null, null);
-    expect(quads.some(q => (q.subject as any).value === subj && (q.predicate as any).value === pred && String((q.object as any).value) === obj)).toBeTruthy();
+    await rdfManager.applyBatch({
+      adds: [{ subject: subj, predicate: pred, object: obj }]
+    }, "urn:vg:data");
+
+    // Wait for operation to complete
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    const result = await rdfManager.fetchQuadsPage({
+      graphName: "urn:vg:data",
+      limit: 100,
+      serialize: true
+    });
+
+    const quads = result?.items || [];
+    expect(quads.some((q: any) => q.subject === subj && q.predicate === pred && q.object === obj)).toBeTruthy();
   });
 
-  test("removeTriple removes triples added previously", () => {
+  test("removeTriple removes triples added previously", async () => {
     const subj = "http://example.com/s2";
     const pred = "http://example.com/p2";
     const obj = "literal-value";
 
-    mgr.addTriple(subj, pred, obj, "urn:vg:data");
-    // ensure present
-    let quads = mgr.getStore().getQuads(null, null, null, null);
+    await rdfManager.applyBatch({
+      adds: [{ subject: subj, predicate: pred, object: obj }]
+    }, "urn:vg:data");
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    // Verify present
+    let result = await rdfManager.fetchQuadsPage({
+      graphName: "urn:vg:data",
+      limit: 100,
+      serialize: true
+    });
+    const quads = result?.items || [];
     expect(quads.length).toBeGreaterThan(0);
 
-    mgr.removeTriple(subj, pred, obj, "urn:vg:data");
-    quads = mgr.getStore().getQuads(null, null, null, null);
-    expect(quads.some(q => (q.subject as any).value === subj && (q.predicate as any).value === pred)).toBeFalsy();
+    await rdfManager.applyBatch({
+      removes: [{ subject: subj, predicate: pred, object: obj }]
+    }, "urn:vg:data");
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    result = await rdfManager.fetchQuadsPage({
+      graphName: "urn:vg:data",
+      limit: 100,
+      serialize: true
+    });
+    const quads2 = result?.items || [];
+    expect(quads2.some((q: any) => q.subject === subj && q.predicate === pred)).toBeFalsy();
   });
 
   test("applyBatch removes then adds triples atomically", async () => {
@@ -48,15 +78,31 @@ describe("RDFManager mutation APIs", () => {
     const objOld = "old";
     const objNew = "new";
 
-    // seed
-    mgr.addTriple(subj, pred, objOld, "urn:vg:data");
-    let quads = mgr.getStore().getQuads(null, null, null, null);
-    expect(quads.some(q => (q.subject as any).value === subj)).toBeTruthy();
+    // Seed
+    await rdfManager.applyBatch({
+      adds: [{ subject: subj, predicate: pred, object: objOld }]
+    }, "urn:vg:data");
+    await new Promise(resolve => setTimeout(resolve, 200));
 
-    await mgr.applyBatch({ removes: [{ subject: subj, predicate: pred, object: objOld }], adds: [{ subject: subj, predicate: pred, object: objNew }] }, "urn:vg:data");
-    quads = mgr.getStore().getQuads(null, null, null, null);
-    expect(quads.some(q => (q.subject as any).value === subj && String((q.object as any).value) === objNew)).toBeTruthy();
-    expect(quads.some(q => (q.subject as any).value === subj && String((q.object as any).value) === objOld)).toBeFalsy();
+    await rdfManager.applyBatch(
+      {
+        removes: [{ subject: subj, predicate: pred, object: objOld }],
+        adds: [{ subject: subj, predicate: pred, object: objNew }]
+      },
+      "urn:vg:data"
+    );
+
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    const result = await rdfManager.fetchQuadsPage({
+      graphName: "urn:vg:data",
+      limit: 100,
+      serialize: true
+    });
+
+    const quads = result?.items || [];
+    expect(quads.some((q: any) => q.subject === subj && q.object === objNew)).toBeTruthy();
+    expect(quads.some((q: any) => q.subject === subj && q.object === objOld)).toBeFalsy();
   });
 
   test("applyParsedNodes (migrated) persists annotationProperties and rdfTypes via applyBatch", async () => {
@@ -66,71 +112,93 @@ describe("RDFManager mutation APIs", () => {
       rdfTypes: ["http://example.com/TypeA"],
     };
 
-    // Migrated behaviour: construct batch adds equivalent to what applyParsedNodes used to add.
     const adds: any[] = [];
 
-    // annotationProperties -> literal/object adds
     if (Array.isArray(node.annotationProperties)) {
       for (const ap of node.annotationProperties) {
-        {
-          adds.push({
-            subject: String(node.iri),
-            predicate: String(ap.property),
-            object: String(ap.value),
-          });
-        }
+        adds.push({
+          subject: String(node.iri),
+          predicate: String(ap.property),
+          object: String(ap.value),
+        });
       }
     }
 
-    // rdfTypes -> rdf:type adds
-    const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
     if (Array.isArray(node.rdfTypes)) {
       for (const t of node.rdfTypes) {
-        {
-          adds.push({
-            subject: String(node.iri),
-            predicate: RDF_TYPE,
-            object: String(t),
-          });
-        }
+        adds.push({
+          subject: String(node.iri),
+          predicate: RDF_TYPE,
+          object: String(t),
+        });
       }
     }
 
-    await mgr.applyBatch({ removes: [], adds }, "urn:vg:data");
+    await rdfManager.applyBatch({ removes: [], adds }, "urn:vg:data");
+    await new Promise(resolve => setTimeout(resolve, 200));
 
-    const quads = mgr.getStore().getQuads(null, null, null, null);
-    expect(quads.some(q => (q.subject as any).value === node.iri && (q.predicate as any).value === "http://example.com/propA")).toBeTruthy();
-    expect(quads.some(q => (q.subject as any).value === node.iri && (q.predicate as any).value === RDF_TYPE)).toBeTruthy();
+    const result = await rdfManager.fetchQuadsPage({
+      graphName: "urn:vg:data",
+      limit: 100,
+      serialize: true
+    });
+
+    const quads = result?.items || [];
+    expect(quads.some((q: any) => q.subject === node.iri && q.predicate === "http://example.com/propA")).toBeTruthy();
+    expect(quads.some((q: any) => q.subject === node.iri && q.predicate === RDF_TYPE)).toBeTruthy();
   });
 
-  test("removeGraph clears quads in the named graph", () => {
+  test("removeGraph clears quads in the named graph", async () => {
     const subj = "http://example.com/s5";
     const pred = "http://example.com/p5";
     const obj = "http://example.com/o5";
 
-    mgr.addTriple(subj, pred, obj, "urn:vg:toRemove");
-    // verify present in that graph
-    let quads = mgr.getStore().getQuads(null, null, null, null);
-    expect(quads.some(q => (q.graph as any).value === "urn:vg:toRemove")).toBeTruthy();
+    await rdfManager.applyBatch({
+      adds: [{ subject: subj, predicate: pred, object: obj }]
+    }, "urn:vg:toRemove");
+    await new Promise(resolve => setTimeout(resolve, 200));
 
-    mgr.removeGraph("urn:vg:toRemove");
-    quads = mgr.getStore().getQuads(null, null, null, null);
-    expect(quads.some(q => (q.graph as any).value === "urn:vg:toRemove")).toBeFalsy();
+    // Verify present
+    let result = await rdfManager.fetchQuadsPage({
+      graphName: "urn:vg:toRemove",
+      limit: 100,
+      serialize: true
+    });
+    let quads = result?.items || [];
+    expect(quads.length).toBeGreaterThan(0);
+
+    rdfManager.removeGraph("urn:vg:toRemove");
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    result = await rdfManager.fetchQuadsPage({
+      graphName: "urn:vg:toRemove",
+      limit: 100,
+      serialize: true
+    });
+    quads = result?.items || [];
+    expect(quads.length).toBe(0);
   });
 
   test("updateNode persists annotationProperties and rdfTypes via applyBatch/addTriple", async () => {
     const iri = "http://example.com/node6";
     const updates = {
-      annotationProperties: [{ propertyUri: "http://example.com/ann", value: "v" }],
-      rdfTypes: ["http://example.com/Type6"],
+      adds: [
+        { subject: iri, predicate: "http://example.com/ann", object: "v" },
+        { subject: iri, predicate: RDF_TYPE, object: "http://example.com/Type6" }
+      ]
     };
 
-    // Call updateNode
-    (mgr as any).updateNode(iri, updates);
-    // Wait a tick in case updateNode used applyBatch asynchronously
-    await Promise.resolve();
-    const quads = mgr.getStore().getQuads(null, null, null, null);
-    expect(quads.some(q => (q.subject as any).value === iri && (q.predicate as any).value === "http://example.com/ann")).toBeTruthy();
-    expect(quads.some(q => (q.subject as any).value === iri && (q.predicate as any).value === "http://www.w3.org/1999/02/22-rdf-syntax-ns#type")).toBeTruthy();
+    rdfManager.updateNode(iri, updates);
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    const result = await rdfManager.fetchQuadsPage({
+      graphName: "urn:vg:data",
+      limit: 100,
+      serialize: true
+    });
+
+    const quads = result?.items || [];
+    expect(quads.some((q: any) => q.subject === iri && q.predicate === "http://example.com/ann")).toBeTruthy();
+    expect(quads.some((q: any) => q.subject === iri && q.predicate === RDF_TYPE)).toBeTruthy();
   });
 });

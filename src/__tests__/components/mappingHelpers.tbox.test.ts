@@ -1,5 +1,6 @@
 import { test, expect } from "vitest";
 import mapQuadsToDiagram from "../../components/Canvas/core/mappingHelpers";
+import { RDF_TYPE, RDFS, OWL } from "../../constants/vocabularies";
 
 test("mappingHelpers tbox/annotation property examples - human friendly output", () => {
   // Build a batch of quads (all in urn:vg:data) that exercise TBox / AnnotationProperty / blank node cases.
@@ -7,38 +8,38 @@ test("mappingHelpers tbox/annotation property examples - human friendly output",
 
   const quads: any[] = [
     // AnnotationProperty triples (as rdf:type statements)
-    { subject: { value: "http://www.w3.org/2000/01/rdf-schema#label" }, predicate: { value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" }, object: { value: "http://www.w3.org/2002/07/owl#AnnotationProperty", termType: "NamedNode" }, graph: G },
-    { subject: { value: "http://purl.org/dc/terms/abstract" }, predicate: { value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" }, object: { value: "http://www.w3.org/2002/07/owl#AnnotationProperty", termType: "NamedNode" }, graph: G },
-    { subject: { value: "http://purl.org/dc/terms/creator" }, predicate: { value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" }, object: { value: "http://www.w3.org/2002/07/owl#AnnotationProperty", termType: "NamedNode" }, graph: G },
-    { subject: { value: "http://purl.org/dc/terms/license" }, predicate: { value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" }, object: { value: "http://www.w3.org/2002/07/owl#AnnotationProperty", termType: "NamedNode" }, graph: G },
-    { subject: { value: "http://www.w3.org/2002/07/owl#versionInfo" }, predicate: { value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" }, object: { value: "http://www.w3.org/2002/07/owl#AnnotationProperty", termType: "NamedNode" }, graph: G },
+    { subject: { value: RDFS.label }, predicate: { value: RDF_TYPE }, object: { value: OWL.AnnotationProperty, termType: "NamedNode" }, graph: G },
+    { subject: { value: "http://purl.org/dc/terms/abstract" }, predicate: { value: RDF_TYPE }, object: { value: OWL.AnnotationProperty, termType: "NamedNode" }, graph: G },
+    { subject: { value: "http://purl.org/dc/terms/creator" }, predicate: { value: RDF_TYPE }, object: { value: OWL.AnnotationProperty, termType: "NamedNode" }, graph: G },
+    { subject: { value: "http://purl.org/dc/terms/license" }, predicate: { value: RDF_TYPE }, object: { value: OWL.AnnotationProperty, termType: "NamedNode" }, graph: G },
+    { subject: { value: OWL.namespace + "versionInfo" }, predicate: { value: RDF_TYPE }, object: { value: OWL.AnnotationProperty, termType: "NamedNode" }, graph: G },
 
     // Class and ObjectProperty as TBox examples
-    { subject: { value: "http://example.org/TestClass" }, predicate: { value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" }, object: { value: "http://www.w3.org/2002/07/owl#Class", termType: "NamedNode" }, graph: G },
-    { subject: { value: "http://example.org/hasFriend" }, predicate: { value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" }, object: { value: "http://www.w3.org/2002/07/owl#ObjectProperty", termType: "NamedNode" }, graph: G },
+    { subject: { value: "http://example.org/TestClass" }, predicate: { value: RDF_TYPE }, object: { value: OWL.Class, termType: "NamedNode" }, graph: G },
+    { subject: { value: "http://example.org/hasFriend" }, predicate: { value: RDF_TYPE }, object: { value: OWL.ObjectProperty, termType: "NamedNode" }, graph: G },
 
     // Blank node subject example (bn is also typed)
-    { subject: { value: "_:b1" }, predicate: { value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" }, object: { value: "http://example.org/SomeBlankNodeClass", termType: "NamedNode" }, graph: G },
-    { subject: { value: "_:b1" }, predicate: { value: "http://www.w3.org/2000/01/rdf-schema#label" }, object: { value: "Blank node label", termType: "Literal" }, graph: G },
+    { subject: { value: "_:b1" }, predicate: { value: RDF_TYPE }, object: { value: "http://example.org/SomeBlankNodeClass", termType: "NamedNode" }, graph: G },
+    { subject: { value: "_:b1" }, predicate: { value: RDFS.label }, object: { value: "Blank node label", termType: "Literal" }, graph: G },
 
     // Data triple referencing the object property and a label
     { subject: { value: "http://example.com/instance1" }, predicate: { value: "http://example.org/hasFriend" }, object: { value: "http://example.com/instance2", termType: "NamedNode" }, graph: G },
-    { subject: { value: "http://example.com/instance1" }, predicate: { value: "http://www.w3.org/2000/01/rdf-schema#label" }, object: { value: "Instance 1", termType: "Literal" }, graph: G },
+    { subject: { value: "http://example.com/instance1" }, predicate: { value: RDFS.label }, object: { value: "Instance 1", termType: "Literal" }, graph: G },
   ];
 
   // Provide options with a simple fat-map and registry snapshot
   const options: any = {
     availableProperties: [
       { iri: "http://example.org/hasFriend", label: "hasFriend", namespace: "http://example.org/" },
-      { iri: "http://www.w3.org/2000/01/rdf-schema#label", label: "rdfs:label", namespace: "http://www.w3.org/2000/01/rdf-schema#" },
+      { iri: RDFS.label, label: "rdfs:label", namespace: RDFS.namespace },
     ],
     availableClasses: [
       { iri: "http://example.org/TestClass", label: "TestClass", namespace: "http://example.org/" },
     ],
     registry: [
       { prefix: "ex", namespace: "http://example.org/", color: "" },
-      { prefix: "rdfs", namespace: "http://www.w3.org/2000/01/rdf-schema#", color: "" },
-      { prefix: "owl", namespace: "http://www.w3.org/2002/07/owl#", color: "" },
+      { prefix: "rdfs", namespace: RDFS.namespace, color: "" },
+      { prefix: "owl", namespace: OWL.namespace, color: "" },
       { prefix: "dct", namespace: "http://purl.org/dc/terms/", color: "" },
       { prefix: "", namespace: "http://example.com/", color: "" },
     ],
@@ -48,7 +49,7 @@ test("mappingHelpers tbox/annotation property examples - human friendly output",
   const nodes = diagram.nodes || [];
   const edges = diagram.edges || [];
 
-  const annotationNode = nodes.find((n: any) => String(n.id) === "http://www.w3.org/2000/01/rdf-schema#label");
+  const annotationNode = nodes.find((n: any) => String(n.id) === RDFS.label);
   expect(annotationNode).toBeTruthy();
   expect(annotationNode?.data?.isTBox).toBe(true);
   const classNode = nodes.find((n: any) => String(n.id) === "http://example.org/TestClass");

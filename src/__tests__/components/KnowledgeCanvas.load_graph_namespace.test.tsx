@@ -9,6 +9,7 @@ import React from "react";
 import { render, act } from "@testing-library/react";
 import { vi, describe, test, beforeEach, afterEach, expect } from "vitest";
 import { DataFactory } from "n3";
+import { RDF_TYPE, OWL } from "../../constants/vocabularies";
 const { namedNode } = DataFactory;
 
 /* Lightweight component stubs so KnowledgeCanvas can render without exercising toolbar/editor code */
@@ -135,7 +136,7 @@ describe("KnowledgeCanvas loadKnowledgeGraph namespace + palette orchestration",
             const tripleMatch = l.match(/<([^>]+)>\s+a\s+<([^>]+)>/);
             if (tripleMatch) {
               const subj = { value: tripleMatch[1] };
-              const pred = { value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" };
+              const pred = { value: RDF_TYPE };
               const obj = { value: tripleMatch[2] };
               const graph = { value: graphName || "urn:vg:data" };
               storeQuads.push({ subject: subj, predicate: pred, object: obj, graph });
@@ -168,7 +169,7 @@ describe("KnowledgeCanvas loadKnowledgeGraph namespace + palette orchestration",
         mockedStore.availableClasses = [{ iri: "http://example.com/Type", label: "Type", namespace: "http://example.com/" }];
         mockedStore.setNamespaceRegistry = vi.fn().mockImplementation((reg: any) => { mockedStore._lastRegistry = reg; });
         // emit subject change so component runs mapping/enrichment
-        const ontologyQuad = { subject: { value: "http://example.com/prop" }, predicate: { value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" }, object: { value: "http://www.w3.org/2002/07/owl#ObjectProperty" }, graph: { value: "urn:vg:ontologies:1" } };
+        const ontologyQuad = { subject: { value: "http://example.com/prop" }, predicate: { value: RDF_TYPE }, object: { value: OWL.ObjectProperty }, graph: { value: "urn:vg:ontologies:1" } };
         const dataQuad = { subject: { value: "http://example.com/node1" }, predicate: { value: "http://example.com/prop" }, object: { value: "http://example.com/node2" }, graph: { value: "urn:vg:data" } };
         onSubjectsChangeHandlers.forEach((h) => { { h([], [ontologyQuad, dataQuad]); } });
       },

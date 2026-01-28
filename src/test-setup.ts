@@ -19,6 +19,38 @@ try {
 } catch (_) {
   // If the environment prevents redefining globals, ignore and continue with the best-effort binding.
 }
+
+// Ensure localStorage is properly mocked for tests
+// jsdom provides localStorage but sometimes it's not fully functional
+{
+  if (typeof (globalThis as any).window !== "undefined") {
+    const w: any = globalThis.window;
+    
+    // Create a proper localStorage mock if needed
+    if (!w.localStorage || typeof w.localStorage.setItem !== 'function') {
+      const storage = new Map<string, string>();
+      w.localStorage = {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          storage.set(key, value);
+        },
+        removeItem: (key: string) => {
+          storage.delete(key);
+        },
+        clear: () => {
+          storage.clear();
+        },
+        key: (index: number) => {
+          const keys = Array.from(storage.keys());
+          return keys[index] ?? null;
+        },
+        get length() {
+          return storage.size;
+        }
+      };
+    }
+  }
+}
 //
 // Keep this file minimal and robust; it's only needed so xyflow/react can compute
 // element transforms during tests that render ReactFlow components.
@@ -231,3 +263,35 @@ void (async () => {
     }
   }
 }
+
+
+// Fix jsdom's broken TextEncoder for esbuild compatibility
+// jsdom's TextEncoder creates objects that don't properly inherit from Uint8Array
+{
+  if (typeof (globalThis as any).TextEncoder !== 'undefined') {
+    const OrigTextEncoder = (globalThis as any).TextEncoder;
+    const OrigTextDecoder = (globalThis as any).TextDecoder;
+    
+    // Wrap TextEncoder to ensure it returns actual Uint8Array instances
+    (globalThis as any).TextEncoder = class TextEncoder {
+      encode(input: string = ''): Uint8Array {
+        const encoded = new OrigTextEncoder().encode(input);
+        // Ensure we return a real Uint8Array
+        if (!(encoded instanceof Uint8Array)) {
+          return Uint8Array.from(encoded);
+        }
+        return encoded;
+      }
+      encodeInto(source: string, destination: Uint8Array): any {
+        return new OrigTextEncoder().encodeInto(source, destination);
+      }
+    };
+    
+    if (OrigTextDecoder) {
+      (globalThis as any).TextDecoder = OrigTextDecoder;
+    }
+  }
+}
+
+// Worker initialization is handled by tests themselves via the initRdfManagerWorker() helper
+// function called in beforeEach hooks. This ensures proper sequencing and isolation between tests.

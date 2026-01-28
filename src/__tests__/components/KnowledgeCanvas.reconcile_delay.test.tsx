@@ -12,6 +12,7 @@
 import React from "react";
 import { render, act } from "@testing-library/react";
 import { vi, describe, test, beforeEach, afterEach, expect } from "vitest";
+import { RDF_TYPE, OWL } from "../../constants/vocabularies";
 
 vi.mock("../../components/Canvas/CanvasToolbar", () => {
   return {
@@ -174,7 +175,7 @@ describe("KnowledgeCanvas reconcile orchestration (fat-map + namespace registry)
     });
 
     // Build sample quads: one ontology quad and one data quad (ontology triggers reconcile)
-    const ontologyQuad = { subject: { value: "http://example.com/prop" }, predicate: { value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" }, object: { value: "http://www.w3.org/2002/07/owl#ObjectProperty" }, graph: { value: "urn:vg:ontologies:1" } };
+    const ontologyQuad = { subject: { value: "http://example.com/prop" }, predicate: { value: RDF_TYPE }, object: { value: OWL.ObjectProperty }, graph: { value: "urn:vg:ontologies:1" } };
     const dataQuad = { subject: { value: "http://example.com/node1" }, predicate: { value: "http://example.com/prop" }, object: { value: "http://example.com/node2" }, graph: { value: "urn:vg:data" } };
 
     // Explicitly run reconcile BEFORE emitting quads so the mapper sees the populated fat-map

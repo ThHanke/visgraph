@@ -1,8 +1,9 @@
 import React from "react";
 import { render, waitFor } from "@testing-library/react";
-import { test, expect, vi } from "vitest";
+import { test, expect, vi, beforeEach } from "vitest";
 import KnowledgeCanvas from "../components/Canvas/KnowledgeCanvas";
 import { useOntologyStore } from "../stores/ontologyStore";
+import { initRdfManagerWorker } from "./utils/initRdfManagerWorker";
 
 /**
  * Unit-style test:
@@ -18,6 +19,7 @@ const DEV_STARTUP_URL =
 test(
   "invokes loadKnowledgeGraph when url query parameter is present",
   async () => {
+    await initRdfManagerWorker();
     // Arrange: set query param and enable persisted autoload
     (window as any).__VG_ALLOW_PERSISTED_AUTOLOAD = true;
     const params = `?url=${encodeURIComponent(DEV_STARTUP_URL)}`;

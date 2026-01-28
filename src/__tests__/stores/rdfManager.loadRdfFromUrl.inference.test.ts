@@ -1,7 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { rdfManager } from "../../utils/rdfManager";
+import { initRdfManagerWorker } from "../utils/initRdfManagerWorker";
 
 describe("rdfManager.loadRDFFromUrl - content type inference", () => {
+  beforeEach(async () => {
+    await initRdfManagerWorker();
+  });
+
   it("treats text/plain TTL responses as text/turtle", async () => {
     const ttl = `
 @prefix ex: <http://example.org/> .

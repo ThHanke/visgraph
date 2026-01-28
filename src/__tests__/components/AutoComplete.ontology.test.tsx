@@ -1,9 +1,10 @@
 import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { useOntologyStore } from "../../stores/ontologyStore";
 import EntityAutoComplete from "../../components/ui/EntityAutoComplete";
 import { shortLocalName } from "../../utils/termUtils";
+import { initRdfManagerWorker } from "../utils/initRdfManagerWorker";
 
 /**
  * This test loads a small in-memory OWL/Turtle ontology into the ontology store,
@@ -32,6 +33,10 @@ const TEST_TTL = `
 `;
 
 describe("AutoComplete with ontology-loaded options", () => {
+  beforeEach(async () => {
+    await initRdfManagerWorker();
+  });
+
   it("returns class, object property and annotation property hits by label (label-first)", async () => {
     const store = useOntologyStore.getState();
 

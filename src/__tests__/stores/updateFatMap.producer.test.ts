@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { useOntologyStore } from "../../../src/stores/ontologyStore";
+import { RDF_TYPE, RDFS_LABEL, OWL, RDF } from "../../../src/constants/vocabularies";
 
 /**
  * Producer-level test: provide parsed quads to updateFatMap and verify
@@ -11,17 +12,13 @@ import { useOntologyStore } from "../../../src/stores/ontologyStore";
 describe("updateFatMap producer (quads -> fat-map)", () => {
   it("builds availableProperties and availableClasses from supplied quads and sets expected fields", async () => {
     // Prepare quads (QuadLike POJOs accepted by updateFatMap)
-    const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-    const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
-    const OWL_CLASS = "http://www.w3.org/2002/07/owl#Class";
-    const RDF_PROPERTY = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property";
 
     const quads = [
       // A class declaration with a label
       {
         subject: { value: "http://example.org/SomeClass" },
         predicate: { value: RDF_TYPE },
-        object: { value: OWL_CLASS, termType: "NamedNode" },
+        object: { value: OWL.Class, termType: "NamedNode" },
         graph: { value: "urn:vg:ontologies" },
       },
       {
@@ -35,7 +32,7 @@ describe("updateFatMap producer (quads -> fat-map)", () => {
       {
         subject: { value: "http://example.org/hasFoo" },
         predicate: { value: RDF_TYPE },
-        object: { value: RDF_PROPERTY, termType: "NamedNode" },
+        object: { value: RDF.Property, termType: "NamedNode" },
         graph: { value: "urn:vg:ontologies" },
       },
       {

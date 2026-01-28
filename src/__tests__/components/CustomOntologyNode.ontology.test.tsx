@@ -1,6 +1,7 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { RDF, RDF_TYPE, RDFS, RDFS_LABEL, OWL, XSD } from "../../constants/vocabularies";
 
 // Mock the ontology store to provide a minimal rdfManager and other values the component reads.
 vi.mock("../../stores/ontologyStore", () => {
@@ -8,8 +9,8 @@ vi.mock("../../stores/ontologyStore", () => {
     useOntologyStore: (selector?: any) => {
       const nsMap = {
         ex: "http://example.com/",
-        owl: "http://www.w3.org/2002/07/owl#",
-        rdfs: "http://www.w3.org/2000/01/rdf-schema#",
+        owl: OWL.namespace,
+        rdfs: RDFS.namespace,
         dcterms: "http://purl.org/dc/terms/",
       };
       const rdfManager = {
@@ -29,9 +30,9 @@ vi.mock("../../stores/ontologyStore", () => {
         namespaceRegistry: [
           { prefix: "ex", namespace: "http://example.com/", color: "" },
           { prefix: "dcterms", namespace: "http://purl.org/dc/terms/", color: "" },
-          { prefix: "owl", namespace: "http://www.w3.org/2002/07/owl#", color: "" },
-          { prefix: "rdfs", namespace: "http://www.w3.org/2000/01/rdf-schema#", color: "" },
-          { prefix: "rdf", namespace: "http://www.w3.org/1999/02/22-rdf-syntax-ns#", color: "" },
+          { prefix: "owl", namespace: OWL.namespace, color: "" },
+          { prefix: "rdfs", namespace: RDFS.namespace, color: "" },
+          { prefix: "rdf", namespace: RDF.namespace, color: "" },
         ],
       };
       // When a selector function is passed, call it with the store object (Zustand-like)
@@ -72,26 +73,26 @@ describe("CustomOntologyNode (owl:Ontology) display", () => {
     const quads = [
       {
         subject: { value: "http://example.com/ontology1" },
-        predicate: { value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" },
-        object: { value: "http://www.w3.org/2002/07/owl#Ontology", termType: "NamedNode" },
+        predicate: { value: RDF_TYPE },
+        object: { value: OWL.Ontology, termType: "NamedNode" },
         graph: { value: "urn:vg:data" },
       },
       {
         subject: { value: "http://example.com/ontology1" },
-        predicate: { value: "http://www.w3.org/2000/01/rdf-schema#label" },
-        object: { value: "My Ontology", termType: "Literal", datatype: { value: "http://www.w3.org/2001/XMLSchema#string" } },
+        predicate: { value: RDFS_LABEL },
+        object: { value: "My Ontology", termType: "Literal", datatype: { value: XSD.string } },
         graph: { value: "urn:vg:data" },
       },
       {
         subject: { value: "http://example.com/ontology1" },
         predicate: { value: "http://purl.org/dc/terms/license" },
-        object: { value: "CC-BY", termType: "Literal", datatype: { value: "http://www.w3.org/2001/XMLSchema#string" } },
+        object: { value: "CC-BY", termType: "Literal", datatype: { value: XSD.string } },
         graph: { value: "urn:vg:data" },
       },
       {
         subject: { value: "http://example.com/ontology1" },
         predicate: { value: "http://purl.org/dc/terms/creator" },
-        object: { value: "Alice", termType: "Literal", datatype: { value: "http://www.w3.org/2001/XMLSchema#string" } },
+        object: { value: "Alice", termType: "Literal", datatype: { value: XSD.string } },
         graph: { value: "urn:vg:data" },
       },
     ];
@@ -99,8 +100,8 @@ describe("CustomOntologyNode (owl:Ontology) display", () => {
     const registry = [
       { prefix: "ex", namespace: "http://example.com/", color: "#7DD3FC" },
       { prefix: "dcterms", namespace: "http://purl.org/dc/terms/", color: "#A7F3D0" },
-      { prefix: "owl", namespace: "http://www.w3.org/2002/07/owl#", color: "" },
-      { prefix: "rdfs", namespace: "http://www.w3.org/2000/01/rdf-schema#", color: "" },
+      { prefix: "owl", namespace: OWL.namespace, color: "" },
+      { prefix: "rdfs", namespace: RDFS.namespace, color: "" },
     ];
 
     const { default: mapQuadsToDiagram } = await import("../../components/Canvas/core/mappingHelpers");
@@ -122,14 +123,14 @@ describe("CustomOntologyNode (owl:Ontology) display", () => {
     expect(headerElem).toBeTruthy();
 
     // Badge should display the meaningful type prefixed (owl:Ontology) or fallback to full IRI
-    const badge = screen.queryByText("owl:Ontology") || screen.queryByText("http://www.w3.org/2002/07/owl#Ontology");
+    const badge = screen.queryByText("owl:Ontology") || screen.queryByText(OWL.Ontology);
     expect(badge).toBeTruthy();
 
     // Subtitle (human-friendly) must prefer rdfs:label and now is composed with the meaningful type.
     // Expect the composed subtitle like: "My Ontology is a owl:Ontology" or a reasonable fallback
     const subtitleElem =
       screen.queryByText("My Ontology is a owl:Ontology") ||
-      screen.queryByText("My Ontology is a http://www.w3.org/2002/07/owl#Ontology") ||
+      screen.queryByText(`My Ontology is a ${OWL.Ontology}`) ||
       screen.queryByText("My Ontology");
     expect(subtitleElem).toBeTruthy();
 

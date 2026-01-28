@@ -3,9 +3,11 @@ import { render, fireEvent, waitFor } from "@testing-library/react";
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { useOntologyStore } from "../../../src/stores/ontologyStore";
 import { CanvasToolbar } from "../../../src/components/Canvas/CanvasToolbar";
+import { initRdfManagerWorker } from "../utils/initRdfManagerWorker";
 
 describe("CanvasToolbar Paste RDF -> loadOntologyFromRDF", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await initRdfManagerWorker();
     // reset store mocks between tests
     useOntologyStore.setState({ loadOntologyFromRDF: undefined } as any);
   });

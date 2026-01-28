@@ -2,6 +2,7 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import { vi, describe, it, expect, beforeEach } from "vitest";
+import { RDF_TYPE, RDFS_LABEL, OWL, XSD } from "../../constants/vocabularies";
 
 // Mock the ontology store so components read a persisted namespaceRegistry and palette.
 vi.mock("../../stores/ontologyStore", () => {
@@ -72,14 +73,14 @@ describe("Legend + registry-driven prefixed display", () => {
     const quads = [
       {
         subject: { value: "http://example.com/node1" },
-        predicate: { value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" },
-        object: { value: "http://www.w3.org/2002/07/owl#Ontology", termType: "NamedNode" },
+        predicate: { value: RDF_TYPE },
+        object: { value: OWL.Ontology, termType: "NamedNode" },
         graph: { value: "urn:vg:data" },
       },
       {
         subject: { value: "http://example.com/node1" },
-        predicate: { value: "http://www.w3.org/2000/01/rdf-schema#label" },
-        object: { value: "My Ontology", termType: "Literal", datatype: { value: "http://www.w3.org/2001/XMLSchema#string" } },
+        predicate: { value: RDFS_LABEL },
+        object: { value: "My Ontology", termType: "Literal", datatype: { value: XSD.string } },
         graph: { value: "urn:vg:data" },
       },
     ];

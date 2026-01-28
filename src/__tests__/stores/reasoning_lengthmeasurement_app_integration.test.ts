@@ -1,9 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
+import { initRdfManagerWorker } from "../utils/initRdfManagerWorker";
+import { getQuadCount, findQuads, waitForOperation } from "../utils/testHelpers";
 import { DataFactory } from "n3";
 import { useOntologyStore } from "../../../src/stores/ontologyStore";
 import { useAppConfigStore } from "../../../src/stores/appConfigStore";
+import { OWL, RDF, RDFS } from "../../constants/vocabularies";
 
 const { namedNode } = DataFactory;
+
+beforeEach(async () => {
+  await initRdfManagerWorker();
+});
 
 describe("reasoning (app integration) with LengthMeasurement ttl", () => {
   it(
@@ -30,10 +37,6 @@ describe("reasoning (app integration) with LengthMeasurement ttl", () => {
         const modMgr = await import("../../../src/utils/rdfManager");
         const rdfMgr = modMgr && (modMgr as any).rdfManager ? (modMgr as any).rdfManager : null;
         if (!rdfMgr) throw new Error("No module-level RDF manager available");
-        const rdfStore = rdfMgr.getStore ? rdfMgr.getStore() : null;
-        if (!rdfStore || typeof rdfStore.getQuads !== "function") {
-          throw new Error("RDF store not available for test (module-level)");
-        }
 
         // clear manager state for deterministic run (best-effort)
         try {
@@ -63,9 +66,9 @@ describe("reasoning (app integration) with LengthMeasurement ttl", () => {
         // Best-effort: pre-load core ontologies that the real app autoloads on startup so reasoning sees the same TBox.
         try {
           const coreOntos = [
-            "http://www.w3.org/2002/07/owl#",
-            "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
-            "http://www.w3.org/2000/01/rdf-schema#",
+            OWL.namespace,
+            RDF.namespace,
+            RDFS.namespace,
           ];
           if (typeof ontologyState.loadAdditionalOntologies === "function") {
             try {
@@ -152,9 +155,9 @@ describe("reasoning (app integration) with LengthMeasurement ttl", () => {
 
         // Snapshot counts before reasoning (for diagnostics)
         try {
-          const totalBefore = (rdfStore.getQuads(null, null, null, null) || []).length;
-          const dataBefore = (rdfStore.getQuads(null, null, null, namedNode("urn:vg:data")) || []).length;
-          const ontBefore = (rdfStore.getQuads(null, null, null, namedNode("urn:vg:ontologies")) || []).length;
+          const totalBefore = await getQuadCount();
+          const dataBefore = await getQuadCount("urn:vg:data");
+          const ontBefore = await getQuadCount("urn:vg:ontologies");
           console.debug("[TEST] triple counts before reasoning", { totalBefore, dataBefore, ontBefore });
         } catch (_) {/* noop */}
 
@@ -165,7 +168,6 @@ describe("reasoning (app integration) with LengthMeasurement ttl", () => {
           // - Wait until parsingInProgress === false AND reconcileInProgress is null/false (no reconcile happening).
           // - Also ensure subjectChangeBuffer is empty and subjectFlushTimer is not set (no pending subject emissions).
           // - After manager is idle, wait a conservative grace period and return current ontology graph count.
-          const g = namedNode("urn:vg:ontologies");
           const start = Date.now();
           const mgr: any = rdfMgr;
           const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -191,8 +193,7 @@ describe("reasoning (app integration) with LengthMeasurement ttl", () => {
 
           // Step C: return authoritative count from manager store
           try {
-            const store = mgr && typeof mgr.getStore === "function" ? mgr.getStore() : null;
-            const count = store && typeof store.getQuads === "function" ? (store.getQuads(null, null, null, g) || []).length : 0;
+            const count = await getQuadCount("urn:vg:ontologies");
             return count;
           } catch (_) {
             return 0;
@@ -215,7 +216,7 @@ describe("reasoning (app integration) with LengthMeasurement ttl", () => {
         } catch (_) {/* noop */}
 
         // Count persisted inferred triples
-        const inferredCount = (rdfStore.getQuads(null, null, null, namedNode("urn:vg:inferred")) || []).length;
+        const inferredCount = await getQuadCount("urn:vg:inferred");
         const inferredFromResult = Array.isArray(result && (result as any).inferences) ? (result as any).inferences.length : 0;
 
         // Emit diagnostics
@@ -231,7 +232,7 @@ describe("reasoning (app integration) with LengthMeasurement ttl", () => {
 
         // Log final triple totals
         try {
-          const totalAfter = (rdfStore.getQuads(null, null, null, null) || []).length;
+          const totalAfter = await getQuadCount();
           console.debug("[TEST] triple counts after reasoning", { totalAfter });
         } catch (_) {/* noop */}
       } finally {

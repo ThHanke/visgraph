@@ -1,6 +1,7 @@
 import React from "react";
 import { render, act, waitFor } from "@testing-library/react";
 import { vi, test, expect, beforeEach, afterEach } from "vitest";
+import { RDFS_LABEL } from "../../constants/vocabularies";
 
 // Mock UI siblings (reuse lightweight stubs)
 vi.mock("../../components/Canvas/CanvasToolbar", () => ({ __esModule: true, CanvasToolbar: (props: any) => React.createElement("div", { "data-testid": "canvas-toolbar" }) }));
@@ -24,7 +25,7 @@ vi.doMock("../../components/Canvas/core/mappingHelpers", () => {
         // default label is local part unless there's an rdfs:label literal
         let label = (String(s).split("/").pop() || String(s));
         // find rdfs:label triples for this subject in the provided quads
-        const labelQuad = (quads || []).find((q: any) => q && q.subject && q.subject.value === s && (String(q.predicate && q.predicate.value) === "http://www.w3.org/2000/01/rdf-schema#label"));
+        const labelQuad = (quads || []).find((q: any) => q && q.subject && q.subject.value === s && (String(q.predicate && q.predicate.value) === RDFS_LABEL));
         if (labelQuad && labelQuad.object && (labelQuad.object.value !== undefined)) {
           label = String(labelQuad.object.value);
         }
@@ -54,7 +55,6 @@ afterEach(() => {
 test("KnowledgeCanvas incremental mapping updates node label when rdfs:label added", async () => {
   // Prepare manager/store stubs
   const B = "urn:ex:B";
-  const rdfsLabel = "http://www.w3.org/2000/01/rdf-schema#label";
 
   // Initial snapshot: single subject B without label
   let currentSnapshot = [
@@ -139,7 +139,7 @@ test("KnowledgeCanvas incremental mapping updates node label when rdfs:label add
   }
   // Now simulate adding rdfs:label literal for B in the store
   currentSnapshot = currentSnapshot.concat([
-    { subject: { value: B }, predicate: { value: rdfsLabel }, object: { value: "Label for B", termType: "Literal" }, graph: { value: "urn:vg:data" } },
+    { subject: { value: B }, predicate: { value: RDFS_LABEL }, object: { value: "Label for B", termType: "Literal" }, graph: { value: "urn:vg:data" } },
   ]);
 
   // Emit subjects change for B with the new quad

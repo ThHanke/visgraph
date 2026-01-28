@@ -26,6 +26,8 @@ export const RDFS = {
   label: "http://www.w3.org/2000/01/rdf-schema#label",
   comment: "http://www.w3.org/2000/01/rdf-schema#comment",
   seeAlso: "http://www.w3.org/2000/01/rdf-schema#seeAlso",
+  domain: "http://www.w3.org/2000/01/rdf-schema#domain",
+  range: "http://www.w3.org/2000/01/rdf-schema#range",
 } as const;
 
 // ============================================================================
@@ -42,6 +44,7 @@ export const OWL = {
   NamedIndividual: "http://www.w3.org/2002/07/owl#NamedIndividual",
   Ontology: "http://www.w3.org/2002/07/owl#Ontology",
   imports: "http://www.w3.org/2002/07/owl#imports",
+  disjointWith: "http://www.w3.org/2002/07/owl#disjointWith",
 } as const;
 
 // ============================================================================
@@ -55,6 +58,7 @@ export const XSD = {
   integer: "http://www.w3.org/2001/XMLSchema#integer",
   boolean: "http://www.w3.org/2001/XMLSchema#boolean",
   decimal: "http://www.w3.org/2001/XMLSchema#decimal",
+  float: "http://www.w3.org/2001/XMLSchema#float",
   dateTime: "http://www.w3.org/2001/XMLSchema#dateTime",
   date: "http://www.w3.org/2001/XMLSchema#date",
 } as const;

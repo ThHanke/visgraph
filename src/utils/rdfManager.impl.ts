@@ -450,12 +450,21 @@ export class RDFManagerImpl {
   }
 
   private async bootstrapState() {
+    // Skip if worker not initialized yet (e.g., in test environment before beforeEach runs)
+    if (!this.worker) {
+      return;
+    }
+    
     try {
       const namespaces = await this.worker.call("getNamespaces");
       if (isStringRecord(namespaces)) {
         this.namespaces = ensureDefaultNamespaceMap(namespaces as Record<string, string>);
       }
     } catch (err) {
+      // Silently fail if worker not ready - this is expected during test initialization
+      if (err instanceof Error && err.message === "rdfManager worker not initialised") {
+        return;
+      }
       console.debug("[rdfManager] bootstrapState.getNamespaces failed", err);
     }
     try {
@@ -471,6 +480,10 @@ export class RDFManagerImpl {
         if (uris.length > 0) this.blacklistUris = uris;
       }
     } catch (err) {
+      // Silently fail if worker not ready
+      if (err instanceof Error && err.message === "rdfManager worker not initialised") {
+        return;
+      }
       console.debug("[rdfManager] bootstrapState.getBlacklist failed", err);
     }
   }

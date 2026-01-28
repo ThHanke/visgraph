@@ -1,8 +1,9 @@
 import React from "react";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { LinkPropertyEditor } from "../../components/Canvas/LinkPropertyEditor";
+import { initRdfManagerWorker } from "../utils/initRdfManagerWorker";
 
 /**
  * Sanity test: seed ontology store with a specific availableProperties + entityIndex suggestion
@@ -13,6 +14,10 @@ import { LinkPropertyEditor } from "../../components/Canvas/LinkPropertyEditor";
  */
 
 describe("AutoComplete / LinkPropertyEditor seeded suggestions", () => {
+  beforeEach(async () => {
+    await initRdfManagerWorker();
+  });
+
   it("renders a seeded availableProperties/entityIndex suggestion in the AutoComplete", async () => {
     // Seed the ontology store fat-map entries and entityIndex suggestions
     {

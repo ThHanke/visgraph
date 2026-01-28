@@ -6,6 +6,7 @@ import {
   ensureDefaultNamespaceMap,
   ensureDefaultRegistry,
 } from "../../constants/namespaces";
+import { OWL } from "../../constants/vocabularies";
 
 /**
  * This test verifies that the ResizableNamespaceLegend displays entries driven
@@ -97,7 +98,7 @@ describe("ResizableNamespaceLegend store-driven behavior", () => {
     const store = storeModule.useOntologyStore();
     // Populate registry as reconcile would
     const newRegistry = [
-      { prefix: "owl", namespace: "http://www.w3.org/2002/07/owl#", color: "#E2CFEA" },
+      { prefix: "owl", namespace: OWL.namespace, color: "#E2CFEA" },
       { prefix: "ex", namespace: "http://example.com/", color: "#7DD3FC" },
     ];
     store.setNamespaceRegistry(newRegistry);
@@ -105,7 +106,7 @@ describe("ResizableNamespaceLegend store-driven behavior", () => {
     rerender(React.createElement(ResizableNamespaceLegend, {}));
 
     // Assert legend shows the two URIs
-    expect(screen.getByTitle("http://www.w3.org/2002/07/owl#")).toBeTruthy();
+    expect(screen.getByTitle(OWL.namespace)).toBeTruthy();
     const exampleEntries = screen.getAllByTitle("http://example.com/");
     expect(exampleEntries.length).toBe(1);
     expect(screen.getAllByTitle("Remove namespace").length).toBe(2);
@@ -130,12 +131,12 @@ describe("ResizableNamespaceLegend store-driven behavior", () => {
     const store = storeModule.useOntologyStore();
     const registry = [
       { prefix: "ex", namespace: "http://example.com/", color: "#7DD3FC" },
-      { prefix: "owl", namespace: "http://www.w3.org/2002/07/owl#", color: "#E2CFEA" },
+      { prefix: "owl", namespace: OWL.namespace, color: "#E2CFEA" },
     ];
     store.setNamespaceRegistry(registry);
     rerender(React.createElement(ResizableNamespaceLegend, {}));
 
-    const [owlSpan] = screen.getAllByTitle("http://www.w3.org/2002/07/owl#");
+    const [owlSpan] = screen.getAllByTitle(OWL.namespace);
     const owlRow = owlSpan.parentElement;
     const removeButton = owlRow?.querySelector('button[title="Remove namespace"]') as HTMLButtonElement | null;
     expect(removeButton).toBeTruthy();

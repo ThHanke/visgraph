@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import mapQuadsToDiagram from '../../components/Canvas/core/mappingHelpers';
+import { RDF_TYPE, OWL, XSD } from '../../constants/vocabularies';
 
 describe('mapQuadsToDiagram - prefix-only IRI handling', () => {
   it('should handle properties with prefix-only IRIs (no local part)', () => {
@@ -7,8 +8,8 @@ describe('mapQuadsToDiagram - prefix-only IRI handling', () => {
     const quads = [
       {
         subject: { value: 'https://example.org/entity1' },
-        predicate: { value: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type' },
-        object: { value: 'http://www.w3.org/2002/07/owl#NamedIndividual' },
+        predicate: { value: RDF_TYPE },
+        object: { value: OWL.NamedIndividual },
       },
       {
         subject: { value: 'https://example.org/entity1' },
@@ -16,7 +17,7 @@ describe('mapQuadsToDiagram - prefix-only IRI handling', () => {
         object: { 
           value: '99.2',
           termType: 'Literal',
-          datatype: { value: 'http://www.w3.org/2001/XMLSchema#float' }
+          datatype: { value: XSD.float }
         },
       },
     ];
@@ -58,8 +59,8 @@ describe('mapQuadsToDiagram - prefix-only IRI handling', () => {
     const quads = [
       {
         subject: { value: 'https://example.org/entity1' },
-        predicate: { value: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type' },
-        object: { value: 'http://www.w3.org/2002/07/owl#NamedIndividual' },
+        predicate: { value: RDF_TYPE },
+        object: { value: OWL.NamedIndividual },
       },
       {
         subject: { value: 'https://example.org/entity1' },
@@ -67,7 +68,7 @@ describe('mapQuadsToDiagram - prefix-only IRI handling', () => {
         object: { 
           value: '3.3',
           termType: 'Literal',
-          datatype: { value: 'http://www.w3.org/2001/XMLSchema#float' }
+          datatype: { value: XSD.float }
         },
       },
     ];

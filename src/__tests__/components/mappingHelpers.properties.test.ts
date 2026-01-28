@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import mapQuadsToDiagram from '../../components/Canvas/core/mappingHelpers';
+import { RDF_TYPE, RDFS, OWL, XSD } from '../../constants/vocabularies';
 
 describe('mapQuadsToDiagram - properties field population', () => {
   it('should populate properties field with annotation properties for display', () => {
@@ -7,16 +8,16 @@ describe('mapQuadsToDiagram - properties field population', () => {
     const quads = [
       {
         subject: { value: 'https://example.org/scalar_value_spec' },
-        predicate: { value: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type' },
-        object: { value: 'http://www.w3.org/2002/07/owl#NamedIndividual' },
+        predicate: { value: RDF_TYPE },
+        object: { value: OWL.NamedIndividual },
       },
       {
         subject: { value: 'https://example.org/scalar_value_spec' },
-        predicate: { value: 'http://www.w3.org/2000/01/rdf-schema#label' },
+        predicate: { value: RDFS.label },
         object: { 
           value: 'Scalar Value Specification',
           termType: 'Literal',
-          datatype: { value: 'http://www.w3.org/2001/XMLSchema#string' }
+          datatype: { value: XSD.string }
         },
       },
       {
@@ -25,7 +26,7 @@ describe('mapQuadsToDiagram - properties field population', () => {
         object: { 
           value: '3.3',
           termType: 'Literal',
-          datatype: { value: 'http://www.w3.org/2001/XMLSchema#float' }
+          datatype: { value: XSD.decimal }
         },
       },
       {
@@ -34,7 +35,7 @@ describe('mapQuadsToDiagram - properties field population', () => {
         object: { 
           value: '%',
           termType: 'Literal',
-          datatype: { value: 'http://www.w3.org/2001/XMLSchema#string' }
+          datatype: { value: XSD.string }
         },
       },
     ];
@@ -73,7 +74,7 @@ describe('mapQuadsToDiagram - properties field population', () => {
     
     // Verify rdfs:label is also in properties
     const hasLabel = node.data.properties.find(
-      (p: any) => p.property === 'http://www.w3.org/2000/01/rdf-schema#label'
+      (p: any) => p.property === RDFS.label
     );
     expect(hasLabel).toBeDefined();
     expect(hasLabel.value).toBe('Scalar Value Specification');
@@ -83,8 +84,8 @@ describe('mapQuadsToDiagram - properties field population', () => {
     const quads = [
       {
         subject: { value: 'https://example.org/minimal' },
-        predicate: { value: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type' },
-        object: { value: 'http://www.w3.org/2002/07/owl#NamedIndividual' },
+        predicate: { value: RDF_TYPE },
+        object: { value: OWL.NamedIndividual },
       },
     ];
 

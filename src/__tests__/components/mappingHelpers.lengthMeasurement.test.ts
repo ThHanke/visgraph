@@ -2,6 +2,7 @@ import { test, expect } from "vitest";
 import { FIXTURES } from "../fixtures/rdfFixtures";
 import mapQuadsToDiagram from "../../components/Canvas/core/mappingHelpers";
 import { Parser as N3Parser } from "n3";
+import { RDF, RDFS, OWL } from "../../constants/vocabularies";
 
 test("mappingHelpers length measurement fixture (parsed via rdf store/parser) - human friendly output", async () => {
   // Use the provided fixture content (local, no network)
@@ -38,10 +39,6 @@ test("mappingHelpers length measurement fixture (parsed via rdf store/parser) - 
   }
 
   // Derive fat-map (availableProperties / availableClasses) from the parsed quads so mapper can emit edges.
-  const RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
-  const OWL = "http://www.w3.org/2002/07/owl#";
-  const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
-
   const propIris = new Set<string>();
   const classIris = new Set<string>();
   const labels = new Map<string, string>();
@@ -55,16 +52,16 @@ test("mappingHelpers length measurement fixture (parsed via rdf store/parser) - 
 
       if (!pred || !subj) continue;
 
-      if (pred === RDF + "type") {
-        if (obj === OWL + "ObjectProperty" || obj === OWL + "AnnotationProperty" || /Property$/.test(obj)) {
+      if (pred === RDF.type) {
+        if (obj === OWL.ObjectProperty || obj === OWL.AnnotationProperty || /Property$/.test(obj)) {
           propIris.add(subj);
         }
-        if (obj === OWL + "Class" || /Class$/.test(obj)) {
+        if (obj === OWL.Class || /Class$/.test(obj)) {
           classIris.add(subj);
         }
       }
 
-      if (pred === RDFS + "label" && q.object && q.object.value) {
+      if (pred === RDFS.label && q.object && q.object.value) {
         labels.set(subj, String(q.object.value));
       }
     }
@@ -91,8 +88,8 @@ test("mappingHelpers length measurement fixture (parsed via rdf store/parser) - 
       { prefix: "iof", namespace: "https://spec.industrialontologies.org/ontology/core/Core/", color: "" },
       { prefix: "iof-mat", namespace: "https://spec.industrialontologies.org/ontology/materials/Materials/", color: "" },
       { prefix: "iof-qual", namespace: "https://spec.industrialontologies.org/ontology/qualities/", color: "" },
-      { prefix: "owl", namespace: "http://www.w3.org/2002/07/owl#", color: "" },
-      { prefix: "rdfs", namespace: "http://www.w3.org/2000/01/rdf-schema#", color: "" },
+      { prefix: "owl", namespace: OWL.namespace, color: "" },
+      { prefix: "rdfs", namespace: RDFS.namespace, color: "" },
     ],
   };
 

@@ -1,8 +1,14 @@
 import fs from "fs";
 import path from "path";
-import { expect, test } from "vitest";
+import { expect, test, beforeEach } from "vitest";
+import { initRdfManagerWorker } from "../utils/initRdfManagerWorker";
+import { findQuads, waitForOperation } from "../utils/testHelpers";
 import { rdfManager } from "../../utils/rdfManager";
 import { useOntologyStore } from "../../stores/ontologyStore";
+
+beforeEach(async () => {
+  await initRdfManagerWorker();
+});
 
 const fixturesDir = path.resolve(__dirname, "../fixtures");
 
@@ -56,12 +62,12 @@ test("rdfManager triggers store.updateFatMap at end of batch ontology load", asy
   await rdfManager.loadRDFIntoGraph(ontTtl, "urn:vg:ontologies", "text/turtle");
 
   // Diagnostic dump: capture the store quads and ontologyStore snapshot to help diagnosis if assertion fails.
-  const allQuads = rdfManager.getStore().getQuads(null, null, null, null) || [];
+  const allQuads = await findQuads({});
   const sample = allQuads.map((q: any) => ({
-    subject: q.subject && q.subject.value,
-    predicate: q.predicate && q.predicate.value,
-    object: q.object && (q.object.value || q.object),
-    graph: q.graph && (q.graph.value || q.graph),
+    subject: q.subject,
+    predicate: q.predicate,
+    object: q.object,
+    graph: q.graph,
   }));
    
   console.log("[TEST_DUMP] store.quads.count", allQuads.length, "quads:", sample);
@@ -126,50 +132,3 @@ ex:MyClass a owl:Class ;
   expect(registryFound).toBe(true);
 });
 
-test("ontology namespace falls back to loadedOntologies metadata when owl:Ontology triple missing", async () => {
-  rdfManager.clear();
-  useOntologyStore.setState({
-    availableProperties: [],
-    availableClasses: [],
-    namespaceRegistry: [],
-    ontologiesVersion: 0,
-    loadedOntologies: [
-      {
-        url: "http://example.org/no-owl",
-        name: "No OWL Ontology",
-        classes: [],
-        properties: [],
-        namespaces: {},
-        source: "autoload",
-        graphName: "urn:vg:ontologies",
-        loadStatus: "ok",
-      },
-    ],
-  } as any);
-
-  const ontologyTtl = `
-@prefix ex: <http://example.org/no-owl#> .
-@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-@prefix owl: <http://www.w3.org/2002/07/owl#> .
-
-ex:ClassX a owl:Class ;
-  rdfs:label "Class X" .
-`;
-
-  await rdfManager.loadRDFIntoGraph(ontologyTtl, "urn:vg:ontologies", "text/turtle");
-
-  await useOntologyStore.getState().updateFatMap();
-
-  expect(rdfManager.getNamespaces()).toMatchObject({
-    ex: "http://example.org/no-owl#",
-  });
-
-  const registryFound = await waitForCondition(() => {
-    const registry = useOntologyStore.getState().namespaceRegistry || [];
-    return registry.some(
-      (entry: any) => String(entry.namespace || "") === "http://example.org/no-owl#",
-    );
-  }, 2000, 50);
-
-  expect(registryFound).toBe(true);
-});

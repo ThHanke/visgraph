@@ -1,6 +1,7 @@
 import { test, expect } from "vitest";
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { rdfManager } from "../../utils/rdfManager";
+import { RDF_TYPE, RDFS_LABEL, OWL } from "../../constants/vocabularies";
 
 /**
  * Simple helper utilities (inline to keep test focused)
@@ -37,17 +38,14 @@ test("updateFatMap accepts parsed quads and populates availableProperties/availa
 
   // Build a set of parsed quads (POJO shape) representing ontology TBox in urn:vg:ontologies
   const TTL_NS = "http://example.com/";
-  const OWL = "http://www.w3.org/2002/07/owl#";
-  const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
-  const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 
   const quads = [
     // ex:prop a owl:ObjectProperty ; rdfs:label "prop" .
-    { subject: { value: `${TTL_NS}prop` }, predicate: { value: RDF_TYPE }, object: { value: `${OWL}ObjectProperty` }, graph: { value: "urn:vg:ontologies" } },
-    { subject: { value: `${TTL_NS}prop` }, predicate: { value: `${RDFS}label` }, object: { value: "prop" }, graph: { value: "urn:vg:ontologies" } },
+    { subject: { value: `${TTL_NS}prop` }, predicate: { value: RDF_TYPE }, object: { value: OWL.ObjectProperty }, graph: { value: "urn:vg:ontologies" } },
+    { subject: { value: `${TTL_NS}prop` }, predicate: { value: RDFS_LABEL }, object: { value: "prop" }, graph: { value: "urn:vg:ontologies" } },
     // ex:SomeClass a owl:Class ; rdfs:label "SomeClass" .
-    { subject: { value: `${TTL_NS}SomeClass` }, predicate: { value: RDF_TYPE }, object: { value: `${OWL}Class` }, graph: { value: "urn:vg:ontologies" } },
-    { subject: { value: `${TTL_NS}SomeClass` }, predicate: { value: `${RDFS}label` }, object: { value: "SomeClass" }, graph: { value: "urn:vg:ontologies" } },
+    { subject: { value: `${TTL_NS}SomeClass` }, predicate: { value: RDF_TYPE }, object: { value: OWL.Class }, graph: { value: "urn:vg:ontologies" } },
+    { subject: { value: `${TTL_NS}SomeClass` }, predicate: { value: RDFS_LABEL }, object: { value: "SomeClass" }, graph: { value: "urn:vg:ontologies" } },
   ];
 
   // Call updateFatMap directly with parsed quads

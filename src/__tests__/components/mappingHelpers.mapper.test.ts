@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import mapQuadsToDiagram from "../../components/Canvas/core/mappingHelpers";
+import { RDF_TYPE, RDFS, OWL, XSD } from "../../constants/vocabularies";
 
 function q(subject: string, predicate: string, object: any, graph = "urn:vg:data") {
   return {
@@ -41,7 +42,7 @@ describe("mapQuadsToDiagram (mapper) - fat-map authoritative scenarios", () => {
       q(subj, pred, {
         value: lit,
         termType: "Literal",
-        datatype: { value: "http://www.w3.org/2001/XMLSchema#string" },
+        datatype: { value: XSD.string },
       }),
     ];
 
@@ -60,7 +61,7 @@ describe("mapQuadsToDiagram (mapper) - fat-map authoritative scenarios", () => {
     // Triple linking subject -> blank node
     const t1 = q(subj, pred, { value: bn, termType: "BlankNode" });
     // Another triple where the blank node appears as a subject (makes it referenced)
-    const t2 = q(bn, "http://www.w3.org/2000/01/rdf-schema#label", { value: "blank label", termType: "Literal" });
+    const t2 = q(bn, RDFS.label, { value: "blank label", termType: "Literal" });
 
     const diagram = mapQuadsToDiagram([t1, t2], { availableProperties: [{ iri: pred, propertyKind: "object" }] });
 
@@ -90,7 +91,7 @@ describe("mapQuadsToDiagram (mapper) - fat-map authoritative scenarios", () => {
     const lic = "https://creativecommons.org/licenses/by/4.0/";
 
     const quads = [
-      q(subj, "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", { value: "http://www.w3.org/2002/07/owl#Ontology", termType: "NamedNode" }),
+      q(subj, RDF_TYPE, { value: OWL.Ontology, termType: "NamedNode" }),
       q(subj, pred, { value: lic, termType: "NamedNode" }),
     ];
 
@@ -108,9 +109,9 @@ describe("mapQuadsToDiagram (mapper) - fat-map authoritative scenarios", () => {
     const subj = "http://example.com/s-unknown";
     const pred = "http://example.com/propUnknown";
     const obj = "http://example.com/o-unknown";
-    const classIri = "http://www.w3.org/2002/07/owl#Class"; // explicit TBox marker (owl:Class)
+    const classIri = OWL.Class; // explicit TBox marker (owl:Class)
 
-    const tType = q(subj, "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", { value: classIri, termType: "NamedNode" });
+    const tType = q(subj, RDF_TYPE, { value: classIri, termType: "NamedNode" });
     const tLink = q(subj, pred, { value: obj, termType: "NamedNode" });
 
     // availableProperties contains the predicate but without propertyKind -> treated as 'unknown'
