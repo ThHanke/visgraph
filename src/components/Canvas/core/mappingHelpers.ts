@@ -74,6 +74,11 @@ function termValue(term: unknown): string | null {
 }
 
 function isBlankNode(term: unknown): boolean {
+  // Check termType first (most reliable)
+  if (term && typeof term === "object" && (term as TermLike).termType === "BlankNode") {
+    return true;
+  }
+  // Fallback to value prefix check
   const value = termValue(term);
   return typeof value === "string" && value.startsWith("_:");
 }
@@ -94,9 +99,18 @@ function isNamedOrBlank(term: unknown): boolean {
 }
 
 function isLiteral(term: unknown): boolean {
-  if (term && typeof term === "object" && (term as TermLike).termType === "Literal") {
-    return true;
+  // Check termType first (most reliable)
+  if (term && typeof term === "object") {
+    const termType = (term as TermLike).termType;
+    if (termType === "Literal") {
+      return true;
+    }
+    // Explicitly exclude blank nodes
+    if (termType === "BlankNode") {
+      return false;
+    }
   }
+  // Fallback to value-based heuristic only for terms without termType
   const value = termValue(term);
   if (typeof value !== "string") return false;
   return !/^https?:\/\//i.test(value) && !value.startsWith("_:");
@@ -470,7 +484,7 @@ export function mapQuadsToDiagram(
       continue;
     }
 
-    if (predicateKindLocal === "annotation") {
+    if (predicateKindLocal === "annotation" && isLiteral(objectTerm)) {
       const literal = resolveLiteral(objectTerm, XSD_STRING);
       // Check for duplicate before adding
       const isDuplicate = entry.annotationProperties.some(
@@ -484,6 +498,12 @@ export function mapQuadsToDiagram(
         });
       }
       continue;
+    }
+
+    if (predicateKindLocal === "annotation" && !isLiteral(objectTerm)) {
+      // Annotation predicates with non-literal objects should still create edges
+      // if they point to structured entities (blank nodes or named nodes)
+      // Fall through to the blank node / named node handling below
     }
 
     if (isLiteral(objectTerm)) {
@@ -508,6 +528,7 @@ export function mapQuadsToDiagram(
       if (
         predicateKindLocal === "object" ||
         predicateKindLocal === "unknown" ||
+        (predicateKindLocal === "annotation" && isBlankNodeReferenced(bn, dataQuads)) ||
         isBlankNodeReferenced(bn, dataQuads)
       ) {
         const canonicalBn = bn;
@@ -725,9 +746,14 @@ export function mapQuadsToDiagram(
 
     nodeData.subtitle = classText ? `${subjectText} is a ${classText}` : subjectText;
 
+    // Detect if this is a prov:Activity node and assign the appropriate node type
+    const PROV_ACTIVITY = 'http://www.w3.org/ns/prov#Activity';
+    const isActivity = info.rdfTypes.includes(PROV_ACTIVITY);
+    const nodeType = isActivity ? 'activity' : 'ontology';
+
     const rfNode: RFNode<NodeData> = {
       id: iri,
-      type: "ontology",
+      type: nodeType,
       position: { x: 0, y: 0 },
       data: {
         ...nodeData,

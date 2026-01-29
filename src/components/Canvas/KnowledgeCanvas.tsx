@@ -32,6 +32,7 @@ import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
 import type { NodeData, LinkData } from "../../types/canvas";
 import mapQuadsToDiagram from "./core/mappingHelpers";
 import { RDFNode as OntologyNode } from "./RDFNode";
+import { ActivityNode } from "./ActivityNode";
 import ObjectPropertyEdge from "./ObjectPropertyEdge";
 import FloatingConnectionLine from "./FloatingConnectionLine";
 import { generateEdgeId } from "./core/edgeHelpers";
@@ -2361,8 +2362,11 @@ const KnowledgeCanvas: React.FC = () => {
   );
 
   const memoNodeTypes = useMemo(
-    () => ({ ontology: OntologyNode }),
-    [OntologyNode],
+    () => ({ 
+      ontology: OntologyNode,
+      activity: ActivityNode,
+    }),
+    [OntologyNode, ActivityNode],
   );
   const memoEdgeTypes = useMemo(
     () => ({ floating: ObjectPropertyEdge }),
