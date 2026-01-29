@@ -84,8 +84,15 @@ export function computeNodeChanges(
   for (const node of nodesList) {
     const id = String(node.id);
     const existing = currentById.get(id);
+    const isPlaceholder = (node as any).data?.__isPlaceholder === true;
 
     if (existing) {
+      // CRITICAL: Never overwrite existing nodes with placeholders!
+      // Placeholders are created for edge targets but should not replace real data.
+      if (isPlaceholder) {
+        continue; // ← Skip this node completely - keep existing
+      }
+
       // Merge and check if changed
       const mergedData = mergeDataOptimized(existing.data, (node as any).data);
 
@@ -103,6 +110,10 @@ export function computeNodeChanges(
       };
 
       delete (mergedNode as any).selected;
+      // Clean up the internal flag - it's only for merge decisions
+      if (mergedNode.data && '__isPlaceholder' in mergedNode.data) {
+        delete (mergedNode.data as any).__isPlaceholder;
+      }
       changes.push({ id, type: 'replace', item: mergedNode });
     } else {
       // New node - add it
@@ -111,6 +122,10 @@ export function computeNodeChanges(
         position: (node as any).position ?? { x: 0, y: 0 },
       };
       delete (newNode as any).selected;
+      // Clean up the internal flag for new nodes too
+      if (newNode.data && '__isPlaceholder' in newNode.data) {
+        delete (newNode.data as any).__isPlaceholder;
+      }
       changes.push({ type: 'add', item: newNode });
       knownIds.add(String(newNode.id));
     }

@@ -231,9 +231,14 @@ const coerceWorkerTerm = (value: any, context: TermContext): WorkerTerm | null =
     return null;
   }
 
+  // CRITICAL: If already a proper N3 Term, serialize it to WorkerTerm format
+  // This preserves the exact datatype/language while converting to worker protocol
   if (isRdfTerm(value)) {
     try {
-      return normalizeWorkerTerm(serializeTerm(value as any), context);
+      // Serialize N3 Term to WorkerTerm format (required by worker protocol)
+      const serialized = serializeTerm(value as any);
+      // For context-sensitive normalization (e.g., literals can't be subjects)
+      return normalizeWorkerTerm(serialized, context);
     } catch (err) {
       console.error("[rdfManager] serializeTerm failed", err);
       return null;

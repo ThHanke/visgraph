@@ -41,6 +41,9 @@ import { expandPrefixed, toPrefixed } from "../../utils/termUtils";
 import { exportSvgFull, exportPngFull } from "./core/downloadHelpers";
 import { getNamespaceRegistry } from "../../utils/storeHelpers";
 import { applyDiagramChangeSmart } from "./core/diagramChangeHelpers";
+import { DataFactory } from "n3";
+
+const { namedNode } = DataFactory;
 
 const LAYOUT_META_REASONS = new Set<string>([
   "syncBatch",
@@ -2317,22 +2320,22 @@ const KnowledgeCanvas: React.FC = () => {
       const nextPredicate = expand(propertyUri);
       const graphName = "urn:vg:data";
 
-      const removes: Array<{ subject: string; predicate: string; object: string }> = [];
-      const adds: Array<{ subject: string; predicate: string; object: string }> = [];
+      const removes: Array<{ subject: any; predicate: any; object: any }> = [];
+      const adds: Array<{ subject: any; predicate: any; object: any }> = [];
 
       if (previousPredicate && previousPredicate !== nextPredicate) {
         removes.push({
-          subject: String(subjIri),
-          predicate: previousPredicate,
-          object: String(objIri),
+          subject: namedNode(String(subjIri)),
+          predicate: namedNode(previousPredicate),
+          object: namedNode(String(objIri)),
         });
       }
 
       if (!previousPredicate || previousPredicate !== nextPredicate) {
         adds.push({
-          subject: String(subjIri),
-          predicate: nextPredicate,
-          object: String(objIri),
+          subject: namedNode(String(subjIri)),
+          predicate: namedNode(nextPredicate),
+          object: namedNode(String(objIri)),
         });
       }
 

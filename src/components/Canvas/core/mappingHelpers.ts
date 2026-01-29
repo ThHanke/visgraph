@@ -270,6 +270,10 @@ export function mapQuadsToDiagram(
     "http://www.w3.org/2002/07/owl#AnnotationProperty",
   ]);
 
+  // Track which IRIs appear as explicit subjects (have quads where they are the SUBJECT)
+  // This lets us distinguish between real nodes and placeholder nodes created for edge targets
+  const explicitSubjects = new Set<string>();
+
   // small local cache for classifier results to avoid repeated work per-predicate
   const predicateKindCache = new Map<string, PredicateKind>();
 
@@ -439,6 +443,10 @@ export function mapQuadsToDiagram(
 
     const subjectIri = normalized.subject;
     if (!subjectIri) continue;
+    
+    // Track this IRI as an explicit subject (has quads where it's the subject)
+    explicitSubjects.add(subjectIri);
+    
     ensureNode(subjectIri);
     const entry = nodeMap.get(subjectIri)!;
 
@@ -479,6 +487,9 @@ export function mapQuadsToDiagram(
           property: predicateIri,
           value,
           ...(type ? { type } : {}),
+          // Preserve original N3 Terms for exact matching during removal
+          predicateTerm: (quad as any).predicate,
+          objectTerm: objectTerm,
         });
       }
       continue;
@@ -495,6 +506,9 @@ export function mapQuadsToDiagram(
           property: predicateIri,
           value: literal.value,
           ...(literal.type ? { type: literal.type } : {}),
+          // Preserve original N3 Terms for exact matching during removal
+          predicateTerm: (quad as any).predicate,
+          objectTerm: objectTerm,
         });
       }
       continue;
@@ -517,6 +531,9 @@ export function mapQuadsToDiagram(
           property: predicateIri,
           value: literal.value,
           ...(literal.type ? { type: literal.type } : {}),
+          // Preserve original N3 Terms for exact matching during removal
+          predicateTerm: (quad as any).predicate,
+          objectTerm: objectTerm,
         });
       }
       continue;
@@ -567,6 +584,9 @@ export function mapQuadsToDiagram(
         entry.annotationProperties.push({
           property: predicateIri,
           value: bn,
+          // Preserve original N3 Terms for exact matching during removal
+          predicateTerm: (quad as any).predicate,
+          objectTerm: objectTerm,
         });
       }
       continue;
@@ -613,6 +633,9 @@ export function mapQuadsToDiagram(
         entry.annotationProperties.push({
           property: predicateIri,
           value: objectIri,
+          // Preserve original N3 Terms for exact matching during removal
+          predicateTerm: (quad as any).predicate,
+          objectTerm: objectTerm,
         });
       }
       continue;
@@ -621,6 +644,9 @@ export function mapQuadsToDiagram(
     entry.annotationProperties.push({
       property: predicateIri,
       value: termValue(objectTerm) ?? "",
+      // Preserve original N3 Terms for exact matching during removal
+      predicateTerm: (quad as any).predicate,
+      objectTerm: objectTerm,
     });
   }
 
@@ -645,11 +671,17 @@ export function mapQuadsToDiagram(
         property: normalized.predicate,
         value: literal.value,
         ...(literal.type ? { type: literal.type } : {}),
+        // Preserve original N3 Terms for exact matching during removal
+        predicateTerm: (quad as any).predicate,
+        objectTerm: objectTerm,
       });
     } else {
       entry.annotationProperties.push({
         property: normalized.predicate,
         value,
+        // Preserve original N3 Terms for exact matching during removal
+        predicateTerm: (quad as any).predicate,
+        objectTerm: objectTerm,
       });
     }
   }
@@ -758,6 +790,8 @@ export function mapQuadsToDiagram(
       data: {
         ...nodeData,
         onSizeMeasured: (_w: number, _h: number) => { /* no-op */ },
+        // Flag placeholder nodes (created for edge targets but not explicit subjects)
+        __isPlaceholder: !explicitSubjects.has(iri),
       } as NodeData,
     } as RFNode<NodeData>;
 

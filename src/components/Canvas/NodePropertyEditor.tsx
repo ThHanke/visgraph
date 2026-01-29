@@ -144,12 +144,11 @@ function coerceLiteralProperty(entry: any): LiteralProperty | null {
   return {
     key,
     value: String(rawValue),
+    // Store the FULL IRI datatype, not prefixed - this ensures exact matching on removal
     type: rawLang
       ? DISPLAY_DATATYPE
       : rawType
-      ? rawType.includes("://")
-        ? toPrefixedSafe(rawType)
-        : rawType
+      ? rawType  // ← Keep full IRI, don't convert to prefixed
       : DISPLAY_DATATYPE,
     lang: rawLang,
     predicateTerm: entry.predicateTerm ?? entry.predicate,
@@ -395,11 +394,10 @@ export const NodePropertyEditor = ({
       subjIri = expandIriIfNeeded(subjIri);
     }
 
-    // Compute annotation property diffs from initial snapshot (no RDF lookups)
-    const { toAdd: propsToAdd, toRemove: propsToRemove } = diffProperties(
-      initialPropertiesRef.current || [],
-      properties || [],
-    );
+    // Simplified strategy: Remove ALL initial annotation properties, then add ALL current ones
+    // This is more reliable than diffing and avoids Term matching issues
+    const propsToRemove = initialPropertiesRef.current || [];
+    const propsToAdd = properties || [];
 
     // Compute rdf:type diffs (use rdfTypesState if present, otherwise use nodeType)
     const currentTypes = (Array.isArray(rdfTypesState) && rdfTypesState.length > 0) ? rdfTypesState.slice() : (nodeType ? [String(nodeType)] : []);
@@ -479,7 +477,16 @@ export const NodePropertyEditor = ({
 
         // If a datatype is provided prefer it (expand prefixed types if manager supports it)
         if (type && String(type).trim()) {
-          const dtIri = expandIriIfNeeded(String(type).trim());
+          let dtIri = String(type).trim();
+          
+          // Expand xsd: prefix if needed
+          if (dtIri.startsWith("xsd:")) {
+            dtIri = dtIri.replace("xsd:", "http://www.w3.org/2001/XMLSchema#");
+          } else if (!dtIri.includes("://")) {
+            // Try expansion for other prefixed forms
+            dtIri = expandIriIfNeeded(dtIri);
+          }
+          
           return literal(s, namedNode(dtIri));
         }
 
@@ -497,18 +504,43 @@ export const NodePropertyEditor = ({
 
     const removesPrepared = (propsToRemove || []).map((p: any) => {
       try {
-        const objTerm =
-          p &&
-          p.objectTerm &&
-          ((p.objectTerm as any).termType || (p.objectTerm as any).termType === 0)
-            ? p.objectTerm
-            : valueToTerm(p.value, p.lang ? `@${p.lang}` : p.type);
-        const rawPred = String(p.key || p.property || (p.predicateTerm && p.predicateTerm.value) || "").trim();
-        if (!rawPred) return null;
-        const pred = expandIriIfNeeded(rawPred);
+        // CRITICAL: Use the preserved original N3 Terms directly from the mapper
+        // These Terms have the exact termType/datatype/language that's in the store
+        let objTerm;
+        let predTerm;
+        
+        // Use predicateTerm directly if available (preserved from mapper)
+        if (p && p.predicateTerm && typeof p.predicateTerm === 'object' && 'termType' in p.predicateTerm) {
+          predTerm = p.predicateTerm;
+        } else {
+          // Fallback: construct from property IRI
+          const rawPred = String(p.key || p.property || "").trim();
+          if (!rawPred) return null;
+          predTerm = termForIri(expandIriIfNeeded(rawPred));
+        }
+        
+        // Use objectTerm directly if available (preserved from mapper)
+        if (p && p.objectTerm && typeof p.objectTerm === 'object' && 'termType' in p.objectTerm) {
+          objTerm = p.objectTerm;
+          console.debug("[NodePropertyEditor] Using preserved objectTerm for removal:", {
+            value: p.value,
+            objectTerm: objTerm,
+            hasDatatype: !!objTerm.datatype,
+            datatype: objTerm.datatype
+          });
+        } else {
+          // Fallback: reconstruct from value/type
+          objTerm = valueToTerm(p.value, p.lang ? `@${p.lang}` : p.type);
+          console.debug("[NodePropertyEditor] Reconstructed objectTerm for removal:", {
+            value: p.value,
+            type: p.type,
+            objectTerm: objTerm
+          });
+        }
+        
         return {
           subject: subjIri,
-          predicate: pred,
+          predicate: predTerm,
           object: objTerm,
         };
       } catch (_) {
@@ -533,12 +565,20 @@ export const NodePropertyEditor = ({
         const objTerm = p && p.objectTerm && (p.objectTerm.termType || p.objectTerm.termType === 0)
           ? p.objectTerm
           : valueToTerm(p.value, p.lang ? `@${p.lang}` : p.type);
-        const rawPred = String(p.key || p.property || (p.predicateTerm && p.predicateTerm.value) || "").trim();
-        if (!rawPred) return null;
-        const pred = expandIriIfNeeded(rawPred);
+        
+        // CRITICAL: Use Term objects for predicate, not strings
+        let predTerm;
+        if (p && p.predicateTerm && typeof p.predicateTerm === 'object' && 'termType' in p.predicateTerm) {
+          predTerm = p.predicateTerm;
+        } else {
+          const rawPred = String(p.key || p.property || "").trim();
+          if (!rawPred) return null;
+          predTerm = termForIri(expandIriIfNeeded(rawPred));
+        }
+        
         return {
           subject: subjIri,
-          predicate: pred,
+          predicate: predTerm,
           object: objTerm,
         };
       } catch (_) {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { DataFactory } from 'n3';
-const { namedNode, quad } = DataFactory;
+const { namedNode } = DataFactory;
 import { useCanvasState } from '../../hooks/useCanvasState';
 import { Button } from '../ui/button';
 import EntityAutoComplete from '../ui/EntityAutoComplete';
@@ -179,25 +179,26 @@ export const LinkPropertyEditor = ({
         graphName
       });
 
-      const removes: Array<{ subject: string; predicate: string; object: string }> = [];
-      const adds: Array<{ subject: string; predicate: string; object: string }> = [];
+      // Use N3 Terms for exact matching in the RDF store
+      const removes: Array<{ subject: any; predicate: any; object: any }> = [];
+      const adds: Array<{ subject: any; predicate: any; object: any }> = [];
 
       // For create operations, previousPredicate might be set (from UI state) but we still need to add the triple
       const isCreateOperation = linkData?.operation === 'create';
 
       if (previousPredicate && previousPredicate !== nextPredicate && !isCreateOperation) {
         removes.push({
-          subject: String(subjIri),
-          predicate: previousPredicate,
-          object: String(objIri),
+          subject: namedNode(String(subjIri)),
+          predicate: namedNode(previousPredicate),
+          object: namedNode(String(objIri)),
         });
       }
 
       if (isCreateOperation || !previousPredicate || previousPredicate !== nextPredicate) {
         adds.push({
-          subject: String(subjIri),
-          predicate: nextPredicate,
-          object: String(objIri),
+          subject: namedNode(String(subjIri)),
+          predicate: namedNode(nextPredicate),
+          object: namedNode(String(objIri)),
         });
       }
 
@@ -281,7 +282,12 @@ export const LinkPropertyEditor = ({
     });
 
     if (mgr && subjIri && objIri && predFull) {
-      const removes = [{ subject: String(subjIri), predicate: predFull, object: String(objIri) }];
+      // Use N3 Terms for exact matching in the RDF store
+      const removes = [{ 
+        subject: namedNode(String(subjIri)), 
+        predicate: namedNode(predFull), 
+        object: namedNode(String(objIri)) 
+      }];
       console.debug('[VG] LinkPropertyEditor.handleDelete calling applyBatch', { removes, graphName: g });
       if (typeof mgr.applyBatch === "function") {
         try {
