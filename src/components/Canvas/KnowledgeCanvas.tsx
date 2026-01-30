@@ -16,6 +16,7 @@ import {
   applyNodeChanges,
   applyEdgeChanges,
   MiniMap,
+  Panel,
 } from "@xyflow/react";
 // import '../../tailwind-config.js';
 import { useOntologyStore } from "../../stores/ontologyStore";
@@ -68,6 +69,7 @@ import { NodePropertyEditor } from "./NodePropertyEditor";
 import { projectClient } from "./core/viewportUtils";
 import type { ReasoningResult } from "../../utils/rdfManager";
 import { useShallow } from "zustand/react/shallow";
+import { useSearchHighlight } from "../../hooks/useSearchHighlight";
 import * as LinkPropertyEditorModule from "./LinkPropertyEditor";
 const LinkPropertyEditor: any = (() => {
   const mod = LinkPropertyEditorModule as any;
@@ -526,6 +528,14 @@ const KnowledgeCanvas: React.FC = () => {
 
   // Keep refs in sync with state so other callbacks can read the latest snapshot synchronously.
 
+  // Enable browser search integration - detects Ctrl+F/Cmd+F and searches ALL nodes and edges
+  useSearchHighlight({
+    reactFlowInstance: reactFlowInstance.current,
+    nodes,
+    edges,
+    setNodes,
+    debounceMs: 150,
+  });
 
   const doLayout = useCallback(
     async (

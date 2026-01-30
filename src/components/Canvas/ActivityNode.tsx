@@ -318,6 +318,7 @@ function ActivityNodeImpl(props: NodeProps) {
 
   return (
     <div
+      data-node-id={String(id)}
       style={{
         ['--node-color' as any]: nodeColor,
       }}

@@ -234,6 +234,7 @@ function RDFNodeImpl(props: NodeProps) {
   return (
     <div
       ref={rootRef}
+      data-node-id={String(id)}
       style={{
         ['--node-color' as any]: nodeColor || 'transparent',
       }}
