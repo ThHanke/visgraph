@@ -640,8 +640,16 @@ export const NodePropertyEditor = ({
       const mgr = getRdfManager();
       if (mgr && typeof (mgr as any).removeAllQuadsForIri === "function") {
         try {
-          await (mgr as any).removeAllQuadsForIri(String(nodeIri), "urn:vg:data");
-        } catch (_) {
+          // CRITICAL: Expand prefixed IRI to full IRI before deletion
+          // The worker needs the full IRI to match against stored Terms
+          const expandedIri = expandIriIfNeeded(String(nodeIri));
+          console.debug("[NodePropertyEditor] Deleting node:", {
+            original: nodeIri,
+            expanded: expandedIri
+          });
+          await (mgr as any).removeAllQuadsForIri(expandedIri, "urn:vg:data");
+        } catch (err) {
+          console.warn("[NodePropertyEditor] removeAllQuadsForIri failed:", err);
           /* ignore manager delete failures */
         }
       }
@@ -650,6 +658,7 @@ export const NodePropertyEditor = ({
     }
 
     // Ask parent to remove the node visually and then close the dialog
+    // Pass the original nodeIri for UI purposes (canvas uses this to find the node)
     { if (typeof onDelete === "function") onDelete(String(nodeIri)); }
     onOpenChange(false);
   };
