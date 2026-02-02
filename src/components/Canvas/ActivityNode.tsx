@@ -3,7 +3,7 @@
  * Displays prov:Activity nodes with execution controls
  */
 
-import React, { memo, useState, useCallback, useMemo } from 'react';
+import React, { memo, useState, useCallback, useMemo, useEffect } from 'react';
 import {
   Handle,
   Position,
@@ -19,6 +19,13 @@ import { useOntologyStore } from '../../stores/ontologyStore';
 import { getPyodideClient } from '../../utils/pyodideManager.workerClient';
 import type { ExecuteResult } from '../../workers/pyodide.workerProtocol';
 import { toast } from 'sonner';
+
+interface TemplateVariable {
+  iri: string;
+  label: string;
+  expectedType?: string;
+  required?: boolean;
+}
 
 function ActivityNodeImpl(props: NodeProps) {
   const { data, selected, id } = props;
@@ -42,6 +49,11 @@ function ActivityNodeImpl(props: NodeProps) {
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionProgress, setExecutionProgress] = useState(0);
   const [hoverOpen, setHoverOpen] = useState(false);
+  const [templateInputs, setTemplateInputs] = useState<TemplateVariable[]>([]);
+  const [templateOutputs, setTemplateOutputs] = useState<TemplateVariable[]>([]);
+  const [loadingTemplate, setLoadingTemplate] = useState(false);
+  
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
 
   const {
     displayPrefixed,
@@ -58,6 +70,134 @@ function ActivityNodeImpl(props: NodeProps) {
 
   const getRdfManager = useOntologyStore((s) => s.getRdfManager);
   const { setNodes } = useReactFlow();
+
+  // Listen to global mousemove to detect hover state (more reliable than onPointerEnter/Leave
+  // because handles can intercept pointer events)
+  React.useEffect(() => {
+    const nodeEl = rootRef.current;
+    if (!nodeEl) return;
+
+    const onMove = (e: MouseEvent) => {
+      const rect = nodeEl.getBoundingClientRect();
+      const inside =
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom;
+      setHoverOpen(inside);
+    };
+
+    window.addEventListener('mousemove', onMove, { capture: true });
+    const onDown = () => setHoverOpen(false);
+    window.addEventListener('pointerdown', onDown, { capture: true });
+
+    return () => {
+      window.removeEventListener('mousemove', onMove, { capture: true });
+      window.removeEventListener('pointerdown', onDown, { capture: true });
+      setHoverOpen(false);
+    };
+  }, []);
+
+  // Load template variable information when component mounts
+  useEffect(() => {
+    let mounted = true;
+
+    const loadTemplateVariables = async () => {
+      try {
+        setLoadingTemplate(true);
+        const rdfManager = getRdfManager();
+        if (!rdfManager) return;
+
+        const worker = (rdfManager as any).worker;
+        if (!worker || typeof worker.call !== 'function') return;
+
+        const activityIri = String(iri);
+
+        // Query for p-plan:correspondsToStep to find the template Step
+        const stepQuads = await worker.call('getQuads', {
+          subject: activityIri,
+          predicate: 'http://purl.org/net/p-plan#correspondsToStep',
+          graphName: 'urn:vg:data',
+        });
+
+        if (!stepQuads || stepQuads.length === 0) return;
+        const stepIri = stepQuads[0].object.value;
+
+        // Query input variables (p-plan:isInputVarOf pointing to this step)
+        const inputVarQuads = await worker.call('getQuads', {
+          predicate: 'http://purl.org/net/p-plan#isInputVarOf',
+          object: { termType: 'NamedNode', value: stepIri },
+          graphName: 'urn:vg:workflows',
+        });
+
+        // Query output variables (p-plan:isOutputVarOf pointing to this step)
+        const outputVarQuads = await worker.call('getQuads', {
+          predicate: 'http://purl.org/net/p-plan#isOutputVarOf',
+          object: { termType: 'NamedNode', value: stepIri },
+          graphName: 'urn:vg:workflows',
+        });
+
+        // Helper to get variable details
+        const getVariableDetails = async (varIri: string): Promise<TemplateVariable> => {
+          const labelQuads = await worker.call('getQuads', {
+            subject: varIri,
+            predicate: 'http://www.w3.org/2000/01/rdf-schema#label',
+            graphName: 'urn:vg:workflows',
+          });
+          const label = labelQuads?.[0]?.object?.value || varIri.split(/[#/]/).pop() || varIri;
+
+          const typeQuads = await worker.call('getQuads', {
+            subject: varIri,
+            predicate: 'https://github.com/ThHanke/PyodideSemanticWorkflow#expectedType',
+            graphName: 'urn:vg:workflows',
+          });
+          const expectedType = typeQuads?.[0]?.object?.value;
+
+          const requiredQuads = await worker.call('getQuads', {
+            subject: varIri,
+            predicate: 'https://github.com/ThHanke/PyodideSemanticWorkflow#required',
+            graphName: 'urn:vg:workflows',
+          });
+          const required = requiredQuads?.[0]?.object?.value === 'true';
+
+          return { iri: varIri, label, expectedType, required };
+        };
+
+        // Load input variable details
+        const inputs: TemplateVariable[] = [];
+        for (const quad of inputVarQuads || []) {
+          const varIri = quad.subject.value;
+          const details = await getVariableDetails(varIri);
+          inputs.push(details);
+        }
+
+        // Load output variable details
+        const outputs: TemplateVariable[] = [];
+        for (const quad of outputVarQuads || []) {
+          const varIri = quad.subject.value;
+          const details = await getVariableDetails(varIri);
+          outputs.push(details);
+        }
+
+        if (mounted) {
+          setTemplateInputs(inputs);
+          setTemplateOutputs(outputs);
+        }
+      } catch (error) {
+        console.error('[ActivityNode] Failed to load template variables:', error);
+      } finally {
+        if (mounted) {
+          setLoadingTemplate(false);
+        }
+      }
+    };
+
+    loadTemplateVariables();
+
+    return () => {
+      mounted = false;
+    };
+  }, [iri, getRdfManager]);
 
   const { headerDisplay, statusDisplay, statusColor } = useMemo(() => {
     const headerCandidate =
@@ -139,71 +279,134 @@ function ActivityNodeImpl(props: NodeProps) {
 
       const activityIri = String(iri);
 
-      // Query for prov:hadPlan
-      const planQuads = await worker.call('getQuads', {
+      // Query for activity's prov:used to find code and requirements resources
+      // These are inherited from the template Step
+      const activityUsedResourceQuads = await worker.call('getQuads', {
         subject: activityIri,
-        predicate: 'http://www.w3.org/ns/prov#hadPlan',
-        graphName: 'urn:vg:data',
-      });
-
-      if (!planQuads || planQuads.length === 0) {
-        throw new Error('No prov:hadPlan found for this activity');
-      }
-
-      const planIri = planQuads[0].object.value;
-
-      // Query plan's prov:used to find code and requirements
-      const planUsedQuads = await worker.call('getQuads', {
-        subject: planIri,
         predicate: 'http://www.w3.org/ns/prov#used',
         graphName: 'urn:vg:data',
       });
 
+      console.log('[ActivityNode] Found prov:used quads:', activityUsedResourceQuads?.length || 0);
+      console.log('[ActivityNode] prov:used resources:', activityUsedResourceQuads?.map((q: any) => q.object.value));
+
       let codeUrl = '';
       let requirementsUrl = '';
 
-      for (const quad of planUsedQuads) {
-        const entityIri = quad.object.value;
+      // Process each resource the activity uses
+      for (const quad of activityUsedResourceQuads) {
+        const resourceIri = quad.object.value;
+        console.log('[ActivityNode] Checking resource:', resourceIri);
 
-        // Get atLocation for this entity
+        // Check if this resource has prov:atLocation (skip if it's an input Entity without atLocation)
+        // Resources like spw:SumCode are in the workflows catalog, so query there
         const locationQuads = await worker.call('getQuads', {
-          subject: entityIri,
+          subject: resourceIri,
           predicate: 'http://www.w3.org/ns/prov#atLocation',
-          graphName: 'urn:vg:data',
+          graphName: 'urn:vg:workflows',  // Resources are defined in the catalog
         });
+
+        console.log('[ActivityNode] Location quads for', resourceIri, ':', locationQuads?.length || 0);
 
         if (locationQuads && locationQuads.length > 0) {
           const location = locationQuads[0].object.value;
+          console.log('[ActivityNode] Found location:', location);
 
-          // Check if this is code or requirements based on label or IRI
-          const labelQuads = await worker.call('getQuads', {
-            subject: entityIri,
-            predicate: 'http://www.w3.org/2000/01/rdf-schema#label',
-            graphName: 'urn:vg:data',
+          // Check if this is code or requirements based on rdf:type first (more reliable)
+          const typeQuads = await worker.call('getQuads', {
+            subject: resourceIri,
+            predicate: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type',
+            graphName: 'urn:vg:workflows',
           });
 
-          const labelText = labelQuads?.[0]?.object?.value?.toLowerCase() || entityIri.toLowerCase();
+          const types = (typeQuads || []).map((q: any) => q.object.value);
+          console.log('[ActivityNode] Resource types:', types);
 
-          if (labelText.includes('code') || labelText.includes('.py')) {
+          // Check if it's code based on type
+          const isCode = types.some((t: string) => 
+            t.includes('SoftwareSourceCode') || t.includes('Code')
+          );
+
+          if (isCode) {
             codeUrl = location;
-          } else if (labelText.includes('requirements') || labelText.includes('requirement')) {
-            requirementsUrl = location;
+            console.log('[ActivityNode] Set codeUrl:', codeUrl);
+          } else {
+            // Check label as fallback
+            const labelQuads = await worker.call('getQuads', {
+              subject: resourceIri,
+              predicate: 'http://www.w3.org/2000/01/rdf-schema#label',
+              graphName: 'urn:vg:workflows',
+            });
+
+            const labelText = labelQuads?.[0]?.object?.value?.toLowerCase() || resourceIri.toLowerCase();
+
+            if (labelText.includes('code') || labelText.includes('.py')) {
+              codeUrl = location;
+              console.log('[ActivityNode] Set codeUrl from label:', codeUrl);
+            } else if (labelText.includes('requirements') || labelText.includes('requirement')) {
+              requirementsUrl = location;
+              console.log('[ActivityNode] Set requirementsUrl:', requirementsUrl);
+            }
+          }
+        } else {
+          console.log('[ActivityNode] No prov:atLocation found for resource:', resourceIri);
+          
+          // Try querying all graphs to see where this resource exists
+          const allGraphsQuads = await worker.call('getQuads', {
+            subject: resourceIri,
+            predicate: 'http://www.w3.org/ns/prov#atLocation',
+          });
+          console.log('[ActivityNode] Checking all graphs for prov:atLocation:', allGraphsQuads?.length || 0);
+          if (allGraphsQuads && allGraphsQuads.length > 0) {
+            console.log('[ActivityNode] Found in graphs:', allGraphsQuads.map((q: any) => q.graph?.value || 'default'));
           }
         }
       }
 
       if (!codeUrl) {
-        throw new Error('No Python code URL found in plan');
+        const errorMsg = `No Python code URL found for this activity.
+        
+Debug info:
+- Activity IRI: ${activityIri}
+- prov:used resources: ${activityUsedResourceQuads?.length || 0}
+- Resources checked: ${activityUsedResourceQuads?.map((q: any) => q.object.value).join(', ')}
+
+The activity should have prov:used triples pointing to resources (like spw:SumCode) 
+that are defined in the workflows catalog (urn:vg:workflows) with prov:atLocation.`;
+        
+        throw new Error(errorMsg);
       }
 
-      // Query for activity's prov:used to find input entities
-      const activityUsedQuads = await worker.call('getQuads', {
+      console.log('[ActivityNode] Resolved execution resources:', {
+        codeUrl,
+        requirementsUrl: requirementsUrl || '(none)',
+      });
+
+      // Query for activity's prov:used to find INPUT ENTITIES (prov:Entity, not code/requirements)
+      // These are the data entities created during workflow instantiation
+      const allUsedQuads = await worker.call('getQuads', {
         subject: activityIri,
         predicate: 'http://www.w3.org/ns/prov#used',
         graphName: 'urn:vg:data',
       });
 
-      const inputIris = activityUsedQuads.map((q: any) => q.object.value);
+      // Filter to only include entities that are prov:Entity (not resources like code)
+      const inputIris: string[] = [];
+      for (const quad of allUsedQuads) {
+        const entityIri = quad.object.value;
+        
+        // Check if this is a prov:Entity (input entity, not code/requirements)
+        const typeQuads = await worker.call('getQuads', {
+          subject: entityIri,
+          predicate: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type',
+          object: { termType: 'NamedNode', value: 'http://www.w3.org/ns/prov#Entity' },
+          graphName: 'urn:vg:data',
+        });
+
+        if (typeQuads && typeQuads.length > 0) {
+          inputIris.push(entityIri);
+        }
+      }
 
       console.log('[ActivityNode] Found prov:used inputs:', inputIris);
 
@@ -318,6 +521,7 @@ function ActivityNodeImpl(props: NodeProps) {
 
   return (
     <div
+      ref={rootRef}
       data-node-id={String(id)}
       style={{
         ['--node-color' as any]: nodeColor,
@@ -336,19 +540,7 @@ function ActivityNodeImpl(props: NodeProps) {
 
       <Tooltip delayDuration={250} open={hoverOpen} onOpenChange={setHoverOpen}>
         <TooltipTrigger asChild>
-          <div
-            className="px-4 py-3 min-w-0 flex-1 w-auto bg-white dark:bg-gray-900"
-            onPointerEnter={() => {
-              if (!selected) {
-                setHoverOpen(true);
-              }
-            }}
-            onPointerLeave={() => {
-              if (!selected) {
-                setHoverOpen(false);
-              }
-            }}
-          >
+          <div className="px-4 py-3 min-w-0 flex-1 w-auto bg-white dark:bg-gray-900">
             {/* Header with title and play button */}
             <div className="flex items-center gap-3 mb-2">
               <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -432,13 +624,73 @@ function ActivityNodeImpl(props: NodeProps) {
           </div>
         </TooltipTrigger>
 
-        <TooltipContent side="top">
-          <div className="text-left text-sm space-y-2 max-w-[32rem]">
+        <TooltipContent side="top" className="max-w-md">
+          <div className="text-left text-sm space-y-2">
             <div className="font-semibold break-words">{headerDisplay}</div>
             <div className="text-xs text-muted-foreground">PROV-O Activity</div>
             <div className="text-xs">Status: {statusDisplay}</div>
+            
+            {/* Expected Inputs */}
+            {templateInputs.length > 0 && (
+              <div className="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700">
+                <div className="text-xs font-semibold mb-1 text-purple-600 dark:text-purple-400">
+                  Expected Inputs:
+                </div>
+                <ul className="text-xs space-y-1 ml-2">
+                  {templateInputs.map((input) => (
+                    <li key={input.iri} className="flex items-start gap-1">
+                      <span className="text-purple-500 mt-0.5">→</span>
+                      <div className="flex-1">
+                        <span className="font-medium">{input.label}</span>
+                        {input.required && (
+                          <span className="text-red-500 ml-1" title="Required">*</span>
+                        )}
+                        {input.expectedType && (
+                          <div className="text-muted-foreground text-[10px]">
+                            Type: {input.expectedType.split(/[#/]/).pop()}
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="text-[10px] text-muted-foreground mt-1 italic">
+                  Connect QuantityValue nodes via prov:used edges
+                </div>
+              </div>
+            )}
+
+            {/* Expected Outputs */}
+            {templateOutputs.length > 0 && (
+              <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                <div className="text-xs font-semibold mb-1 text-green-600 dark:text-green-400">
+                  Expected Outputs:
+                </div>
+                <ul className="text-xs space-y-1 ml-2">
+                  {templateOutputs.map((output) => (
+                    <li key={output.iri} className="flex items-start gap-1">
+                      <span className="text-green-500 mt-0.5">←</span>
+                      <div className="flex-1">
+                        <span className="font-medium">{output.label}</span>
+                        {output.expectedType && (
+                          <div className="text-muted-foreground text-[10px]">
+                            Type: {output.expectedType.split(/[#/]/).pop()}
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="text-[10px] text-muted-foreground mt-1 italic">
+                  Generated during execution
+                </div>
+              </div>
+            )}
+
             {iri && (
-              <div className="text-xs text-muted-foreground mt-1 break-words">{String(iri)}</div>
+              <div className="text-xs text-muted-foreground mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 break-all">
+                {String(iri)}
+              </div>
             )}
           </div>
         </TooltipContent>

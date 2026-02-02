@@ -27,23 +27,44 @@ import {
 } from '../ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
-import { Settings, Download, Upload, RotateCcw } from 'lucide-react';
+import { Settings, Download, Upload, RotateCcw, RefreshCw } from 'lucide-react';
 import { useAppConfigStore } from '../../stores/appConfigStore';
 import { useOntologyStore } from '../../stores/ontologyStore';
 import { WELL_KNOWN } from '../../utils/wellKnownOntologies';
 import { fallback } from '../../utils/startupDebug';
 import { toast } from 'sonner';
 import { getRdfManager } from '../../utils/storeHelpers';
+import { loadWorkflowCatalog, getWorkflowCatalogStats } from '../../utils/workflowCatalogLoader';
 
 
 
 export interface ConfigurationPanelProps {
   triggerVariant?: 'default' | 'none' | 'fixed-icon' | 'inline-icon';
+  // New: support controlled mode for external open state management
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export const ConfigurationPanel = ({ triggerVariant = 'default' }: ConfigurationPanelProps) => {
-  const [isOpen, setIsOpen] = useState(false);
+export const ConfigurationPanel = ({ 
+  triggerVariant = 'default',
+  open: controlledOpen,
+  onOpenChange,
+}: ConfigurationPanelProps) => {
+  // Use internal state when not controlled, otherwise use props
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined && onOpenChange !== undefined;
+  const isOpen = isControlled ? controlledOpen : internalOpen;
+  
+  const handleOpenChange = (newOpen: boolean) => {
+    if (isControlled) {
+      onOpenChange?.(newOpen);
+    } else {
+      setInternalOpen(newOpen);
+    }
+  };
   const [importText, setImportText] = useState('');
+  const [workflowStats, setWorkflowStats] = useState({ workflowsGraphSize: 0, ontologiesGraphSize: 0 });
+  const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
 
   // Blacklist UI local state (decoupled from persisted config until applied)
   const [blacklistEnabledLocal, setBlacklistEnabledLocal] = useState<boolean>(() => {
@@ -90,7 +111,19 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
     // Debug master toggle
     setDebugAll,
     setTooltipEnabled,
+    // Workflow catalog controls
+    setWorkflowCatalogEnabled,
+    setWorkflowCatalogUrls,
+    setLoadWorkflowCatalogOnStartup,
+    resetWorkflowCatalogUrls,
   } = useAppConfigStore();
+
+  // Load workflow stats when dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      getWorkflowCatalogStats().then(setWorkflowStats).catch(console.error);
+    }
+  }, [isOpen]);
 
 
   const handleExportConfig = () => {
@@ -115,7 +148,7 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       {triggerVariant === 'fixed-icon' ? (
         <div className="fixed top-4 right-4 z-50">
           <DialogTrigger asChild>
@@ -160,11 +193,12 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
         </DialogHeader>
 
         <Tabs defaultValue="layout" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="layout">Layout</TabsTrigger>
             <TabsTrigger value="ui">Interface</TabsTrigger>
             <TabsTrigger value="performance">Performance</TabsTrigger>
             <TabsTrigger value="reasoning">Reasoning</TabsTrigger>
+            <TabsTrigger value="workflows">Workflows</TabsTrigger>
             <TabsTrigger value="advanced">Advanced</TabsTrigger>
           </TabsList>
 
@@ -424,6 +458,152 @@ export const ConfigurationPanel = ({ triggerVariant = 'default' }: Configuration
                       }
                     }}
                   />
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Workflows Settings */}
+          <TabsContent value="workflows" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Workflow Catalog</CardTitle>
+                <CardDescription>PyodideSemanticWorkflow catalog integration</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label>Enable Workflow Catalog</Label>
+                  <Switch
+                    checked={config.workflowCatalogEnabled}
+                    onCheckedChange={(val) => {
+                      try {
+                        setWorkflowCatalogEnabled(val);
+                        toast.success(`Workflow catalog ${val ? 'enabled' : 'disabled'}`);
+                      } catch (e) {
+                        toast.error('Failed to update workflow catalog setting');
+                      }
+                    }}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <Label>Auto-load on Startup</Label>
+                  <Switch
+                    checked={config.loadWorkflowCatalogOnStartup}
+                    onCheckedChange={(val) => {
+                      try {
+                        setLoadWorkflowCatalogOnStartup(val);
+                        toast.success(`Auto-load ${val ? 'enabled' : 'disabled'}`);
+                      } catch (e) {
+                        toast.error('Failed to update auto-load setting');
+                      }
+                    }}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Catalog URLs</Label>
+                  <div className="space-y-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">SPW Ontology</Label>
+                      <Input
+                        value={config.workflowCatalogUrls.ontology}
+                        onChange={(e) => setWorkflowCatalogUrls({ ontology: e.target.value })}
+                        className="text-xs"
+                        placeholder="Ontology URL"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Workflow Catalog</Label>
+                      <Input
+                        value={config.workflowCatalogUrls.catalog}
+                        onChange={(e) => setWorkflowCatalogUrls({ catalog: e.target.value })}
+                        className="text-xs"
+                        placeholder="Catalog URL"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">UI Metadata (Optional)</Label>
+                      <Input
+                        value={config.workflowCatalogUrls.catalogUi}
+                        onChange={(e) => setWorkflowCatalogUrls({ catalogUi: e.target.value })}
+                        className="text-xs"
+                        placeholder="UI Metadata URL"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => {
+                    resetWorkflowCatalogUrls();
+                    toast.success('Reset to default GitHub URLs');
+                  }}
+                >
+                  <RotateCcw className="h-3 w-3 mr-2" />
+                  Reset to Defaults
+                </Button>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Catalog Status</Label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isLoadingCatalog}
+                      onClick={async () => {
+                        setIsLoadingCatalog(true);
+                        try {
+                          const result = await loadWorkflowCatalog(config);
+                          if (result.success) {
+                            toast.success('Workflow catalog loaded', {
+                              description: `${result.loadedFiles?.length || 0} files loaded`,
+                            });
+                            const stats = await getWorkflowCatalogStats();
+                            setWorkflowStats(stats);
+                          } else {
+                            toast.error('Failed to load catalog', {
+                              description: result.error || 'Unknown error',
+                            });
+                          }
+                        } catch (error) {
+                          toast.error('Error loading catalog');
+                        } finally {
+                          setIsLoadingCatalog(false);
+                        }
+                      }}
+                    >
+                      {isLoadingCatalog ? (
+                        <>
+                          <RefreshCw className="h-3 w-3 mr-2 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="h-3 w-3 mr-2" />
+                          Reload Now
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <div className="text-xs space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Workflows Graph:</span>
+                      <span className="font-mono">{workflowStats.workflowsGraphSize} triples</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">SPW Ontology:</span>
+                      <span className="font-mono">{workflowStats.ontologiesGraphSize} triples</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-xs text-muted-foreground">
+                  The workflow catalog is loaded from GitHub and provides semantic workflow templates
+                  (SumTemplate, MultiplyTemplate, ConvertTemplate) with P-Plan and PROV-O metadata.
                 </div>
               </CardContent>
             </Card>

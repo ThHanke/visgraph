@@ -22,12 +22,27 @@ import {
 import { useOntologyStore } from "../../stores/ontologyStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useAppConfigStore } from "../../stores/appConfigStore";
-import { CanvasToolbar } from "./CanvasToolbar";
+import { WELL_KNOWN_PREFIXES } from "../../utils/wellKnownOntologies";
+import { TopBar } from "./TopBar";
+import { LeftSidebar } from "./LeftSidebar";
 import { ResizableNamespaceLegend } from "./ResizableNamespaceLegend";
 import { ReasoningIndicator } from "./ReasoningIndicator";
 import { ReasoningReportModal } from "./ReasoningReportModal";
+import { ConfigurationPanel } from "./ConfigurationPanel";
+import { instantiateWorkflow } from "../../utils/workflowInstantiator";
 import ModalStatus from "./ModalStatus";
 import { Progress } from "../ui/progress";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "../ui/dialog";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { Button } from "../ui/button";
 import type { ReactFlowInstance } from "@xyflow/react";
 import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
 import type { NodeData, LinkData } from "../../types/canvas";
@@ -172,6 +187,7 @@ const KnowledgeCanvas: React.FC = () => {
     exportGraph,
     loadAdditionalOntologies,
     getRdfManager,
+    loadOntologyFromRDF,
   } = useOntologyStore(
     useShallow((state) => ({
       loadedOntologies: state.loadedOntologies ?? [],
@@ -182,6 +198,7 @@ const KnowledgeCanvas: React.FC = () => {
       exportGraph: state.exportGraph,
       loadAdditionalOntologies: state.loadAdditionalOntologies,
       getRdfManager: state.getRdfManager,
+      loadOntologyFromRDF: state.loadOntologyFromRDF,
     })),
   );
 
@@ -217,6 +234,8 @@ const KnowledgeCanvas: React.FC = () => {
   const [layoutEnabled, setLayoutEnabled] = useState(
     () => !!(config && config.autoApplyLayout),
   );
+  // Sidebar visibility
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
 
   // Separate viewport state for ABox and TBox views
   const aboxViewportRef = useRef<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
@@ -233,12 +252,71 @@ const KnowledgeCanvas: React.FC = () => {
   // Local editor state driven by React Flow events (node/edge payloads come from RF state).
   const [nodeEditorOpen, setNodeEditorOpen] = useState<boolean>(false);
   const [linkEditorOpen, setLinkEditorOpen] = useState<boolean>(false);
+  const [addNodeDialogOpen, setAddNodeDialogOpen] = useState<boolean>(false);
   const [selectedNodePayload, setSelectedNodePayload] = useState<any | null>(
     null,
   );
   const [selectedLinkPayload, setSelectedLinkPayload] = useState<any | null>(
     null,
   );
+  
+  // Dialog states for sidebar actions
+  const [loadOntologyOpen, setLoadOntologyOpen] = useState<boolean>(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState<boolean>(false);
+  const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+  
+  // State for RDF paste in Load Ontology dialog
+  const [rdfBody, setRdfBody] = useState('');
+
+  // Build combined ontology options list (merge RDF manager namespaces with WELL_KNOWN_PREFIXES)
+  const normalizeNamespaceKey = useCallback((u?: string) => {
+    if (!u) return '';
+    try {
+      let s = String(u);
+      const low = s.toLowerCase();
+      if (low.startsWith('http://')) s = s.slice(7);
+      else if (low.startsWith('https://')) s = s.slice(8);
+      while (s.length > 0 && (s.endsWith('/') || s.endsWith('#'))) s = s.slice(0, -1);
+      return s;
+    } catch {
+      return String(u || '');
+    }
+  }, []);
+
+  const combinedOntologyOptions = useMemo(() => {
+    const mgr = getRdfManagerSafe();
+    const rdfManagerNamespaces = mgr && typeof mgr.getNamespaces === 'function' ? mgr.getNamespaces() : {};
+    const namespacesFromLoaded = loadedOntologies.reduce((acc, ont) => ({ ...acc, ...ont.namespaces }), {} as Record<string, string>);
+    const mergedNamespaces = { ...namespacesFromLoaded, ...rdfManagerNamespaces };
+
+    const namespaceOptionsMap = new Map<string, { url: string; title: string; prefix?: string }>();
+    
+    // Add namespaces discovered in RDF manager / loaded ontologies
+    Object.entries(mergedNamespaces || {}).forEach(([prefix, namespace]) => {
+      if (namespace) {
+        const key = normalizeNamespaceKey(namespace);
+        const entry = namespaceOptionsMap.get(key);
+        if (!entry) {
+          namespaceOptionsMap.set(key, { url: String(namespace), title: String(prefix), prefix: String(prefix) });
+        }
+      }
+    });
+
+    // Merge well-known ontologies
+    for (const p of WELL_KNOWN_PREFIXES) {
+      const key = normalizeNamespaceKey(p.url);
+      const existing = namespaceOptionsMap.get(key);
+      if (existing) {
+        existing.title = p.name || existing.title;
+        existing.prefix = existing.prefix || p.prefix;
+        existing.url = p.url;
+      } else {
+        namespaceOptionsMap.set(key, { url: p.url, title: p.name, prefix: p.prefix });
+      }
+    }
+
+    return Array.from(namespaceOptionsMap.values()).sort((a, b) => String(a.title).localeCompare(String(b.title)));
+  }, [loadedOntologies, getRdfManagerSafe, normalizeNamespaceKey, ontologiesVersion]);
 
   const handleToggleLayoutEnabled = useCallback((enabled: boolean) => {
     setLayoutEnabled(Boolean(enabled));
@@ -644,6 +722,25 @@ const KnowledgeCanvas: React.FC = () => {
     setShowLegendState(newValue);
     setShowLegend(newValue);
   }, [showLegend, setShowLegend]);
+
+  const handleAddNode = useCallback(() => {
+    setAddNodeDialogOpen(true);
+  }, []);
+
+  const handleAddNodeSave = useCallback((payload: any) => {
+    try {
+      if (payload && payload.iri) {
+        // The NodePropertyEditor has already written the triples to the RDF store
+        // The subject-level notifications will automatically create the node on canvas
+        toast.success('Node created successfully');
+      }
+    } catch (err) {
+      console.error('Failed to add node:', err);
+      toast.error('Failed to add node');
+    } finally {
+      setAddNodeDialogOpen(false);
+    }
+  }, []);
 
   const handleViewModeChange = useCallback(
     (mode: "abox" | "tbox") => {
@@ -2269,6 +2366,125 @@ const KnowledgeCanvas: React.FC = () => {
     [selectedNodePayload],
   );
 
+  // Workflow drag-and-drop handlers
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  }, []);
+
+  const onDragEnter = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+  }, []);
+
+  const onDrop = useCallback(
+    async (event: React.DragEvent) => {
+      event.preventDefault();
+
+      const templateIri = event.dataTransfer.getData('application/vg-workflow-template');
+      console.log('[KnowledgeCanvas] onDrop triggered, templateIri:', templateIri);
+      
+      if (!templateIri) {
+        console.warn('[KnowledgeCanvas] No template IRI in drop data');
+        return;
+      }
+
+      // Get the React Flow instance to convert screen coordinates to flow coordinates
+      const rfInstance = reactFlowInstance.current;
+      if (!rfInstance) {
+        toast.error('Canvas not ready');
+        return;
+      }
+
+      // Convert screen coordinates to flow coordinates
+      const reactFlowBounds = flowWrapperRef.current?.getBoundingClientRect();
+      if (!reactFlowBounds) {
+        toast.error('Could not determine drop position');
+        return;
+      }
+
+      const position = (rfInstance as any).screenToFlowPosition?.({
+        x: event.clientX,
+        y: event.clientY,
+      }) || { x: event.clientX - reactFlowBounds.left, y: event.clientY - reactFlowBounds.top };
+
+      console.log('[KnowledgeCanvas] Drop position:', position);
+
+      try {
+        canvasActions.setLoading(true, 10, 'Creating workflow instance...');
+
+        // Instantiate the workflow - this writes triples to the RDF store
+        // which will trigger subject-level notifications and automatic mapping
+        console.log('[KnowledgeCanvas] Calling instantiateWorkflow...');
+        const instance = await instantiateWorkflow(templateIri, position);
+        console.log('[KnowledgeCanvas] Workflow instantiated:', {
+          planIri: instance.planNode.iri,
+          variableCount: instance.variableNodes.length,
+          edgeCount: instance.edges.length,
+        });
+
+        canvasActions.setLoading(true, 30, 'Waiting for RDF notifications...');
+
+        // Wait longer for RDF notifications and mapping to complete
+        // The canvas subscription will automatically create nodes from the RDF triples
+        await new Promise((resolve) => setTrackedTimeout(resolve, 1000));
+
+        console.log('[KnowledgeCanvas] Current nodes after wait:', nodes.length);
+
+        canvasActions.setLoading(true, 70, 'Positioning nodes...');
+
+        // After mapping creates the nodes, update their positions to match the drop point
+        // The mapper creates nodes at (0,0) by default since positions aren't in RDF
+        setNodes((prev) => {
+          console.log('[KnowledgeCanvas] Updating positions, current node count:', prev.length);
+          const planIri = instance.planNode.iri;
+          const varIris = new Set(instance.variableNodes.map((v) => v.iri));
+
+          const updated = prev.map((node) => {
+            const nodeIri = String(node.id);
+
+            // Update plan node to drop position
+            if (nodeIri === planIri) {
+              console.log('[KnowledgeCanvas] Positioning plan node at:', position);
+              return {
+                ...node,
+                position: position,
+              };
+            }
+
+            // Update variable nodes to positions relative to plan
+            const varNode = instance.variableNodes.find((v) => v.iri === nodeIri);
+            if (varNode && varNode.position) {
+              console.log('[KnowledgeCanvas] Positioning variable node:', nodeIri, 'at:', varNode.position);
+              return {
+                ...node,
+                position: varNode.position,
+              };
+            }
+
+            return node;
+          });
+
+          console.log('[KnowledgeCanvas] Updated node count:', updated.length);
+          return updated;
+        });
+
+        // Skip automatic layout for this change since we just positioned nodes manually
+        skipNextAutoLayoutRef.current = true;
+        setTrackedTimeout(() => {
+          skipNextAutoLayoutRef.current = false;
+        }, 100);
+
+        toast.success('Workflow instantiated successfully');
+      } catch (error) {
+        console.error('[KnowledgeCanvas] Failed to instantiate workflow:', error);
+        toast.error('Failed to instantiate workflow');
+      } finally {
+        canvasActions.setLoading(false, 0, '');
+      }
+    },
+    [canvasActions, setNodes, setTrackedTimeout, nodes.length],
+  );
+
   const handleSaveLinkProperty = useCallback(
     async (propertyUri: string, label: string) => {
       const selected = selectedLinkPayload;
@@ -2798,256 +3014,424 @@ const KnowledgeCanvas: React.FC = () => {
   );
 
   return (
-    <div className="h-lvh h-lvw h-screen bg-canvas-bg relative">
-      <CanvasToolbar
-        onAddNode={(payload: any) => {
-          let normalizedUri = String(
-            payload && (payload.iri || payload) ? payload.iri || payload : "",
-          );
-          if (!/^https?:\/\//i.test(normalizedUri)) {
-            const mgr =
-              typeof getRdfManager === "function" ? getRdfManager() : undefined;
-            if (mgr && typeof (mgr as any).expandPrefix === "function") {
-              const expanded = (mgr as any).expandPrefix(normalizedUri);
-              if (expanded && typeof expanded === "string") {
-                normalizedUri = expanded;
-              }
-            }
-          }
-
-          if (!/^https?:\/\//i.test(normalizedUri)) {
-            try {
-              const registry = getNamespaceRegistry();
-              const expanded = expandPrefixed(normalizedUri, registry);
-              if (expanded && /^https?:\/\//i.test(expanded)) {
-                normalizedUri = expanded;
-              }
-            } catch (_) {
-              /* ignore registry expansion failures */
-            }
-          }
-
-          if (!normalizedUri || !/^https?:\/\//i.test(normalizedUri)) return;
-
-          const id = String(normalizedUri);
-
-          const startPos = computeCanvasCenter();
-          skipNextAutoLayoutRef.current = true;
-
-          // Preserve any rdfTypes / classCandidate / annotationProperties passed from the editor payload
-          const rdfTypes = Array.isArray(payload && payload.rdfTypes) ? payload.rdfTypes.slice() : (payload && payload.classCandidate ? [payload.classCandidate] : []);
-          const namespace = payload?.namespace ? String(payload.namespace) : "";
-
-          const displayLabel = (() => {
-            try {
-              const pref = toPrefixed(normalizedUri, registrySnapshot as any);
-              return pref && pref.trim().length > 0 ? pref : normalizedUri;
-            } catch (_) {
-              return normalizedUri;
-            }
-          })();
-
-          setNodes((nds) => {
-            const existing = Array.isArray(nds) ? nds : [];
-            const filtered = existing.filter(
-              (node) =>
-                String(node.id) !== id &&
-                String(node.id) !== displayLabel,
-            );
-            return [
-              ...filtered,
-              {
-                id,
-                type: "ontology",
-                position: startPos,
-                data: {
-                  key: id,
-                  iri: normalizedUri,
-                  displayPrefixed: displayLabel,
-                  rdfTypes: rdfTypes || [],
-                  literalProperties: [],
-                  annotationProperties: payload?.annotationProperties || [],
-                  visible: true,
-                  hasReasoningError: false,
-                  namespace,
-                  label: displayLabel,
-                } as NodeData,
-              },
-            ];
-          });
-          setTrackedTimeout(() => {
-            skipNextAutoLayoutRef.current = false;
-          }, 0);
+    <div className="h-screen w-screen bg-canvas-bg flex">
+      {/* Left Sidebar - pushes content */}
+      <LeftSidebar
+        isExpanded={sidebarExpanded}
+        onToggle={() => setSidebarExpanded(!sidebarExpanded)}
+        onLoadOntology={() => setLoadOntologyOpen(true)}
+        onLoadFile={() => {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = '.ttl,.rdf,.owl,.n3,.jsonld';
+          input.onchange = async (e: any) => {
+            const file = e.target?.files?.[0];
+            if (file) await onLoadFile(file);
+          };
+          input.click();
         }}
-        onToggleLegend={handleToggleLegend}
-        showLegend={showLegend}
-        onExport={handleExport}
-        onExportSvg={exportSvg}
-        onExportPng={exportPng}
-        onLoadFile={onLoadFile}
         onClearData={() => {
           try {
-            // Clear react-flow nodes/edges and selection immediately
             setNodes([]);
             setEdges([]);
             setSelectedNodePayload(null);
             setSelectedLinkPayload(null);
-            // Try to fit view to avoid awkward viewport state
-            try {
-              const inst = reactFlowInstance && reactFlowInstance.current;
-              if (inst && typeof (inst as any).fitView === "function") {
-                (inst as any).fitView({ padding: 0.1 });
-              }
-            } catch (_) { /* ignore */ }
-          } catch (_) {
-            /* ignore UI clear failures */
+            const mgr = getRdfManagerSafe();
+            if (mgr && typeof mgr.removeGraph === 'function') {
+              mgr.removeGraph('urn:vg:data');
+            }
+            toast.success('Canvas cleared');
+          } catch (err) {
+            toast.error('Failed to clear canvas');
           }
         }}
-        viewMode={viewMode}
-        onViewModeChange={handleViewModeChange}
+        onExport={() => setExportDialogOpen(true)}
+        onSettings={() => setSettingsOpen(true)}
+      />
+
+      {/* Main content area */}
+      <div className="flex-1 flex flex-col relative">
+        {/* Top Bar - overlays on main content */}
+        <TopBar
+          onAddNode={handleAddNode}
+          onToggleLegend={handleToggleLegend}
+          showLegend={showLegend}
+          viewMode={viewMode}
+          onViewModeChange={handleViewModeChange}
+          ontologyCount={loadedOntologies.length}
           onLayoutChange={handleLayoutChange}
-        currentLayout={currentLayout}
-        layoutEnabled={layoutEnabled}
-        onToggleLayoutEnabled={handleToggleLayoutEnabled}
-        canvasActions={canvasActions}
-        availableEntities={allEntities}
-      />
-      {showLegend ? (
-        <ResizableNamespaceLegend onClose={() => handleToggleLegend()} />
-      ) : null}
-
-
-      <div
-        className="w-full h-full pb-[5.5rem] md:pb-[4.5rem]"
-        ref={flowWrapperRef}
-      >
-          <ReactFlow
-          nodes={safeNodes}
-          edges={filteredEdges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onInit={onInit}
-          onNodeDoubleClick={onNodeDoubleClickStrict}
-          onNodeClick={onNodeClickStrict}
-          onNodeDragStart={onNodeDragStart}
-          onNodeDrag={onNodeDrag}
-          onNodeDragStop={onNodeDragStop}
-          onEdgeDoubleClick={onEdgeDoubleClickStrict}
-          onConnect={onConnectStrict}
-          onSelectionChange={onSelectionChange}
-          onMove={onMoveHandler}
-          onMoveEnd={onMoveHandler}
-          nodeTypes={memoNodeTypes}
-          edgeTypes={memoEdgeTypes}
-          connectionLineComponent={memoConnectionLine}
-          connectOnClick={false}
-          minZoom={0.1}
-          nodeOrigin={[0.5, 0.5]}
-          onlyRenderVisibleElements={true}
-          className="knowledge-graph-canvas bg-canvas-bg"
-        >
-          <Controls
-            position="bottom-left"
-            showInteractive={true}
-            showZoom={true}
-            showFitView={true}
-            className="bg-muted/50"
-          />
-          <MiniMap nodeStrokeWidth={3} pannable={true} />
-          <Background gap={16} color="var(--grid-color, rgba(0,0,0,0.03))" />
-        </ReactFlow>
-      </div>
-
-      <ModalStatus>
-        <ReasoningIndicator
-          onOpenReport={() => canvasActions.toggleReasoningReport(true)}
-          onRunReason={() => {
-            void triggerReasoningStrict(nodes, edges, true);
-          }}
-          currentReasoning={currentReasoning}
-          isReasoning={isReasoning}
+          currentLayout={currentLayout}
+          layoutEnabled={layoutEnabled}
+          onToggleLayoutEnabled={handleToggleLayoutEnabled}
         />
-      </ModalStatus>
 
-      <ReasoningReportModal
-        open={canvasState.showReasoningReport}
-        onOpenChange={canvasActions.toggleReasoningReport}
-        currentReasoning={currentReasoning}
-        reasoningHistory={reasoningHistory}
-      />
-      <NodePropertyEditor
-        open={nodeEditorOpen}
-        onOpenChange={(open) => {
-          setNodeEditorOpen(Boolean(open));
-        }}
-        nodeData={selectedNodePayload}
-        availableEntities={allEntities}
-        onSave={(props: any[]) => {
-          handleSaveNodeProperties(props);
-          setNodeEditorOpen(false);
-        }}
-        onDelete={(iriOrId: string) => {
-          {
-            const id = String(iriOrId);
-            // Remove node from RF state by id or by node.data.iri match
-            try {
-              setNodes((prev = []) =>
-                (prev || []).filter((n) => {
-                  try {
-                    const nid = String(n.id);
-                    const iri =
-                      n && (n as any).data && (n as any).data.iri
-                        ? String((n as any).data.iri)
-                        : "";
-                    return nid !== id && iri !== id;
-                  } catch {
-                    return true;
-                  }
-                }),
-              );
-            } catch {
-              // ignore
-            }
-            // Remove edges touching the node
-            try {
-              setEdges((prev = []) =>
-                (prev || []).filter((e) => {
-                  try {
-                    return String(e.source) !== id && String(e.target) !== id;
-                  } catch {
-                    return true;
-                  }
-                }),
-              );
-            } catch {
-              // ignore
-            }
-            // Best-effort: ask react-flow instance to delete elements if supported
-            try {
-              const inst = reactFlowInstance && reactFlowInstance.current;
-              if (inst && typeof (inst as any).deleteElements === "function") {
-                (inst as any).deleteElements([{ id }]);
+        {/* Legend - positioned in top right */}
+        {showLegend ? (
+          <ResizableNamespaceLegend onClose={() => handleToggleLegend()} />
+        ) : null}
+
+        {/* Canvas container */}
+        <div
+          className="w-full h-full"
+          ref={flowWrapperRef}
+          onDragEnter={onDragEnter}
+          onDragOver={onDragOver}
+          onDrop={onDrop}
+        >
+          <ReactFlow
+            nodes={safeNodes}
+            edges={filteredEdges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onInit={onInit}
+            onNodeDoubleClick={onNodeDoubleClickStrict}
+            onNodeClick={onNodeClickStrict}
+            onNodeDragStart={onNodeDragStart}
+            onNodeDrag={onNodeDrag}
+            onNodeDragStop={onNodeDragStop}
+            onEdgeDoubleClick={onEdgeDoubleClickStrict}
+            onConnect={onConnectStrict}
+            onSelectionChange={onSelectionChange}
+            onMove={onMoveHandler}
+            onMoveEnd={onMoveHandler}
+            nodeTypes={memoNodeTypes}
+            edgeTypes={memoEdgeTypes}
+            connectionLineComponent={memoConnectionLine}
+            connectOnClick={false}
+            minZoom={0.1}
+            nodeOrigin={[0.5, 0.5]}
+            onlyRenderVisibleElements={true}
+            className="knowledge-graph-canvas bg-canvas-bg"
+          >
+            <Controls
+              position="bottom-left"
+              showInteractive={true}
+              showZoom={true}
+              showFitView={true}
+            />
+            <MiniMap 
+              nodeStrokeWidth={3} 
+              pannable={true}
+            />
+            <Background gap={16} color="var(--grid-color, rgba(0,0,0,0.03))" />
+          </ReactFlow>
+        </div>
+
+        {/* Reasoning Indicator - positioned in bottom right */}
+        <ModalStatus>
+          <ReasoningIndicator
+            onOpenReport={() => canvasActions.toggleReasoningReport(true)}
+            onRunReason={() => {
+              void triggerReasoningStrict(nodes, edges, true);
+            }}
+            currentReasoning={currentReasoning}
+            isReasoning={isReasoning}
+          />
+        </ModalStatus>
+
+        {/* Modals */}
+        <ReasoningReportModal
+          open={canvasState.showReasoningReport}
+          onOpenChange={canvasActions.toggleReasoningReport}
+          currentReasoning={currentReasoning}
+          reasoningHistory={reasoningHistory}
+        />
+        
+        {/* Add Node Dialog */}
+        <NodePropertyEditor
+          open={addNodeDialogOpen}
+          onOpenChange={(open) => {
+            setAddNodeDialogOpen(Boolean(open));
+          }}
+          nodeData={viewMode === 'tbox' ? { classType: 'http://www.w3.org/2002/07/owl#Class' } : {}}
+          addNamedIndividualOnSave={viewMode === 'abox'}
+          availableEntities={allEntities}
+          onSave={handleAddNodeSave}
+          onDelete={undefined}
+        />
+        
+        {/* Edit Node Dialog */}
+        <NodePropertyEditor
+          open={nodeEditorOpen}
+          onOpenChange={(open) => {
+            setNodeEditorOpen(Boolean(open));
+          }}
+          nodeData={selectedNodePayload}
+          availableEntities={allEntities}
+          onSave={(props: any[]) => {
+            handleSaveNodeProperties(props);
+            setNodeEditorOpen(false);
+          }}
+          onDelete={(iriOrId: string) => {
+            {
+              const id = String(iriOrId);
+              // Remove node from RF state by id or by node.data.iri match
+              try {
+                setNodes((prev = []) =>
+                  (prev || []).filter((n) => {
+                    try {
+                      const nid = String(n.id);
+                      const iri =
+                        n && (n as any).data && (n as any).data.iri
+                          ? String((n as any).data.iri)
+                          : "";
+                      return nid !== id && iri !== id;
+                    } catch {
+                      return true;
+                    }
+                  }),
+                );
+              } catch {
+                // ignore
               }
-            } catch {
-              // ignore
+              // Remove edges touching the node
+              try {
+                setEdges((prev = []) =>
+                  (prev || []).filter((e) => {
+                    try {
+                      return String(e.source) !== id && String(e.target) !== id;
+                    } catch {
+                      return true;
+                    }
+                  }),
+                );
+              } catch {
+                // ignore
+              }
+              // Best-effort: ask react-flow instance to delete elements if supported
+              try {
+                const inst = reactFlowInstance && reactFlowInstance.current;
+                if (inst && typeof (inst as any).deleteElements === "function") {
+                  (inst as any).deleteElements([{ id }]);
+                }
+              } catch {
+                // ignore
+              }
             }
-          }
-        }}
-      />
+          }}
+        />
 
-      <LinkPropertyEditor
-        open={linkEditorOpen}
-        onOpenChange={(open) => {
-          setLinkEditorOpen(Boolean(open));
-        }}
-        linkData={selectedLinkPayload}
-        sourceNode={linkSourceRef.current}
-        targetNode={linkTargetRef.current}
-        onSave={(propertyUri: string, label: string) => {
-          handleSaveLinkProperty(propertyUri, label);
-          setLinkEditorOpen(false);
-        }}
-      />
+        <LinkPropertyEditor
+          open={linkEditorOpen}
+          onOpenChange={(open) => {
+            setLinkEditorOpen(Boolean(open));
+          }}
+          linkData={selectedLinkPayload}
+          sourceNode={linkSourceRef.current}
+          targetNode={linkTargetRef.current}
+          onSave={(propertyUri: string, label: string) => {
+            handleSaveLinkProperty(propertyUri, label);
+            setLinkEditorOpen(false);
+          }}
+        />
+
+        {/* Load Ontology Dialog - Full rich version */}
+        <Dialog open={loadOntologyOpen} onOpenChange={setLoadOntologyOpen}>
+          <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto rounded-lg bg-popover text-popover-foreground">
+            <DialogHeader>
+              <DialogTitle>Load Ontology</DialogTitle>
+              <DialogDescription>
+                Load an ontology from a URL or select from common vocabularies.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="ontologyUrl">Ontology URL</Label>
+                <Input
+                  id="ontologyUrl"
+                  placeholder="https://example.com/ontology.owl"
+                  value={(window as any).__VG_TEMP_ONTOLOGY_URL || ''}
+                  onChange={(e) => { (window as any).__VG_TEMP_ONTOLOGY_URL = e.target.value; }}
+                  className="rounded-lg bg-input border-border"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Available Ontologies & Prefixes</Label>
+
+                <div className="space-y-2">
+                  <Label htmlFor="rdfPaste">Paste RDF (optional)</Label>
+                  <textarea
+                    id="rdfPaste"
+                    value={rdfBody}
+                    onChange={(e) => setRdfBody(e.target.value)}
+                    placeholder="Paste Turtle / RDF/XML / JSON-LD here to register its prefixes and optionally load it as an ontology"
+                    className="w-full min-h-24 p-2 bg-input border border-border rounded"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        if (!rdfBody.trim()) return;
+                        try {
+                          await loadOntologyFromRDF?.(rdfBody, undefined, true, "urn:vg:ontologies");
+                          setRdfBody('');
+                          setLoadOntologyOpen(false);
+                          toast.success('RDF content applied as ontology (prefixes registered)');
+                        } catch (err) {
+                          toast.error('Failed to load RDF content');
+                        }
+                      }}
+                      disabled={!rdfBody.trim()}
+                    >
+                      Load RDF
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setRdfBody('')}>
+                      Clear
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid gap-2">
+                  {combinedOntologyOptions.map((opt, index) => (
+                    <Button
+                      key={`${opt.url}-${index}`}
+                      variant={(window as any).__VG_TEMP_ONTOLOGY_URL === opt.url ? "default" : "outline"}
+                      size="sm"
+                      className="justify-start text-left h-auto py-2"
+                      onClick={() => { (window as any).__VG_TEMP_ONTOLOGY_URL = opt.url; setLoadOntologyOpen((prev) => !prev); setLoadOntologyOpen(true); }}
+                    >
+                      <div>
+                        <div className="font-medium">{opt.title}</div>
+                        <div className="text-xs text-muted-foreground">{opt.url}</div>
+                      </div>
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {loadedOntologies && loadedOntologies.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Loaded Ontologies</Label>
+                  <div className="flex flex-wrap gap-1">
+                    {loadedOntologies.map((ont: any, index: number) => (
+                      <span key={`${ont.url}-${index}`} className="inline-flex items-center rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground">
+                        {ont.name || (() => { try { return new URL(ont.url).hostname } catch (_) { return String(ont.url) } })()}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setLoadOntologyOpen(false)} className="rounded-lg">
+                  Cancel
+                </Button>
+                <Button
+                  onClick={async () => {
+                    const url = (window as any).__VG_TEMP_ONTOLOGY_URL?.trim();
+                    if (!url) {
+                      toast.error('Please enter a valid URL');
+                      return;
+                    }
+                    try {
+                      canvasActions.setLoading(true, 10, 'Loading ontology...');
+                      await loadAdditionalOntologies([url], (progress, message) => {
+                        canvasActions.setLoading(true, Math.max(progress, 30), message);
+                      });
+                      toast.success('Ontology loaded successfully');
+                      (window as any).__VG_TEMP_ONTOLOGY_URL = '';
+                      setLoadOntologyOpen(false);
+                    } catch (err) {
+                      console.error('Failed to load ontology:', err);
+                      toast.error('Failed to load ontology');
+                    } finally {
+                      canvasActions.setLoading(false, 0, '');
+                    }
+                  }}
+                  disabled={!(window as any).__VG_TEMP_ONTOLOGY_URL?.trim()}
+                  className="rounded-lg"
+                >
+                  Load Ontology
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Export Dialog */}
+        <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+          <DialogContent className="sm:max-w-[400px] rounded-lg bg-popover text-popover-foreground">
+            <DialogHeader>
+              <DialogTitle>Export Graph</DialogTitle>
+              <DialogDescription>
+                Choose a format to export your knowledge graph.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-2 py-4">
+              <Button
+                variant="outline"
+                className="rounded-lg justify-start"
+                onClick={async () => {
+                  await exportSvg();
+                  setExportDialogOpen(false);
+                }}
+              >
+                Export SVG — Full
+              </Button>
+              <Button
+                variant="outline"
+                className="rounded-lg justify-start"
+                onClick={async () => {
+                  await exportPng(2);
+                  setExportDialogOpen(false);
+                }}
+              >
+                Export PNG — Full
+              </Button>
+              <div className="my-2 border-t" />
+              <Button
+                variant="outline"
+                className="rounded-lg justify-start"
+                onClick={async () => {
+                  await handleExport('turtle');
+                  setExportDialogOpen(false);
+                }}
+              >
+                Turtle (.ttl)
+              </Button>
+              <Button
+                variant="outline"
+                className="rounded-lg justify-start"
+                onClick={async () => {
+                  await handleExport('owl-xml');
+                  setExportDialogOpen(false);
+                }}
+              >
+                OWL/XML (.owl)
+              </Button>
+              <Button
+                variant="outline"
+                className="rounded-lg justify-start"
+                onClick={async () => {
+                  await handleExport('json-ld');
+                  setExportDialogOpen(false);
+                }}
+              >
+                JSON-LD (.jsonld)
+              </Button>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setExportDialogOpen(false)}
+                className="rounded-lg"
+              >
+                Cancel
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Settings Dialog - Direct ConfigurationPanel */}
+        <ConfigurationPanel 
+          triggerVariant="none"
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+        />
+      </div>
     </div>
   );
 };

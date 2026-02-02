@@ -78,16 +78,16 @@ export const ReasoningIndicator = memo(({ onOpenReport, onRunReason, currentReas
   const statusInfo = getStatusInfo();
 
   return (
-    <div className={["flex items-center gap-2", (typeof ({} as any).className === "string" ? "" : "")].filter(Boolean).join(" ")}>
+    <div className="inline-flex items-center bg-card/80 backdrop-blur-sm border border-border rounded-lg overflow-hidden shadow-sm">
       <Button
-        variant="outline"
+        variant="ghost"
         size="sm"
         onClick={onOpenReport}
         className={[
+          'rounded-none border-0 h-9 px-3',
           typeof statusInfo.colorKey === 'string' ? STATUS_COLOR_MAP[statusInfo.colorKey] : '',
-          'border-2 backdrop-blur-sm shadow-lg bg-card/80',
           statusInfo.pulse ? 'animate-pulse' : '',
-          'hover:scale-105 transition-all duration-200',
+          'hover:bg-accent/10 transition-colors',
         ].filter(Boolean).join(' ')}
       >
         {/* ensure classes from STATUS_COLOR_MAP are present in the source for Tailwind scanning */}
@@ -113,7 +113,7 @@ export const ReasoningIndicator = memo(({ onOpenReport, onRunReason, currentReas
             console.warn('Failed to invoke run reasoning', e);
           }
         }}
-        className="bg-card/80 hover:bg-accent/5 border border-border px-2 text-foreground"
+        className="rounded-none border-0 border-l border-border h-9 px-3 hover:bg-accent/10 transition-colors"
         aria-label="Run reasoning"
       >
         <Play className="w-4 h-4" />

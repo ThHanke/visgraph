@@ -140,7 +140,8 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
   };
 
   // Keep only position and drag state (no JS resize)
-  const [position, setPosition] = useState(() => ({ x: Math.max(16, window.innerWidth - calculateInitialWidth() - 16), y: 16 }));
+  // Position below the TopBar (which is at top-4 ~ 16px with height ~56px, so start at ~80px)
+  const [position, setPosition] = useState(() => ({ x: Math.max(16, window.innerWidth - calculateInitialWidth() - 16), y: 80 }));
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 

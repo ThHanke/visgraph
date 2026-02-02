@@ -15,6 +15,12 @@ import {
 } from "../utils/normalizers";
 import { resolveStateStorage } from "../utils/stateStorage";
 
+export interface WorkflowCatalogUrls {
+  ontology: string;
+  catalog: string;
+  catalogUi: string;
+}
+
 export interface AppConfig {
   currentLayout: string;
   layoutAnimations: boolean;
@@ -37,6 +43,9 @@ export interface AppConfig {
   blacklistEnabled: boolean;
   blacklistedPrefixes: string[];
   blacklistedUris: string[];
+  workflowCatalogEnabled: boolean;
+  workflowCatalogUrls: WorkflowCatalogUrls;
+  loadWorkflowCatalogOnStartup: boolean;
 }
 
 interface AppConfigStore {
@@ -64,6 +73,10 @@ interface AppConfigStore {
   removeAdditionalOntology: (uri: string) => void;
   addDisabledOntology: (uri: string) => void;
   removeDisabledOntology: (uri: string) => void;
+  setWorkflowCatalogEnabled: (enabled: boolean) => void;
+  setWorkflowCatalogUrls: (urls: Partial<WorkflowCatalogUrls>) => void;
+  setLoadWorkflowCatalogOnStartup: (enabled: boolean) => void;
+  resetWorkflowCatalogUrls: () => void;
   resetToDefaults: () => void;
   exportConfig: () => string;
   importConfig: (configJson: string) => void;
@@ -77,6 +90,14 @@ const MIN_VISIBLE_NODES = 100;
 const MAX_VISIBLE_NODES = 5000;
 const MAX_RECENT_ONTOLOGIES = 10;
 const MAX_RECENT_LAYOUTS = 5;
+
+const DEFAULT_WORKFLOW_CATALOG_URLS: WorkflowCatalogUrls = {
+  ontology: "https://raw.githubusercontent.com/ThHanke/PyodideSemanticWorkflow/main/ontology/spw.ttl",
+  catalog: "https://raw.githubusercontent.com/ThHanke/PyodideSemanticWorkflow/main/workflows/catalog.ttl",
+  catalogUi: "https://raw.githubusercontent.com/ThHanke/PyodideSemanticWorkflow/main/workflows/catalog-ui.ttl",
+};
+
+// Note: If using a fork or different branch, update these URLs in the Configuration Panel ’ Workflows tab
 
 const defaultConfig: AppConfig = {
   currentLayout: "horizontal",
@@ -110,12 +131,27 @@ const defaultConfig: AppConfig = {
     "http://www.w3.org/XML/1998/namespace",
     "http://www.w3.org/2001/XMLSchema#",
   ],
+  workflowCatalogEnabled: true,
+  workflowCatalogUrls: { ...DEFAULT_WORKFLOW_CATALOG_URLS },
+  loadWorkflowCatalogOnStartup: true,
 };
 
 function pushRecent(list: string[], value: string, limit: number, context: string): string[] {
   const normalized = normalizeString(value, `${context}.value`);
   const deduped = list.filter((entry) => entry !== normalized);
   return [normalized, ...deduped].slice(0, limit);
+}
+
+function normalizeWorkflowCatalogUrls(value: unknown, context: string): WorkflowCatalogUrls {
+  if (!isPlainObject(value)) {
+    return { ...DEFAULT_WORKFLOW_CATALOG_URLS };
+  }
+  const input = value as Partial<WorkflowCatalogUrls>;
+  return {
+    ontology: normalizeOptionalString(input.ontology, `${context}.ontology`) ?? DEFAULT_WORKFLOW_CATALOG_URLS.ontology,
+    catalog: normalizeOptionalString(input.catalog, `${context}.catalog`) ?? DEFAULT_WORKFLOW_CATALOG_URLS.catalog,
+    catalogUi: normalizeOptionalString(input.catalogUi, `${context}.catalogUi`) ?? DEFAULT_WORKFLOW_CATALOG_URLS.catalogUi,
+  };
 }
 
 function normalizeAppConfigInput(value: unknown, context: string): AppConfig {
@@ -217,6 +253,20 @@ function normalizeAppConfigInput(value: unknown, context: string): AppConfig {
     blacklistedUris: normalizeStringSet(
       input.blacklistedUris ?? cfg.blacklistedUris,
       `${context}.blacklistedUris`,
+    ),
+    workflowCatalogEnabled: normalizeBooleanFlag(
+      input.workflowCatalogEnabled,
+      `${context}.workflowCatalogEnabled`,
+      cfg.workflowCatalogEnabled,
+    ),
+    workflowCatalogUrls: normalizeWorkflowCatalogUrls(
+      input.workflowCatalogUrls,
+      `${context}.workflowCatalogUrls`,
+    ),
+    loadWorkflowCatalogOnStartup: normalizeBooleanFlag(
+      input.loadWorkflowCatalogOnStartup,
+      `${context}.loadWorkflowCatalogOnStartup`,
+      cfg.loadWorkflowCatalogOnStartup,
     ),
   };
 }
@@ -441,6 +491,39 @@ export const useAppConfigStore = create<AppConfigStore>()(
           disabledAdditionalOntologies: config.disabledAdditionalOntologies.filter(
             (entry) => entry !== normalized,
           ),
+        }));
+      },
+
+      setWorkflowCatalogEnabled: (enabled: boolean) => {
+        updateConfig(set, (config) => ({
+          ...config,
+          workflowCatalogEnabled: normalizeBoolean(enabled, "setWorkflowCatalogEnabled.enabled"),
+        }));
+      },
+
+      setWorkflowCatalogUrls: (urls: Partial<WorkflowCatalogUrls>) => {
+        updateConfig(set, (config) => ({
+          ...config,
+          workflowCatalogUrls: {
+            ...config.workflowCatalogUrls,
+            ...(urls.ontology !== undefined ? { ontology: normalizeString(urls.ontology, "setWorkflowCatalogUrls.ontology") } : {}),
+            ...(urls.catalog !== undefined ? { catalog: normalizeString(urls.catalog, "setWorkflowCatalogUrls.catalog") } : {}),
+            ...(urls.catalogUi !== undefined ? { catalogUi: normalizeString(urls.catalogUi, "setWorkflowCatalogUrls.catalogUi") } : {}),
+          },
+        }));
+      },
+
+      setLoadWorkflowCatalogOnStartup: (enabled: boolean) => {
+        updateConfig(set, (config) => ({
+          ...config,
+          loadWorkflowCatalogOnStartup: normalizeBoolean(enabled, "setLoadWorkflowCatalogOnStartup.enabled"),
+        }));
+      },
+
+      resetWorkflowCatalogUrls: () => {
+        updateConfig(set, (config) => ({
+          ...config,
+          workflowCatalogUrls: { ...DEFAULT_WORKFLOW_CATALOG_URLS },
         }));
       },
 

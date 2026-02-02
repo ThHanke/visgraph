@@ -5,9 +5,9 @@
 :root {
   /* Core Background */
   --background: oklch(98.4% 0.002 247.8);
-  --foreground: oklch(37.5% 0.039 256.8);
+  --foreground: oklch(25% 0.045 256.8);
   /* Stable dark foreground token for bright-button text (keeps same value across themes) */
-  --text-foreground-dark: oklch(37.5% 0.039 256.8);
+  --text-foreground-dark: oklch(25% 0.045 256.8);
   /* Surface Colors */
   --card: oklch(100.0% 0 0);
   --card-foreground: oklch(37.5% 0.039 256.8);
@@ -109,6 +109,12 @@
   left: 8px;
   bottom: 8px;
   pointer-events: auto;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: var(--radius);
+  background: transparent;
+  border: 1px solid var(--border);
+  overflow: hidden;
 }
 
 /* Minimal handle defaults kept here to avoid breaking pointer behavior.
@@ -245,25 +251,38 @@
   border-radius: var(--radius-md);
 }
 
-.react-flow__controls-button {
-	border: none;
-	color:  oklch(var(--muted-foreground) / var(--tw-text-opacity, 1));
-  border: 1px solid var(--border);
-  --tw-bg-opacity: 1;
-  background-color: oklch(var(--muted) / var(--tw-bg-opacity, 1)) !important;
-  }
+/* Viewport controls: use centralized --foreground color to match ghost button variant
+   This ensures consistency with all transparent buttons throughout the app (TopBar, ReasoningIndicator, etc.) */
+.react-flow__controls button.react-flow__controls-button {
+  color: var(--foreground) !important;
+  border: none !important;
+  background-color: transparent !important;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
 
-.react-flow__controls-button svg {
-    width: 100%;
-    max-width: 18px;
-    max-height: 18px;
-    fill: var(--foreground)
-  }
+.react-flow__controls button.react-flow__controls-button:hover {
+  background-color: var(--accent-hover) !important;
+  color: var(--foreground) !important;
+}
+
+/* SVG icon color inheritance: ensure icons use the same --foreground color */
+.react-flow__controls button.react-flow__controls-button > svg,
+.react-flow__controls button.react-flow__controls-button > svg > path,
+.react-flow__controls button * {
+  fill: var(--foreground) !important;
+  color: var(--foreground) !important;
+}
 .react-flow__minimap {
   border: 1px solid var(--border);
+  background-color: transparent !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
 
-  background-color: var(--canvas-bg)  !important;;
-  /* background-color: oklch(var(--muted) / var(--tw-bg-opacity, 1)) !important; */
+.react-flow__minimap-svg {
+  border-radius: var(--radius);
 }
 
 .react-flow__panel.bottom {
