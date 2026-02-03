@@ -25,12 +25,12 @@ import { useAppConfigStore } from "../../stores/appConfigStore";
 import { WELL_KNOWN_PREFIXES } from "../../utils/wellKnownOntologies";
 import { TopBar } from "./TopBar";
 import { LeftSidebar } from "./LeftSidebar";
-import { ResizableNamespaceLegend } from "./ResizableNamespaceLegend";
-import { ReasoningIndicator } from "./ReasoningIndicator";
+import { WorkflowTemplatePanel } from "./WorkflowTemplatePanel";
 import { ReasoningReportModal } from "./ReasoningReportModal";
-import { ConfigurationPanel } from "./ConfigurationPanel";
 import { instantiateWorkflow } from "../../utils/workflowInstantiator";
-import ModalStatus from "./ModalStatus";
+import { NodeSearch } from "./NodeSearch";
+import { ConfigurationPanel } from "./ConfigurationPanel";
+import { ResizableNamespaceLegend } from "./ResizableNamespaceLegend";
 import { Progress } from "../ui/progress";
 import {
   Dialog,
@@ -3063,6 +3063,12 @@ const KnowledgeCanvas: React.FC = () => {
           currentLayout={currentLayout}
           layoutEnabled={layoutEnabled}
           onToggleLayoutEnabled={handleToggleLayoutEnabled}
+          onOpenReasoningReport={() => canvasActions.toggleReasoningReport(true)}
+          onRunReason={() => {
+            void triggerReasoningStrict(nodes, edges, true);
+          }}
+          currentReasoning={currentReasoning}
+          isReasoning={isReasoning}
         />
 
         {/* Legend - positioned in top right */}
@@ -3117,17 +3123,6 @@ const KnowledgeCanvas: React.FC = () => {
           </ReactFlow>
         </div>
 
-        {/* Reasoning Indicator - positioned in bottom right */}
-        <ModalStatus>
-          <ReasoningIndicator
-            onOpenReport={() => canvasActions.toggleReasoningReport(true)}
-            onRunReason={() => {
-              void triggerReasoningStrict(nodes, edges, true);
-            }}
-            currentReasoning={currentReasoning}
-            isReasoning={isReasoning}
-          />
-        </ModalStatus>
 
         {/* Modals */}
         <ReasoningReportModal

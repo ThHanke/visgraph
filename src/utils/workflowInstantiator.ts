@@ -16,7 +16,7 @@ const PPLAN_NS = "http://purl.org/net/p-plan#";
 const PROV_NS = "http://www.w3.org/ns/prov#";
 const RDF_NS = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 const RDFS_NS = "http://www.w3.org/2000/01/rdf-schema#";
-const SPW_NS = "https://github.com/ThHanke/PyodideSemanticWorkflow#";
+const SPW_NS = "https://thhanke.github.io/PyodideSemanticWorkflow#";
 
 export interface WorkflowTemplate {
   iri: string;

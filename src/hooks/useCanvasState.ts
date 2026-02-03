@@ -16,6 +16,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { CanvasState, CanvasActions } from "../types/canvas";
+import { toast } from "sonner";
 
 /* Module-level shared state */
 let internalState: CanvasState = {
@@ -26,6 +27,9 @@ let internalState: CanvasState = {
   loadingMessage: "",
   showReasoningReport: false,
 };
+
+/* Track current loading toast ID for updates */
+let currentLoadingToastId: string | number | null = null;
 
 /* Subscribers notified on state change */
 const subscribers = new Set<() => void>();
@@ -76,6 +80,36 @@ const actionsImpl: CanvasActions = {
       }
     } catch (_) {
       // ignore logging failures
+    }
+
+    // Use Sonner toast system for loading notifications
+    const loadingMessage = message || "Working...";
+    const progressText = progress > 0 && progress < 100 ? ` ${progress}%` : "";
+    const fullMessage = `${loadingMessage}${progressText}`;
+
+    if (loading) {
+      // Start or update loading toast
+      if (currentLoadingToastId === null) {
+        // Create new loading toast with infinite duration
+        currentLoadingToastId = toast.loading(fullMessage, {
+          duration: Infinity,
+        });
+      } else {
+        // Update existing loading toast
+        toast.loading(fullMessage, {
+          id: currentLoadingToastId,
+          duration: Infinity,
+        });
+      }
+    } else {
+      // Loading finished - dismiss with success
+      if (currentLoadingToastId !== null) {
+        toast.success(message || "Complete", {
+          id: currentLoadingToastId,
+          duration: 3000,
+        });
+        currentLoadingToastId = null;
+      }
     }
 
     internalState = {

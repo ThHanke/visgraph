@@ -70,7 +70,7 @@ describe("Workflow Catalog Loading from Web", () => {
     const quads = await rdfManager.fetchQuadsPage({
       graphName: "urn:vg:ontologies",
       filter: { 
-        subject: "https://github.com/ThHanke/PyodideSemanticWorkflow#expectedType" 
+        subject: "https://thhanke.github.io/PyodideSemanticWorkflow#expectedType" 
       },
     });
     
@@ -90,7 +90,7 @@ describe("Workflow Catalog Loading from Web", () => {
     const sumTemplateQuads = await rdfManager.fetchQuadsPage({
       graphName: "urn:vg:workflows",
       filter: { 
-        subject: "https://github.com/ThHanke/PyodideSemanticWorkflow#SumTemplate" 
+        subject: "https://thhanke.github.io/PyodideSemanticWorkflow#SumTemplate" 
       },
     });
     
@@ -110,7 +110,7 @@ describe("Workflow Catalog Loading from Web", () => {
     const uiQuads = await rdfManager.fetchQuadsPage({
       graphName: "urn:vg:workflows",
       filter: { 
-        subject: "https://github.com/ThHanke/PyodideSemanticWorkflow#SumTemplate",
+        subject: "https://thhanke.github.io/PyodideSemanticWorkflow#SumTemplate",
         predicate: "https://schema.org/image",
       },
     });
@@ -142,7 +142,7 @@ describe("Workflow Catalog Loading from Web", () => {
       const quads = await rdfManager.fetchQuadsPage({
         graphName: "urn:vg:workflows",
         filter: { 
-          subject: `https://github.com/ThHanke/PyodideSemanticWorkflow#${template}` 
+          subject: `https://thhanke.github.io/PyodideSemanticWorkflow#${template}` 
         },
       });
       
@@ -157,7 +157,7 @@ describe("Workflow Catalog Loading from Web", () => {
     const planQuads = await rdfManager.fetchQuadsPage({
       graphName: "urn:vg:workflows",
       filter: { 
-        subject: "https://github.com/ThHanke/PyodideSemanticWorkflow#SumTemplate",
+        subject: "https://thhanke.github.io/PyodideSemanticWorkflow#SumTemplate",
         predicate: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
       },
     });
@@ -165,8 +165,8 @@ describe("Workflow Catalog Loading from Web", () => {
     expect(planQuads.total).toBeGreaterThan(0);
     
     // Verify at least one type is p-plan:Plan
-    const hasPlanType = planQuads.quads?.some(
-      (q: any) => q.object?.value === "http://purl.org/net/p-plan#Plan"
+    const hasPlanType = planQuads.items?.some(
+      (q: any) => q.object === "http://purl.org/net/p-plan#Plan"
     );
     expect(hasPlanType).toBe(true);
   });
@@ -178,7 +178,7 @@ describe("Workflow Catalog Loading from Web", () => {
     const expectedTypeQuads = await rdfManager.fetchQuadsPage({
       graphName: "urn:vg:ontologies",
       filter: { 
-        subject: "https://github.com/ThHanke/PyodideSemanticWorkflow#expectedType",
+        subject: "https://thhanke.github.io/PyodideSemanticWorkflow#expectedType",
       },
     });
     
@@ -188,7 +188,7 @@ describe("Workflow Catalog Loading from Web", () => {
     const requiredQuads = await rdfManager.fetchQuadsPage({
       graphName: "urn:vg:ontologies",
       filter: { 
-        subject: "https://github.com/ThHanke/PyodideSemanticWorkflow#required",
+        subject: "https://thhanke.github.io/PyodideSemanticWorkflow#required",
       },
     });
     
@@ -240,7 +240,7 @@ describe("Workflow Catalog Loading from Web", () => {
     const inputQuads = await rdfManager.fetchQuadsPage({
       graphName: "urn:vg:workflows",
       filter: { 
-        subject: "https://github.com/ThHanke/PyodideSemanticWorkflow#SumInput1",
+        subject: "https://thhanke.github.io/PyodideSemanticWorkflow#SumInput1",
       },
     });
     
@@ -250,7 +250,7 @@ describe("Workflow Catalog Loading from Web", () => {
     const outputQuads = await rdfManager.fetchQuadsPage({
       graphName: "urn:vg:workflows",
       filter: { 
-        subject: "https://github.com/ThHanke/PyodideSemanticWorkflow#SumOutput",
+        subject: "https://thhanke.github.io/PyodideSemanticWorkflow#SumOutput",
       },
     });
     
@@ -264,7 +264,7 @@ describe("Workflow Catalog Loading from Web", () => {
     const codeQuads = await rdfManager.fetchQuadsPage({
       graphName: "urn:vg:workflows",
       filter: { 
-        subject: "https://github.com/ThHanke/PyodideSemanticWorkflow#SumCode",
+        subject: "https://thhanke.github.io/PyodideSemanticWorkflow#SumCode",
       },
     });
     
@@ -274,7 +274,7 @@ describe("Workflow Catalog Loading from Web", () => {
     const locationQuads = await rdfManager.fetchQuadsPage({
       graphName: "urn:vg:workflows",
       filter: { 
-        subject: "https://github.com/ThHanke/PyodideSemanticWorkflow#SumCode",
+        subject: "https://thhanke.github.io/PyodideSemanticWorkflow#SumCode",
         predicate: "http://www.w3.org/ns/prov#atLocation",
       },
     });

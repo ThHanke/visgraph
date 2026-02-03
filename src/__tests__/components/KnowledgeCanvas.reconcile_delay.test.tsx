@@ -56,13 +56,15 @@ vi.mock("../../components/Canvas/ReasoningReportModal", () => {
   };
 });
 
+vi.mock("../../components/Canvas/TopBar", () => ({ __esModule: true, TopBar: (props: any) => React.createElement("div", { "data-testid": "top-bar" }) }));
 vi.mock("../../components/Canvas/LayoutManager", () => {
   return {
     __esModule: true,
     LayoutManager: class {
       constructor(_ctx: any) {}
       suggestOptimalLayout() { return "dagre"; }
-      async applyLayout(_layoutType: any, _opts?: any) { /* no-op */ }
+      async applyLayout() { return []; }
+      getAvailableLayouts() { return []; }
     },
   };
 });

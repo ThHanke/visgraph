@@ -4,13 +4,14 @@ import { vi, test, expect, beforeEach, afterEach } from "vitest";
 import { RDFS_LABEL } from "../../constants/vocabularies";
 
 // Mock UI siblings (reuse lightweight stubs)
+vi.mock("../../components/Canvas/TopBar", () => ({ __esModule: true, TopBar: (props: any) => React.createElement("div", { "data-testid": "top-bar" }) }));
 vi.mock("../../components/Canvas/CanvasToolbar", () => ({ __esModule: true, CanvasToolbar: (props: any) => React.createElement("div", { "data-testid": "canvas-toolbar" }) }));
 vi.mock("../../components/Canvas/LinkPropertyEditor", () => ({ __esModule: true, LinkPropertyEditor: (props: any) => React.createElement("div", { "data-testid": "link-editor" }) }));
 vi.mock("../../components/Canvas/NodePropertyEditor", () => ({ __esModule: true, NodePropertyEditor: (props: any) => React.createElement("div", { "data-testid": "node-editor" }) }));
 vi.mock("../../components/Canvas/ResizableNamespaceLegend", () => ({ __esModule: true, ResizableNamespaceLegend: (props: any) => React.createElement("div", { "data-testid": "legend" }) }));
 vi.mock("../../components/Canvas/ReasoningIndicator", () => ({ __esModule: true, ReasoningIndicator: (props: any) => React.createElement("div", { "data-testid": "reasoning-indicator" }) }));
 vi.mock("../../components/Canvas/ReasoningReportModal", () => ({ __esModule: true, ReasoningReportModal: (props: any) => React.createElement("div", { "data-testid": "reasoning-modal" }) }));
-vi.mock("../../components/Canvas/LayoutManager", () => ({ __esModule: true, LayoutManager: class { constructor(_ctx: any) {} suggestOptimalLayout() { return "dagre"; } async applyLayout() { return []; } } }));
+vi.mock("../../components/Canvas/LayoutManager", () => ({ __esModule: true, LayoutManager: class { constructor(_ctx: any) {} suggestOptimalLayout() { return "dagre"; } async applyLayout() { return []; } getAvailableLayouts() { return []; } } }));
 
 // Mapper mock: for a subject that has rdfs:label triple use that literal as node label
 vi.doMock("../../components/Canvas/core/mappingHelpers", () => {

@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import * as TooltipPrimitive from '@radix-ui/react-tooltip';
 import { Button } from '../ui/button';
 import {
   ChevronLeft,
@@ -78,102 +79,189 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   };
 
   return (
-    <div
-      className={cn(
-        'h-full z-10',
-        'transition-all duration-300 ease-in-out',
-        isExpanded ? 'w-72' : 'w-4'
-      )}
-    >
-      {/* Collapsed state - thin vertical bar */}
-      {!isExpanded && (
-        <div className="h-full w-full bg-card/80 backdrop-blur-sm border-r border-border flex flex-col items-center pt-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onToggle}
-            className="h-8 w-8 p-0 hover:bg-accent"
-            title="Expand sidebar"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
+    <TooltipPrimitive.Provider delayDuration={0} skipDelayDuration={0}>
+      <div
+        className={cn(
+          'h-full z-10',
+          'transition-all duration-300 ease-in-out',
+          isExpanded ? 'w-72' : 'w-4'
+        )}
+      >
+        {/* Collapsed state - thin vertical bar */}
+        {!isExpanded && (
+          <div className="h-full w-full backdrop-blur-md bg-background/60 border-r border-border/20 flex flex-col items-center pt-2">
+            <TooltipPrimitive.Root>
+              <TooltipPrimitive.Trigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onToggle}
+                  className="h-8 w-8 p-0 hover:bg-accent"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </TooltipPrimitive.Trigger>
+              <TooltipPrimitive.Portal>
+                <TooltipPrimitive.Content
+                  className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
+                  sideOffset={5}
+                  side="right"
+                >
+                  Expand sidebar
+                  <TooltipPrimitive.Arrow className="fill-popover" />
+                </TooltipPrimitive.Content>
+              </TooltipPrimitive.Portal>
+            </TooltipPrimitive.Root>
+          </div>
+        )}
 
-      {/* Expanded state - full sidebar */}
-      {isExpanded && (
-        <div className="h-full w-full bg-card/95 backdrop-blur-sm border-r border-border shadow-lg flex flex-col">
+        {/* Expanded state - full sidebar */}
+        {isExpanded && (
+          <div className="h-full w-full backdrop-blur-md bg-background/80 border-r border-border/20 shadow-lg flex flex-col">
           {/* Toggle button at top */}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border/40">
             <span className="text-sm font-medium">Menu</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onToggle}
-              className="h-8 w-8 p-0 hover:bg-accent"
-              title="Collapse sidebar"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
+            <TooltipPrimitive.Root>
+              <TooltipPrimitive.Trigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onToggle}
+                  className="h-8 w-8 p-0 hover:bg-accent"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+              </TooltipPrimitive.Trigger>
+              <TooltipPrimitive.Portal>
+                <TooltipPrimitive.Content
+                  className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
+                  sideOffset={5}
+                  side="right"
+                >
+                  Collapse sidebar
+                  <TooltipPrimitive.Arrow className="fill-popover" />
+                </TooltipPrimitive.Content>
+              </TooltipPrimitive.Portal>
+            </TooltipPrimitive.Root>
           </div>
 
           {/* Compact file operations row - 5 columns */}
-          <div className="px-2 py-3 border-b border-border">
+          <div className="px-2 py-3 border-b border-border/40">
             <div className="grid grid-cols-5 gap-1">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-14 flex flex-col items-center justify-center gap-1 p-1 hover:bg-accent hover:text-accent-foreground"
-                onClick={onLoadOntology}
-                title="Load Ontology"
-              >
-                <Database className="h-4 w-4" />
-                <span className="text-xs">Onto</span>
-              </Button>
+              <TooltipPrimitive.Root>
+                <TooltipPrimitive.Trigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 hover:bg-accent hover:text-accent-foreground"
+                    onClick={onLoadOntology}
+                  >
+                    <Database className="h-4 w-4" />
+                    <span className="text-xs">Onto</span>
+                  </Button>
+                </TooltipPrimitive.Trigger>
+                <TooltipPrimitive.Portal>
+                  <TooltipPrimitive.Content
+                    className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
+                    sideOffset={5}
+                  >
+                    Load Ontology
+                    <TooltipPrimitive.Arrow className="fill-popover" />
+                  </TooltipPrimitive.Content>
+                </TooltipPrimitive.Portal>
+              </TooltipPrimitive.Root>
 
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-14 flex flex-col items-center justify-center gap-1 p-1 hover:bg-accent hover:text-accent-foreground"
-                onClick={onLoadFile}
-                title="Load File"
-              >
-                <Upload className="h-4 w-4" />
-                <span className="text-xs">File</span>
-              </Button>
+              <TooltipPrimitive.Root>
+                <TooltipPrimitive.Trigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 hover:bg-accent hover:text-accent-foreground"
+                    onClick={onLoadFile}
+                  >
+                    <Upload className="h-4 w-4" />
+                    <span className="text-xs">File</span>
+                  </Button>
+                </TooltipPrimitive.Trigger>
+                <TooltipPrimitive.Portal>
+                  <TooltipPrimitive.Content
+                    className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
+                    sideOffset={5}
+                  >
+                    Load File
+                    <TooltipPrimitive.Arrow className="fill-popover" />
+                  </TooltipPrimitive.Content>
+                </TooltipPrimitive.Portal>
+              </TooltipPrimitive.Root>
 
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-14 flex flex-col items-center justify-center gap-1 p-1 hover:bg-accent hover:text-accent-foreground"
-                onClick={onClearData}
-                title="Clear Data"
-              >
-                <Trash2 className="h-4 w-4" />
-                <span className="text-xs">Clear</span>
-              </Button>
+              <TooltipPrimitive.Root>
+                <TooltipPrimitive.Trigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 hover:bg-accent hover:text-accent-foreground"
+                    onClick={onClearData}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span className="text-xs">Clear</span>
+                  </Button>
+                </TooltipPrimitive.Trigger>
+                <TooltipPrimitive.Portal>
+                  <TooltipPrimitive.Content
+                    className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
+                    sideOffset={5}
+                  >
+                    Clear Data
+                    <TooltipPrimitive.Arrow className="fill-popover" />
+                  </TooltipPrimitive.Content>
+                </TooltipPrimitive.Portal>
+              </TooltipPrimitive.Root>
 
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-14 flex flex-col items-center justify-center gap-1 p-1 hover:bg-accent hover:text-accent-foreground"
-                onClick={onExport}
-                title="Export"
-              >
-                <Download className="h-4 w-4" />
-                <span className="text-xs">Export</span>
-              </Button>
+              <TooltipPrimitive.Root>
+                <TooltipPrimitive.Trigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 hover:bg-accent hover:text-accent-foreground"
+                    onClick={onExport}
+                  >
+                    <Download className="h-4 w-4" />
+                    <span className="text-xs">Export</span>
+                  </Button>
+                </TooltipPrimitive.Trigger>
+                <TooltipPrimitive.Portal>
+                  <TooltipPrimitive.Content
+                    className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
+                    sideOffset={5}
+                  >
+                    Export
+                    <TooltipPrimitive.Arrow className="fill-popover" />
+                  </TooltipPrimitive.Content>
+                </TooltipPrimitive.Portal>
+              </TooltipPrimitive.Root>
 
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-14 flex flex-col items-center justify-center gap-1 p-1 hover:bg-accent hover:text-accent-foreground"
-                onClick={onSettings}
-                title="Settings"
-              >
-                <Settings className="h-4 w-4" />
-                <span className="text-xs">Settings</span>
-              </Button>
+              <TooltipPrimitive.Root>
+                <TooltipPrimitive.Trigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 hover:bg-accent hover:text-accent-foreground"
+                    onClick={onSettings}
+                  >
+                    <Settings className="h-4 w-4" />
+                    <span className="text-xs">Settings</span>
+                  </Button>
+                </TooltipPrimitive.Trigger>
+                <TooltipPrimitive.Portal>
+                  <TooltipPrimitive.Content
+                    className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
+                    sideOffset={5}
+                  >
+                    Settings
+                    <TooltipPrimitive.Arrow className="fill-popover" />
+                  </TooltipPrimitive.Content>
+                </TooltipPrimitive.Portal>
+              </TooltipPrimitive.Root>
             </div>
           </div>
 
@@ -240,8 +328,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               </div>
             </div>
           )}
-        </div>
-      )}
-    </div>
+          </div>
+        )}
+      </div>
+    </TooltipPrimitive.Provider>
   );
 };

@@ -90,6 +90,16 @@
   /* Utility: explicit dark foreground for use on bright buttons / surfaces where text-foreground
      reads too light. This token intentionally does not change in .dark mode. */
   .text-foreground-dark { color: var(--text-foreground-dark); }
+
+  /* Ensure Radix UI Tooltip portal renders above everything */
+  [data-radix-popper-content-wrapper] {
+    z-index: 99999 !important;
+  }
+
+  /* Ensure tooltip content is always visible */
+  [role="tooltip"] {
+    z-index: 99999 !important;
+  }
 }
 
 /* Low-level React Flow rules that are structural / interaction-critical and
