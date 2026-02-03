@@ -120,7 +120,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           <div className="h-full w-full backdrop-blur-md bg-background/80 border-r border-border/20 shadow-lg flex flex-col">
           {/* Toggle button at top */}
           <div className="flex items-center justify-between px-3 py-2 border-b border-border/40">
-            <span className="text-sm font-medium">Menu</span>
+            <span className="text-sm font-medium text-foreground">Menu</span>
             <TooltipPrimitive.Root>
               <TooltipPrimitive.Trigger asChild>
                 <Button
@@ -153,7 +153,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 hover:bg-accent hover:text-accent-foreground"
+                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 text-foreground hover:bg-accent hover:text-accent-foreground"
                     onClick={onLoadOntology}
                   >
                     <Database className="h-4 w-4" />
@@ -176,7 +176,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 hover:bg-accent hover:text-accent-foreground"
+                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 text-foreground hover:bg-accent hover:text-accent-foreground"
                     onClick={onLoadFile}
                   >
                     <Upload className="h-4 w-4" />
@@ -199,7 +199,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 hover:bg-accent hover:text-accent-foreground"
+                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 text-foreground hover:bg-accent hover:text-accent-foreground"
                     onClick={onClearData}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -222,7 +222,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 hover:bg-accent hover:text-accent-foreground"
+                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 text-foreground hover:bg-accent hover:text-accent-foreground"
                     onClick={onExport}
                   >
                     <Download className="h-4 w-4" />
@@ -245,7 +245,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 hover:bg-accent hover:text-accent-foreground"
+                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 text-foreground hover:bg-accent hover:text-accent-foreground"
                     onClick={onSettings}
                   >
                     <Settings className="h-4 w-4" />
@@ -271,7 +271,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               <Accordion type="single" collapsible defaultValue="workflows">
                 <AccordionItem value="workflows" className="border-none">
                   <AccordionTrigger className="px-3 py-2 hover:bg-accent/5">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 text-foreground">
                       <Sparkles className="h-4 w-4 text-primary" />
                       <span className="text-sm font-medium">Workflows</span>
                     </div>

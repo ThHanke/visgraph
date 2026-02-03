@@ -239,15 +239,25 @@ export const useSettingsStore = create<SettingsStore>()(
       migrate: (persistedState: unknown, version: number) => {
         console.log('[Settings] Running migration from version', version, 'to', SETTINGS_VERSION);
         
-        // Handle invalid persisted state
+        // Handle invalid persisted state - CLEAR localStorage on failure
         if (!isPlainObject(persistedState)) {
-          console.warn('[Settings] Invalid persisted state, using defaults');
+          console.warn('[Settings] Invalid persisted state, clearing localStorage and using defaults');
+          try {
+            localStorage.removeItem(SETTINGS_STORAGE_KEY);
+          } catch (e) {
+            console.error('[Settings] Failed to clear localStorage:', e);
+          }
           return { settings: { ...defaultSettings } };
         }
         
         const payload = persistedState as { settings?: unknown };
         if (!payload.settings) {
-          console.warn('[Settings] No settings in persisted state, using defaults');
+          console.warn('[Settings] No settings in persisted state, clearing localStorage and using defaults');
+          try {
+            localStorage.removeItem(SETTINGS_STORAGE_KEY);
+          } catch (e) {
+            console.error('[Settings] Failed to clear localStorage:', e);
+          }
           return { settings: { ...defaultSettings } };
         }
         
@@ -257,13 +267,18 @@ export const useSettingsStore = create<SettingsStore>()(
         //   // Apply migration logic for v1 -> v2
         // }
         
-        // Normalize and validate the migrated settings
+        // Normalize and validate the migrated settings - CLEAR localStorage on failure
         try {
           const normalized = normalizeSettingsInput(payload.settings, "persistedSettings");
           console.log('[Settings] Migration completed successfully');
           return { settings: normalized };
         } catch (error) {
-          console.error('[Settings] Migration failed, using defaults:', error);
+          console.error('[Settings] Migration failed, clearing localStorage and using defaults:', error);
+          try {
+            localStorage.removeItem(SETTINGS_STORAGE_KEY);
+          } catch (e) {
+            console.error('[Settings] Failed to clear localStorage:', e);
+          }
           return { settings: { ...defaultSettings } };
         }
       },

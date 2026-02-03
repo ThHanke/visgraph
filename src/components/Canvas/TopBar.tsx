@@ -96,11 +96,11 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   return (
     <TooltipPrimitive.Provider delayDuration={0} skipDelayDuration={0}>
-      <div className="absolute top-2 left-4 right-4 z-10 flex items-center backdrop-blur-md border border-border/20 rounded-lg overflow-hidden">
+      <div className="absolute top-2 left-4 right-4 z-10 flex flex-wrap items-center gap-2 backdrop-blur-md rounded-lg shadow-sm p-1 bg">
         {/* Primary Action Button - Add Node */}
         <TooltipPrimitive.Root>
           <TooltipPrimitive.Trigger asChild>
-            <Button variant="default" size="sm" onClick={onAddNode} className="rounded-none h-9 border-r">
+            <Button variant="default" size="sm" onClick={onAddNode} className="rounded-md h-9 border border-border/20">
               <Plus className="h-4 w-4 mr-1" />
               <span className="hidden sm:inline text-sm">Add Node</span>
             </Button>
@@ -123,7 +123,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               variant={viewMode === 'abox' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => onViewModeChange('abox')}
-              className="rounded-none h-9 border-r"
+              className="rounded-md h-9 border border-border/20"
             >
               A-Box
             </Button>
@@ -144,7 +144,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               variant={viewMode === 'tbox' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => onViewModeChange('tbox')}
-              className="rounded-none h-9 border-r"
+              className="rounded-md h-9 border border-border/20"
             >
               T-Box
             </Button>
@@ -170,7 +170,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               variant="ghost"
               size="sm"
               onClick={onToggleLegend}
-              className="rounded-none h-9 border-l"
+              className="rounded-md h-9 border border-border/20"
             >
               {showLegend ? <EyeOff className="h-4 w-4 mr-1" /> : <Eye className="h-4 w-4 mr-1" />}
               <span className="hidden md:inline text-sm">Legend</span>
@@ -194,10 +194,10 @@ export const TopBar: React.FC<TopBarProps> = ({
               <Button
                 variant="ghost"
                 size="sm"
-                className="rounded-none h-9 border-l"
+                className="rounded-md h-9 border border-border/20 text-foreground"
               >
                 <Network className="h-4 w-4 mr-1" />
-                <span className="text-sm">
+                <span className="text-sm text-foreground">
                   {ontologyCount} {ontologyCount === 1 ? 'ontology' : 'ontologies'}
                   {config?.persistedAutoload && ` (${loadedOntologies.length} configured)`}
                 </span>
@@ -254,7 +254,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             <Button
               variant="ghost"
               size="sm"
-              className="rounded-none h-9 border-l"
+              className="rounded-md h-9 border border-border/20"
             >
               <Layout className="h-4 w-4 mr-1" />
               <span className="hidden md:inline text-sm">Layout</span>
@@ -404,7 +404,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={onOpenReasoningReport}
-                  className="rounded-none h-9 border-l"
+                  className="rounded-md h-9 border border-border/20"
                 >
             {isReasoning ? (
               <>
@@ -471,7 +471,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                       console.warn('Failed to invoke run reasoning', e);
                     }
                   }}
-                  className="rounded-none h-9 w-9 p-0 border-l"
+                  className="rounded-md h-9 w-9 p-0 border border-border/20"
                   aria-label="Run reasoning"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
