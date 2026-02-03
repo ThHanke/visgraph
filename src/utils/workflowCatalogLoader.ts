@@ -35,6 +35,16 @@ export async function loadWorkflowCatalog(
     return { success: false, reason: 'disabled' };
   }
 
+  // Defensive check: ensure workflowCatalogUrls exists
+  if (!config.workflowCatalogUrls || typeof config.workflowCatalogUrls !== 'object') {
+    console.error('[WorkflowCatalog] workflowCatalogUrls is missing or invalid');
+    return {
+      success: false,
+      reason: 'parse-error',
+      error: 'Configuration is missing workflowCatalogUrls. Please reset your settings.',
+    };
+  }
+
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const loadedFiles: string[] = [];
 

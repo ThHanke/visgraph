@@ -236,15 +236,36 @@ export const useSettingsStore = create<SettingsStore>()(
       name: SETTINGS_STORAGE_KEY,
       version: SETTINGS_VERSION,
       storage: createJSONStorage(resolveStateStorage),
-      migrate: (persistedState: unknown) => {
+      migrate: (persistedState: unknown, version: number) => {
+        console.log('[Settings] Running migration from version', version, 'to', SETTINGS_VERSION);
+        
+        // Handle invalid persisted state
         if (!isPlainObject(persistedState)) {
+          console.warn('[Settings] Invalid persisted state, using defaults');
           return { settings: { ...defaultSettings } };
         }
+        
         const payload = persistedState as { settings?: unknown };
         if (!payload.settings) {
+          console.warn('[Settings] No settings in persisted state, using defaults');
           return { settings: { ...defaultSettings } };
         }
-        return { settings: normalizeSettingsInput(payload.settings, "persistedSettings") };
+        
+        // Apply version-specific migrations here if needed in the future
+        // Example:
+        // if (version < 2) {
+        //   // Apply migration logic for v1 -> v2
+        // }
+        
+        // Normalize and validate the migrated settings
+        try {
+          const normalized = normalizeSettingsInput(payload.settings, "persistedSettings");
+          console.log('[Settings] Migration completed successfully');
+          return { settings: normalized };
+        } catch (error) {
+          console.error('[Settings] Migration failed, using defaults:', error);
+          return { settings: { ...defaultSettings } };
+        }
       },
     },
   ),
