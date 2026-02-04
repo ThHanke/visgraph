@@ -1,4 +1,4 @@
-import React, { memo, useState, useCallback, useRef, useEffect } from "react";
+import React, { memo, useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
   getBezierPath,
@@ -132,9 +132,8 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
     return null;
   }
 
-  // Build a two-segment path that passes through the handle `control`.
-  // We split the original cubic at t=0.5 (De Casteljau) so shift=0 reproduces original curve.
-  const buildTwoSegmentCubicThroughHandle = () => {
+  // Memoize the expensive bezier path calculation so it only runs when geometry changes
+  const twoSeg = useMemo(() => {
     try {
       const bez = getBezierPath({
         sourceX: sx,
@@ -209,9 +208,8 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
       const fallbackPath = `M ${sx},${sy} Q ${control.x},${control.y} ${tx},${ty}`;
       return { path: fallbackPath, px: control.x, py: control.y };
     }
-  };
+  }, [sx, sy, tx, ty, control.x, control.y, sourcePos, targetPos]);
 
-  const twoSeg = buildTwoSegmentCubicThroughHandle();
   const edgePath = twoSeg.path;
   const labelX = twoSeg.px;
   const labelY = twoSeg.py;

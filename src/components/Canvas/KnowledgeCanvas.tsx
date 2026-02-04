@@ -2606,26 +2606,38 @@ const KnowledgeCanvas: React.FC = () => {
     [FloatingConnectionLine],
   );
 
-  // Filter nodes by viewMode - only show nodes matching the current view
-  const filteredNodes = useMemo(() => {
-    return (nodes || []).filter((n) => {
-      try {
-        const isTBox = !!(n.data && (n.data as any).isTBox);
-        const visibleFlag =
-          n.data && typeof (n.data as any).visible === "boolean"
-            ? (n.data as any).visible
-            : true;
-        if (!visibleFlag) return false;
-        return viewMode === "tbox" ? isTBox : !isTBox;
-      } catch {
-        return true;
-      }
-    });
+  // Process nodes: filter by viewMode and ensure valid positions in a single pass
+  const processedNodes = useMemo(() => {
+    return (nodes || [])
+      .filter((n) => {
+        try {
+          const isTBox = !!(n.data && (n.data as any).isTBox);
+          const visibleFlag =
+            n.data && typeof (n.data as any).visible === "boolean"
+              ? (n.data as any).visible
+              : true;
+          if (!visibleFlag) return false;
+          return viewMode === "tbox" ? isTBox : !isTBox;
+        } catch {
+          return true;
+        }
+      })
+      .map((n) => {
+        if (
+          !n ||
+          !n.position ||
+          typeof (n.position as any).x !== "number" ||
+          typeof (n.position as any).y !== "number"
+        ) {
+          return { ...(n || {}), position: { x: 0, y: 0 } } as RFNode<NodeData>;
+        }
+        return n;
+      });
   }, [nodes, viewMode]);
 
   // Filter edges - only show edges where both endpoints are in the current view
   const filteredEdges = useMemo(() => {
-    const nodeIds = new Set(filteredNodes.map((n) => String(n.id)));
+    const nodeIds = new Set(processedNodes.map((n) => String(n.id)));
     return (edges || []).filter((e) => {
       try {
         return nodeIds.has(String(e.source)) && nodeIds.has(String(e.target));
@@ -2633,24 +2645,10 @@ const KnowledgeCanvas: React.FC = () => {
         return false;
       }
     });
-  }, [edges, filteredNodes]);
+  }, [edges, processedNodes]);
 
-  const safeNodes = useMemo(() => {
-    return (filteredNodes || []).map((n) => {
-      if (
-        !n ||
-        !n.position ||
-        typeof (n.position as any).x !== "number" ||
-        typeof (n.position as any).y !== "number"
-      ) {
-        return { ...(n || {}), position: { x: 0, y: 0 } } as RFNode<NodeData>;
-      }
-      return n;
-    });
-  }, [filteredNodes]);
-
-  // Memoize edges to provide a stable reference into ReactFlow and avoid
-  // unnecessary reprocessing when edge list content hasn't materially changed.
+  // Memoize edges to provide a stable reference into ReactFlow.
+  // The edges array reference changing is sufficient to trigger re-render.
   // Ensure edges are selectable by default so React Flow's native selection can be used.
   const memoEdges = useMemo(() => {
     try {
@@ -2664,20 +2662,7 @@ const KnowledgeCanvas: React.FC = () => {
     } catch {
       return edges;
     }
-  }, [
-    (edges || []).length,
-    (edges || [])
-      .map((e: any) =>
-        String(e.id) +
-        ":" +
-        String((e && e.data && (e.data.label || "")) || "") +
-        ":" +
-        String((e && e.data && (e.data.propertyUri || "")) || "") +
-        ":" +
-        String((e && e.data && (e.data.shift || "")) || "")
-      )
-      .join(","),
-  ]);
+  }, [edges]);
 
   // Use React Flow native change handlers so RF manages runtime metadata correctly.
   const onNodesChange = useCallback(
@@ -3085,7 +3070,7 @@ const KnowledgeCanvas: React.FC = () => {
           onDrop={onDrop}
         >
           <ReactFlow
-            nodes={safeNodes}
+            nodes={processedNodes}
             edges={filteredEdges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
