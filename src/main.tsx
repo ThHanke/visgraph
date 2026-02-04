@@ -15,12 +15,13 @@ import 'reactflow/dist/style.css';
 import { initTheme } from './utils/theme'
 import { rdfManager } from './utils/rdfManager';
 import { useAppConfigStore } from './stores/appConfigStore';
+import { ErrorBoundary } from './components/ErrorBoundary';
 // import { useOntologyStore } from './stores/ontologyStore';
 
 initTheme();
 
 // Apply persisted blacklist from app config at startup (best-effort)
-{
+try {
   const cfg = (useAppConfigStore as any).getState().config;
   if (cfg) {
     const prefixes = Array.isArray(cfg.blacklistedPrefixes) ? cfg.blacklistedPrefixes : [];
@@ -31,12 +32,22 @@ initTheme();
       rdfManager.setBlacklist(prefixes, uris);
     }
   }
+} catch (error) {
+  console.error('[Startup] Failed to apply blacklist from config, using defaults:', error);
+  // Clear corrupted localStorage and reload
+  try {
+    localStorage.removeItem('ontology-painter-config');
+    console.warn('[Startup] Cleared corrupted config, page will reload');
+    window.location.reload();
+  } catch (e) {
+    console.error('[Startup] Failed to clear localStorage:', e);
+  }
 }
 
  // Initialize global debug gate and lightweight console.* wrapper driven by app config.
  // Messages that start with a "[VG_" prefix are considered diagnostic and will only be
  // emitted when the master config.debugAll flag is enabled. Non-VG console output is left intact.
- {
+ try {
    // Seed window flag from persisted config
    const cfg = (useAppConfigStore as any).getState().config;
    // Seed debug flags from persisted config so older helpers read a consistent value.
@@ -89,6 +100,13 @@ initTheme();
      });
      try { (window as any).__VG_DEBUG_SUBSCRIBE_UNSUB = unsub; } catch (_) { void 0; }
    } catch (_) { /* ignore subscribe failures */ }
+ } catch (error) {
+   console.error('[Startup] Failed to initialize debug wrappers:', error);
+   // Non-critical - continue with app startup
  }
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+);

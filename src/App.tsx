@@ -26,6 +26,12 @@ const App = () => {
   // Load workflow catalog on startup
   useEffect(() => {
     const loadCatalog = async () => {
+      // Defensive check: ensure workflowCatalogUrls exists before accessing
+      if (!config?.workflowCatalogUrls || typeof config.workflowCatalogUrls !== 'object') {
+        console.warn('[App] Invalid workflowCatalogUrls configuration, skipping catalog load');
+        return;
+      }
+      
       if (!config.loadWorkflowCatalogOnStartup || !config.workflowCatalogEnabled) {
         return;
       }

@@ -20,11 +20,84 @@ This document describes the general paradigm for safely handling localStorage pe
 - If migration or validation fails, fall back to defaults
 - Log errors for debugging but don't break the application
 - Provide clear console messages about what went wrong
+- **Clear corrupted localStorage** and reload when necessary
 
 ### 4. **Defensive Consumption**
 - Code consuming persisted data should also validate critical fields
 - Add runtime checks before accessing nested properties
 - Use optional chaining and nullish coalescing
+
+### 5. **Multi-Layer Protection**
+- **Store-level**: Robust migration with try-catch and localStorage clearing
+- **Application-level**: Wrap store access in try-catch blocks
+- **Component-level**: Add defensive checks before using nested properties
+- **React-level**: Use ErrorBoundary to catch rendering errors
+
+## Comprehensive Safety Architecture
+
+The VisGraph application implements a **multi-layered defense strategy** to prevent localStorage corruption from crashing the app:
+
+### Layer 1: Store Migration (Zustand Persist)
+- All stores use version-based migration with the `version` parameter
+- Migration functions wrapped in try-catch blocks
+- On failure: Clear localStorage key and return default config
+- Console logging for debugging
+
+### Layer 2: Application Initialization (main.tsx)
+- All `getState()` calls wrapped in try-catch blocks
+- On critical failure: Clear localStorage and reload
+- Non-critical failures: Log and continue with defaults
+
+### Layer 3: Component Consumption (App.tsx, etc.)
+- Defensive checks before accessing nested properties
+- Validate object existence and type before use
+- Early return or skip operations if config invalid
+
+### Layer 4: React Error Boundary
+- Catches any unhandled React errors
+- Detects localStorage-related errors by message pattern
+- Automatically clears corrupted data and reloads
+- Shows user-friendly error UI with manual reset option
+
+### Example Flow: Handling Corrupted workflowCatalogUrls
+
+**Scenario**: User has v1 config without `workflowCatalogUrls` field
+
+1. **Store Migration** (appConfigStore.ts)
+   ```typescript
+   // Migration runs automatically on store hydration
+   if (version < 2) {
+     config.workflowCatalogUrls = oldConfig.workflowCatalogUrls || DEFAULT_URLS;
+   }
+   ```
+
+2. **Application Init** (main.tsx)
+   ```typescript
+   try {
+     const cfg = useAppConfigStore.getState().config;
+     // Use config...
+   } catch (error) {
+     localStorage.removeItem('ontology-painter-config');
+     window.location.reload();
+   }
+   ```
+
+3. **Component Usage** (App.tsx)
+   ```typescript
+   if (!config?.workflowCatalogUrls || typeof config.workflowCatalogUrls !== 'object') {
+     console.warn('Invalid config, skipping');
+     return;
+   }
+   ```
+
+4. **Error Boundary** (ErrorBoundary.tsx)
+   ```typescript
+   // If all above fail, catch the error and auto-recover
+   if (error.message.includes('Cannot read properties of undefined')) {
+     localStorage.clear();
+     window.location.reload();
+   }
+   ```
 
 ## Implementation Pattern
 
@@ -218,7 +291,7 @@ When changing the structure of existing persisted fields:
 
 | Store | Key | Current Version | Last Modified |
 |-------|-----|-----------------|---------------|
-| `appConfigStore` | `ontology-painter-config` | 2 | 2026-02-03 |
+| `appConfigStore` | `ontology-painter-config` | 2 | 2026-02-04 |
 | `settingsStore` | `ontology-painter-settings` | 1 | 2026-02-03 |
 
 ## Version History
