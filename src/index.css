@@ -135,11 +135,11 @@
 }
 
 
-/* Edge label renderer: keep transitions; let components control badge visuals (do not force solid styling here) */
+/* Edge label renderer: keep transitions but remove flying animation from top-left */
 .edge-label-renderer__custom-edge {
   position: absolute;
-  transition: opacity 120ms linear, transform 120ms linear;
-  /* will-change: opacity, transform; */
+  /* Remove transition to prevent labels flying in from top-left corner */
+  /* transition: opacity 120ms linear, transform 120ms linear; */
 }
 
 .node-bg {

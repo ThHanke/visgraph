@@ -8,12 +8,10 @@ type ToasterProps = React.ComponentProps<typeof Sonner>
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme()
 
-    return (
+  return (
     <Sonner
       theme={theme as ToasterProps["theme"]}
-      // Place toaster centered at the bottom so it does not overlap the left-side spinner nor the right-side reasoning indicator.
-      // Keep pointer-events enabled so users can interact with toast actions.
-      className="toaster group fixed bottom-4 left-1/2 transform -translate-x-1/2 z-[9999] pointer-events-auto"
+      position="bottom-center"
       toastOptions={{
         // Keep visual theming via classNames and increase default visibility time.
         duration: 8000,
@@ -21,7 +19,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
         classNames: {
           // align vertical gap and min height to match ReasoningIndicator / run button
           toast:
-            "group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg px-3 py-2 min-h-[40px] flex items-center gap-3",
+            "group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg px-3 py-2 min-h-[40px] flex items-center gap-3 w-full max-w-[calc(100vw-2rem)] sm:max-w-md",
           description: "group-[.toast]:text-muted-foreground",
           actionButton:
             "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground px-2 py-1 rounded",

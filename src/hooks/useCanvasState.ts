@@ -104,7 +104,7 @@ const actionsImpl: CanvasActions = {
     } else {
       // Loading finished - dismiss with success
       if (currentLoadingToastId !== null) {
-        toast.success(message || "Complete", {
+        toast.success(message || "Operation completed successfully", {
           id: currentLoadingToastId,
           duration: 3000,
         });

@@ -3114,7 +3114,85 @@ const KnowledgeCanvas: React.FC = () => {
               showInteractive={true}
               showZoom={true}
               showFitView={true}
-            />
+            >
+              {/* PNG Export Button - Raster Image */}
+              <button
+                onClick={async () => {
+                  const toastId = toast.loading("Capturing viewport as PNG...");
+                  try {
+                    const dataUrl = await exportViewportPngMinimal(2);
+                    const link = document.createElement('a');
+                    link.download = `visgraph-viewport-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+                    link.href = dataUrl;
+                    link.click();
+                    toast.success("PNG viewport exported", { id: toastId });
+                  } catch (err) {
+                    console.error(err);
+                    toast.error("PNG export failed", { id: toastId });
+                  }
+                }}
+                className="react-flow__controls-button"
+                title="Export viewport as PNG (raster image)"
+                aria-label="Export viewport as PNG"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ maxWidth: '12px', maxHeight: '12px' }}
+                >
+                  <rect x="3" y="3" width="7" height="7" />
+                  <rect x="14" y="3" width="7" height="7" />
+                  <rect x="14" y="14" width="7" height="7" />
+                  <rect x="3" y="14" width="7" height="7" />
+                </svg>
+              </button>
+              
+              {/* SVG Export Button - Vector Image */}
+              <button
+                onClick={async () => {
+                  const toastId = toast.loading("Capturing viewport as SVG...");
+                  try {
+                    const svgString = await exportViewportSvgMinimal();
+                    const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.download = `visgraph-viewport-${new Date().toISOString().replace(/[:.]/g, '-')}.svg`;
+                    link.href = url;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                    toast.success("SVG viewport exported", { id: toastId });
+                  } catch (err) {
+                    console.error(err);
+                    toast.error("SVG export failed", { id: toastId });
+                  }
+                }}
+                className="react-flow__controls-button"
+                title="Export viewport as SVG (vector image)"
+                aria-label="Export viewport as SVG"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ maxWidth: '12px', maxHeight: '12px' }}
+                >
+                  <path d="M12 19l7-7 3 3-7 7-3-3z" />
+                  <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
+                  <path d="M2 2l7.586 7.586" />
+                  <circle cx="11" cy="11" r="2" />
+                </svg>
+              </button>
+            </Controls>
+
             <MiniMap 
               nodeStrokeWidth={3} 
               pannable={true}
@@ -3349,33 +3427,12 @@ const KnowledgeCanvas: React.FC = () => {
         <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
           <DialogContent className="sm:max-w-[400px] rounded-lg bg-popover text-popover-foreground">
             <DialogHeader>
-              <DialogTitle>Export Graph</DialogTitle>
+              <DialogTitle>Export Graph Data</DialogTitle>
               <DialogDescription>
-                Choose a format to export your knowledge graph.
+                Export your knowledge graph in RDF formats. For viewport screenshots, use the export buttons in the canvas controls.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-2 py-4">
-              <Button
-                variant="outline"
-                className="rounded-lg justify-start"
-                onClick={async () => {
-                  await exportSvg();
-                  setExportDialogOpen(false);
-                }}
-              >
-                Export SVG — Full
-              </Button>
-              <Button
-                variant="outline"
-                className="rounded-lg justify-start"
-                onClick={async () => {
-                  await exportPng(2);
-                  setExportDialogOpen(false);
-                }}
-              >
-                Export PNG — Full
-              </Button>
-              <div className="my-2 border-t" />
               <Button
                 variant="outline"
                 className="rounded-lg justify-start"
