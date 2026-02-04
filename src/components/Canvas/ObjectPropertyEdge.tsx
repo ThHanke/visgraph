@@ -1,4 +1,5 @@
 import React, { memo, useState, useCallback, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   getBezierPath,
   EdgeLabelRenderer,
@@ -6,9 +7,10 @@ import {
   BaseEdge,
   useInternalNode,
   MarkerType,
+  useReactFlow,
+  useViewport,
 } from "@xyflow/react";
 import { Badge } from "../ui/badge";
-import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip";
 import PropertyList from "../ui/PropertyList";
 import { getEdgeParams } from "./EdgeParams";
 import { resolveEdgeRenderProps } from "./core/edgeStyle";
@@ -66,10 +68,19 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
 
   const [control, setControl] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isHovered, setIsHovered] = useState(false);
+  const [tooltipVisible, setTooltipVisible] = useState(false);
   const onHoverEnter = useCallback(() => setIsHovered(true), []);
   const onHoverLeave = useCallback(() => setIsHovered(false), []);
   // Selection state: prefer RF prop, fall back to edge data selected flag
   const isSelected = !!((props as any).selected || (dataTyped && (dataTyped as any).selected));
+
+  // Get viewport for coordinate transformation
+  const viewport = useViewport();
+
+  // Show tooltip on hover, similar to how NodeToolbar shows on selection
+  useEffect(() => {
+    setTooltipVisible(isHovered && !draggingRef.current);
+  }, [isHovered]);
 
   // Persisted signed scalar shift (distance along perpendicular from default Bezier control)
   const persistedShift =
@@ -418,6 +429,83 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
     markerEnd ??
     { type: (MarkerType as any)?.Arrow ?? "arrow" };
 
+  // Calculate screen position for tooltip (graph coords -> screen coords with viewport transformation)
+  const tooltipScreenX = labelX * viewport.zoom + viewport.x;
+  const tooltipScreenY = labelY * viewport.zoom + viewport.y;
+
+  // Render tooltip content for portal
+  const tooltipContent = tooltipVisible && badgeText ? (
+    <div
+      style={{
+        position: 'fixed',
+        left: `${tooltipScreenX}px`,
+        top: `${tooltipScreenY - 10}px`,
+        transform: 'translate(-50%, -100%)',
+        zIndex: 1000,
+        pointerEvents: 'none',
+      }}
+    >
+      <div className="bg-popover text-popover-foreground rounded-md shadow-lg border p-3 space-y-3 text-sm max-w-md">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <div className="text-sm font-semibold text-foreground break-words whitespace-pre-wrap">
+              {String(dataTyped.propertyPrefixed || badgePrimary || "")}
+            </div>
+            {badgeSecondary ? (
+              <div className="text-xs text-muted-foreground break-words mt-1">
+                {String(badgeSecondary)}
+              </div>
+            ) : null}
+            <div className="text-xs text-muted-foreground break-words mt-1">
+              {String(dataTyped.propertyUri || "")}
+            </div>
+          </div>
+          {dataTyped.color ? (
+            <div
+              className="w-6 h-6 rounded-full border"
+              style={{ background: String(dataTyped.color) }}
+              aria-hidden="true"
+            />
+          ) : null}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <div className="text-xs font-medium text-muted-foreground mb-1">Source IRI</div>
+            <div className="text-xs text-foreground break-words">{(sourceNode && sourceNode.data && sourceNode.data.iri) ? String(sourceNode.data.iri) : String(source)}</div>
+          </div>
+
+          <div>
+            <div className="text-xs font-medium text-muted-foreground mb-1">Target IRI</div>
+            <div className="text-xs text-foreground break-words">{(targetNode && targetNode.data && targetNode.data.iri) ? String(targetNode.data.iri) : String(target)}</div>
+          </div>
+        </div>
+
+        {Array.isArray(dataTyped.reasoningWarnings) && dataTyped.reasoningWarnings.length > 0 && (
+          <div>
+            <div className="text-xs font-medium text-amber-600 mb-1">Reasoning warnings</div>
+            <ul className="text-xs text-amber-700 space-y-0.5">
+              {dataTyped.reasoningWarnings.map((w: any, i: number) => (
+                <li key={i} className="break-words whitespace-pre-wrap">{String(w)}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {Array.isArray(dataTyped.reasoningErrors) && dataTyped.reasoningErrors.length > 0 && (
+          <div>
+            <div className="text-xs font-medium text-destructive mb-1">Reasoning errors</div>
+            <ul className="text-xs text-destructive space-y-0.5">
+              {dataTyped.reasoningErrors.map((e: any, i: number) => (
+                <li key={i} className="break-words whitespace-pre-wrap">{String(e)}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  ) : null;
+
   return (
     <>
       <g className={`edge-container ${isHovered ? "vg-edge--hover" : ""} ${isSelected ? "vg-edge--selected" : ""}`} onMouseEnter={onHoverEnter} onMouseLeave={onHoverLeave}>
@@ -432,102 +520,43 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
           className="edge-label-renderer__custom-edge nodrag nopan pointer-events-auto"
         >
           {badgeText ? (
-            <Tooltip delayDuration={250}>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className="p-0 bg-transparent border-0 pointer-events-auto"
-                  onPointerDown={handlePointerDown}
-                  onPointerMove={handlePointerMove}
-                  onPointerUp={handlePointerUp}
-                  onMouseEnter={onHoverEnter}
-                  onMouseLeave={onHoverLeave}
+            <>
+              <button
+                type="button"
+                className="p-0 bg-transparent border-0 pointer-events-auto"
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onMouseEnter={onHoverEnter}
+                onMouseLeave={onHoverLeave}
+              >
+                <Badge
+                  variant={hasEdgeErrors ? "destructive" : "secondary"}
+                  className={
+                    (
+                      hasEdgeErrors
+                        ? "text-xs px-2 py-1 shadow-md border cursor-pointer border-destructive text-destructive"
+                        : hasEdgeWarnings
+                          ? "text-xs px-2 py-1 shadow-md border cursor-pointer bg-amber-100 text-amber-700 border-amber-300"
+                          : "text-xs px-2 py-1 shadow-md border cursor-pointer"
+                    ) + (isSelected ? " vg-edge--selected" : "")
+                  }
                 >
-                  <Badge
-                    variant={hasEdgeErrors ? "destructive" : "secondary"}
-                    className={
-                      (
-                        hasEdgeErrors
-                          ? "text-xs px-2 py-1 shadow-md border cursor-pointer border-destructive text-destructive"
-                          : hasEdgeWarnings
-                            ? "text-xs px-2 py-1 shadow-md border cursor-pointer bg-amber-100 text-amber-700 border-amber-300"
-                            : "text-xs px-2 py-1 shadow-md border cursor-pointer"
-                      ) + (isSelected ? " vg-edge--selected" : "")
-                    }
-                  >
-                    <div className="flex flex-col items-center">
-                      <div className="leading-tight break-words whitespace-pre-wrap">{badgePrimary || badgeSecondary}</div>
-                      {badgeSecondary ? (
-                        <div className="text-[10px] leading-tight mt-0.5 opacity-80 break-words whitespace-pre-wrap">{badgeSecondary}</div>
-                      ) : null}
-                    </div>
-                  </Badge>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top">
-                <div className="space-y-3 text-sm">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="text-sm font-semibold text-foreground break-words whitespace-pre-wrap">
-                        {String(dataTyped.propertyPrefixed || badgePrimary || "")}
-                      </div>
-                      {badgeSecondary ? (
-                        <div className="text-xs text-muted-foreground break-words mt-1">
-                          {String(badgeSecondary)}
-                        </div>
-                      ) : null}
-                      <div className="text-xs text-muted-foreground break-words mt-1">
-                        {String(dataTyped.propertyUri || "")}
-                      </div>
-                    </div>
-                    {dataTyped.color ? (
-                      <div
-                        className="w-6 h-6 rounded-full border"
-                        style={{ background: String(dataTyped.color) }}
-                        aria-hidden="true"
-                      />
+                  <div className="flex flex-col items-center">
+                    <div className="leading-tight break-words whitespace-pre-wrap">{badgePrimary || badgeSecondary}</div>
+                    {badgeSecondary ? (
+                      <div className="text-[10px] leading-tight mt-0.5 opacity-80 break-words whitespace-pre-wrap">{badgeSecondary}</div>
                     ) : null}
                   </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <div className="text-xs font-medium text-muted-foreground mb-1">Source IRI</div>
-                      <div className="text-xs text-foreground break-words">{(sourceNode && sourceNode.data && sourceNode.data.iri) ? String(sourceNode.data.iri) : String(source)}</div>
-                    </div>
-
-                    <div>
-                      <div className="text-xs font-medium text-muted-foreground mb-1">Target IRI</div>
-                      <div className="text-xs text-foreground break-words">{(targetNode && targetNode.data && targetNode.data.iri) ? String(targetNode.data.iri) : String(target)}</div>
-                    </div>
-                  </div>
-
-                  {Array.isArray(dataTyped.reasoningWarnings) && dataTyped.reasoningWarnings.length > 0 && (
-                    <div>
-                      <div className="text-xs font-medium text-amber-600 mb-1">Reasoning warnings</div>
-                      <ul className="text-xs text-amber-700 space-y-0.5">
-                        {dataTyped.reasoningWarnings.map((w: any, i: number) => (
-                          <li key={i} className="break-words whitespace-pre-wrap">{String(w)}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {Array.isArray(dataTyped.reasoningErrors) && dataTyped.reasoningErrors.length > 0 && (
-                    <div>
-                      <div className="text-xs font-medium text-destructive mb-1">Reasoning errors</div>
-                      <ul className="text-xs text-destructive space-y-0.5">
-                        {dataTyped.reasoningErrors.map((e: any, i: number) => (
-                          <li key={i} className="break-words whitespace-pre-wrap">{String(e)}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              </TooltipContent>
-            </Tooltip>
+                </Badge>
+              </button>
+            </>
           ) : null}
         </div>
       </EdgeLabelRenderer>
+
+      {/* Render tooltip in a portal above all graph elements */}
+      {tooltipContent && createPortal(tooltipContent, document.body)}
     </>
   );
 });
