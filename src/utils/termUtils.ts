@@ -300,6 +300,10 @@ export function toPrefixed(
 /**
  * Resolve a palette color for the provided IRI using the namespace registry
  * and optional palette overrides keyed by prefix.
+ * 
+ * IMPORTANT: Color resolution should ONLY use the namespace registry, not the fat map.
+ * The fat map (availableProperties/availableClasses) may be empty when ontologies
+ * are not loaded, but namespace colors should always be available from the registry.
  */
 export function getNodeColor(
   targetIri: string,
@@ -309,26 +313,36 @@ export function getNodeColor(
   const iri = normalizeString(targetIri, "getNodeColor.targetIri");
   const { availableProperties, availableClasses, namespaceRegistry } =
     resolveTermData(overrides);
-  const fatMatch =
-    availableProperties.find((entry) => entry.iri === iri) ??
-    availableClasses.find((entry) => entry.iri === iri);
-  if (!fatMatch) return undefined;
-  if (fatMatch.color) return fatMatch.color;
-  const entry =
-    namespaceRegistry.find(
-      (candidate) => candidate.namespace === fatMatch.namespace,
-    ) ?? findRegistryEntryForIri(iri, overrides?.registry);
+  
+  // First, try to find the namespace entry for this IRI directly from the registry
+  // This is the authoritative source and works even when ontologies aren't loaded
+  const entry = findRegistryEntryForIri(iri, overrides?.registry);
+  
+  // Return the color from the namespace registry if available
   if (entry && entry.color) {
     return entry.color;
   }
-  if (!palette) return undefined;
-  if (!entry || !entry.prefix) return undefined;
-  const prefix = entry.prefix;
-  return (
-    palette[prefix] ??
-    palette[prefix.toLowerCase()] ??
-    palette[prefix.toUpperCase()]
-  );
+  
+  // If no color in registry, try the palette with the prefix
+  if (palette && entry && entry.prefix) {
+    const prefix = entry.prefix;
+    const paletteColor = 
+      palette[prefix] ??
+      palette[prefix.toLowerCase()] ??
+      palette[prefix.toUpperCase()];
+    if (paletteColor) return paletteColor;
+  }
+  
+  // Fallback: check if the fat map has a specific color override for this exact IRI
+  // (this is rare but allows entity-specific colors when the ontology IS loaded)
+  const fatMatch =
+    availableProperties.find((entry) => entry.iri === iri) ??
+    availableClasses.find((entry) => entry.iri === iri);
+  if (fatMatch && fatMatch.color) {
+    return fatMatch.color;
+  }
+  
+  return undefined;
 }
 
 export interface TermDisplayInfo {
