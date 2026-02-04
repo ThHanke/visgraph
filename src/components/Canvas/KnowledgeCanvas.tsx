@@ -218,6 +218,8 @@ const KnowledgeCanvas: React.FC = () => {
 
   const settings = useSettingsStore((s) => s.settings);
   const config = useAppConfigStore((s) => s.config);
+  const collapsedNodes = useAppConfigStore((s) => s.config.collapsedNodes);
+  const collapseThreshold = useAppConfigStore((s) => s.config.collapseThreshold);
   const setCurrentLayout = useAppConfigStore((s) => s.setCurrentLayout);
   const setShowLegend = useAppConfigStore((s) => s.setShowLegend);
   const setPersistedViewMode = useAppConfigStore((s) => s.setViewMode);
@@ -1104,6 +1106,30 @@ const KnowledgeCanvas: React.FC = () => {
     }
   }, [getRdfManagerSafe]);
 
+  // Re-map when collapse state changes
+  useEffect(() => {
+    const mgr = getRdfManagerSafe();
+    if (!mgr || typeof (mgr as any).emitAllSubjects !== "function") return;
+
+    // Skip the initial mount (handled by the initialization effect above)
+    // Only re-emit when collapse state actually changes
+    const hasCollapsedNodes = Array.isArray(collapsedNodes) && collapsedNodes.length > 0;
+    if (!hasCollapsedNodes && collapseThreshold === 10) {
+      // Still at default state, no need to re-map
+      return;
+    }
+
+    console.debug('[KnowledgeCanvas] Collapse state changed, re-mapping...', {
+      collapsedNodes,
+      collapseThreshold,
+    });
+
+    // Trigger re-emission of all subjects to force mapper to run with new collapse state
+    void (mgr as any).emitAllSubjects("urn:vg:data").catch((e: any) => {
+      console.warn("KnowledgeCanvas collapse state re-mapping failed", e);
+    });
+  }, [collapsedNodes, collapseThreshold, getRdfManagerSafe]);
+
   useEffect(() => {
     const mgr =
       typeof getRdfManagerSafe === "function" ? getRdfManagerSafe() : undefined;
@@ -1145,6 +1171,12 @@ const KnowledgeCanvas: React.FC = () => {
         ? state.namespaceRegistry
         : [];
 
+      // Get collapse configuration from config store
+      const cfg = useAppConfigStore.getState().config;
+      const collapsedNodesArray = Array.isArray(cfg.collapsedNodes) ? cfg.collapsedNodes : [];
+      const collapsedNodesSet = new Set<string>(collapsedNodesArray);
+      const collapseThreshold = typeof cfg.collapseThreshold === 'number' ? cfg.collapseThreshold : 10;
+
       const opts = {
         predicateKind:
           typeof predicateClassifierRef.current === "function"
@@ -1160,6 +1192,8 @@ const KnowledgeCanvas: React.FC = () => {
             : [],
         registry,
         palette: paletteRef.current as any,
+        collapsedNodes: collapsedNodesSet,
+        collapseThreshold: collapseThreshold,
       };
 
       return mapQuadsWithWorker(quads, opts);

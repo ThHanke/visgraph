@@ -14,6 +14,7 @@ import {
 } from "../../utils/termUtils";
 import type { NodeData } from "../../types/canvas";
 import { useOntologyStore } from "../../stores/ontologyStore";
+import { useAppConfigStore } from "../../stores/appConfigStore";
 
 
 function RDFNodeImpl(props: NodeProps) {
@@ -106,6 +107,13 @@ function RDFNodeImpl(props: NodeProps) {
 
   const nodeColor = nodeData.color;
   
+  // Collapse/expand state from node data
+  const collapseIndicator = (nodeData as any).collapseIndicator;
+  const isCollapsible = (nodeData as any).isCollapsible;
+  const isCollapsed = (nodeData as any).isCollapsed;
+  
+  // Get toggle function from store
+  const toggleNodeCollapsed = useAppConfigStore((s) => s.toggleNodeCollapsed);
   
   const hasErrors =
     Array.isArray(nodeData.errors) && nodeData.errors.length > 0;
@@ -305,6 +313,23 @@ function RDFNodeImpl(props: NodeProps) {
                   {badgeText || nodeData.classType}
                 </span>
               </div>
+
+              {/* Collapse/Expand Button */}
+              {collapseIndicator && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (iri) {
+                      toggleNodeCollapsed(String(iri));
+                    }
+                  }}
+                  className="ml-auto px-2 py-0.5 rounded text-xs font-mono bg-primary/10 hover:bg-primary/20 transition-colors"
+                  title={isCollapsed ? `Expand (${collapseIndicator})` : isCollapsible ? "Collapse node" : ""}
+                  aria-label={isCollapsed ? "Expand node" : "Collapse node"}
+                >
+                  {collapseIndicator}
+                </button>
+              )}
 
               {hasErrors}
             </div>

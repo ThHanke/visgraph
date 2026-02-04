@@ -188,6 +188,32 @@ function coerceQuad(input: QuadLike): {
   return { subject, predicate, object, raw: input, graph };
 }
 
+/**
+ * Helper: Find all nodes reachable via outgoing edges from startNode (transitive closure)
+ */
+function findReachableNodes(
+  startIri: string,
+  allEdges: Array<{ source: string; target: string }>
+): Set<string> {
+  const reachable = new Set<string>();
+  const queue = [startIri];
+  const visited = new Set<string>([startIri]);
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+
+    for (const edge of allEdges) {
+      if (edge.source === current && !visited.has(edge.target)) {
+        visited.add(edge.target);
+        reachable.add(edge.target);
+        queue.push(edge.target);
+      }
+    }
+  }
+
+  return reachable;
+}
+
 export function mapQuadsToDiagram(
   quads: QuadLike[] = [],
   options?: {
@@ -197,6 +223,8 @@ export function mapQuadsToDiagram(
     registry?: any;
     getRdfManager?: () => any;
     palette?: Record<string,string> | undefined;
+    collapsedNodes?: Set<string>;
+    collapseThreshold?: number;
   }
 ) {
   const predicateKindResolver = sanitizePredicateKind(options?.predicateKind);
@@ -686,8 +714,62 @@ export function mapQuadsToDiagram(
     }
   }
 
-  // Build RF nodes from nodeMap entries
-  const allNodeEntries = Array.from(nodeMap.entries()).map(([iri, info]) => {
+  // Step 5: Apply collapse/expand logic
+  const collapsedSet = options?.collapsedNodes ?? new Set<string>();
+  const threshold = options?.collapseThreshold ?? 10;
+
+  // Count outgoing edges per node (before filtering)
+  const edgeCountByNode = new Map<string, number>();
+  for (const edge of rfEdges) {
+    const source = String(edge.source);
+    const count = edgeCountByNode.get(source) ?? 0;
+    edgeCountByNode.set(source, count + 1);
+  }
+
+  // Compute hidden node set: all nodes reachable from collapsed nodes
+  const hiddenNodeSet = new Set<string>();
+  const allEdgesForTraversal = rfEdges.map(e => ({
+    source: String(e.source),
+    target: String(e.target),
+  }));
+
+  for (const collapsedIri of collapsedSet) {
+    const reachable = findReachableNodes(collapsedIri, allEdgesForTraversal);
+    reachable.forEach(n => hiddenNodeSet.add(n));
+  }
+
+  // Filter nodes: exclude hidden nodes
+  const visibleNodeIris = new Set<string>();
+  for (const [iri, _] of nodeMap.entries()) {
+    if (!hiddenNodeSet.has(iri)) {
+      visibleNodeIris.add(iri);
+    }
+  }
+
+  // Filter edges: exclude edges touching hidden nodes
+  const visibleEdges = rfEdges.filter(e => {
+    const source = String(e.source);
+    const target = String(e.target);
+    return !hiddenNodeSet.has(source) && !hiddenNodeSet.has(target);
+  });
+
+  // Compute hiddenCount: for each visible node, count edges to hidden nodes
+  const hiddenCountByNode = new Map<string, number>();
+  for (const edge of rfEdges) {
+    const source = String(edge.source);
+    const target = String(edge.target);
+    
+    // If source is visible and target is hidden, count it for source
+    if (visibleNodeIris.has(source) && hiddenNodeSet.has(target)) {
+      const count = hiddenCountByNode.get(source) ?? 0;
+      hiddenCountByNode.set(source, count + 1);
+    }
+  }
+
+  // Build RF nodes from visible nodeMap entries only
+  const allNodeEntries = Array.from(nodeMap.entries())
+    .filter(([iri, _]) => visibleNodeIris.has(iri))
+    .map(([iri, info]) => {
     // Compute a lightweight classType/displayType from first rdf:type if available.
     let primaryTypeIri: string | undefined = undefined;
     if (Array.isArray(info.rdfTypes) && info.rdfTypes.length > 0) {
@@ -733,6 +815,20 @@ export function mapQuadsToDiagram(
       })),
     ];
 
+    // Collapse state computation
+    const edgeCount = edgeCountByNode.get(iri) ?? 0;
+    const hiddenCount = hiddenCountByNode.get(iri) ?? 0;
+    const isCollapsible = edgeCount >= threshold;
+    const isCollapsed = collapsedSet.has(iri);
+    
+    // Determine collapse indicator
+    let collapseIndicator: string | null = null;
+    if (hiddenCount > 0) {
+      collapseIndicator = `${hiddenCount}+`;
+    } else if (isCollapsible) {
+      collapseIndicator = "−";
+    }
+
     const nodeData: NodeData & any = {
       key: iri,
       iri,
@@ -757,6 +853,12 @@ export function mapQuadsToDiagram(
       hasReasoningError: reasoningErrors.length > 0,
       hasReasoningWarning: reasoningWarnings.length > 0,
       isTBox: !!isTBox,
+      // Collapse/expand state
+      edgeCount,
+      hiddenCount,
+      isCollapsible,
+      isCollapsed,
+      collapseIndicator,
     };
 
     const subjectText = (() => {
@@ -800,6 +902,7 @@ export function mapQuadsToDiagram(
 
   const rfNodes: RFNode<NodeData>[] = allNodeEntries.map((e) => e.rfNode);
 
+  // rfEdgesFiltered kept for parallel edge processing below (uses all edges)
   const rfEdgesFiltered = rfEdges;
 
   const PARALLEL_EDGE_SHIFT_STEP = 60;
@@ -841,7 +944,8 @@ export function mapQuadsToDiagram(
   dataQuads.length = 0;
   inferredQuads.length = 0;
 
-  return { nodes: rfNodes, edges: rfEdgesFiltered };
+  // Return visibleEdges (filtered) instead of rfEdgesFiltered (all edges before collapse filtering)
+  return { nodes: rfNodes, edges: visibleEdges };
 }
 
 /**

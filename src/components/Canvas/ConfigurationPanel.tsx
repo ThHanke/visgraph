@@ -122,6 +122,13 @@ export const ConfigurationPanel = ({
   useEffect(() => {
     if (isOpen) {
       getWorkflowCatalogStats().then(setWorkflowStats).catch(console.error);
+      
+      // Initialize collapse threshold if missing
+      const cfg = useAppConfigStore.getState().config;
+      if (cfg.collapseThreshold === undefined || cfg.collapseThreshold === null) {
+        const { setCollapseThreshold } = useAppConfigStore.getState();
+        setCollapseThreshold(10);
+      }
     }
   }, [isOpen]);
 
@@ -342,6 +349,23 @@ export const ConfigurationPanel = ({
                   />
                 </div>
 
+                <div className="space-y-2">
+                  <Label>Collapse Threshold: {config.collapseThreshold ?? 10}</Label>
+                  <div className="text-xs text-muted-foreground mb-2">
+                    Nodes with {config.collapseThreshold ?? 10}+ outgoing edges will show a collapse button
+                  </div>
+                  <Slider
+                    value={[config.collapseThreshold ?? 10]}
+                    onValueChange={([value]) => {
+                      const { setCollapseThreshold } = useAppConfigStore.getState();
+                      setCollapseThreshold(value);
+                    }}
+                    min={1}
+                    max={100}
+                    step={1}
+                    className="w-full"
+                  />
+                </div>
                 
               </CardContent>
             </Card>

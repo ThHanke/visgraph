@@ -64,6 +64,18 @@ export interface NodeData {
   /** Whether the node currently has reasoning errors (computed by reasoning store) */
   hasReasoningError?: boolean;
 
+  // Collapse/expand state (computed by mapper based on config.collapsedNodes)
+  /** Number of outgoing edges from this node */
+  edgeCount?: number;
+  /** Number of hidden nodes this node connects to (when other nodes are collapsed) */
+  hiddenCount?: number;
+  /** Whether this node has enough edges to show collapse button (edgeCount >= threshold) */
+  isCollapsible?: boolean;
+  /** Whether this node is currently collapsed */
+  isCollapsed?: boolean;
+  /** Visual indicator for collapse button: "−" (can collapse), "n+" (has hidden), or null */
+  collapseIndicator?: string | null;
+
   // Misc
   /** UI/validation error messages (if any) */
   errors?: string[];

@@ -32,6 +32,8 @@ export interface AppConfig {
   tooltipEnabled: boolean;
   autoReasoning: boolean;
   maxVisibleNodes: number;
+  collapseThreshold: number;
+  collapsedNodes: string[];
   reasoningRulesets: string[];
   debugRdfLogging: boolean;
   debugAll: boolean;
@@ -61,6 +63,8 @@ interface AppConfigStore {
   setPersistedAutoload: (enabled: boolean) => void;
   setAutoReasoning: (enabled: boolean) => void;
   setMaxVisibleNodes: (max: number) => void;
+  setCollapseThreshold: (threshold: number) => void;
+  toggleNodeCollapsed: (iri: string) => void;
   setReasoningRulesets: (reasoningRulesets: string[]) => void;
   setDebugRdfLogging: (enabled: boolean) => void;
   setDebugAll: (enabled: boolean) => void;
@@ -88,6 +92,8 @@ const MIN_LAYOUT_SPACING = 50;
 const MAX_LAYOUT_SPACING = 500;
 const MIN_VISIBLE_NODES = 100;
 const MAX_VISIBLE_NODES = 5000;
+const MIN_COLLAPSE_THRESHOLD = 1;
+const MAX_COLLAPSE_THRESHOLD = 100;
 const MAX_RECENT_ONTOLOGIES = 10;
 const MAX_RECENT_LAYOUTS = 5;
 
@@ -97,7 +103,7 @@ const DEFAULT_WORKFLOW_CATALOG_URLS: WorkflowCatalogUrls = {
   catalogUi: "https://raw.githubusercontent.com/ThHanke/PyodideSemanticWorkflow/main/workflows/catalog-ui.ttl",
 };
 
-// Note: If using a fork or different branch, update these URLs in the Configuration Panel ’ Workflows tab
+// Note: If using a fork or different branch, update these URLs in the Configuration Panel ' Workflows tab
 
 const defaultConfig: AppConfig = {
   currentLayout: "horizontal",
@@ -112,6 +118,8 @@ const defaultConfig: AppConfig = {
   debugRdfLogging: true,
   debugAll: false,
   maxVisibleNodes: 1000,
+  collapseThreshold: 10,
+  collapsedNodes: [],
   reasoningRulesets: ["best-practice.n3", "owl-rl.n3"],
   recentOntologies: [],
   recentLayouts: ["horizontal"],
@@ -172,6 +180,11 @@ function normalizeAppConfigInput(value: unknown, context: string): AppConfig {
     `${context}.maxVisibleNodes`,
     { min: MIN_VISIBLE_NODES, max: MAX_VISIBLE_NODES },
   );
+  const collapseThreshold = normalizeNumber(
+    input.collapseThreshold ?? cfg.collapseThreshold,
+    `${context}.collapseThreshold`,
+    { min: MIN_COLLAPSE_THRESHOLD, max: MAX_COLLAPSE_THRESHOLD },
+  );
 
   const viewMode = input.viewMode ?? cfg.viewMode;
   if (viewMode !== "abox" && viewMode !== "tbox") {
@@ -210,6 +223,11 @@ function normalizeAppConfigInput(value: unknown, context: string): AppConfig {
       cfg.autoReasoning,
     ),
     maxVisibleNodes,
+    collapseThreshold,
+    collapsedNodes: normalizeStringArray(
+      input.collapsedNodes ?? cfg.collapsedNodes,
+      `${context}.collapsedNodes`,
+    ),
     reasoningRulesets: normalizeStringArray(
       input.reasoningRulesets ?? cfg.reasoningRulesets,
       `${context}.reasoningRulesets`,
@@ -378,6 +396,30 @@ export const useAppConfigStore = create<AppConfigStore>()(
             max: MAX_VISIBLE_NODES,
           }),
         }));
+      },
+
+      setCollapseThreshold: (threshold: number) => {
+        updateConfig(set, (config) => ({
+          ...config,
+          collapseThreshold: normalizeNumber(threshold, "setCollapseThreshold.threshold", {
+            min: MIN_COLLAPSE_THRESHOLD,
+            max: MAX_COLLAPSE_THRESHOLD,
+          }),
+        }));
+      },
+
+      toggleNodeCollapsed: (iri: string) => {
+        const normalized = normalizeString(iri, "toggleNodeCollapsed.iri");
+        updateConfig(set, (config) => {
+          const collapsedNodes = config.collapsedNodes || [];
+          const isCollapsed = collapsedNodes.includes(normalized);
+          return {
+            ...config,
+            collapsedNodes: isCollapsed
+              ? collapsedNodes.filter((id) => id !== normalized)
+              : [...collapsedNodes, normalized],
+          };
+        });
       },
 
       setReasoningRulesets: (reasoningRulesets: string[]) => {
