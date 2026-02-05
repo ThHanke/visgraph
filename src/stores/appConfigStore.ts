@@ -31,7 +31,6 @@ export interface AppConfig {
   canvasTheme: "light" | "dark" | "auto";
   tooltipEnabled: boolean;
   autoReasoning: boolean;
-  maxVisibleNodes: number;
   collapseThreshold: number;
   collapsedNodes: string[];
   reasoningRulesets: string[];
@@ -62,7 +61,6 @@ interface AppConfigStore {
   setAutoApplyLayout: (enabled: boolean) => void;
   setPersistedAutoload: (enabled: boolean) => void;
   setAutoReasoning: (enabled: boolean) => void;
-  setMaxVisibleNodes: (max: number) => void;
   setCollapseThreshold: (threshold: number) => void;
   toggleNodeCollapsed: (iri: string) => void;
   setCollapsedNodes: (iris: string[]) => void;
@@ -91,8 +89,6 @@ const STORAGE_KEY = "ontology-painter-config";
 const APP_CONFIG_VERSION = 1;
 const MIN_LAYOUT_SPACING = 50;
 const MAX_LAYOUT_SPACING = 500;
-const MIN_VISIBLE_NODES = 100;
-const MAX_VISIBLE_NODES = 5000;
 const MIN_COLLAPSE_THRESHOLD = 1;
 const MAX_COLLAPSE_THRESHOLD = 100;
 const MAX_RECENT_ONTOLOGIES = 10;
@@ -118,7 +114,6 @@ const defaultConfig: AppConfig = {
   autoReasoning: false,
   debugRdfLogging: true,
   debugAll: false,
-  maxVisibleNodes: 1000,
   collapseThreshold: 10,
   collapsedNodes: [],
   reasoningRulesets: ["best-practice.n3", "owl-rl.n3"],
@@ -176,11 +171,6 @@ function normalizeAppConfigInput(value: unknown, context: string): AppConfig {
     `${context}.layoutSpacing`,
     { min: MIN_LAYOUT_SPACING, max: MAX_LAYOUT_SPACING },
   );
-  const maxVisibleNodes = normalizeNumber(
-    input.maxVisibleNodes ?? cfg.maxVisibleNodes,
-    `${context}.maxVisibleNodes`,
-    { min: MIN_VISIBLE_NODES, max: MAX_VISIBLE_NODES },
-  );
   const collapseThreshold = normalizeNumber(
     input.collapseThreshold ?? cfg.collapseThreshold,
     `${context}.collapseThreshold`,
@@ -223,7 +213,6 @@ function normalizeAppConfigInput(value: unknown, context: string): AppConfig {
       `${context}.autoReasoning`,
       cfg.autoReasoning,
     ),
-    maxVisibleNodes,
     collapseThreshold,
     collapsedNodes: normalizeStringArray(
       input.collapsedNodes ?? cfg.collapsedNodes,
@@ -386,16 +375,6 @@ export const useAppConfigStore = create<AppConfigStore>()(
         updateConfig(set, (config) => ({
           ...config,
           autoReasoning: normalizeBoolean(enabled, "setAutoReasoning.enabled"),
-        }));
-      },
-
-      setMaxVisibleNodes: (max: number) => {
-        updateConfig(set, (config) => ({
-          ...config,
-          maxVisibleNodes: normalizeNumber(max, "setMaxVisibleNodes.max", {
-            min: MIN_VISIBLE_NODES,
-            max: MAX_VISIBLE_NODES,
-          }),
         }));
       },
 

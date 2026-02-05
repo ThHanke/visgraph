@@ -16,11 +16,179 @@ export interface ClusterInfo {
 }
 
 /**
- * Compute clusters using greedy hierarchical algorithm with dynamic edge counting.
+ * Apply clustering to a diagram (main entry point for clustering pipeline).
+ * 
+ * This function is called after the mapper has produced unclustered nodes/edges.
+ * It creates cluster nodes, hides clustered children, and generates cluster edges.
+ * 
+ * @param nodes - Unclustered nodes from mapper (with __edgeCount metadata)
+ * @param edges - Unclustered edges from mapper
+ * @param options - Clustering options
+ * @returns Clustered diagram with cluster nodes and edges
+ */
+export function applyClustering(
+  nodes: RFNode<NodeData>[],
+  edges: RFEdge<LinkData>[],
+  options: {
+    threshold: number;
+    collapsedSet?: Set<string>;
+  }
+): { nodes: RFNode<NodeData>[]; edges: RFEdge<LinkData>[] } {
+  const { threshold, collapsedSet = new Set() } = options;
+
+  console.log('[Clustering] Starting automatic clustering:', {
+    threshold,
+    totalNodes: nodes.length,
+    totalEdges: edges.length,
+  });
+
+  // Compute clusters using pre-computed edge counts
+  const { clusters, claimedNodes } = computeClusters(nodes, edges, collapsedSet, threshold);
+
+  console.log('[Clustering] Computed clusters:', {
+    clusterCount: clusters.size,
+    claimedNodeCount: claimedNodes.size,
+    clusters: Array.from(clusters.entries()).map(([parentId, info]) => ({
+      parent: parentId,
+      nodeCount: info.nodeIds.size,
+      internalEdgeCount: info.edgeIds.size,
+      nodeIds: Array.from(info.nodeIds),
+    })),
+  });
+
+  // Create cluster nodes
+  const clusterNodesToAdd: RFNode<NodeData>[] = [];
+
+  for (const [parentId, cluster] of clusters.entries()) {
+    const parentNode = nodes.find(n => String(n.id) === parentId);
+    if (!parentNode) continue;
+
+    const clusterNodeId = `cluster:${parentId}`;
+    console.log('[Clustering] Creating cluster node:', {
+      clusterNodeId,
+      parentId,
+      nodeCount: cluster.nodeIds.size,
+      internalEdges: cluster.edgeIds.size,
+    });
+
+    clusterNodesToAdd.push({
+      id: clusterNodeId,
+      type: 'cluster',
+      position: parentNode.position || { x: 0, y: 0 },
+      data: {
+        ...parentNode.data,
+        clusterType: 'cluster',
+        parentIri: cluster.parentIri,
+        nodeIds: Array.from(cluster.nodeIds),
+        edgeIds: Array.from(cluster.edgeIds),
+        nodeCount: cluster.nodeIds.size,
+      },
+      hidden: false, // Cluster visible by default
+    } as RFNode<NodeData>);
+  }
+
+  // Mark original nodes as hidden and add cluster parent reference
+  const updatedNodes = nodes.map(node => {
+    const nodeId = String(node.id);
+
+    // If this node is part of any cluster, hide it and add parent reference
+    if (claimedNodes.has(nodeId)) {
+      const clusterParentId = Array.from(clusters.entries()).find(
+        ([_, info]) => info.nodeIds.has(nodeId)
+      )?.[0];
+
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          __clusterParent: clusterParentId ? `cluster:${clusterParentId}` : undefined,
+        },
+        hidden: true, // Hide original nodes when clustered
+      };
+    }
+
+    return node;
+  });
+
+  // Combine original nodes with cluster nodes
+  const allNodes = [...updatedNodes, ...clusterNodesToAdd];
+
+  console.log('[Clustering] Node transformation complete:', {
+    clusterNodesAdded: clusterNodesToAdd.length,
+    hiddenChildren: claimedNodes.size,
+    totalNodes: allNodes.length,
+    totalVisible: allNodes.filter(n => !n.hidden).length,
+  });
+
+  // Build cluster edges
+  const visibleNodeIds = new Set<string>();
+  for (const node of allNodes) {
+    if (!node.hidden) {
+      visibleNodeIds.add(String(node.id));
+    }
+  }
+
+  console.log('[Clustering] Building cluster edges from:', {
+    totalInputEdges: edges.length,
+    clusterCount: clusters.size,
+    visibleNodes: visibleNodeIds.size,
+  });
+
+  const { visibleEdges, clusterEdges } = buildClusterEdges(edges, clusters, claimedNodes);
+
+  // Filter out cluster edges that reference hidden nodes
+  const validClusterEdges = clusterEdges.filter(edge => {
+    const source = String(edge.source);
+    const target = String(edge.target);
+    const isValid = visibleNodeIds.has(source) && visibleNodeIds.has(target);
+
+    if (!isValid) {
+      console.warn('[Clustering] Filtering invalid cluster edge:', {
+        id: edge.id,
+        source,
+        target,
+        sourceVisible: visibleNodeIds.has(source),
+        targetVisible: visibleNodeIds.has(target),
+      });
+    }
+
+    return isValid;
+  });
+
+  console.log('[Clustering] Cluster edge processing complete:', {
+    visibleRegularEdges: visibleEdges.length,
+    clusterEdgesCreated: clusterEdges.length,
+    validClusterEdges: validClusterEdges.length,
+    filteredOut: clusterEdges.length - validClusterEdges.length,
+    totalEdgesAfter: visibleEdges.length + validClusterEdges.length,
+  });
+
+  // Combine visible regular edges with valid cluster edges
+  const allEdges = [...visibleEdges, ...validClusterEdges as any];
+
+  // Set hidden flag on edges where either source or target is hidden
+  const hiddenNodeIds = new Set<string>();
+  for (const node of allNodes) {
+    if (node.hidden) {
+      hiddenNodeIds.add(String(node.id));
+    }
+  }
+
+  for (const edge of allEdges) {
+    const source = String(edge.source);
+    const target = String(edge.target);
+    edge.hidden = hiddenNodeIds.has(source) || hiddenNodeIds.has(target);
+  }
+
+  return { nodes: allNodes, edges: allEdges };
+}
+
+/**
+ * Compute clusters using greedy hierarchical algorithm with pre-computed edge counts.
  * 
  * Algorithm:
- * 1. Count outgoing edges for each node
- * 2. Sort nodes by edge count (descending - high-degree nodes first)
+ * 1. Use pre-computed total degree (incoming + outgoing edges) from node metadata
+ * 2. Sort nodes by total degree (descending - high-degree nodes first)
  * 3. Process nodes in order:
  *    - Calculate EFFECTIVE edge count (edges to unclaimed nodes only)
  *    - If effective count >= threshold AND node is in collapsedSet
@@ -48,13 +216,7 @@ export function computeClusters(
     outgoingEdges.get(source)!.push({ target, edgeId });
   }
 
-  // Initial edge counts (for sorting)
-  const initialEdgeCount = new Map<string, number>();
-  for (const [nodeId, targets] of outgoingEdges) {
-    initialEdgeCount.set(nodeId, targets.length);
-  }
-
-  // Sort nodes by initial edge count (descending - process high-degree nodes first)
+  // Sort nodes by TOTAL degree (incoming + outgoing) from pre-computed metadata
   // If collapsedSet is empty, consider all nodes (automatic clustering mode)
   // If collapsedSet has entries, only include nodes in the set (manual clustering mode)
   const isAutomaticMode = collapsedSet.size === 0;
@@ -64,9 +226,10 @@ export function computeClusters(
       return isAutomaticMode || collapsedSet.has(nodeId);
     })
     .sort((a, b) => {
-      const countA = initialEdgeCount.get(String(a.id)) ?? 0;
-      const countB = initialEdgeCount.get(String(b.id)) ?? 0;
-      return countB - countA;
+      // Use pre-computed total degree (incoming + outgoing)
+      const countA = (a.data as any)?.__edgeCount?.total ?? 0;
+      const countB = (b.data as any)?.__edgeCount?.total ?? 0;
+      return countB - countA; // Descending - highest degree first
     });
 
   const claimedNodes = new Set<string>();

@@ -102,11 +102,14 @@ const actionsImpl: CanvasActions = {
         });
       }
     } else {
-      // Loading finished - dismiss with success
+      // Loading finished - show enriched success message
       if (currentLoadingToastId !== null) {
-        toast.success(message || "Operation completed successfully", {
+        // Default completion message if none provided
+        const completionMessage = message || "Operation completed successfully";
+        
+        toast.success(completionMessage, {
           id: currentLoadingToastId,
-          duration: 3000,
+          duration: 4000, // Longer duration for detailed messages
         });
         currentLoadingToastId = null;
       }

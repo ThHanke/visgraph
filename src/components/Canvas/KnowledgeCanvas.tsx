@@ -47,6 +47,7 @@ import type { ReactFlowInstance } from "@xyflow/react";
 import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
 import type { NodeData, LinkData } from "../../types/canvas";
 import mapQuadsToDiagram from "./core/mappingHelpers";
+import { applyClustering } from "./core/clusterHelpers";
 import { RDFNode as OntologyNode } from "./RDFNode";
 import { ActivityNode } from "./ActivityNode";
 import { ClusterNode } from "./ClusterNode";
@@ -1133,6 +1134,8 @@ const KnowledgeCanvas: React.FC = () => {
     const pendingSubjects: Set<string> = new Set<string>();
 
     const translateQuadsToDiagram = async (quads: any[]) => {
+      const startTime = Date.now();
+      
       const state =
         typeof useOntologyStore === "function" &&
         typeof (useOntologyStore as any).getState === "function"
@@ -1172,7 +1175,46 @@ const KnowledgeCanvas: React.FC = () => {
         clusterThreshold: clusterThreshold,
       };
 
-      return mapQuadsWithWorker(quads, opts);
+      // Step 1: Run mapper to get unclustered nodes/edges with edge count metadata
+      toast.info(`Mapping ${quads.length} triples to diagram...`, { duration: 2000 });
+      const mapperStartTime = Date.now();
+      const mapperResult = mapQuadsWithWorker(quads, opts);
+      const { nodes: mappedNodes, edges: mappedEdges } = mapperResult;
+      const mapperDuration = Date.now() - mapperStartTime;
+      
+      toast.success(`Mapper: ${mappedNodes.length} nodes, ${mappedEdges.length} edges (${mapperDuration}ms)`, { 
+        duration: 3000 
+      });
+
+      // Step 2: Apply optional clustering if threshold > 0
+      if (clusterThreshold > 0) {
+        console.log('[Pipeline] Applying clustering with threshold:', clusterThreshold);
+        toast.info(`Clustering nodes (threshold: ${clusterThreshold})...`, { duration: 2000 });
+        
+        const clusterStartTime = Date.now();
+        const clustered = applyClustering(mappedNodes, mappedEdges, {
+          threshold: clusterThreshold,
+        });
+        const clusterDuration = Date.now() - clusterStartTime;
+        
+        const clusterCount = clustered.nodes.filter(n => (n.data as any)?.clusterType === 'cluster').length;
+        const hiddenCount = clustered.nodes.filter(n => n.hidden).length;
+        
+        console.log('[Pipeline] Clustering complete:', {
+          nodesAfter: clustered.nodes.length,
+          edgesAfter: clustered.edges.length,
+        });
+        
+        toast.success(
+          `Clustering: ${clusterCount} clusters created, ${hiddenCount} nodes grouped (${clusterDuration}ms)`, 
+          { duration: 3000 }
+        );
+        
+        return clustered;
+      }
+
+      // Step 3: Return unclustered result if threshold is 0
+      return { nodes: mappedNodes, edges: mappedEdges };
     };
 
     const waitForNextFrame = async () => {
