@@ -1175,16 +1175,23 @@ const KnowledgeCanvas: React.FC = () => {
         clusterThreshold: clusterThreshold,
       };
 
-      // Step 1: Run mapper to get unclustered nodes/edges with edge count metadata
+      // Step 1: Run mapper to get unclustered nodes/edges with connectivity metadata
       toast.info(`Mapping ${quads.length} triples to diagram...`, { duration: 2000 });
       const mapperStartTime = Date.now();
       const mapperResult = mapQuadsWithWorker(quads, opts);
       const { nodes: mappedNodes, edges: mappedEdges } = mapperResult;
       const mapperDuration = Date.now() - mapperStartTime;
       
-      toast.success(`Mapper: ${mappedNodes.length} nodes, ${mappedEdges.length} edges (${mapperDuration}ms)`, { 
-        duration: 3000 
-      });
+      // Calculate average connectivity
+      const totalConnectivity = mappedNodes.reduce((sum, n) => sum + ((n.data as any)?.__connectivity ?? 0), 0);
+      const avgConnectivity = mappedNodes.length > 0 ? (totalConnectivity / mappedNodes.length).toFixed(1) : '0';
+      
+      // Only show mapper toast if actual work was done
+      if (mappedNodes.length > 0 || mappedEdges.length > 0) {
+        toast.success(`Mapper: ${mappedNodes.length} nodes, ${mappedEdges.length} edges, avg connectivity: ${avgConnectivity} (${mapperDuration}ms)`, { 
+          duration: 3000 
+        });
+      }
 
       // Step 2: Apply optional clustering if threshold > 0
       if (clusterThreshold > 0) {
@@ -1205,10 +1212,13 @@ const KnowledgeCanvas: React.FC = () => {
           edgesAfter: clustered.edges.length,
         });
         
-        toast.success(
-          `Clustering: ${clusterCount} clusters created, ${hiddenCount} nodes grouped (${clusterDuration}ms)`, 
-          { duration: 3000 }
-        );
+        // Only show clustering toast if actual work was done
+        if (clusterCount > 0 || hiddenCount > 0) {
+          toast.success(
+            `Clustering: ${clusterCount} clusters created, ${hiddenCount} nodes grouped (${clusterDuration}ms)`, 
+            { duration: 3000 }
+          );
+        }
         
         return clustered;
       }
@@ -2931,6 +2941,8 @@ const KnowledgeCanvas: React.FC = () => {
                   (node as any).position ??
                   { x: 0, y: 0 },
                 data: mergeData(existing.data, (node as any).data),
+                // Preserve hidden flag from existing node (critical for cluster visibility)
+                hidden: existing.hidden ?? false,
               };
               
               // Memory optimization: only create change if data actually changed

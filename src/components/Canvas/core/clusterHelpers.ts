@@ -9,10 +9,187 @@ import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
 import type { NodeData, LinkData } from "../../../types/canvas";
 import initializeEdge from "./edgeStyle";
 
+/** Maximum connectivity threshold for cluster extension absorption */
+const MAX_CONNECTIVITY_FOR_ABSORPTION = 2;
+
 export interface ClusterInfo {
   parentIri: string;
   nodeIds: Set<string>;
   edgeIds: Set<string>; // Internal edges within cluster
+}
+
+/**
+ * Find boundary edges for a cluster.
+ * Boundary edge = one endpoint in cluster, one endpoint outside (bidirectional).
+ */
+function findClusterBoundaryEdges(
+  cluster: ClusterInfo,
+  edges: RFEdge<LinkData>[]
+): RFEdge<LinkData>[] {
+  const boundaryEdges: RFEdge<LinkData>[] = [];
+  
+  for (const edge of edges) {
+    const source = String(edge.source);
+    const target = String(edge.target);
+    
+    const sourceInCluster = cluster.nodeIds.has(source);
+    const targetInCluster = cluster.nodeIds.has(target);
+    
+    // XOR logic: exactly one endpoint in cluster
+    if (sourceInCluster !== targetInCluster) {
+      boundaryEdges.push(edge);
+    }
+  }
+  
+  return boundaryEdges;
+}
+
+/**
+ * Compute internal edges for a cluster after extension.
+ * Internal edge = both endpoints in cluster (bidirectional).
+ */
+function computeInternalEdges(
+  cluster: ClusterInfo,
+  edges: RFEdge<LinkData>[]
+): Set<string> {
+  const internalEdgeIds = new Set<string>();
+  
+  for (const edge of edges) {
+    const source = String(edge.source);
+    const target = String(edge.target);
+    
+    // AND logic: both endpoints in cluster
+    if (cluster.nodeIds.has(source) && cluster.nodeIds.has(target)) {
+      internalEdgeIds.add(String(edge.id));
+    }
+  }
+  
+  return internalEdgeIds;
+}
+
+/**
+ * Extend clusters by absorbing adjacent nodes with low connectivity.
+ * 
+ * Algorithm:
+ * 1. For each cluster, find boundary edges
+ * 2. For each boundary edge, follow the path outside the cluster
+ * 3. Along the path, absorb nodes that meet criteria:
+ *    - Not already in a cluster
+ *    - Connectivity <= MAX_CONNECTIVITY_FOR_ABSORPTION
+ * 4. Stop following path when hitting:
+ *    - Node with connectivity > MAX_CONNECTIVITY_FOR_ABSORPTION
+ *    - Node already in a cluster
+ * 5. Recompute internal edges after all extensions complete
+ */
+function extendClusters(
+  clusters: Map<string, ClusterInfo>,
+  nodes: RFNode<NodeData>[],
+  edges: RFEdge<LinkData>[]
+): void {
+  // Build edge adjacency map for efficient traversal
+  const edgesByNode = new Map<string, RFEdge<LinkData>[]>();
+  for (const edge of edges) {
+    const source = String(edge.source);
+    const target = String(edge.target);
+    
+    if (!edgesByNode.has(source)) {
+      edgesByNode.set(source, []);
+    }
+    if (!edgesByNode.has(target)) {
+      edgesByNode.set(target, []);
+    }
+    edgesByNode.get(source)!.push(edge);
+    edgesByNode.get(target)!.push(edge);
+  }
+  
+  // Build node lookup map
+  const nodeMap = new Map<string, RFNode<NodeData>>();
+  for (const node of nodes) {
+    nodeMap.set(String(node.id), node);
+  }
+  
+  // Helper to check if node is in any cluster
+  const isNodeInAnyCluster = (nodeId: string): boolean => {
+    return Array.from(clusters.values()).some(c => c.nodeIds.has(nodeId));
+  };
+  
+  // Process each cluster
+  for (const [parentId, cluster] of clusters) {
+    const nodesToAbsorb = new Set<string>();
+    
+    // Find boundary edges for this cluster
+    const boundaryEdges = findClusterBoundaryEdges(cluster, edges);
+    
+    // For each boundary edge, follow the path outside
+    for (const boundaryEdge of boundaryEdges) {
+      const source = String(boundaryEdge.source);
+      const target = String(boundaryEdge.target);
+      
+      // Identify the external node (not in this cluster)
+      let currentNodeId: string;
+      if (cluster.nodeIds.has(source) && !cluster.nodeIds.has(target)) {
+        currentNodeId = target; // Edge pointing OUT
+      } else if (!cluster.nodeIds.has(source) && cluster.nodeIds.has(target)) {
+        currentNodeId = source; // Edge pointing IN
+      } else {
+        continue; // Should not happen
+      }
+      
+      // Follow the path from this external node
+      const visited = new Set<string>();
+      const queue = [currentNodeId];
+      
+      while (queue.length > 0) {
+        const nodeId = queue.shift()!;
+        
+        // Skip if already visited
+        if (visited.has(nodeId)) continue;
+        visited.add(nodeId);
+        
+        // Skip if already in cluster or absorb list
+        if (cluster.nodeIds.has(nodeId) || nodesToAbsorb.has(nodeId)) continue;
+        
+        // Stop condition 1: already in another cluster
+        if (isNodeInAnyCluster(nodeId)) break;
+        
+        // Get node
+        const node = nodeMap.get(nodeId);
+        if (!node) continue;
+        
+        // Stop condition 2: connectivity > threshold
+        const connectivity = (node.data as any)?.__connectivity ?? 0;
+        if (connectivity > MAX_CONNECTIVITY_FOR_ABSORPTION) break;
+        
+        // This node can be absorbed!
+        nodesToAbsorb.add(nodeId);
+        
+        // Find next edges to follow (edges to nodes outside cluster and not in absorb list)
+        const connectedEdges = edgesByNode.get(nodeId) || [];
+        for (const edge of connectedEdges) {
+          const edgeSource = String(edge.source);
+          const edgeTarget = String(edge.target);
+          
+          // Get the other endpoint
+          const otherNode = edgeSource === nodeId ? edgeTarget : edgeSource;
+          
+          // Only follow if the other node is outside cluster and not in absorb list
+          if (!cluster.nodeIds.has(otherNode) && !nodesToAbsorb.has(otherNode)) {
+            queue.push(otherNode);
+          }
+        }
+      }
+    }
+    
+    // Absorb all collected nodes into the cluster
+    for (const nodeId of nodesToAbsorb) {
+      cluster.nodeIds.add(nodeId);
+    }
+  }
+  
+  // Recompute internal edges for all clusters after growth completes
+  for (const [parentId, cluster] of clusters) {
+    cluster.edgeIds = computeInternalEdges(cluster, edges);
+  }
 }
 
 /**
@@ -40,14 +217,20 @@ export function applyClustering(
     threshold,
     totalNodes: nodes.length,
     totalEdges: edges.length,
+    visibleNodesBeforeClustering: nodes.length, // All nodes visible initially
   });
 
   // Compute clusters using pre-computed edge counts
   const { clusters, claimedNodes } = computeClusters(nodes, edges, collapsedSet, threshold);
 
-  console.log('[Clustering] Computed clusters:', {
+  // Calculate visible nodes after initial clustering
+  const visibleAfterInitial = nodes.length - claimedNodes.size + clusters.size;
+  
+  console.log('[Clustering] Initial clusters computed:', {
     clusterCount: clusters.size,
     claimedNodeCount: claimedNodes.size,
+    visibleNodesAfterInitialClustering: visibleAfterInitial,
+    reductionFromInitial: nodes.length - visibleAfterInitial,
     clusters: Array.from(clusters.entries()).map(([parentId, info]) => ({
       parent: parentId,
       nodeCount: info.nodeIds.size,
@@ -55,6 +238,40 @@ export function applyClustering(
       nodeIds: Array.from(info.nodeIds),
     })),
   });
+
+  // Extend clusters by absorbing weakly-connected adjacent nodes
+  extendClusters(clusters, nodes, edges);
+
+  // Calculate visible nodes after extension
+  const claimedAfterExtension = new Set<string>();
+  for (const cluster of clusters.values()) {
+    for (const nodeId of cluster.nodeIds) {
+      claimedAfterExtension.add(nodeId);
+    }
+  }
+  const visibleAfterExtension = nodes.length - claimedAfterExtension.size + clusters.size;
+  
+  console.log('[Clustering] Extended clusters:', {
+    clusterCount: clusters.size,
+    claimedNodeCount: claimedAfterExtension.size,
+    visibleNodesAfterExtension: visibleAfterExtension,
+    reductionFromInitial: visibleAfterInitial - visibleAfterExtension,
+    totalReductionFromStart: nodes.length - visibleAfterExtension,
+    clusters: Array.from(clusters.entries()).map(([parentId, info]) => ({
+      parent: parentId,
+      nodeCount: info.nodeIds.size,
+      internalEdgeCount: info.edgeIds.size,
+      nodeIds: Array.from(info.nodeIds),
+    })),
+  });
+
+  // Update claimedNodes to include all nodes from extended clusters
+  claimedNodes.clear();
+  for (const cluster of clusters.values()) {
+    for (const nodeId of cluster.nodeIds) {
+      claimedNodes.add(nodeId);
+    }
+  }
 
   // Create cluster nodes
   const clusterNodesToAdd: RFNode<NodeData>[] = [];
@@ -180,18 +397,28 @@ export function applyClustering(
     edge.hidden = hiddenNodeIds.has(source) || hiddenNodeIds.has(target);
   }
 
+  // Final summary
+  console.log('[Clustering] SUMMARY:', {
+    inputNodes: nodes.length,
+    clusteredNodesInAllClusters: claimedNodes.size,
+    totalClusterEdges: validClusterEdges.length,
+    clustersCreated: clusters.size,
+    visibleNodes: visibleNodeIds.size,
+    visibleEdges: allEdges.filter(e => !e.hidden).length,
+  });
+
   return { nodes: allNodes, edges: allEdges };
 }
 
 /**
- * Compute clusters using greedy hierarchical algorithm with pre-computed edge counts.
+ * Compute clusters using greedy hierarchical algorithm with pre-computed connectivity.
  * 
  * Algorithm:
- * 1. Use pre-computed total degree (incoming + outgoing edges) from node metadata
- * 2. Sort nodes by total degree (descending - high-degree nodes first)
+ * 1. Use pre-computed connectivity (unique connected nodes) from node metadata
+ * 2. Sort nodes by connectivity (descending - most connected nodes first)
  * 3. Process nodes in order:
- *    - Calculate EFFECTIVE edge count (edges to unclaimed nodes only)
- *    - If effective count >= threshold AND node is in collapsedSet
+ *    - Calculate EFFECTIVE connectivity (connections to unclaimed nodes only)
+ *    - If effective connectivity >= threshold AND node is in collapsedSet
  *    - Create cluster and claim all target nodes
  * 4. Skip nodes already claimed by other clusters
  * 
@@ -216,7 +443,7 @@ export function computeClusters(
     outgoingEdges.get(source)!.push({ target, edgeId });
   }
 
-  // Sort nodes by TOTAL degree (incoming + outgoing) from pre-computed metadata
+  // Sort nodes by connectivity (unique connected nodes) from pre-computed metadata
   // If collapsedSet is empty, consider all nodes (automatic clustering mode)
   // If collapsedSet has entries, only include nodes in the set (manual clustering mode)
   const isAutomaticMode = collapsedSet.size === 0;
@@ -226,10 +453,10 @@ export function computeClusters(
       return isAutomaticMode || collapsedSet.has(nodeId);
     })
     .sort((a, b) => {
-      // Use pre-computed total degree (incoming + outgoing)
-      const countA = (a.data as any)?.__edgeCount?.total ?? 0;
-      const countB = (b.data as any)?.__edgeCount?.total ?? 0;
-      return countB - countA; // Descending - highest degree first
+      // Use pre-computed connectivity (unique connected nodes count)
+      const connectivityA = (a.data as any)?.__connectivity ?? 0;
+      const connectivityB = (b.data as any)?.__connectivity ?? 0;
+      return connectivityB - connectivityA; // Descending - highest connectivity first
     });
 
   const claimedNodes = new Set<string>();

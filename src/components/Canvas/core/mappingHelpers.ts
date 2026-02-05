@@ -689,28 +689,33 @@ export function mapQuadsToDiagram(
     }
   }
 
-  // Step 5: Count edges for each node (for clustering)
-  const edgeCountByNode = new Map<string, { incoming: number; outgoing: number; total: number }>();
+  // Step 5: Count connectivity (unique connected nodes) for each node (for clustering)
+  const connectivityByNode = new Map<string, { incoming: Set<string>; outgoing: Set<string>; total: number }>();
   
   for (const edge of rfEdges) {
     const source = String(edge.source);
     const target = String(edge.target);
     
-    // Count outgoing for source
-    if (!edgeCountByNode.has(source)) {
-      edgeCountByNode.set(source, { incoming: 0, outgoing: 0, total: 0 });
+    // Track unique outgoing connections for source
+    if (!connectivityByNode.has(source)) {
+      connectivityByNode.set(source, { incoming: new Set(), outgoing: new Set(), total: 0 });
     }
-    const sourceCount = edgeCountByNode.get(source)!;
-    sourceCount.outgoing += 1;
-    sourceCount.total += 1;
+    const sourceConn = connectivityByNode.get(source)!;
+    sourceConn.outgoing.add(target);
     
-    // Count incoming for target
-    if (!edgeCountByNode.has(target)) {
-      edgeCountByNode.set(target, { incoming: 0, outgoing: 0, total: 0 });
+    // Track unique incoming connections for target
+    if (!connectivityByNode.has(target)) {
+      connectivityByNode.set(target, { incoming: new Set(), outgoing: new Set(), total: 0 });
     }
-    const targetCount = edgeCountByNode.get(target)!;
-    targetCount.incoming += 1;
-    targetCount.total += 1;
+    const targetConn = connectivityByNode.get(target)!;
+    targetConn.incoming.add(source);
+  }
+  
+  // Calculate total unique connected nodes for each node
+  for (const [nodeId, conn] of connectivityByNode.entries()) {
+    // Combine incoming and outgoing to get all unique connected nodes
+    const allConnected = new Set([...conn.incoming, ...conn.outgoing]);
+    conn.total = allConnected.size;
   }
 
   // Step 6: Build initial RF nodes with edge count metadata
@@ -761,8 +766,8 @@ export function mapQuadsToDiagram(
       })),
     ];
 
-    // Get edge count for this node (for clustering)
-    const edgeCount = edgeCountByNode.get(iri) || { incoming: 0, outgoing: 0, total: 0 };
+    // Get connectivity for this node (for clustering)
+    const connectivity = connectivityByNode.get(iri) || { incoming: new Set(), outgoing: new Set(), total: 0 };
 
     const nodeData: NodeData & any = {
       key: iri,
@@ -788,8 +793,8 @@ export function mapQuadsToDiagram(
       hasReasoningError: reasoningErrors.length > 0,
       hasReasoningWarning: reasoningWarnings.length > 0,
       isTBox: !!isTBox,
-      // Edge count metadata for clustering
-      __edgeCount: edgeCount,
+      // Connectivity metadata for clustering (unique connected nodes)
+      __connectivity: connectivity.total,
     };
 
     const subjectText = (() => {
