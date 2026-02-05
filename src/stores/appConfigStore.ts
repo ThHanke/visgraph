@@ -65,6 +65,7 @@ interface AppConfigStore {
   setMaxVisibleNodes: (max: number) => void;
   setCollapseThreshold: (threshold: number) => void;
   toggleNodeCollapsed: (iri: string) => void;
+  setCollapsedNodes: (iris: string[]) => void;
   setReasoningRulesets: (reasoningRulesets: string[]) => void;
   setDebugRdfLogging: (enabled: boolean) => void;
   setDebugAll: (enabled: boolean) => void;
@@ -420,6 +421,14 @@ export const useAppConfigStore = create<AppConfigStore>()(
               : [...collapsedNodes, normalized],
           };
         });
+      },
+
+      setCollapsedNodes: (iris: string[]) => {
+        const normalized = normalizeStringArray(iris, "setCollapsedNodes.iris");
+        updateConfig(set, (config) => ({
+          ...config,
+          collapsedNodes: normalized,
+        }));
       },
 
       setReasoningRulesets: (reasoningRulesets: string[]) => {

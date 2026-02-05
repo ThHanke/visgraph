@@ -49,7 +49,10 @@ import type { NodeData, LinkData } from "../../types/canvas";
 import mapQuadsToDiagram from "./core/mappingHelpers";
 import { RDFNode as OntologyNode } from "./RDFNode";
 import { ActivityNode } from "./ActivityNode";
+import { ClusterNode } from "./ClusterNode";
 import ObjectPropertyEdge from "./ObjectPropertyEdge";
+import { ClusterEdge } from "./ClusterEdge";
+import ClusterPropertyEdge from "./ClusterPropertyEdge";
 import FloatingConnectionLine from "./FloatingConnectionLine";
 import { generateEdgeId } from "./core/edgeHelpers";
 import { usePaletteFromRdfManager } from "./core/namespacePalette";
@@ -218,8 +221,7 @@ const KnowledgeCanvas: React.FC = () => {
 
   const settings = useSettingsStore((s) => s.settings);
   const config = useAppConfigStore((s) => s.config);
-  const collapsedNodes = useAppConfigStore((s) => s.config.collapsedNodes);
-  const collapseThreshold = useAppConfigStore((s) => s.config.collapseThreshold);
+  const clusterThreshold = useAppConfigStore((s) => s.config.collapseThreshold);
   const setCurrentLayout = useAppConfigStore((s) => s.setCurrentLayout);
   const setShowLegend = useAppConfigStore((s) => s.setShowLegend);
   const setPersistedViewMode = useAppConfigStore((s) => s.setViewMode);
@@ -1106,29 +1108,6 @@ const KnowledgeCanvas: React.FC = () => {
     }
   }, [getRdfManagerSafe]);
 
-  // Re-map when collapse state changes
-  useEffect(() => {
-    const mgr = getRdfManagerSafe();
-    if (!mgr || typeof (mgr as any).emitAllSubjects !== "function") return;
-
-    // Skip the initial mount (handled by the initialization effect above)
-    // Only re-emit when collapse state actually changes
-    const hasCollapsedNodes = Array.isArray(collapsedNodes) && collapsedNodes.length > 0;
-    if (!hasCollapsedNodes && collapseThreshold === 10) {
-      // Still at default state, no need to re-map
-      return;
-    }
-
-    console.debug('[KnowledgeCanvas] Collapse state changed, re-mapping...', {
-      collapsedNodes,
-      collapseThreshold,
-    });
-
-    // Trigger re-emission of all subjects to force mapper to run with new collapse state
-    void (mgr as any).emitAllSubjects("urn:vg:data").catch((e: any) => {
-      console.warn("KnowledgeCanvas collapse state re-mapping failed", e);
-    });
-  }, [collapsedNodes, collapseThreshold, getRdfManagerSafe]);
 
   useEffect(() => {
     const mgr =
@@ -1171,11 +1150,9 @@ const KnowledgeCanvas: React.FC = () => {
         ? state.namespaceRegistry
         : [];
 
-      // Get collapse configuration from config store
+      // Get cluster threshold from config store
       const cfg = useAppConfigStore.getState().config;
-      const collapsedNodesArray = Array.isArray(cfg.collapsedNodes) ? cfg.collapsedNodes : [];
-      const collapsedNodesSet = new Set<string>(collapsedNodesArray);
-      const collapseThreshold = typeof cfg.collapseThreshold === 'number' ? cfg.collapseThreshold : 10;
+      const clusterThreshold = typeof cfg.collapseThreshold === 'number' ? cfg.collapseThreshold : 10;
 
       const opts = {
         predicateKind:
@@ -1192,8 +1169,7 @@ const KnowledgeCanvas: React.FC = () => {
             : [],
         registry,
         palette: paletteRef.current as any,
-        collapsedNodes: collapsedNodesSet,
-        collapseThreshold: collapseThreshold,
+        clusterThreshold: clusterThreshold,
       };
 
       return mapQuadsWithWorker(quads, opts);
@@ -1350,7 +1326,18 @@ const KnowledgeCanvas: React.FC = () => {
         lastLayoutMetaRef.current = null;
       }
 
-      scheduleRunMapping();
+      // Check if this is a complete data load (emitAllSubjects or loadFromUrl)
+      // Skip debounce for these operations so clustering receives complete graph data immediately
+      const reason = meta && typeof meta.reason === 'string' ? String(meta.reason) : '';
+      const isCompleteDataLoad = reason === 'emitAllSubjects' || reason === 'loadFromUrl';
+      
+      if (isCompleteDataLoad) {
+        // Immediate execution for complete graph data - ensures clustering sees all nodes
+        void runMapping();
+      } else {
+        // Normal debounced execution for incremental updates
+        scheduleRunMapping();
+      }
     };
 
     // Subscribe to subject-level incremental notifications when available.
@@ -1425,6 +1412,15 @@ const KnowledgeCanvas: React.FC = () => {
     // Expose a helper so other UI components can request that the next mapping run triggers layout.
     (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING = () => {
       forceLayoutNextMappingRef.current = true;
+    };
+
+    // Expose cluster expand/collapse functions for ClusterNode and regular nodes
+    (window as any).__VG_EXPAND_CLUSTER = (clusterNodeId: string) => {
+      expandCluster(clusterNodeId);
+    };
+
+    (window as any).__VG_COLLAPSE_TO_CLUSTER = (clusterParentId: string) => {
+      collapseToCluster(clusterParentId);
     };
 
     // Persisted-layout helper: process queued apply layout requests that arrived before mount.
@@ -1868,6 +1864,80 @@ const KnowledgeCanvas: React.FC = () => {
       console.warn("KnowledgeCanvas triggerSubjectUpdate unavailable");
     }
   }, [currentReasoning, setNodes, setEdges]);
+
+  // Expand cluster: toggle node visibility and trigger layout
+  const expandCluster = useCallback((clusterNodeId: string) => {
+    console.log('[Cluster] Expanding cluster:', clusterNodeId);
+    
+    setNodes(prev => {
+      const clusterNode = prev.find(n => String(n.id) === clusterNodeId);
+      if (!clusterNode) return prev;
+      
+      const childNodeIds = (clusterNode.data as any)?.nodeIds || [];
+      
+      return prev.map(node => {
+        const nodeId = String(node.id);
+        
+        // Hide the cluster node itself
+        if (nodeId === clusterNodeId) {
+          return { ...node, hidden: true, selected: false };
+        }
+        
+        // Show all child nodes that belong to this cluster
+        if (childNodeIds.includes(nodeId)) {
+          return { 
+            ...node, 
+            hidden: false,
+            selected: false,
+            data: {
+              ...node.data,
+              __clusterParent: clusterNodeId,
+            }
+          };
+        }
+        
+        return node;
+      });
+    });
+    
+    // Trigger layout after nodes become visible
+    // Use setTimeout to ensure state update completes first
+    setTrackedTimeout(() => {
+      const rfInst = reactFlowInstance.current;
+      if (rfInst && typeof (rfInst as any).getNodes === 'function') {
+        const visibleNodes = (rfInst as any).getNodes();
+        const visibleEdges = (rfInst as any).getEdges?.() || [];
+        
+        console.log('[Cluster] Running layout after expand:', {
+          visibleNodes: visibleNodes.length,
+          visibleEdges: visibleEdges.length,
+        });
+        
+        void doLayout(visibleNodes, visibleEdges, true);
+      }
+    }, 100);
+  }, [setNodes, setTrackedTimeout, doLayout]);
+
+  // Collapse to cluster: simplified - just toggle node visibility
+  const collapseToCluster = useCallback((clusterParentId: string) => {
+    console.log('[Cluster] Collapsing to cluster:', clusterParentId);
+    
+    setNodes(prev => prev.map(node => {
+      const nodeId = String(node.id);
+      
+      // Show the cluster node
+      if (nodeId === clusterParentId) {
+        return { ...node, hidden: false, selected: false };
+      }
+      
+      // Hide all nodes that belong to this cluster
+      if ((node.data as any)?.__clusterParent === clusterParentId) {
+        return { ...node, hidden: true, selected: false };
+      }
+      
+      return { ...node, selected: false };
+    }));
+  }, [setNodes]);
 
   const onNodeDoubleClickStrict = useCallback(
     (event: any, node: any) => {
@@ -2628,23 +2698,30 @@ const KnowledgeCanvas: React.FC = () => {
     () => ({ 
       ontology: OntologyNode,
       activity: ActivityNode,
+      cluster: ClusterNode,
     }),
-    [OntologyNode, ActivityNode],
+    [OntologyNode, ActivityNode, ClusterNode],
   );
   const memoEdgeTypes = useMemo(
-    () => ({ floating: ObjectPropertyEdge }),
-    [ObjectPropertyEdge],
+    () => ({ 
+      floating: ObjectPropertyEdge,
+      cluster: ClusterPropertyEdge,
+    }),
+    [ObjectPropertyEdge, ClusterPropertyEdge],
   );
   const memoConnectionLine = useMemo(
     () => FloatingConnectionLine,
     [FloatingConnectionLine],
   );
 
-  // Process nodes: filter by viewMode and ensure valid positions in a single pass
-  const processedNodes = useMemo(() => {
+  // Process nodes: filter by viewMode, hidden state, and ensure valid positions in a single pass
+  const viewFilteredNodes = useMemo(() => {
     return (nodes || [])
       .filter((n) => {
         try {
+          // Filter out hidden nodes (used by cluster expand/collapse)
+          if (n.hidden === true) return false;
+          
           const isTBox = !!(n.data && (n.data as any).isTBox);
           const visibleFlag =
             n.data && typeof (n.data as any).visible === "boolean"
@@ -2669,17 +2746,23 @@ const KnowledgeCanvas: React.FC = () => {
       });
   }, [nodes, viewMode]);
 
-  // Filter edges - only show edges where both endpoints are in the current view
-  const filteredEdges = useMemo(() => {
-    const nodeIds = new Set(processedNodes.map((n) => String(n.id)));
+  // Filter edges by viewMode - only show edges where both endpoints are in the current view
+  // Ignore the edge's own hidden property - visibility is determined by node visibility
+  const viewFilteredEdges = useMemo(() => {
+    const nodeIds = new Set(viewFilteredNodes.map((n) => String(n.id)));
     return (edges || []).filter((e) => {
       try {
+        // Filter by endpoint visibility only (ignore edge.hidden property)
+        // This allows edges to show/hide dynamically when clusters expand/collapse
         return nodeIds.has(String(e.source)) && nodeIds.has(String(e.target));
       } catch {
         return false;
       }
+    }).map(e => {
+      // Clear the hidden property so React Flow doesn't hide the edge
+      return { ...e, hidden: false };
     });
-  }, [edges, processedNodes]);
+  }, [edges, viewFilteredNodes]);
 
   // Memoize edges to provide a stable reference into ReactFlow.
   // The edges array reference changing is sufficient to trigger re-render.
@@ -3104,8 +3187,8 @@ const KnowledgeCanvas: React.FC = () => {
           onDrop={onDrop}
         >
           <ReactFlow
-            nodes={processedNodes}
-            edges={filteredEdges}
+            nodes={viewFilteredNodes}
+            edges={viewFilteredEdges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onInit={onInit}

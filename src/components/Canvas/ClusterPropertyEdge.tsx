@@ -7,28 +7,22 @@ import {
   BaseEdge,
   useInternalNode,
   MarkerType,
-  useReactFlow,
   useViewport,
 } from "@xyflow/react";
 import { Badge } from "../ui/badge";
-import PropertyList from "../ui/PropertyList";
 import { getEdgeParams } from "./EdgeParams";
 import { resolveEdgeRenderProps } from "./core/edgeStyle";
 import type { LinkData } from "../../types/canvas";
 
 /**
- * ObjectPropertyEdge
+ * ClusterPropertyEdge
  *
- * Renders a cubic-bezier edge split into two segments with a draggable handle (the label).
- * The handle's signed perpendicular offset from the default bezier midpoint is persisted
- * as `shift` on edge.data. Clicking selects the edge; clicking again opens the editor.
+ * Renders edges connecting to cluster nodes with bg-primary styling and aggregated count display.
+ * Based on ObjectPropertyEdge but simplified for cluster-specific use cases.
  */
-const ObjectPropertyEdge = memo((props: EdgeProps) => {
+const ClusterPropertyEdge = memo((props: EdgeProps) => {
   const { id, source, target, style, data, markerEnd: propMarkerEnd } = props as any;
   const dataTyped = data as LinkData;
-
-  const hasEdgeErrors = Array.isArray((dataTyped as any).reasoningErrors) && (dataTyped as any).reasoningErrors.length > 0;
-  const hasEdgeWarnings = Array.isArray((dataTyped as any).reasoningWarnings) && (dataTyped as any).reasoningWarnings.length > 0;
 
   // React Flow node internals
   const sourceNode = useInternalNode(source);
@@ -61,9 +55,7 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const pointerStartProjRef = useRef<{ x: number; y: number } | null>(null);
   const lastPointerIdRef = useRef<number | null>(null);
-  // Offset between pointer down position (projected) and the control point to avoid jump on drag start
   const clickOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  // Local selection flag to track selection initiated from this component (fallback when props.selected isn't available)
   const selectionRef = useRef<boolean>(false);
 
   const [control, setControl] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -71,25 +63,23 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
   const [tooltipVisible, setTooltipVisible] = useState(false);
   const onHoverEnter = useCallback(() => setIsHovered(true), []);
   const onHoverLeave = useCallback(() => setIsHovered(false), []);
-  // Selection state: prefer RF prop, fall back to edge data selected flag
   const isSelected = !!((props as any).selected || (dataTyped && (dataTyped as any).selected));
 
   // Get viewport for coordinate transformation
   const viewport = useViewport();
 
-  // Show tooltip on hover, similar to how NodeToolbar shows on selection
+  // Show tooltip on hover
   useEffect(() => {
     setTooltipVisible(isHovered && !draggingRef.current);
   }, [isHovered]);
 
-  // Persisted signed scalar shift (distance along perpendicular from default Bezier control)
+  // Persisted signed scalar shift
   const persistedShift =
     dataTyped && typeof (dataTyped as any).shift === "number"
       ? Number((dataTyped as any).shift)
       : 0;
 
   // Recompute baseline Bezier control and perpendicular when node geometry changes.
-  // This useEffect is declared unconditionally (hooks must not be called conditionally).
   useEffect(() => {
     try {
       const bez = getBezierPath({
@@ -112,9 +102,6 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
       const len = Math.hypot(perp.x, perp.y) || 1;
       perpUnitRef.current = { x: perp.x / len, y: perp.y / len };
 
-      // Recompute control from baseline + persistedShift when not actively dragging.
-      // This ensures node moves update the baseline and the stored shift is applied
-      // relative to the new geometry instead of persisting an absolute screen position.
       if (!draggingRef.current) {
         setControl({
           x: baselineX + perpUnitRef.current.x * persistedShift,
@@ -132,7 +119,7 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
     return null;
   }
 
-  // Memoize the expensive bezier path calculation so it only runs when geometry changes
+  // Memoize the expensive bezier path calculation
   const twoSeg = useMemo(() => {
     try {
       const bez = getBezierPath({
@@ -146,7 +133,6 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
       });
       const pathStr = String(bez[0] || "");
 
-      // Try to parse cubic control points: "M sx,sy C c1x,c1y c2x,c2y tx,ty"
       const cubicMatch = pathStr.match(/C\s*([-\d.]+),([-\d.]+)\s*([-\d.]+),([-\d.]+)\s*([-\d.]+),([-\d.]+)/i);
 
       let c1 = { x: 0, y: 0 };
@@ -156,7 +142,6 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
         c1 = { x: Number(cubicMatch[1]), y: Number(cubicMatch[2]) };
         c2 = { x: Number(cubicMatch[3]), y: Number(cubicMatch[4]) };
       } else {
-        // Fallback: approximate cubic from quadratic baseline
         const baseline = defaultLabelRef.current;
         const cqx = 2 * baseline.x - 0.5 * (sx + tx);
         const cqy = 2 * baseline.y - 0.5 * (sy + ty);
@@ -182,19 +167,15 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
       const D = lerp(A, B, 0.5);
       const E = lerp(B, C, 0.5);
 
-      const Pmid = lerp(D, E, 0.5); // baseline midpoint
+      const Pmid = lerp(D, E, 0.5);
 
-      // Current handle position (may differ from Pmid if shifted)
       const P = { x: control.x, y: control.y };
 
-      // Delta from baseline mid to current handle
       const delta = { x: P.x - Pmid.x, y: P.y - Pmid.y };
 
-      // Translate the inner controls adjacent to the join by delta to move the join smoothly.
       const newL2 = { x: D.x + delta.x, y: D.y + delta.y };
       const newR1 = { x: E.x + delta.x, y: E.y + delta.y };
 
-      // Build two cubic segments joined at P
       const leftC1 = A;
       const leftC2 = newL2;
       const rightC1 = newR1;
@@ -204,7 +185,6 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
 
       return { path, px: P.x, py: P.y };
     } catch (err) {
-      // Fallback to quadratic if something goes wrong
       const fallbackPath = `M ${sx},${sy} Q ${control.x},${control.y} ${tx},${ty}`;
       return { path: fallbackPath, px: control.x, py: control.y };
     }
@@ -214,7 +194,7 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
   const labelX = twoSeg.px;
   const labelY = twoSeg.py;
 
-  // Robust client -> graph projection.
+  // Robust client -> graph projection
   const projectClient = (clientX: number, clientY: number) => {
     try {
       const inst = (window as any).__VG_RF_INSTANCE;
@@ -254,7 +234,6 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
       lastPointerIdRef.current = e.pointerId;
       pointerStartRef.current = { x: e.clientX, y: e.clientY };
 
-      // Ensure control is initialized from baseline synchronously to avoid jumps.
       try {
         const bez = getBezierPath({
           sourceX: sx,
@@ -276,7 +255,6 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
         perpUnitRef.current = { x: perp.x / len, y: perp.y / len };
 
         if (!controlFixedRef.current) {
-          // initialize control immediately so clickOffset uses correct coords
           setControl({
             x: baselineX + perpUnitRef.current.x * persistedShift,
             y: baselineY + perpUnitRef.current.y * persistedShift,
@@ -286,7 +264,6 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
         // ignore
       }
 
-      // store projected start if possible and compute click offset
       try {
         const proj = projectClient(e.clientX, e.clientY);
         pointerStartProjRef.current = { x: proj.x, y: proj.y };
@@ -297,8 +274,6 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
       }
 
       draggingRef.current = false;
-      // Allow the initial pointerdown event to propagate so React Flow can process selection.
-      // We will stop propagation/prevent default once an actual drag starts in pointermove.
     } catch (_) {
       // ignore
     }
@@ -333,7 +308,6 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
       if (triggered && !draggingRef.current) {
         draggingRef.current = true;
         try {
-          // Prefer edge-level callback to notify selection; avoid global fallbacks.
           if (dataTyped && typeof (dataTyped as any).onSelectEdge === "function") {
             (dataTyped as any).onSelectEdge(id);
           }
@@ -344,7 +318,6 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
       if (draggingRef.current) {
         if (!projected) projected = projectClient(e.clientX, e.clientY);
         const offset = clickOffsetRef.current || { x: 0, y: 0 };
-        // prevent jump by applying offset and updating control
         setControl({ x: projected.x + offset.x, y: projected.y + offset.y });
         e.preventDefault();
         e.stopPropagation();
@@ -364,9 +337,6 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
     } catch (_) {/* noop */}
 
     if (draggingRef.current) {
-      // End drag but do not freeze the control as an absolute position. Instead,
-      // persist the scalar shift and allow future node moves to recompute the baseline
-      // and apply this shift so the label follows geometry changes.
       draggingRef.current = false;
       pointerStartProjRef.current = null;
 
@@ -377,7 +347,6 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
       const shift = deltaX * perpUnit.x + deltaY * perpUnit.y;
 
       try {
-        // Persist via the edge-provided callback when available. No global fallback.
         if (dataTyped && typeof (dataTyped as any).onEdgeUpdate === "function") {
           (dataTyped as any).onEdgeUpdate({ id, shift });
         }
@@ -385,18 +354,13 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
         // ignore persistence failures
       }
 
-      // mark selection so next click opens editor
       selectionRef.current = true;
     } else {
       try {
-        // Prefer React Flow to manage selection. If this component detects that the edge
-        // is not selected, mark a local selection intent so subsequent clicks can open the editor.
         const wasSelected = !!((props as any).selected || (dataTyped && (dataTyped as any).selected));
         if (!wasSelected) {
           selectionRef.current = true;
         }
-        // Do NOT open the editor here; KnowledgeCanvas.onEdgeClickStrict implements
-        // the select-first / open-second interaction and will open the editor when appropriate.
       } catch (_) {
         // ignore
       }
@@ -406,29 +370,14 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
     pointerStartRef.current = null;
   };
 
-  // Detect cluster edges
-  const isClusterEdge = (dataTyped as any)?.edgeType === 'cluster' || typeof (dataTyped as any)?.aggregatedCount === 'number';
+  // Cluster-specific badge text with aggregated count
   const aggregatedCount = typeof (dataTyped as any)?.aggregatedCount === 'number' ? (dataTyped as any).aggregatedCount : 1;
-
-  // Resolve badge text
-  let badgePrimary = String((dataTyped as any)?.propertyPrefixed || (props as any)?.label || "").trim();
+  const propertyLabel = String((dataTyped as any)?.propertyPrefixed || (props as any)?.label || "").trim();
   
-  // For cluster edges, show aggregated count if > 1
-  if (isClusterEdge && aggregatedCount > 1) {
-    badgePrimary = badgePrimary ? `${badgePrimary} (${aggregatedCount})` : `${aggregatedCount} edges`;
+  let badgeText = propertyLabel;
+  if (aggregatedCount > 1) {
+    badgeText = propertyLabel ? `${propertyLabel} (${aggregatedCount})` : `${aggregatedCount} edges`;
   }
-  
-  const badgeSecondary = (() => {
-    try {
-      const v = (dataTyped as any)?.label;
-      if (typeof v === "undefined" || v === null) return undefined;
-      const s = String(v).trim();
-      return s ? s : undefined;
-    } catch (_) {
-      return undefined;
-    }
-  })();
-  const badgeText = String(badgePrimary || badgeSecondary || "").trim();
 
   const { edgeStyle, markerEnd, markerSize } = resolveEdgeRenderProps({ id, style, data });
   const finalMarkerEnd =
@@ -437,7 +386,7 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
     markerEnd ??
     { type: (MarkerType as any)?.Arrow ?? "arrow" };
 
-  // Calculate screen position for tooltip (graph coords -> screen coords with viewport transformation)
+  // Calculate screen position for tooltip
   const tooltipScreenX = labelX * viewport.zoom + viewport.x;
   const tooltipScreenY = labelY * viewport.zoom + viewport.y;
 
@@ -457,59 +406,27 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
         <div className="flex items-start justify-between gap-2">
           <div>
             <div className="text-sm font-semibold text-foreground break-words whitespace-pre-wrap">
-              {String(dataTyped.propertyPrefixed || badgePrimary || "")}
+              Cluster Edge {aggregatedCount > 1 ? `(${aggregatedCount} aggregated)` : ''}
             </div>
-            {badgeSecondary ? (
+            {propertyLabel ? (
               <div className="text-xs text-muted-foreground break-words mt-1">
-                {String(badgeSecondary)}
+                {propertyLabel}
               </div>
             ) : null}
-            <div className="text-xs text-muted-foreground break-words mt-1">
-              {String(dataTyped.propertyUri || "")}
-            </div>
           </div>
-          {dataTyped.color ? (
-            <div
-              className="w-6 h-6 rounded-full border"
-              style={{ background: String(dataTyped.color) }}
-              aria-hidden="true"
-            />
-          ) : null}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <div className="text-xs font-medium text-muted-foreground mb-1">Source IRI</div>
+            <div className="text-xs font-medium text-muted-foreground mb-1">Source</div>
             <div className="text-xs text-foreground break-words">{(sourceNode && sourceNode.data && sourceNode.data.iri) ? String(sourceNode.data.iri) : String(source)}</div>
           </div>
 
           <div>
-            <div className="text-xs font-medium text-muted-foreground mb-1">Target IRI</div>
+            <div className="text-xs font-medium text-muted-foreground mb-1">Target</div>
             <div className="text-xs text-foreground break-words">{(targetNode && targetNode.data && targetNode.data.iri) ? String(targetNode.data.iri) : String(target)}</div>
           </div>
         </div>
-
-        {Array.isArray(dataTyped.reasoningWarnings) && dataTyped.reasoningWarnings.length > 0 && (
-          <div>
-            <div className="text-xs font-medium text-amber-600 mb-1">Reasoning warnings</div>
-            <ul className="text-xs text-amber-700 space-y-0.5">
-              {dataTyped.reasoningWarnings.map((w: any, i: number) => (
-                <li key={i} className="break-words whitespace-pre-wrap">{String(w)}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {Array.isArray(dataTyped.reasoningErrors) && dataTyped.reasoningErrors.length > 0 && (
-          <div>
-            <div className="text-xs font-medium text-destructive mb-1">Reasoning errors</div>
-            <ul className="text-xs text-destructive space-y-0.5">
-              {dataTyped.reasoningErrors.map((e: any, i: number) => (
-                <li key={i} className="break-words whitespace-pre-wrap">{String(e)}</li>
-              ))}
-            </ul>
-          </div>
-        )}
       </div>
     </div>
   ) : null;
@@ -539,22 +456,14 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
                 onMouseLeave={onHoverLeave}
               >
                 <Badge
-                  variant={hasEdgeErrors ? "destructive" : "secondary"}
+                  variant="default"
                   className={
-                    (
-                      hasEdgeErrors
-                        ? "text-xs px-2 py-1 shadow-md border cursor-pointer border-destructive text-destructive"
-                        : hasEdgeWarnings
-                          ? "text-xs px-2 py-1 shadow-md border cursor-pointer bg-amber-100 text-amber-700 border-amber-300"
-                          : "text-xs px-2 py-1 shadow-md border cursor-pointer"
-                    ) + (isSelected ? " vg-edge--selected" : "")
+                    "text-xs px-2 py-1 shadow-md border cursor-pointer bg-primary text-primary-foreground" +
+                    (isSelected ? " vg-edge--selected" : "")
                   }
                 >
                   <div className="flex flex-col items-center">
-                    <div className="leading-tight break-words whitespace-pre-wrap">{badgePrimary || badgeSecondary}</div>
-                    {badgeSecondary ? (
-                      <div className="text-[10px] leading-tight mt-0.5 opacity-80 break-words whitespace-pre-wrap">{badgeSecondary}</div>
-                    ) : null}
+                    <div className="leading-tight break-words whitespace-pre-wrap font-medium">{badgeText}</div>
                   </div>
                 </Badge>
               </button>
@@ -569,6 +478,6 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
   );
 });
 
-ObjectPropertyEdge.displayName = "ObjectPropertyEdge";
+ClusterPropertyEdge.displayName = "ClusterPropertyEdge";
 
-export default ObjectPropertyEdge;
+export default ClusterPropertyEdge;

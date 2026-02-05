@@ -15,6 +15,7 @@ import {
   OWL_ONTOLOGY,
   SHACL,
 } from "../../../constants/vocabularies";
+import { computeClusters, buildClusterEdges } from "./clusterHelpers";
 
 /**
  * Lightweight, pure mapping helpers
@@ -188,31 +189,6 @@ function coerceQuad(input: QuadLike): {
   return { subject, predicate, object, raw: input, graph };
 }
 
-/**
- * Helper: Find all nodes reachable via outgoing edges from startNode (transitive closure)
- */
-function findReachableNodes(
-  startIri: string,
-  allEdges: Array<{ source: string; target: string }>
-): Set<string> {
-  const reachable = new Set<string>();
-  const queue = [startIri];
-  const visited = new Set<string>([startIri]);
-
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-
-    for (const edge of allEdges) {
-      if (edge.source === current && !visited.has(edge.target)) {
-        visited.add(edge.target);
-        reachable.add(edge.target);
-        queue.push(edge.target);
-      }
-    }
-  }
-
-  return reachable;
-}
 
 export function mapQuadsToDiagram(
   quads: QuadLike[] = [],
@@ -223,8 +199,7 @@ export function mapQuadsToDiagram(
     registry?: any;
     getRdfManager?: () => any;
     palette?: Record<string,string> | undefined;
-    collapsedNodes?: Set<string>;
-    collapseThreshold?: number;
+    clusterThreshold?: number;
   }
 ) {
   const predicateKindResolver = sanitizePredicateKind(options?.predicateKind);
@@ -714,61 +689,8 @@ export function mapQuadsToDiagram(
     }
   }
 
-  // Step 5: Apply collapse/expand logic
-  const collapsedSet = options?.collapsedNodes ?? new Set<string>();
-  const threshold = options?.collapseThreshold ?? 10;
-
-  // Count outgoing edges per node (before filtering)
-  const edgeCountByNode = new Map<string, number>();
-  for (const edge of rfEdges) {
-    const source = String(edge.source);
-    const count = edgeCountByNode.get(source) ?? 0;
-    edgeCountByNode.set(source, count + 1);
-  }
-
-  // Compute hidden node set: all nodes reachable from collapsed nodes
-  const hiddenNodeSet = new Set<string>();
-  const allEdgesForTraversal = rfEdges.map(e => ({
-    source: String(e.source),
-    target: String(e.target),
-  }));
-
-  for (const collapsedIri of collapsedSet) {
-    const reachable = findReachableNodes(collapsedIri, allEdgesForTraversal);
-    reachable.forEach(n => hiddenNodeSet.add(n));
-  }
-
-  // Filter nodes: exclude hidden nodes
-  const visibleNodeIris = new Set<string>();
-  for (const [iri, _] of nodeMap.entries()) {
-    if (!hiddenNodeSet.has(iri)) {
-      visibleNodeIris.add(iri);
-    }
-  }
-
-  // Filter edges: exclude edges touching hidden nodes
-  const visibleEdges = rfEdges.filter(e => {
-    const source = String(e.source);
-    const target = String(e.target);
-    return !hiddenNodeSet.has(source) && !hiddenNodeSet.has(target);
-  });
-
-  // Compute hiddenCount: for each visible node, count edges to hidden nodes
-  const hiddenCountByNode = new Map<string, number>();
-  for (const edge of rfEdges) {
-    const source = String(edge.source);
-    const target = String(edge.target);
-    
-    // If source is visible and target is hidden, count it for source
-    if (visibleNodeIris.has(source) && hiddenNodeSet.has(target)) {
-      const count = hiddenCountByNode.get(source) ?? 0;
-      hiddenCountByNode.set(source, count + 1);
-    }
-  }
-
-  // Build RF nodes from visible nodeMap entries only
+  // Step 5: Build initial RF nodes (before clustering)
   const allNodeEntries = Array.from(nodeMap.entries())
-    .filter(([iri, _]) => visibleNodeIris.has(iri))
     .map(([iri, info]) => {
     // Compute a lightweight classType/displayType from first rdf:type if available.
     let primaryTypeIri: string | undefined = undefined;
@@ -815,20 +737,6 @@ export function mapQuadsToDiagram(
       })),
     ];
 
-    // Collapse state computation
-    const edgeCount = edgeCountByNode.get(iri) ?? 0;
-    const hiddenCount = hiddenCountByNode.get(iri) ?? 0;
-    const isCollapsible = edgeCount >= threshold;
-    const isCollapsed = collapsedSet.has(iri);
-    
-    // Determine collapse indicator
-    let collapseIndicator: string | null = null;
-    if (hiddenCount > 0) {
-      collapseIndicator = `${hiddenCount}+`;
-    } else if (isCollapsible) {
-      collapseIndicator = "−";
-    }
-
     const nodeData: NodeData & any = {
       key: iri,
       iri,
@@ -853,12 +761,6 @@ export function mapQuadsToDiagram(
       hasReasoningError: reasoningErrors.length > 0,
       hasReasoningWarning: reasoningWarnings.length > 0,
       isTBox: !!isTBox,
-      // Collapse/expand state
-      edgeCount,
-      hiddenCount,
-      isCollapsible,
-      isCollapsed,
-      collapseIndicator,
     };
 
     const subjectText = (() => {
@@ -895,15 +797,115 @@ export function mapQuadsToDiagram(
         // Flag placeholder nodes (created for edge targets but not explicit subjects)
         __isPlaceholder: !explicitSubjects.has(iri),
       } as NodeData,
+      hidden: false, // Will be set during clustering
     } as RFNode<NodeData>;
 
     return { iri, isTBox, rfNode };
   });
 
-  const rfNodes: RFNode<NodeData>[] = allNodeEntries.map((e) => e.rfNode);
+  let rfNodes: RFNode<NodeData>[] = allNodeEntries.map((e) => e.rfNode);
+
+  // Step 6: Apply automatic clustering based on threshold
+  const threshold = typeof options?.clusterThreshold === 'number' ? options.clusterThreshold : 10;
+  
+  console.log('[Clustering] Checking if clustering should run:', {
+    threshold,
+    totalNodes: rfNodes.length,
+    totalEdges: rfEdges.length,
+    willRunClustering: threshold > 0,
+  });
+  
+  // Store clusters for later edge processing
+  let computedClusters: Map<string, any> | null = null;
+  let computedClaimedNodes: Set<string> | null = null;
+  
+  if (threshold > 0) {
+    console.log('[Clustering] Starting automatic clustering with threshold:', threshold);
+    
+    // Compute clusters automatically - no manual collapse state needed
+    const { clusters, claimedNodes } = computeClusters(rfNodes, rfEdges, new Set(), threshold);
+    computedClusters = clusters;
+    computedClaimedNodes = claimedNodes;
+    
+    console.log('[Clustering] Computed clusters:', {
+      clusterCount: clusters.size,
+      claimedNodeCount: claimedNodes.size,
+      clusters: Array.from(clusters.entries()).map(([parentId, info]) => ({
+        parent: parentId,
+        nodeCount: info.nodeIds.size,
+        internalEdgeCount: info.edgeIds.size,
+        nodeIds: Array.from(info.nodeIds),
+      })),
+    });
+    
+    // Add cluster nodes alongside original nodes (don't replace)
+    const clusterNodesToAdd: RFNode<NodeData>[] = [];
+    
+    for (const [parentId, cluster] of clusters.entries()) {
+      const parentNode = rfNodes.find(n => String(n.id) === parentId);
+      if (!parentNode) continue;
+      
+      const clusterNodeId = `cluster:${parentId}`;
+      console.log('[Clustering] Creating cluster node:', {
+        clusterNodeId,
+        parentId,
+        nodeCount: cluster.nodeIds.size,
+        internalEdges: cluster.edgeIds.size,
+      });
+      
+      // Create a new cluster node (not replacing the original)
+      clusterNodesToAdd.push({
+        id: clusterNodeId,
+        type: 'cluster',
+        position: parentNode.position || { x: 0, y: 0 },
+        data: {
+          ...parentNode.data,
+          clusterType: 'cluster',
+          parentIri: cluster.parentIri,
+          nodeIds: Array.from(cluster.nodeIds),
+          edgeIds: Array.from(cluster.edgeIds),
+          nodeCount: cluster.nodeIds.size,
+        },
+        hidden: false, // Cluster visible by default
+      } as RFNode<NodeData>);
+    }
+    
+    // Mark original nodes as hidden and add cluster parent reference
+    rfNodes = rfNodes.map(node => {
+      const nodeId = String(node.id);
+      
+      // If this node is part of any cluster, hide it and add parent reference
+      if (claimedNodes.has(nodeId)) {
+        const clusterParentId = Array.from(clusters.entries()).find(
+          ([_, info]) => info.nodeIds.has(nodeId)
+        )?.[0];
+        
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            __clusterParent: clusterParentId ? `cluster:${clusterParentId}` : undefined,
+          },
+          hidden: true, // Hide original nodes when clustered
+        };
+      }
+      
+      return node;
+    });
+    
+    // Add cluster nodes to the node array
+    rfNodes = [...rfNodes, ...clusterNodesToAdd];
+    
+    console.log('[Clustering] Node transformation complete:', {
+      clusterNodesAdded: clusterNodesToAdd.length,
+      hiddenChildren: claimedNodes.size,
+      totalNodes: rfNodes.length,
+      totalVisible: rfNodes.filter(n => !n.hidden).length,
+    });
+  }
 
   // rfEdgesFiltered kept for parallel edge processing below (uses all edges)
-  const rfEdgesFiltered = rfEdges;
+  let rfEdgesFiltered = rfEdges;
 
   const PARALLEL_EDGE_SHIFT_STEP = 60;
   const edgeGroups = new Map<string, RFEdge<LinkData>[]>();
@@ -940,12 +942,84 @@ export function mapQuadsToDiagram(
     });
   }
 
+  // Step 7: Apply edge clustering if clusters exist (reuse computed clusters from Step 6)
+  if (computedClusters && computedClusters.size > 0) {
+    // Build set of visible node IDs (nodes that are not hidden)
+    const visibleNodeIds = new Set<string>();
+    for (const node of rfNodes) {
+      if (!node.hidden) {
+        visibleNodeIds.add(String(node.id));
+      }
+    }
+
+    console.log('[Clustering] Building cluster edges from:', {
+      totalInputEdges: rfEdgesFiltered.length,
+      clusterCount: computedClusters.size,
+      visibleNodes: visibleNodeIds.size,
+    });
+
+    // Build cluster edges (redirect and aggregate) using the already-computed clusters
+    const { visibleEdges, clusterEdges } = buildClusterEdges(rfEdgesFiltered, computedClusters, new Set());
+
+    // Filter out cluster edges that reference hidden nodes
+    const validClusterEdges = clusterEdges.filter(edge => {
+      const source = String(edge.source);
+      const target = String(edge.target);
+      const isValid = visibleNodeIds.has(source) && visibleNodeIds.has(target);
+      
+      if (!isValid) {
+        console.warn('[Clustering] Filtering invalid cluster edge:', {
+          id: edge.id,
+          source,
+          target,
+          sourceVisible: visibleNodeIds.has(source),
+          targetVisible: visibleNodeIds.has(target),
+          allVisibleNodes: Array.from(visibleNodeIds),
+        });
+      }
+      
+      return isValid;
+    });
+
+    console.log('[Clustering] Cluster edge processing complete:', {
+      visibleRegularEdges: visibleEdges.length,
+      clusterEdgesCreated: clusterEdges.length,
+      validClusterEdges: validClusterEdges.length,
+      filteredOut: clusterEdges.length - validClusterEdges.length,
+      totalEdgesAfter: visibleEdges.length + validClusterEdges.length,
+      clusterEdgeDetails: validClusterEdges.map(e => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        count: (e.data as any)?.aggregatedCount || 1,
+        label: (e.data as any)?.label,
+      })),
+    });
+
+    // Combine visible regular edges with valid cluster edges
+    rfEdgesFiltered = [...visibleEdges, ...validClusterEdges as any];
+  }
+
+  // Set hidden flag on edges where either source or target is hidden
+  const hiddenNodeIds = new Set<string>();
+  for (const node of rfNodes) {
+    if (node.hidden) {
+      hiddenNodeIds.add(String(node.id));
+    }
+  }
+  
+  for (const edge of rfEdgesFiltered) {
+    const source = String(edge.source);
+    const target = String(edge.target);
+    edge.hidden = hiddenNodeIds.has(source) || hiddenNodeIds.has(target);
+  }
+
   // Memory optimization: clear arrays to allow garbage collection
   dataQuads.length = 0;
   inferredQuads.length = 0;
 
-  // Return visibleEdges (filtered) instead of rfEdgesFiltered (all edges before collapse filtering)
-  return { nodes: rfNodes, edges: visibleEdges };
+  // Return ALL edges with hidden flags (not filtered visibleEdges)
+  return { nodes: rfNodes, edges: rfEdgesFiltered };
 }
 
 /**

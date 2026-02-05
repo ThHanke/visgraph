@@ -7,6 +7,8 @@ import {
   useConnection,
   NodeToolbar,
 } from "@xyflow/react";
+import { Minus } from "lucide-react";
+import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { cn } from "../../lib/utils";
 import {
   computeTermDisplay,
@@ -111,6 +113,7 @@ function RDFNodeImpl(props: NodeProps) {
   const collapseIndicator = (nodeData as any).collapseIndicator;
   const isCollapsible = (nodeData as any).isCollapsible;
   const isCollapsed = (nodeData as any).isCollapsed;
+  const clusterParent = (nodeData as any).__clusterParent;
   
   // Get toggle function from store
   const toggleNodeCollapsed = useAppConfigStore((s) => s.toggleNodeCollapsed);
@@ -281,11 +284,48 @@ function RDFNodeImpl(props: NodeProps) {
           ['--node-color' as any]: nodeColor || 'transparent',
         }}
         className={cn(
-          "flex items-stretch overflow-hidden rounded-md shadow-sm box-border border-solid",
+          "relative flex items-stretch overflow-visible rounded-md shadow-sm box-border border-solid",
           selected ? "ring-2 ring-primary" : "",
           reasoningClass
         )}
       >
+        {/* Collapse indicator button - positioned absolutely at top-right corner of node border */}
+        {(collapseIndicator || clusterParent) && (
+          <TooltipPrimitive.Provider delayDuration={300}>
+            <TooltipPrimitive.Root>
+              <TooltipPrimitive.Trigger asChild>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // If node is part of a cluster, collapse back to cluster
+                    if (clusterParent && typeof (window as any).__VG_COLLAPSE_TO_CLUSTER === 'function') {
+                      console.log('[RDFNode] Collapsing back to cluster:', clusterParent);
+                      (window as any).__VG_COLLAPSE_TO_CLUSTER(clusterParent);
+                    } 
+                    // Otherwise use regular node collapse
+                    else if (iri) {
+                      toggleNodeCollapsed(String(iri));
+                    }
+                  }}
+                  className="absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all z-10"
+                  aria-label={clusterParent ? "Collapse to cluster" : isCollapsed ? "Expand node" : "Collapse node"}
+                >
+                  {clusterParent ? <Minus className="w-3.5 h-3.5" /> : collapseIndicator}
+                </button>
+              </TooltipPrimitive.Trigger>
+              <TooltipPrimitive.Portal>
+                <TooltipPrimitive.Content
+                  className="bg-popover text-popover-foreground rounded-md shadow-lg border px-3 py-1.5 text-xs z-50"
+                  sideOffset={5}
+                >
+                  {clusterParent ? "Collapse to cluster" : isCollapsed ? `Expand (${collapseIndicator})` : "Collapse node"}
+                  <TooltipPrimitive.Arrow className="fill-popover" />
+                </TooltipPrimitive.Content>
+              </TooltipPrimitive.Portal>
+            </TooltipPrimitive.Root>
+          </TooltipPrimitive.Provider>
+        )}
+
         {/* Left namespace color bar — explicit element so Tailwind can style layout; color is dynamic */}
         <div
           aria-hidden="true"
@@ -314,22 +354,6 @@ function RDFNodeImpl(props: NodeProps) {
                 </span>
               </div>
 
-              {/* Collapse/Expand Button */}
-              {collapseIndicator && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (iri) {
-                      toggleNodeCollapsed(String(iri));
-                    }
-                  }}
-                  className="ml-auto px-2 py-0.5 rounded text-xs font-mono bg-primary/10 hover:bg-primary/20 transition-colors"
-                  title={isCollapsed ? `Expand (${collapseIndicator})` : isCollapsible ? "Collapse node" : ""}
-                  aria-label={isCollapsed ? "Expand node" : "Collapse node"}
-                >
-                  {collapseIndicator}
-                </button>
-              )}
 
               {hasErrors}
             </div>
