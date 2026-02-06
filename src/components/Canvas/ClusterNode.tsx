@@ -10,6 +10,7 @@ interface ClusterNodeData extends NodeData {
   edgeIds: string[];
   nodeCount: number;
   color?: string;
+  topTypes?: Array<{ type: string; count: number; color?: string }>;
 }
 
 function ClusterNodeImpl(props: NodeProps<ClusterNodeData>) {
@@ -56,42 +57,73 @@ function ClusterNodeImpl(props: NodeProps<ClusterNodeData>) {
     // but mark it as a cluster node interaction
   }, []);
 
+  // Determine width based on whether we have type badges
+  const hasTypes = data.topTypes && data.topTypes.length > 0;
+  // Calculate dynamic width: base width + estimated badge widths
+  // Each badge is roughly 60-80px depending on content
+  const badgeCount = data.topTypes?.length || 0;
+  const estimatedBadgeWidth = badgeCount > 0 ? badgeCount * 75 : 0;
+  const nodeWidth = hasTypes ? Math.max(180, 100 + estimatedBadgeWidth) : 100;
+  const nodeHeight = 70;
+
   return (
     <div
       className={cn(
-        "cluster-node flex items-center justify-center cursor-pointer transition-all",
-        selected ? "ring-4 ring-primary" : ""
+        "cluster-node flex items-center justify-between cursor-pointer transition-all",
+        "border-3 border-white shadow-md px-4 gap-3",
+        selected ? "ring-4 ring-primary shadow-lg" : ""
       )}
       style={{
-        width: 80,
-        height: 80,
-        borderRadius: '50%',
+        width: nodeWidth,
+        height: nodeHeight,
+        borderRadius: '35px',
         backgroundColor: data.color || '#6366f1',
-        border: '3px solid white',
-        boxShadow: selected ? '0 4px 16px rgba(0,0,0,0.25)' : '0 4px 12px rgba(0,0,0,0.15)',
       }}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onMouseDown={handleMouseDown}
     >
-      <div style={{ textAlign: 'center', color: 'white', userSelect: 'none', pointerEvents: 'none' }}>
-        <div style={{ fontSize: 24, fontWeight: 'bold' }}>
+      {/* Left side: Node count */}
+      <div className={cn(
+        "text-center text-white select-none pointer-events-none",
+        hasTypes ? "min-w-[50px]" : ""
+      )}>
+        <div className="text-2xl font-bold">
           {data.nodeCount}
         </div>
-        <div style={{ fontSize: 10, marginTop: 4 }}>
+        <div className="text-[9px] mt-0.5">
           nodes
         </div>
       </div>
       
-      {/* Both source and target handles covering the entire circular node */}
+      {/* Right side: Type badges */}
+      {hasTypes && (
+        <div className="flex flex-col gap-1 items-end select-none pointer-events-none">
+          {data.topTypes!.map((typeInfo, idx) => (
+            <div
+              key={idx}
+              className="node-badge inline-block px-1.5 py-0.5 rounded-lg text-[8px] font-semibold whitespace-nowrap"
+              style={{
+                ['--node-color' as any]: typeInfo.color || 'rgba(255, 255, 255, 0.25)',
+              }}
+            >
+              <span className="truncate text-foreground-dark">
+                {typeInfo.type} ({typeInfo.count})
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      
+      {/* Both source and target handles covering the entire node */}
       {showHandles && (
         <Handle
           position={Position.Right}
           type="source"
           style={{
-            width: '80px',
-            height: '80px',
-            borderRadius: '50%',
+            width: `${nodeWidth}px`,
+            height: `${nodeHeight}px`,
+            borderRadius: '40px',
             left: '0',
             top: '0',
             transform: 'none',
@@ -108,9 +140,9 @@ function ClusterNodeImpl(props: NodeProps<ClusterNodeData>) {
           type="target"
           isConnectableStart={false}
           style={{
-            width: '80px',
-            height: '80px',
-            borderRadius: '50%',
+            width: `${nodeWidth}px`,
+            height: `${nodeHeight}px`,
+            borderRadius: '40px',
             left: '0',
             top: '0',
             transform: 'none',

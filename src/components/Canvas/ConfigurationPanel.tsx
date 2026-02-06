@@ -3,7 +3,7 @@
  * Provides UI for managing and testing persistent app configurations
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
@@ -131,6 +131,83 @@ export const ConfigurationPanel = ({
       }
     }
   }, [isOpen]);
+
+  // Watch for clustering algorithm changes and trigger re-clustering
+  const previousAlgorithm = useRef(config.clusteringAlgorithm);
+  useEffect(() => {
+    if (previousAlgorithm.current !== config.clusteringAlgorithm) {
+      previousAlgorithm.current = config.clusteringAlgorithm;
+      
+      // Step 1: Clear all cluster nodes and cluster edges from the canvas
+      try {
+        // Use the global React Flow instance exposed by KnowledgeCanvas
+        const reactFlowInstance = (window as any).__VG_RF_INSTANCE;
+        
+        if (reactFlowInstance && typeof reactFlowInstance.getNodes === 'function') {
+          const currentNodes = reactFlowInstance.getNodes();
+          const currentEdges = reactFlowInstance.getEdges();
+          
+          // Remove cluster nodes and show all hidden nodes
+          const cleanedNodes = currentNodes
+            .filter((n: any) => {
+              // Remove cluster nodes
+              return (n.data as any)?.clusterType !== 'cluster';
+            })
+            .map((n: any) => {
+              // Show all hidden nodes (they were hidden by clustering)
+              return { ...n, hidden: false };
+            });
+          
+          // Remove cluster edges (edges with IDs starting with 'cluster-edge-')
+          const cleanedEdges = currentEdges.filter((e: any) => {
+            return !String(e.id).startsWith('cluster-edge-');
+          });
+          
+          // Apply cleaned state
+          reactFlowInstance.setNodes(cleanedNodes);
+          reactFlowInstance.setEdges(cleanedEdges);
+          
+          console.log('[ConfigPanel] Cleared clustering:', {
+            removedNodes: currentNodes.length - cleanedNodes.length,
+            removedEdges: currentEdges.length - cleanedEdges.length,
+            remainingNodes: cleanedNodes.length,
+            remainingEdges: cleanedEdges.length,
+          });
+        } else {
+          console.warn('[ConfigPanel] React Flow instance not available');
+        }
+      } catch (err) {
+        console.error('[VG_DEBUG] Failed to clear cluster nodes/edges:', err);
+      }
+      
+      // Step 2: Signal that the next mapping should trigger layout
+      try {
+        if (typeof window !== 'undefined' && (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING) {
+          (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING();
+          console.log('[ConfigPanel] Requested force layout for next mapping');
+        }
+      } catch (err) {
+        console.warn('[ConfigPanel] Failed to request force layout:', err);
+      }
+      
+      // Step 3: Trigger re-emission of all subjects to re-cluster the graph
+      const mgr = getRdfManager();
+      if (mgr && typeof mgr.emitAllSubjects === 'function') {
+        mgr.emitAllSubjects('urn:vg:data').catch((err) => {
+          console.error('[VG_DEBUG] Failed to emit all subjects after clustering change:', err);
+          toast.error('Failed to re-cluster graph');
+        });
+      }
+      
+      // Close the configuration dialog
+      handleOpenChange(false);
+      
+      // Show success toast
+      toast.success(`Switched to ${config.clusteringAlgorithm} clustering`, {
+        description: 'Clearing previous clusters and re-clustering...'
+      });
+    }
+  }, [config.clusteringAlgorithm, handleOpenChange]);
 
 
   const handleExportConfig = () => {
@@ -339,23 +416,23 @@ export const ConfigurationPanel = ({
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label>Clustering Algorithm</Label>
-                  <Select 
-                    value={config.clusteringAlgorithm} 
-                    onValueChange={(value) => setClusteringAlgorithm(value as "greedy" | "louvain" | "connected-components")}
+                  <Select
+                    value={config.clusteringAlgorithm}
+                    onValueChange={(value) => setClusteringAlgorithm(value as "louvain" | "label-propagation" | "kmeans")}
                   >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="louvain">Louvain (Recommended)</SelectItem>
-                      <SelectItem value="greedy">Greedy</SelectItem>
-                      <SelectItem value="connected-components">Connected Components</SelectItem>
+                      <SelectItem value="label-propagation">Label Propagation (SLPA)</SelectItem>
+                      <SelectItem value="kmeans">K-Means</SelectItem>
                     </SelectContent>
                   </Select>
                   <div className="text-xs text-muted-foreground">
-                    {config.clusteringAlgorithm === "louvain" && "Community detection - best for dense knowledge graphs and natural communities"}
-                    {config.clusteringAlgorithm === "greedy" && "Hierarchical algorithm with extension - best for manual control and star-like patterns"}
-                    {config.clusteringAlgorithm === "connected-components" && "⚠️ Only suitable for disconnected graphs - creates very large clusters in dense graphs"}
+                    {config.clusteringAlgorithm === "louvain" && "Community detection via modularity optimization - best for dense knowledge graphs"}
+                    {config.clusteringAlgorithm === "label-propagation" && "Speaker-Listener Label Propagation - detects overlapping communities in social networks"}
+                    {config.clusteringAlgorithm === "kmeans" && "Feature-based clustering using position and connectivity - groups similar nodes spatially"}
                   </div>
                 </div>
 

@@ -9,7 +9,8 @@ import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
 import type { NodeData, LinkData } from "../../../types/canvas";
 import initializeEdge from "./edgeStyle";
 import { computeClustersLouvainNgraph } from "./clusterAlgorithms/louvainNgraph";
-import { computeClustersConnectedComponents } from "./clusterAlgorithms/connectedComponents";
+import { computeClustersLabelPropagation } from "./clusterAlgorithms/labelPropagation";
+import { computeClustersKmeans } from "./clusterAlgorithms/kmeans";
 
 /** Maximum connectivity threshold for cluster extension absorption */
 const MAX_CONNECTIVITY_FOR_ABSORPTION = 2;
@@ -18,6 +19,58 @@ export interface ClusterInfo {
   parentIri: string;
   nodeIds: Set<string>;
   edgeIds: Set<string>; // Internal edges within cluster
+}
+
+/**
+ * Analyze the most common meaningful types in a cluster.
+ * Queries the badge type (displayclassType or classType) from contained nodes
+ * and returns the top 3 most frequent types with their counts and colors.
+ * Colors are taken directly from the nodes (already computed by the mapper).
+ * 
+ * @param nodeIds - Array of node IDs in the cluster
+ * @param allNodes - All nodes in the diagram
+ * @returns Top 3 types sorted by frequency, with counts and colors
+ */
+function analyzeClusterTypes(
+  nodeIds: string[],
+  allNodes: RFNode<NodeData>[]
+): Array<{ type: string; count: number; color?: string }> {
+  const typeCountMap = new Map<string, { count: number; color?: string }>();
+  
+  // Build node lookup map for efficient access
+  const nodeMap = new Map(allNodes.map(n => [String(n.id), n]));
+  
+  // Count occurrences of each type
+  for (const nodeId of nodeIds) {
+    const node = nodeMap.get(nodeId);
+    if (!node) continue;
+    
+    // Use the same badge type that's displayed on RDFNode (the display name)
+    const badgeType = (node.data as any).displayclassType || (node.data as any).classType;
+    if (!badgeType || typeof badgeType !== 'string' || badgeType.trim().length === 0) {
+      continue;
+    }
+    
+    const existing = typeCountMap.get(badgeType);
+    if (existing) {
+      existing.count++;
+    } else {
+      // Use the color that was already computed and stored by the mapper
+      // The mapper derives color from the node's classType using getNodeColor
+      const nodeColor = node.data.color;
+      
+      typeCountMap.set(badgeType, { 
+        count: 1, 
+        color: nodeColor
+      });
+    }
+  }
+  
+  // Sort by count descending and take top 3
+  return Array.from(typeCountMap.entries())
+    .map(([type, data]) => ({ type, count: data.count, color: data.color }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3);
 }
 
 /**
@@ -211,10 +264,10 @@ export function applyClustering(
   options: {
     threshold: number;
     collapsedSet?: Set<string>;
-    algorithm?: "greedy" | "louvain" | "connected-components";
+    algorithm?: "louvain" | "label-propagation" | "kmeans";
   }
 ): { nodes: RFNode<NodeData>[]; edges: RFEdge<LinkData>[] } {
-  const { threshold, collapsedSet = new Set(), algorithm = "greedy" } = options;
+  const { threshold, collapsedSet = new Set(), algorithm = "label-propagation" } = options; // default: label-propagation (fine)
 
   console.log('[Clustering] Starting automatic clustering:', {
     algorithm,
@@ -249,29 +302,6 @@ export function applyClustering(
     })),
   });
 
-  // Extend clusters by absorbing weakly-connected adjacent nodes
-  // (Only for greedy algorithm - Louvain and connected-components don't need extension)
-  if (algorithm === "greedy") {
-    extendClusters(clusters, nodes, edges);
-    
-    // Calculate visible nodes after extension (greedy only)
-    const claimedAfterExtension = new Set<string>();
-    for (const cluster of clusters.values()) {
-      for (const nodeId of cluster.nodeIds) {
-        claimedAfterExtension.add(nodeId);
-      }
-    }
-    const visibleAfterExtension = nodes.length - claimedAfterExtension.size + clusters.size;
-    
-    console.log('[Clustering] Extended clusters (greedy only):', {
-      clusterCount: clusters.size,
-      claimedNodeCount: claimedAfterExtension.size,
-      visibleNodesAfterExtension: visibleAfterExtension,
-      reductionFromExtension: visibleAfterInitial - visibleAfterExtension,
-      totalReductionFromStart: nodes.length - visibleAfterExtension,
-    });
-  }
-
   // Update claimedNodes to include all nodes from final clusters
   claimedNodes.clear();
   for (const cluster of clusters.values()) {
@@ -288,12 +318,17 @@ export function applyClustering(
     if (!parentNode) continue;
 
     const clusterNodeId = `cluster:${parentId}`;
-    // console.log('[Clustering] Creating cluster node:', {
-    //   clusterNodeId,
-    //   parentId,
-    //   nodeCount: cluster.nodeIds.size,
-    //   internalEdges: cluster.edgeIds.size,
-    // });
+    
+    // Analyze cluster types for display on the cluster node
+    const topTypes = analyzeClusterTypes(Array.from(cluster.nodeIds), nodes);
+    
+    console.log('[Clustering] Creating cluster node:', {
+      clusterNodeId,
+      parentId,
+      nodeCount: cluster.nodeIds.size,
+      internalEdges: cluster.edgeIds.size,
+      topTypes,
+    });
 
     clusterNodesToAdd.push({
       id: clusterNodeId,
@@ -306,6 +341,7 @@ export function applyClustering(
         nodeIds: Array.from(cluster.nodeIds),
         edgeIds: Array.from(cluster.edgeIds),
         nodeCount: cluster.nodeIds.size,
+        topTypes, // Include top 3 types for cluster visualization
       },
       hidden: false, // Cluster visible by default
     } as RFNode<NodeData>);
@@ -529,17 +565,16 @@ export function findClusterParentOf(
 }
 
 /**
- * Build cluster edges for ALL possible visibility combinations.
+ * Build cluster edges with simplified approach:
  * 
- * Strategy (refactored for clarity):
- * - Keep ALL original edges (will be shown when both endpoints are expanded)
- * - For each cluster, find its boundary edges (edges crossing cluster boundary)
- * - For each boundary edge, determine external endpoint (node or another cluster)
- * - Create appropriate cluster edge variant: cluster:X → cluster:Y, cluster:X → nodeB, or nodeA → cluster:X
- * - Group/aggregate edges with same source→target pair
+ * Strategy:
+ * 1. Keep ALL original edges (shown when both endpoints are expanded)
+ * 2. For each cluster's boundary edges, create cluster-to-individual edges (preserving direction & predicate)
+ * 3. Group boundary edges by external cluster + direction + predicate
+ * 4. Create aggregated cluster-to-cluster edges for grouped connections
  * 
- * This approach is clearer: process each cluster's boundary explicitly, ensuring
- * all cross-cluster connections are properly represented.
+ * Edge IDs include predicate for uniqueness (multiple edges can exist between same nodes)
+ * Canvas handles visibility based on visible nodes - no hidden flags needed here
  */
 export function buildClusterEdges(
   allEdges: RFEdge<LinkData>[],
@@ -552,11 +587,26 @@ export function buildClusterEdges(
   // All original edges stay as-is (will be shown when both nodes are expanded)
   const visibleEdges: RFEdge<LinkData>[] = [...allEdges];
   
-  // Track all cluster edge variants to create
-  // Key format: "sourceId→targetId" where IDs can be either "cluster:X" or regular node IDs
-  const edgeAggregation = new Map<string, { edgeIds: string[]; data: LinkData[] }>();
+  // Track all cluster edges by deterministic ID (includes predicate for uniqueness)
+  const clusterEdgeMap = new Map<string, {
+    id: string;
+    source: string;
+    target: string;
+    originalEdgeIds: string[];
+    data: LinkData;
+  }>();
 
-  // Process each cluster's boundary edges explicitly
+  // Helper: Find which cluster a node belongs to
+  const getNodeCluster = (nodeId: string): string | null => {
+    for (const [parentId, cluster] of clusters) {
+      if (cluster.nodeIds.has(nodeId)) {
+        return parentId;
+      }
+    }
+    return null;
+  };
+
+  // Process each cluster's boundary edges
   for (const [parentId, cluster] of clusters.entries()) {
     const boundaryEdges = findClusterBoundaryEdges(cluster, allEdges);
     
@@ -565,169 +615,111 @@ export function buildClusterEdges(
       boundaryEdgeCount: boundaryEdges.length,
     });
     
+    // PHASE 1: Create cluster-to-individual edges (preserving direction & predicate)
     for (const edge of boundaryEdges) {
       const source = String(edge.source);
       const target = String(edge.target);
-      const edgeId = String(edge.id);
-      
-      // Determine which endpoint is internal (in this cluster) vs external
       const sourceInCluster = cluster.nodeIds.has(source);
-      const targetInCluster = cluster.nodeIds.has(target);
       
-      // One and only one should be in cluster (boundary edge property)
-      if (sourceInCluster === targetInCluster) {
-        console.warn('[Clustering] Invalid boundary edge detected:', {
-          edgeId,
-          source,
-          target,
-          sourceInCluster,
-          targetInCluster,
+      // Extract predicate for unique edge identification
+      const predicate = (edge.data as any)?.iri || (edge.data as any)?.property || 'default';
+      
+      const clusterSrc = sourceInCluster ? `cluster:${parentId}` : source;
+      const clusterTgt = sourceInCluster ? target : `cluster:${parentId}`;
+      
+      // ID includes predicate for uniqueness (multiple predicates between same nodes)
+      const edgeId = `cluster-edge-${clusterSrc}→${clusterTgt}→${predicate}`;
+      
+      if (!clusterEdgeMap.has(edgeId)) {
+        clusterEdgeMap.set(edgeId, {
+          id: edgeId,
+          source: clusterSrc,
+          target: clusterTgt,
+          originalEdgeIds: [],
+          data: { ...(edge.data as LinkData), aggregatedCount: 0 } as LinkData,
         });
-        continue;
       }
       
-      const internalNode = sourceInCluster ? source : target;
+      const entry = clusterEdgeMap.get(edgeId)!;
+      entry.originalEdgeIds.push(String(edge.id));
+      (entry.data as any).aggregatedCount = entry.originalEdgeIds.length;
+    }
+    
+    // PHASE 2: Group boundary edges by external cluster + direction + predicate
+    const clusterToClusterGroups = new Map<string, RFEdge<LinkData>[]>();
+    
+    for (const edge of boundaryEdges) {
+      const source = String(edge.source);
+      const target = String(edge.target);
+      const sourceInCluster = cluster.nodeIds.has(source);
       const externalNode = sourceInCluster ? target : source;
-      const isOutbound = sourceInCluster; // edge goes OUT of this cluster
+      const externalCluster = getNodeCluster(externalNode);
       
-      // Check if external node is in another cluster
-      // First check if it's a cluster parent itself, then check if it's a child of another cluster
-      const externalIsClusterParent = clusters.has(externalNode);
-      const externalClusterParent = externalIsClusterParent 
-        ? externalNode 
-        : findClusterParentOf(externalNode, clusters);
-      
-      // Create cluster edge variant(s)
-      // IMPORTANT: When external node is a cluster parent, create BOTH variants:
-      // 1. Edge to the cluster (for when it's collapsed)
-      // 2. Edge to the original node (for when cluster is expanded showing parent node)
-      const variants: Array<{ source: string; target: string }> = [];
-      
-      if (isOutbound) {
-        // Edge goes OUT of this cluster
-        if (externalIsClusterParent) {
-          // Create BOTH variants for cluster parent
-          variants.push({
-            source: `cluster:${parentId}`,
-            target: `cluster:${externalClusterParent}`, // Edge to collapsed cluster
-          });
-          variants.push({
-            source: `cluster:${parentId}`,
-            target: externalNode, // Edge to expanded parent node
-          });
-        } else if (externalClusterParent) {
-          // External is a child of another cluster
-          // Create BOTH variants: to cluster AND to individual child node
-          variants.push({
-            source: `cluster:${parentId}`,
-            target: `cluster:${externalClusterParent}`, // Edge to collapsed cluster
-          });
-          variants.push({
-            source: `cluster:${parentId}`,
-            target: externalNode, // Edge to expanded child node
-          });
-        } else {
-          // External is unclustered - edge to original node
-          variants.push({
-            source: `cluster:${parentId}`,
-            target: externalNode,
-          });
-        }
-      } else {
-        // Edge comes IN to this cluster
-        if (externalIsClusterParent) {
-          // Create BOTH variants for cluster parent
-          variants.push({
-            source: `cluster:${externalClusterParent}`, // Edge from collapsed cluster
-            target: `cluster:${parentId}`,
-          });
-          variants.push({
-            source: externalNode, // Edge from expanded parent node
-            target: `cluster:${parentId}`,
-          });
-        } else if (externalClusterParent) {
-          // External is a child of another cluster
-          // Create BOTH variants: from cluster AND from individual child node
-          variants.push({
-            source: `cluster:${externalClusterParent}`, // Edge from collapsed cluster
-            target: `cluster:${parentId}`,
-          });
-          variants.push({
-            source: externalNode, // Edge from expanded child node
-            target: `cluster:${parentId}`,
-          });
-        } else {
-          // External is unclustered - edge from original node
-          variants.push({
-            source: externalNode,
-            target: `cluster:${parentId}`,
-          });
-        }
-      }
-      
-      // Aggregate all variants
-      for (const variant of variants) {
-        // Skip self-loops (shouldn't happen with proper boundary detection)
-        if (variant.source === variant.target) {
-          console.warn('[Clustering] Self-loop detected in cluster edge variant:', {
-            edgeId,
-            source,
-            target,
-            variantSource: variant.source,
-            variantTarget: variant.target,
-          });
-          continue;
-        }
+      // Only process if external node is also in a cluster (not the same cluster)
+      if (externalCluster && externalCluster !== parentId) {
+        const predicate = (edge.data as any)?.iri || (edge.data as any)?.property || 'default';
+        const direction = sourceInCluster ? 'OUT' : 'IN';
         
-        const aggregationKey = `${variant.source}→${variant.target}`;
-        if (!edgeAggregation.has(aggregationKey)) {
-          edgeAggregation.set(aggregationKey, { edgeIds: [], data: [] });
+        // Group by: direction, target cluster, and predicate
+        const groupKey = `${direction}|${externalCluster}|${predicate}`;
+        
+        if (!clusterToClusterGroups.has(groupKey)) {
+          clusterToClusterGroups.set(groupKey, []);
         }
-        const aggregation = edgeAggregation.get(aggregationKey)!;
-        aggregation.edgeIds.push(edgeId);
-        aggregation.data.push(edge.data as LinkData);
+        clusterToClusterGroups.get(groupKey)!.push(edge);
       }
+    }
+    
+    // PHASE 3: Create aggregated cluster-to-cluster edges
+    for (const [groupKey, edges] of clusterToClusterGroups) {
+      const [direction, targetClusterId, predicate] = groupKey.split('|');
+      
+      const clusterSrc = direction === 'OUT' ? `cluster:${parentId}` : `cluster:${targetClusterId}`;
+      const clusterTgt = direction === 'OUT' ? `cluster:${targetClusterId}` : `cluster:${parentId}`;
+      
+      // ID includes predicate for uniqueness
+      const edgeId = `cluster-edge-${clusterSrc}→${clusterTgt}→${predicate}`;
+      
+      // This will overwrite individual edges when both endpoints are clustered
+      clusterEdgeMap.set(edgeId, {
+        id: edgeId,
+        source: clusterSrc,
+        target: clusterTgt,
+        originalEdgeIds: edges.map(e => String(e.id)),
+        data: {
+          ...(edges[0].data as LinkData),
+          aggregatedCount: edges.length,
+          label: edges.length > 1 ? `×${edges.length}` : (edges[0].data as any)?.label || '',
+        } as LinkData,
+      });
     }
   }
 
-  console.log('[Clustering] Edge aggregation complete:', {
-    uniqueClusterEdgePairs: edgeAggregation.size,
-    aggregations: Array.from(edgeAggregation.entries()).map(([key, val]) => ({
-      key,
-      count: val.edgeIds.length,
+  console.log('[Clustering] Edge creation complete:', {
+    totalClusterEdges: clusterEdgeMap.size,
+    edgeBreakdown: Array.from(clusterEdgeMap.entries()).map(([id, entry]) => ({
+      id,
+      source: entry.source,
+      target: entry.target,
+      count: entry.originalEdgeIds.length,
     })),
   });
 
-  // Build cluster edge objects from aggregated variants
-  const clusterEdges: RFEdge<LinkData & { edgeType: 'cluster'; aggregatedCount: number; originalEdgeIds: string[] }>[] = [];
-  
-  for (const [key, { edgeIds, data }] of edgeAggregation) {
-    const [source, target] = key.split('→');
-    const aggregatedCount = edgeIds.length;
-    
-    // Get representative edge data from first edge
-    const representativeData = data[0] || {};
-    
-    // Use initializeEdge to ensure proper markerEnd format
-    const initializedEdge = initializeEdge({
-      id: `cluster-edge-${key}`,
-      source,
-      target,
-      type: 'cluster',
-      data: {
-        ...representativeData,
-        edgeType: 'cluster',
-        aggregatedCount,
-        originalEdgeIds: edgeIds,
-        from: source,
-        to: target,
-        label: aggregatedCount > 1 ? `×${aggregatedCount}` : representativeData.label || '',
-      } as any,
-      hidden: false,
-    });
-    
-    clusterEdges.push(initializedEdge);
-  }
+  // Convert to edge array with proper initialization
+  const clusterEdges: RFEdge<LinkData & { edgeType: 'cluster'; aggregatedCount: number; originalEdgeIds: string[] }>[] = 
+    Array.from(clusterEdgeMap.values()).map(entry =>
+      initializeEdge({
+        id: entry.id,
+        source: entry.source,
+        target: entry.target,
+        type: 'cluster',
+        data: {
+          ...entry.data,
+          edgeType: 'cluster',
+          originalEdgeIds: entry.originalEdgeIds,
+        } as any,
+      })
+    );
 
   return { visibleEdges, clusterEdges };
 }
@@ -745,15 +737,17 @@ function selectClusteringAlgorithm(
   console.log(`[Clustering] Using algorithm: ${algorithm}`);
   
   switch (algorithm) {
-    case "louvain":
+    case "louvain": // coarse clustering
       return computeClustersLouvainNgraph(nodes, edges, { threshold, collapsedSet });
     
-    case "connected-components":
-      return computeClustersConnectedComponents(nodes, edges, { threshold, collapsedSet });
+    case "label-propagation": // fine clustering (default)
+      return computeClustersLabelPropagation(nodes, edges, { threshold, collapsedSet });
     
-    case "greedy":
+    case "kmeans":
+      return computeClustersKmeans(nodes, edges, { threshold, collapsedSet });
+    
     default:
-      // Use the original greedy hierarchical algorithm
-      return computeClusters(nodes, edges, collapsedSet, threshold);
+      // Default to label-propagation (fine)
+      return computeClustersLabelPropagation(nodes, edges, { threshold, collapsedSet });
   }
 }
