@@ -68,12 +68,20 @@ export function computeNodeChanges(
   nodesList: RFNode<NodeData>[],
   currentNodes: RFNode<NodeData>[],
 ): any[] {
+  // Sort so visible nodes (hidden: false or undefined) are processed first
+  // This improves perceived rendering performance by showing visible content immediately
+  const sortedNodes = [...nodesList].sort((a, b) => {
+    const aHidden = a.hidden === true ? 1 : 0;
+    const bHidden = b.hidden === true ? 1 : 0;
+    return aHidden - bHidden; // false/undefined before true
+  });
+
   const current = currentNodes || [];
   const currentById = new Map(
     current.map((node: any) => [String(node.id), node]),
   );
   const incomingById = new Map(
-    nodesList.map((node: any) => [String(node.id), node]),
+    sortedNodes.map((node: any) => [String(node.id), node]),
   );
   const knownIds = new Set<string>([
     ...currentById.keys(),
@@ -81,7 +89,7 @@ export function computeNodeChanges(
   ]);
   const changes: any[] = [];
 
-  for (const node of nodesList) {
+  for (const node of sortedNodes) {
     const id = String(node.id);
     const existing = currentById.get(id);
     const isPlaceholder = (node as any).data?.__isPlaceholder === true;
@@ -142,15 +150,23 @@ export function computeEdgeChanges(
   currentEdges: RFEdge<LinkData>[],
   updatedSubjects?: Set<string>,
 ): any[] {
+  // Sort so visible edges (hidden: false or undefined) are processed first
+  // This ensures visible connections appear immediately
+  const sortedEdges = [...edgesList].sort((a, b) => {
+    const aHidden = a.hidden === true ? 1 : 0;
+    const bHidden = b.hidden === true ? 1 : 0;
+    return aHidden - bHidden; // false/undefined before true
+  });
+
   const current = currentEdges || [];
   const currentById = new Map(
     current.map((edge: any) => [String(edge.id), edge]),
   );
-  const incomingIds = new Set(edgesList.map((e) => String(e.id)));
+  const incomingIds = new Set(sortedEdges.map((e) => String(e.id)));
   const changes: any[] = [];
 
   // Add or replace incoming edges
-  for (const edge of edgesList) {
+  for (const edge of sortedEdges) {
     const id = String(edge.id);
     const existing = currentById.get(id);
     const mergedEdge = {
