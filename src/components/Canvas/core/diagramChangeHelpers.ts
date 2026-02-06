@@ -101,6 +101,18 @@ export function computeNodeChanges(
         continue; // ← Skip this node completely - keep existing
       }
 
+      // CRITICAL: Never overwrite cluster nodes during incremental updates!
+      // Cluster nodes are only created during complete data loads (emitAllSubjects, loadFromUrl)
+      // Incremental updates must not modify cluster metadata
+      const existingIsCluster = (existing.data as any)?.clusterType === 'cluster';
+      const incomingIsCluster = (node as any).data?.clusterType === 'cluster';
+      
+      if (existingIsCluster && !incomingIsCluster) {
+        // Existing is a cluster, incoming is not - preserve the cluster completely
+        console.log('[Clustering] Protecting cluster node from incremental override:', id);
+        continue; // ← Skip this node - keep existing cluster
+      }
+
       // Merge and check if changed
       const mergedData = mergeDataOptimized(existing.data, (node as any).data);
 

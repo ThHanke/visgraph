@@ -153,10 +153,12 @@ export class LayoutManager {
             return typeof meta.width !== 'number' || typeof meta.height !== 'number';
           });
           if (needsMeasurement) {
-            // Wait up to a short timeout for measurements to appear, checking every RAF.
-            // Increase timeout slightly and keep it conservative; if measurements still
-            // missing we will attempt a DOM-measurement fallback so layout can use real sizes.
-            const waitForMeasurements = async (timeoutMs = 2000) => {
+            // Wait up to a SHORT timeout for measurements to appear, checking every RAF.
+            // CRITICAL: Keep timeout low (300ms) to avoid blocking the UI when layout is triggered
+            // from user interactions (e.g., dialog buttons). Longer waits can make the browser
+            // think the page is frozen. If measurements still missing after timeout, we fall back
+            // to DOM measurements below.
+            const waitForMeasurements = async (timeoutMs = 300) => {
               const start = Date.now();
               const rafWait = () =>
                 new Promise((res) => {
@@ -171,7 +173,13 @@ export class LayoutManager {
                     }
                   }
                 });
-              while (Date.now() - start < timeoutMs) {
+              
+              // Limit iterations to avoid infinite loops
+              let iterations = 0;
+              const maxIterations = 20; // ~320ms at 16ms/iteration
+              
+              while (Date.now() - start < timeoutMs && iterations < maxIterations) {
+                iterations++;
                 // eslint-disable-next-line no-await-in-loop
                 await rafWait();
                 const rechecked = (this.diagram as any).getNodes() || [];
@@ -183,8 +191,14 @@ export class LayoutManager {
                 if (!stillMissing) break;
               }
             };
-            // eslint-disable-next-line no-await-in-loop
-            await waitForMeasurements();
+            
+            try {
+              // eslint-disable-next-line no-await-in-loop
+              await waitForMeasurements();
+            } catch (err) {
+              // Swallow measurement wait errors and proceed to DOM fallback
+              console.warn('[LayoutManager] Measurement wait failed, using DOM fallback:', err);
+            }
 
             // If measurements are still missing, attempt a best-effort DOM fallback.
             // This queries the document for node elements using common React Flow data attributes

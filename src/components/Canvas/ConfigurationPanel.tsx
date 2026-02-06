@@ -93,7 +93,7 @@ export const ConfigurationPanel = ({
     setLayoutSpacing,
     setCanvasTheme,
     setAutoReasoning,
-    setMaxVisibleNodes,
+    setClusteringAlgorithm,
     // Reasoning rulesets setter
     setReasoningRulesets,
     resetToDefaults,
@@ -338,15 +338,25 @@ export const ConfigurationPanel = ({
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Max Visible Nodes: {config.maxVisibleNodes}</Label>
-                  <Slider
-                    value={[config.maxVisibleNodes]}
-                    onValueChange={([value]) => setMaxVisibleNodes(value)}
-                    min={100}
-                    max={5000}
-                    step={100}
-                    className="w-full"
-                  />
+                  <Label>Clustering Algorithm</Label>
+                  <Select 
+                    value={config.clusteringAlgorithm} 
+                    onValueChange={(value) => setClusteringAlgorithm(value as "greedy" | "louvain" | "connected-components")}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="louvain">Louvain (Recommended)</SelectItem>
+                      <SelectItem value="greedy">Greedy</SelectItem>
+                      <SelectItem value="connected-components">Connected Components</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="text-xs text-muted-foreground">
+                    {config.clusteringAlgorithm === "louvain" && "Community detection - best for dense knowledge graphs and natural communities"}
+                    {config.clusteringAlgorithm === "greedy" && "Hierarchical algorithm with extension - best for manual control and star-like patterns"}
+                    {config.clusteringAlgorithm === "connected-components" && "⚠️ Only suitable for disconnected graphs - creates very large clusters in dense graphs"}
+                  </div>
                 </div>
 
                 <div className="space-y-2">

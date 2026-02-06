@@ -32,6 +32,7 @@ export interface AppConfig {
   tooltipEnabled: boolean;
   autoReasoning: boolean;
   collapseThreshold: number;
+  clusteringAlgorithm: "greedy" | "louvain" | "connected-components";
   collapsedNodes: string[];
   reasoningRulesets: string[];
   debugRdfLogging: boolean;
@@ -62,6 +63,7 @@ interface AppConfigStore {
   setPersistedAutoload: (enabled: boolean) => void;
   setAutoReasoning: (enabled: boolean) => void;
   setCollapseThreshold: (threshold: number) => void;
+  setClusteringAlgorithm: (algorithm: "greedy" | "louvain" | "connected-components") => void;
   toggleNodeCollapsed: (iri: string) => void;
   setCollapsedNodes: (iris: string[]) => void;
   setReasoningRulesets: (reasoningRulesets: string[]) => void;
@@ -115,6 +117,7 @@ const defaultConfig: AppConfig = {
   debugRdfLogging: true,
   debugAll: false,
   collapseThreshold: 10,
+  clusteringAlgorithm: "louvain",
   collapsedNodes: [],
   reasoningRulesets: ["best-practice.n3", "owl-rl.n3"],
   recentOntologies: [],
@@ -187,6 +190,11 @@ function normalizeAppConfigInput(value: unknown, context: string): AppConfig {
     throw new Error(`${context}.canvasTheme must be 'light', 'dark', or 'auto'`);
   }
 
+  const clusteringAlgorithm = input.clusteringAlgorithm ?? cfg.clusteringAlgorithm;
+  if (clusteringAlgorithm !== "greedy" && clusteringAlgorithm !== "louvain" && clusteringAlgorithm !== "connected-components") {
+    throw new Error(`${context}.clusteringAlgorithm must be 'greedy', 'louvain', or 'connected-components'`);
+  }
+
   return {
     currentLayout: layout,
     layoutAnimations: normalizeBooleanFlag(
@@ -214,6 +222,7 @@ function normalizeAppConfigInput(value: unknown, context: string): AppConfig {
       cfg.autoReasoning,
     ),
     collapseThreshold,
+    clusteringAlgorithm,
     collapsedNodes: normalizeStringArray(
       input.collapsedNodes ?? cfg.collapsedNodes,
       `${context}.collapsedNodes`,
@@ -385,6 +394,16 @@ export const useAppConfigStore = create<AppConfigStore>()(
             min: MIN_COLLAPSE_THRESHOLD,
             max: MAX_COLLAPSE_THRESHOLD,
           }),
+        }));
+      },
+
+      setClusteringAlgorithm: (algorithm: "greedy" | "louvain" | "connected-components") => {
+        if (algorithm !== "greedy" && algorithm !== "louvain" && algorithm !== "connected-components") {
+          throw new Error("setClusteringAlgorithm.algorithm must be 'greedy', 'louvain', or 'connected-components'");
+        }
+        updateConfig(set, (config) => ({
+          ...config,
+          clusteringAlgorithm: algorithm,
         }));
       },
 

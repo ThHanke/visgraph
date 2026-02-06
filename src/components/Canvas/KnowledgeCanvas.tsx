@@ -912,9 +912,20 @@ const KnowledgeCanvas: React.FC = () => {
           .setLayoutSpacing(Math.max(50, Math.min(500, options.nodeSpacing)));
       }
 
-      await doLayout(nodes, edges, !!force, layoutType);
+      // CRITICAL: Use only visible nodes from React Flow, not the full nodes array.
+      // The full nodes array includes hidden nodes (e.g., collapsed cluster members),
+      // which should not be laid out. React Flow's getNodes() returns only rendered nodes.
+      const rfInst = reactFlowInstance.current;
+      const visibleNodes = rfInst && typeof (rfInst as any).getNodes === 'function'
+        ? (rfInst as any).getNodes()
+        : [];
+      const visibleEdges = rfInst && typeof (rfInst as any).getEdges === 'function'
+        ? (rfInst as any).getEdges()
+        : [];
+
+      await doLayout(visibleNodes, visibleEdges, !!force, layoutType);
     },
-    [setCurrentLayout, setCurrentLayoutState, doLayout, nodes, edges],
+    [setCurrentLayout, setCurrentLayoutState, doLayout],
   );
 
   const computeCanvasCenter = useCallback(() => {
@@ -1133,7 +1144,7 @@ const KnowledgeCanvas: React.FC = () => {
     const pendingQuads: any[] = [];
     const pendingSubjects: Set<string> = new Set<string>();
 
-    const translateQuadsToDiagram = async (quads: any[]) => {
+    const translateQuadsToDiagram = async (quads: any[], reason?: string) => {
       const startTime = Date.now();
       
       const state =
@@ -1182,6 +1193,12 @@ const KnowledgeCanvas: React.FC = () => {
       const { nodes: mappedNodes, edges: mappedEdges } = mapperResult;
       const mapperDuration = Date.now() - mapperStartTime;
       
+      // Early return if mapper produced no output - skip clustering and processing
+      if (mappedNodes.length === 0 && mappedEdges.length === 0) {
+        console.log('[Pipeline] Mapper produced no output, skipping clustering and processing');
+        return { nodes: [], edges: [] };
+      }
+      
       // Calculate average connectivity
       const totalConnectivity = mappedNodes.reduce((sum, n) => sum + ((n.data as any)?.__connectivity ?? 0), 0);
       const avgConnectivity = mappedNodes.length > 0 ? (totalConnectivity / mappedNodes.length).toFixed(1) : '0';
@@ -1193,14 +1210,23 @@ const KnowledgeCanvas: React.FC = () => {
         });
       }
 
-      // Step 2: Apply optional clustering if threshold > 0
-      if (clusterThreshold > 0) {
-        console.log('[Pipeline] Applying clustering with threshold:', clusterThreshold);
+      // Step 2: Apply optional clustering ONLY on complete data loads
+      // Incremental updates must NOT re-cluster to avoid overwriting existing cluster nodes
+      // Complete data loads are indicated by:
+      // - reason === 'emitAllSubjects' (explicit full emit)
+      // - reason === 'loadFromUrl' (URL load operation)
+      // - reason === 'importSerialized' (URL parameter/persisted state load)
+      // - !reason (undefined/empty) - indicates manual emitAllSubjects call after data load
+      const isCompleteDataLoad = reason === 'emitAllSubjects' || reason === 'loadFromUrl' || reason === 'importSerialized' || !reason;
+      
+      if (clusterThreshold > 0 && isCompleteDataLoad) {
+        console.log('[Pipeline] Applying clustering with threshold:', clusterThreshold, '(complete data load)');
         toast.info(`Clustering nodes (threshold: ${clusterThreshold})...`, { duration: 2000 });
         
         const clusterStartTime = Date.now();
         const clustered = applyClustering(mappedNodes, mappedEdges, {
           threshold: clusterThreshold,
+          algorithm: config.clusteringAlgorithm,
         });
         const clusterDuration = Date.now() - clusterStartTime;
         
@@ -1223,7 +1249,10 @@ const KnowledgeCanvas: React.FC = () => {
         return clustered;
       }
 
-      // Step 3: Return unclustered result if threshold is 0
+      // Step 3: Return unclustered result if threshold is 0 OR incremental update
+      if (!isCompleteDataLoad && clusterThreshold > 0) {
+        console.log('[Pipeline] Skipping clustering (incremental update) - cluster nodes will be preserved');
+      }
       return { nodes: mappedNodes, edges: mappedEdges };
     };
 
@@ -1247,7 +1276,9 @@ const KnowledgeCanvas: React.FC = () => {
           // Track which subjects were updated so we can reconcile their edges
           const updatedSubjects = new Set(pendingSubjects);
           pendingSubjects.clear();
-          const diagram = await translateQuadsToDiagram(dataQuads);
+          // Pass the reason from last metadata to translateQuadsToDiagram
+          const reason = lastLayoutMetaRef.current?.reason as string | undefined;
+          const diagram = await translateQuadsToDiagram(dataQuads, reason);
           const mappedNodes: RFNode<NodeData>[] = diagram?.nodes ?? [];
           const mappedEdges: RFEdge<LinkData>[] = diagram?.edges ?? [];
           await applyDiagrammChange(mappedNodes, mappedEdges, updatedSubjects);
