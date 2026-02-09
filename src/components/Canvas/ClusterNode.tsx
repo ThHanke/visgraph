@@ -70,14 +70,15 @@ function ClusterNodeImpl(props: NodeProps<ClusterNodeData>) {
     <div
       className={cn(
         "cluster-node flex items-center justify-between cursor-pointer transition-all",
-        "border-3 border-white shadow-md px-4 gap-3",
-        selected ? "ring-4 ring-primary shadow-lg" : ""
+        "node-bg border-[3px] shadow-md px-4 gap-3",
+        selected ? "ring-2 ring-primary shadow-lg" : ""
       )}
       style={{
         width: nodeWidth,
         height: nodeHeight,
         borderRadius: '35px',
-        backgroundColor: data.color || '#6366f1',
+        ['--node-color' as any]: data.color || '#6366f1',
+        borderColor: data.color || '#6366f1',
       }}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
@@ -85,7 +86,7 @@ function ClusterNodeImpl(props: NodeProps<ClusterNodeData>) {
     >
       {/* Left side: Node count */}
       <div className={cn(
-        "text-center text-white select-none pointer-events-none",
+        "text-center text-foreground select-none pointer-events-none",
         hasTypes ? "min-w-[50px]" : ""
       )}>
         <div className="text-2xl font-bold">
