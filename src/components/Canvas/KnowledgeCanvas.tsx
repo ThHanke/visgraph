@@ -1948,6 +1948,30 @@ const KnowledgeCanvas: React.FC = () => {
     }
   }, [currentReasoning, setNodes, setEdges]);
 
+  // Expand all clusters at once
+  const expandAll = useCallback(() => {
+    setNodes(prev => prev.map(node => {
+      // Hide cluster nodes
+      if ((node.data as any)?.clusterType === 'cluster') {
+        return { ...node, hidden: true, selected: false };
+      }
+      // Reveal hidden nodes that belong to a cluster
+      if (node.hidden && (node.data as any)?.__clusterParent) {
+        return { ...node, hidden: false, selected: false };
+      }
+      return node;
+    }));
+
+    setTrackedTimeout(() => {
+      const rfInst = reactFlowInstance.current;
+      if (rfInst && typeof (rfInst as any).getNodes === 'function') {
+        const visibleNodes = (rfInst as any).getNodes();
+        const visibleEdges = (rfInst as any).getEdges?.() || [];
+        void doLayout(visibleNodes, visibleEdges, true);
+      }
+    }, 100);
+  }, [setNodes, setTrackedTimeout, doLayout]);
+
   // Expand cluster: toggle node visibility and trigger layout
   const expandCluster = useCallback((clusterNodeId: string) => {
     console.log('[Cluster] Expanding cluster:', clusterNodeId);
@@ -3256,6 +3280,8 @@ const KnowledgeCanvas: React.FC = () => {
           }}
           currentReasoning={currentReasoning}
           isReasoning={isReasoning}
+          onExpandAll={expandAll}
+          hasClusters={nodes.some(n => !n.hidden && (n.data as any)?.clusterType === 'cluster')}
         />
 
         {/* Legend - positioned in top right */}

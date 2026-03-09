@@ -5,6 +5,7 @@ import {
   Plus,
   Eye,
   EyeOff,
+  Maximize2,
   Network,
   Layout,
 } from 'lucide-react';
@@ -37,6 +38,8 @@ interface TopBarProps {
   currentLayout?: string;
   layoutEnabled?: boolean;
   onToggleLayoutEnabled?: (enabled: boolean) => void;
+  onExpandAll?: () => void;
+  hasClusters?: boolean;
   // Reasoning indicator props
   onOpenReasoningReport?: () => void;
   onRunReason?: () => void;
@@ -60,6 +63,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   onRunReason,
   currentReasoning = null,
   isReasoning = false,
+  onExpandAll,
+  hasClusters = false,
 }) => {
   const { config, setLayoutSpacing } = useAppConfigStore(
     useShallow((state) => ({
@@ -189,6 +194,32 @@ export const TopBar: React.FC<TopBarProps> = ({
               </TooltipPrimitive.Content>
             </TooltipPrimitive.Portal>
           </TooltipPrimitive.Root>
+
+          {/* Expand All Clusters Button */}
+          {hasClusters && (
+            <TooltipPrimitive.Root>
+              <TooltipPrimitive.Trigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onExpandAll}
+                  className="rounded-md h-9 border border-border/20"
+                >
+                  <Maximize2 className="h-4 w-4 mr-1" />
+                  <span className="hidden md:inline text-sm">Expand All</span>
+                </Button>
+              </TooltipPrimitive.Trigger>
+              <TooltipPrimitive.Portal>
+                <TooltipPrimitive.Content
+                  className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
+                  sideOffset={5}
+                >
+                  Expand all cluster nodes
+                  <TooltipPrimitive.Arrow className="fill-popover" />
+                </TooltipPrimitive.Content>
+              </TooltipPrimitive.Portal>
+            </TooltipPrimitive.Root>
+          )}
 
           {/* Ontology Count Popover Button */}
           {ontologyBadgeContent || (
