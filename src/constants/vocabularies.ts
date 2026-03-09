@@ -12,8 +12,13 @@
 
 export const RDF = {
   namespace: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
-  type: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-  Property: "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property",
+  type:      "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+  Property:  "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property",
+  // RDF collection / list predicates (rdf:parseType="Collection" serialization)
+  first:     "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
+  rest:      "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
+  nil:       "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil",
+  List:      "http://www.w3.org/1999/02/22-rdf-syntax-ns#List",
 } as const;
 
 // ============================================================================

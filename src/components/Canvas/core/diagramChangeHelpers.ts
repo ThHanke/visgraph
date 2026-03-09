@@ -155,7 +155,13 @@ export function computeNodeChanges(
 }
 
 /**
- * Compute edge changes with reconciliation
+ * Compute edge changes with reconciliation.
+ *
+ * Edges from the mapper output are ADDED or REPLACED.
+ * For each subject in updatedSubjects, the mapper has re-processed ALL current
+ * quads for that subject (across all graphs), so its output is authoritative:
+ * any existing edge whose source is in updatedSubjects but that did not appear
+ * in the mapper output no longer has a backing triple and must be removed.
  */
 export function computeEdgeChanges(
   edgesList: RFEdge<LinkData>[],
@@ -196,15 +202,13 @@ export function computeEdgeChanges(
     }
   }
 
-  // Remove edges FROM updated subjects that aren't in the mapper output
+  // Remove stale edges: the mapper re-processes all quads for each touched
+  // subject, so edges from those subjects that were not reproduced are stale.
   if (updatedSubjects && updatedSubjects.size > 0) {
     for (const existing of current) {
       const id = String(existing.id);
       const source = String(existing.source);
-
-      // Only remove if this edge's source was updated AND the edge isn't in new output
-      const sourceWasUpdated = updatedSubjects.has(source);
-      if (sourceWasUpdated && !incomingIds.has(id)) {
+      if (updatedSubjects.has(source) && !incomingIds.has(id)) {
         changes.push({ id, type: 'remove' });
       }
     }

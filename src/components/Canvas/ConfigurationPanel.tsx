@@ -203,9 +203,16 @@ export const ConfigurationPanel = ({
       handleOpenChange(false);
       
       // Show success toast
-      toast.success(`Switched to ${config.clusteringAlgorithm} clustering`, {
-        description: 'Clearing previous clusters and re-clustering...'
-      });
+      toast.success(
+        config.clusteringAlgorithm === "none"
+          ? "Clustering disabled"
+          : `Switched to ${config.clusteringAlgorithm} clustering`,
+        {
+          description: config.clusteringAlgorithm === "none"
+            ? "Clusters cleared"
+            : "Clearing previous clusters and re-clustering...",
+        }
+      );
     }
   }, [config.clusteringAlgorithm, handleOpenChange]);
 
@@ -418,18 +425,20 @@ export const ConfigurationPanel = ({
                   <Label>Clustering Algorithm</Label>
                   <Select
                     value={config.clusteringAlgorithm}
-                    onValueChange={(value) => setClusteringAlgorithm(value as "louvain" | "label-propagation" | "kmeans")}
+                    onValueChange={(value) => setClusteringAlgorithm(value as "none" | "louvain" | "label-propagation" | "kmeans")}
                   >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="none">None (Disabled)</SelectItem>
                       <SelectItem value="louvain">Louvain (Recommended)</SelectItem>
                       <SelectItem value="label-propagation">Label Propagation (SLPA)</SelectItem>
                       <SelectItem value="kmeans">K-Means</SelectItem>
                     </SelectContent>
                   </Select>
                   <div className="text-xs text-muted-foreground">
+                    {config.clusteringAlgorithm === "none" && "Clustering disabled — all nodes are rendered individually"}
                     {config.clusteringAlgorithm === "louvain" && "Community detection via modularity optimization - best for dense knowledge graphs"}
                     {config.clusteringAlgorithm === "label-propagation" && "Speaker-Listener Label Propagation - detects overlapping communities in social networks"}
                     {config.clusteringAlgorithm === "kmeans" && "Feature-based clustering using position and connectivity - groups similar nodes spatially"}

@@ -1143,6 +1143,10 @@ const KnowledgeCanvas: React.FC = () => {
 
     const pendingQuads: any[] = [];
     const pendingSubjects: Set<string> = new Set<string>();
+    // Tracks the reason from the most recently received subjects event so that
+    // runMapping can pass it to translateQuadsToDiagram even when the event does
+    // not trigger a layout (and therefore does not update lastLayoutMetaRef).
+    let pendingBatchReason: string | undefined = undefined;
 
     const translateQuadsToDiagram = async (quads: any[], reason?: string) => {
       const startTime = Date.now();
@@ -1219,7 +1223,7 @@ const KnowledgeCanvas: React.FC = () => {
       // - !reason (undefined/empty) - indicates manual emitAllSubjects call after data load
       const isCompleteDataLoad = reason === 'emitAllSubjects' || reason === 'loadFromUrl' || reason === 'importSerialized' || !reason;
       
-      if (clusterThreshold > 0 && isCompleteDataLoad) {
+      if (clusterThreshold > 0 && isCompleteDataLoad && config.clusteringAlgorithm !== "none") {
         console.log('[Pipeline] Applying clustering with threshold:', clusterThreshold, '(complete data load)');
         toast.info(`Clustering nodes (threshold: ${clusterThreshold})...`, { duration: 2000 });
         
@@ -1276,8 +1280,11 @@ const KnowledgeCanvas: React.FC = () => {
           // Track which subjects were updated so we can reconcile their edges
           const updatedSubjects = new Set(pendingSubjects);
           pendingSubjects.clear();
-          // Pass the reason from last metadata to translateQuadsToDiagram
-          const reason = lastLayoutMetaRef.current?.reason as string | undefined;
+          // Use the batch reason captured from the most recent subjects event.
+          // Fall back to lastLayoutMetaRef only when pendingBatchReason is absent
+          // (e.g. layout-triggered re-runs without a fresh subjects event).
+          const reason = pendingBatchReason ?? (lastLayoutMetaRef.current?.reason as string | undefined);
+          pendingBatchReason = undefined; // consume so the next batch starts clean
           const diagram = await translateQuadsToDiagram(dataQuads, reason);
           const mappedNodes: RFNode<NodeData>[] = diagram?.nodes ?? [];
           const mappedEdges: RFEdge<LinkData>[] = diagram?.edges ?? [];
@@ -1390,6 +1397,10 @@ const KnowledgeCanvas: React.FC = () => {
           pendingQuads.push(quad);
         }
       }
+
+      // Track the reason for the current batch so runMapping can forward it to
+      // translateQuadsToDiagram. We always overwrite so the most recent reason wins.
+      pendingBatchReason = typeof meta?.reason === "string" ? meta.reason : undefined;
 
       try {
         console.debug("[KnowledgeCanvas] subjectsCallback.received", {
@@ -1781,7 +1792,7 @@ const KnowledgeCanvas: React.FC = () => {
         // Get configured rulesets from app config
         const cfg = useAppConfigStore.getState().config;
         const rulesets = Array.isArray(cfg?.reasoningRulesets) ? cfg.reasoningRulesets : [];
-        
+
         const result: ReasoningResult | null = await (mgr as any).runReasoning({ rulesets });
         if (result) {
           setCurrentReasoning(result);
@@ -1975,37 +1986,54 @@ const KnowledgeCanvas: React.FC = () => {
   // Expand cluster: toggle node visibility and trigger layout
   const expandCluster = useCallback((clusterNodeId: string) => {
     console.log('[Cluster] Expanding cluster:', clusterNodeId);
-    
-    setNodes(prev => {
-      const clusterNode = prev.find(n => String(n.id) === clusterNodeId);
-      if (!clusterNode) return prev;
-      
-      const childNodeIds = (clusterNode.data as any)?.nodeIds || [];
-      
-      return prev.map(node => {
-        const nodeId = String(node.id);
-        
-        // Hide the cluster node itself
-        if (nodeId === clusterNodeId) {
-          return { ...node, hidden: true, selected: false };
+
+    // Capture childNodeIds synchronously from current node state before any updates
+    // so we can use them in both setNodes and setEdges closures.
+    const currentNodes = reactFlowInstance.current
+      ? (reactFlowInstance.current as any).getNodes?.() ?? []
+      : [];
+    const clusterNode = currentNodes.find((n: any) => String(n.id) === clusterNodeId);
+    const childNodeIds: string[] = (clusterNode?.data as any)?.nodeIds ?? [];
+    const childNodeSet = new Set<string>(childNodeIds);
+
+    setNodes(prev => prev.map(node => {
+      const nodeId = String(node.id);
+
+      // Hide the cluster node itself
+      if (nodeId === clusterNodeId) {
+        return { ...node, hidden: true, selected: false };
+      }
+
+      // Show all child nodes that belong to this cluster
+      if (childNodeSet.has(nodeId)) {
+        return {
+          ...node,
+          hidden: false,
+          selected: false,
+          data: {
+            ...node.data,
+            __clusterParent: clusterNodeId,
+          }
+        };
+      }
+
+      return node;
+    }));
+
+    // Un-hide edges whose source or target is a child node of this cluster.
+    // These edges were marked hidden=true during mapping (cons-cell endpoints),
+    // but must become visible once the cluster is expanded.
+    if (childNodeSet.size > 0) {
+      setEdges(prev => prev.map(edge => {
+        if (!edge.hidden) return edge;
+        const src = String(edge.source);
+        const tgt = String(edge.target);
+        if (childNodeSet.has(src) || childNodeSet.has(tgt)) {
+          return { ...edge, hidden: false };
         }
-        
-        // Show all child nodes that belong to this cluster
-        if (childNodeIds.includes(nodeId)) {
-          return { 
-            ...node, 
-            hidden: false,
-            selected: false,
-            data: {
-              ...node.data,
-              __clusterParent: clusterNodeId,
-            }
-          };
-        }
-        
-        return node;
-      });
-    });
+        return edge;
+      }));
+    }
     
     // Trigger layout after nodes become visible
     // Use setTimeout to ensure state update completes first
@@ -2488,13 +2516,14 @@ const KnowledgeCanvas: React.FC = () => {
         toast.error("Cannot connect a node to itself");
         return;
       }
-      const sourceIsTBox = !!(
-        sourceNode.data && (sourceNode.data as any).isTBox
-      );
-      const targetIsTBox = !!(
-        targetNode.data && (targetNode.data as any).isTBox
-      );
-      if (sourceIsTBox !== targetIsTBox) {
+      const sourceLayer = (sourceNode.data as any)?.nodeLayer as string | undefined;
+      const targetLayer = (targetNode.data as any)?.nodeLayer as string | undefined;
+      // "both" (punned) nodes may connect to either view — only block pure cross-layer edges
+      const sourceIsTBox = sourceLayer === "tbox" || (!sourceLayer && !!(sourceNode.data as any)?.isTBox);
+      const targetIsTBox = targetLayer === "tbox" || (!targetLayer && !!(targetNode.data as any)?.isTBox);
+      const sourceBoth = sourceLayer === "both";
+      const targetBoth = targetLayer === "both";
+      if (!sourceBoth && !targetBoth && sourceIsTBox !== targetIsTBox) {
         toast.error("Cannot connect nodes across ABox and TBox");
         return;
       }
@@ -2829,12 +2858,20 @@ const KnowledgeCanvas: React.FC = () => {
           // Filter out hidden nodes (used by cluster expand/collapse)
           if (n.hidden === true) return false;
           
-          const isTBox = !!(n.data && (n.data as any).isTBox);
+          const nodeLayer = (n.data as any)?.nodeLayer as string | undefined;
           const visibleFlag =
             n.data && typeof (n.data as any).visible === "boolean"
               ? (n.data as any).visible
               : true;
           if (!visibleFlag) return false;
+          if (nodeLayer) {
+            // Tri-state: "both" appears in every view; "tbox"/"abox" only in their own.
+            return viewMode === "tbox"
+              ? nodeLayer === "tbox" || nodeLayer === "both"
+              : nodeLayer === "abox" || nodeLayer === "both";
+          }
+          // Fallback to legacy isTBox boolean for nodes without nodeLayer
+          const isTBox = !!(n.data && (n.data as any).isTBox);
           return viewMode === "tbox" ? isTBox : !isTBox;
         } catch {
           return true;

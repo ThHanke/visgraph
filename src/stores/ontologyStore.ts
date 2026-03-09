@@ -34,6 +34,28 @@ import {
   normalizeStringArray,
 } from "../utils/normalizers";
 import type { WorkerReconcileSubjectSnapshotPayload } from "../utils/rdfManager.workerProtocol";
+import { OWL_SCHEMA_AXIOMS } from "../constants/owlSchemaData";
+
+// Pre-seed availableProperties with OWL/RDFS structural predicate entries so
+// the mapper has correct domain/range data from the very first invocation —
+// before any full fat-map rebuild has had a chance to run.  These entries are
+// derived from the same OWL_SCHEMA_AXIOMS the worker loads into urn:vg:ontologies.
+const INITIAL_SCHEMA_PROPERTIES = (() => {
+  const byIri = new Map<string, { domain: string[]; range: string[] }>();
+  for (const { predicate, domain, range } of OWL_SCHEMA_AXIOMS) {
+    if (!byIri.has(predicate)) byIri.set(predicate, { domain: [], range: [] });
+    const entry = byIri.get(predicate)!;
+    if (domain) entry.domain.push(domain);
+    if (range)  entry.range.push(range);
+  }
+  return Array.from(byIri.entries()).map(([iri, { domain, range }]) => ({
+    iri,
+    label: iri.split(/[#/]/).pop() ?? iri,
+    domain,
+    range,
+    namespace: iri.replace(/[^#/]+$/, ""),
+  }));
+})();
 const { namedNode, quad, blankNode, literal } = DataFactory;
 
 /* NOTE: attachPrefixed removed in favor of computing prefixed values locally
@@ -782,7 +804,7 @@ async function persistFatMapUpdates(
 export const useOntologyStore = create<OntologyStore>((set, get) => ({
   loadedOntologies: [],
   availableClasses: [],
-  availableProperties: [],
+  availableProperties: INITIAL_SCHEMA_PROPERTIES as any[],
   validationErrors: [],
   rdfManager: rdfManager,
   // incremented whenever availableProperties/availableClasses are updated from the RDF store
@@ -1466,7 +1488,10 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     set({
       loadedOntologies: [],
       availableClasses: [],
-      availableProperties: [],
+      // Restore schema axiom entries so the mapper always has domain/range data
+      // for OWL/RDFS structural predicates (rdfs:subClassOf, owl:equivalentClass…)
+      // even immediately after a clear, before the next fat-map rebuild runs.
+      availableProperties: INITIAL_SCHEMA_PROPERTIES as any[],
       validationErrors: [],
       currentGraph: { nodes: [], edges: [] },
     });
@@ -1615,6 +1640,8 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
     const parsedTypesBySubject: Record<string, Set<any>> = {};
     const parsedLabelBySubject: Record<string, string> = {};
+    const parsedDomainBySubject: Record<string, Set<string>> = {};
+    const parsedRangeBySubject: Record<string, Set<string>> = {};
     const namespaceIriCandidates = new Set<string>();
     const dataGraphSubjects = new Set<string>();
     const addCandidate = (value: string) => {
@@ -1671,6 +1698,18 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       if (pred === RDFS_LABEL || /rdfs:label$/i.test(pred)) {
         if (objTerm && typeof (objTerm as any).value === "string") parsedLabelBySubject[subj] = String((objTerm as any).value);
         else if (typeof objTerm === "string") parsedLabelBySubject[subj] = String(objTerm);
+      }
+
+      if (pred === "http://www.w3.org/2000/01/rdf-schema#domain") {
+        parsedDomainBySubject[subj] = parsedDomainBySubject[subj] || new Set<string>();
+        const objVal = normalizeTermIri(objTerm);
+        if (objVal) parsedDomainBySubject[subj].add(objVal);
+      }
+
+      if (pred === "http://www.w3.org/2000/01/rdf-schema#range") {
+        parsedRangeBySubject[subj] = parsedRangeBySubject[subj] || new Set<string>();
+        const objVal = normalizeTermIri(objTerm);
+        if (objVal) parsedRangeBySubject[subj].add(objVal);
       }
 
       if (isDataGraph && objTerm) {
@@ -1731,12 +1770,15 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           source: "parsed",
         };
       }
-      if (isProp) {
+      const domainValues = Array.from(parsedDomainBySubject[subjStr] || []);
+      const rangeValues  = Array.from(parsedRangeBySubject[subjStr]  || []);
+
+      if (isProp || domainValues.length > 0 || rangeValues.length > 0) {
         propsMap[subjStr] = {
           iri: subjStr,
           label,
-          domain: [],
-          range: [],
+          domain: domainValues,
+          range: rangeValues,
           namespace,
           source: "parsed",
         };
@@ -2202,12 +2244,34 @@ async function buildFatMap(rdfMgr?: any): Promise<void> {
     const namespace = extractNamespace(subject);
     if (namespace && dataGraphSubjects.has(String(subject))) addCandidate(namespace);
 
-    if (isProp) {
+    // Extract rdfs:domain and rdfs:range values from the property's quads.
+    // This is essential for data-driven TBox structural predicate classification:
+    // when OWL/RDFS meta-ontologies are loaded into urn:vg:schema (which is now
+    // included in the graph query above), these domain/range declarations become
+    // available for the mapper to derive which predicates have TBox subjects/objects.
+    const RDFS_DOMAIN_IRI = "http://www.w3.org/2000/01/rdf-schema#domain";
+    const RDFS_RANGE_IRI  = "http://www.w3.org/2000/01/rdf-schema#range";
+    const domainValues = Array.from(new Set(
+      (quads || [])
+        .filter((q) => q && q.predicate === RDFS_DOMAIN_IRI)
+        .map((q) => String(q.object || ""))
+        .filter(Boolean),
+    ));
+    const rangeValues = Array.from(new Set(
+      (quads || [])
+        .filter((q) => q && q.predicate === RDFS_RANGE_IRI)
+        .map((q) => String(q.object || ""))
+        .filter(Boolean),
+    ));
+
+    // A subject with a declared rdfs:domain or rdfs:range is a property,
+    // even without an explicit rdf:type owl:*Property declaration.
+    if (isProp || domainValues.length > 0 || rangeValues.length > 0) {
       propsMap[String(subject)] = {
         iri: String(subject),
         label,
-        domain: [],
-        range: [],
+        domain: domainValues,
+        range: rangeValues,
         namespace,
         source: "store",
       };

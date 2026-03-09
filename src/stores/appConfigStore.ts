@@ -32,7 +32,7 @@ export interface AppConfig {
   tooltipEnabled: boolean;
   autoReasoning: boolean;
   collapseThreshold: number;
-  clusteringAlgorithm: "louvain" | "label-propagation" | "kmeans";
+  clusteringAlgorithm: "none" | "louvain" | "label-propagation" | "kmeans";
   collapsedNodes: string[];
   reasoningRulesets: string[];
   debugRdfLogging: boolean;
@@ -63,7 +63,7 @@ interface AppConfigStore {
   setPersistedAutoload: (enabled: boolean) => void;
   setAutoReasoning: (enabled: boolean) => void;
   setCollapseThreshold: (threshold: number) => void;
-  setClusteringAlgorithm: (algorithm: "louvain" | "label-propagation" | "kmeans") => void;
+  setClusteringAlgorithm: (algorithm: "none" | "louvain" | "label-propagation" | "kmeans") => void;
   toggleNodeCollapsed: (iri: string) => void;
   setCollapsedNodes: (iris: string[]) => void;
   setReasoningRulesets: (reasoningRulesets: string[]) => void;
@@ -191,8 +191,8 @@ function normalizeAppConfigInput(value: unknown, context: string): AppConfig {
   }
 
   const clusteringAlgorithm = input.clusteringAlgorithm ?? cfg.clusteringAlgorithm;
-  if (clusteringAlgorithm !== "louvain" && clusteringAlgorithm !== "label-propagation" && clusteringAlgorithm !== "kmeans") {
-    throw new Error(`${context}.clusteringAlgorithm must be 'louvain', 'label-propagation', or 'kmeans'`);
+  if (clusteringAlgorithm !== "none" && clusteringAlgorithm !== "louvain" && clusteringAlgorithm !== "label-propagation" && clusteringAlgorithm !== "kmeans") {
+    throw new Error(`${context}.clusteringAlgorithm must be 'none', 'louvain', 'label-propagation', or 'kmeans'`);
   }
 
   return {
@@ -397,9 +397,9 @@ export const useAppConfigStore = create<AppConfigStore>()(
         }));
       },
 
-      setClusteringAlgorithm: (algorithm: "louvain" | "label-propagation" | "kmeans") => {
-        if (algorithm !== "louvain" && algorithm !== "label-propagation" && algorithm !== "kmeans") {
-          throw new Error("setClusteringAlgorithm.algorithm must be 'louvain', 'label-propagation', or 'kmeans'");
+      setClusteringAlgorithm: (algorithm: "none" | "louvain" | "label-propagation" | "kmeans") => {
+        if (algorithm !== "none" && algorithm !== "louvain" && algorithm !== "label-propagation" && algorithm !== "kmeans") {
+          throw new Error("setClusteringAlgorithm.algorithm must be 'none', 'louvain', 'label-propagation', or 'kmeans'");
         }
         updateConfig(set, (config) => ({
           ...config,

@@ -4,13 +4,16 @@ import { cn } from "../../lib/utils";
 import type { NodeData } from "../../types/canvas";
 
 interface ClusterNodeData extends NodeData {
-  clusterType: 'cluster';
+  clusterType: 'cluster' | 'collection';
   parentIri: string;
   nodeIds: string[];
   edgeIds: string[];
   nodeCount: number;
   color?: string;
   topTypes?: Array<{ type: string; count: number; color?: string }>;
+  // Collection-specific fields
+  memberCount?: number;
+  firstMemberLabel?: string;
 }
 
 function ClusterNodeImpl(props: NodeProps<ClusterNodeData>) {
@@ -57,14 +60,16 @@ function ClusterNodeImpl(props: NodeProps<ClusterNodeData>) {
     // but mark it as a cluster node interaction
   }, []);
 
-  // Determine width based on whether we have type badges
+  const isCollection = data.clusterType === 'collection';
+
+  // Determine width based on whether we have type badges or collection label
   const hasTypes = data.topTypes && data.topTypes.length > 0;
-  // Calculate dynamic width: base width + estimated badge widths
-  // Each badge is roughly 60-80px depending on content
-  const badgeCount = data.topTypes?.length || 0;
+  const badgeCount = isCollection ? (data.firstMemberLabel ? 2 : 1) : (data.topTypes?.length || 0);
   const estimatedBadgeWidth = badgeCount > 0 ? badgeCount * 75 : 0;
-  const nodeWidth = hasTypes ? Math.max(180, 100 + estimatedBadgeWidth) : 100;
+  const nodeWidth = (hasTypes || isCollection) ? Math.max(180, 100 + estimatedBadgeWidth) : 100;
   const nodeHeight = 70;
+
+  const accentColor = isCollection ? (data.color || '#0891b2') : (data.color || '#6366f1');
 
   return (
     <div
@@ -77,28 +82,47 @@ function ClusterNodeImpl(props: NodeProps<ClusterNodeData>) {
         width: nodeWidth,
         height: nodeHeight,
         borderRadius: '35px',
-        ['--node-color' as any]: data.color || '#6366f1',
-        borderColor: data.color || '#6366f1',
+        ['--node-color' as any]: accentColor,
+        borderColor: accentColor,
       }}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onMouseDown={handleMouseDown}
     >
-      {/* Left side: Node count */}
+      {/* Left side: count */}
       <div className={cn(
         "text-center text-foreground select-none pointer-events-none",
-        hasTypes ? "min-w-[50px]" : ""
+        (hasTypes || isCollection) ? "min-w-[50px]" : ""
       )}>
         <div className="text-2xl font-bold">
-          {data.nodeCount}
+          {isCollection ? (data.memberCount ?? data.nodeCount) : data.nodeCount}
         </div>
         <div className="text-[9px] mt-0.5">
-          nodes
+          {isCollection ? 'members' : 'nodes'}
         </div>
       </div>
-      
-      {/* Right side: Type badges */}
-      {hasTypes && (
+
+      {/* Right side: badges */}
+      {isCollection ? (
+        <div className="flex flex-col gap-1 items-end select-none pointer-events-none">
+          <div
+            className="node-badge inline-block px-1.5 py-0.5 rounded-lg text-[8px] font-semibold whitespace-nowrap"
+            style={{ ['--node-color' as any]: accentColor }}
+          >
+            <span className="truncate text-foreground-dark">Collection</span>
+          </div>
+          {data.firstMemberLabel && (
+            <div
+              className="node-badge inline-block px-1.5 py-0.5 rounded-lg text-[8px] font-semibold whitespace-nowrap"
+              style={{ ['--node-color' as any]: 'rgba(255,255,255,0.15)' }}
+            >
+              <span className="truncate text-foreground-dark max-w-[80px] block overflow-hidden text-ellipsis">
+                {data.firstMemberLabel}…
+              </span>
+            </div>
+          )}
+        </div>
+      ) : hasTypes ? (
         <div className="flex flex-col gap-1 items-end select-none pointer-events-none">
           {data.topTypes!.map((typeInfo, idx) => (
             <div
@@ -114,7 +138,7 @@ function ClusterNodeImpl(props: NodeProps<ClusterNodeData>) {
             </div>
           ))}
         </div>
-      )}
+      ) : null}
       
       {/* Both source and target handles covering the entire node */}
       {showHandles && (

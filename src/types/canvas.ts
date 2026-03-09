@@ -59,7 +59,15 @@ export interface NodeData {
   // UI/runtime flags (transient; not persisted into RDF)
   /** Whether the node should be visible according to viewMode / explicit flags */
   visible?: boolean;
-  /** Whether this node is considered a TBox entity (class/property) */
+  /**
+   * Which canvas views this node belongs to, derived from its rdf:type values:
+   *   "tbox" — has only W3C metaclass types (owl:Class, owl:ObjectProperty, …)
+   *   "abox" — has owl:NamedIndividual or domain-class types
+   *   "both" — OWL2 punned entity: has metaclass AND individual/domain types
+   * Nodes with "both" appear in ABox view AND TBox view simultaneously.
+   */
+  nodeLayer?: "tbox" | "abox" | "both";
+  /** @deprecated Use nodeLayer instead. Kept for backward compat: true when nodeLayer !== "abox" */
   isTBox?: boolean;
   /** Whether the node currently has reasoning errors (computed by reasoning store) */
   hasReasoningError?: boolean;

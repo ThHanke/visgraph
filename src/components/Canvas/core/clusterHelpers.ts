@@ -44,25 +44,36 @@ function analyzeClusterTypes(
   for (const nodeId of nodeIds) {
     const node = nodeMap.get(nodeId);
     if (!node) continue;
-    
+
+    // Cluster nodes (collection or algorithm) — synthesise a meaningful badge so that
+    // a higher-level cluster which bundles them shows what it contains.
+    const clusterType = (node.data as any).clusterType as string | undefined;
+    if (clusterType === 'collection') {
+      const existing = typeCountMap.get('Collection');
+      if (existing) { existing.count++; }
+      else { typeCountMap.set('Collection', { count: 1, color: '#0891b2' }); }
+      continue;
+    }
+    if (clusterType === 'cluster') {
+      const existing = typeCountMap.get('Cluster');
+      if (existing) { existing.count++; }
+      else { typeCountMap.set('Cluster', { count: 1, color: '#6366f1' }); }
+      continue;
+    }
+
     // Use the same badge type that's displayed on RDFNode (the display name)
     const badgeType = (node.data as any).displayclassType || (node.data as any).classType;
     if (!badgeType || typeof badgeType !== 'string' || badgeType.trim().length === 0) {
       continue;
     }
-    
+
     const existing = typeCountMap.get(badgeType);
     if (existing) {
       existing.count++;
     } else {
       // Use the color that was already computed and stored by the mapper
-      // The mapper derives color from the node's classType using getNodeColor
       const nodeColor = node.data.color;
-      
-      typeCountMap.set(badgeType, { 
-        count: 1, 
-        color: nodeColor
-      });
+      typeCountMap.set(badgeType, { count: 1, color: nodeColor });
     }
   }
   
@@ -269,25 +280,59 @@ export function applyClustering(
 ): { nodes: RFNode<NodeData>[]; edges: RFEdge<LinkData>[] } {
   const { threshold, collapsedSet = new Set(), algorithm = "label-propagation" } = options; // default: label-propagation (fine)
 
+  // Only feed VISIBLE nodes to clustering algorithms.
+  // Already-hidden nodes (e.g. collection-cluster members produced by mapper Step 8)
+  // must not be re-claimed — each node may belong to at most one cluster.
+  const candidateNodes = nodes.filter(n => !n.hidden);
+  const candidateNodeIds = new Set(candidateNodes.map(n => String(n.id)));
+  // Use only edges whose BOTH endpoints are visible.  Hidden edges (pointing into
+  // collection cluster members) must not be used as clustering signals — they create
+  // false adjacency between hidden nodes and visible ones.
+  const candidateEdges = edges.filter(
+    e => !e.hidden &&
+         candidateNodeIds.has(String(e.source)) &&
+         candidateNodeIds.has(String(e.target))
+  );
+
   console.log('[Clustering] Starting automatic clustering:', {
     algorithm,
     threshold,
     totalNodes: nodes.length,
+    visibleCandidateNodes: candidateNodes.length,
+    alreadyHidden: nodes.length - candidateNodes.length,
     totalEdges: edges.length,
-    visibleNodesBeforeClustering: nodes.length, // All nodes visible initially
+    candidateEdges: candidateEdges.length,
   });
 
-  // Compute clusters using selected algorithm
-  const { clusters, claimedNodes } = selectClusteringAlgorithm(
-    algorithm,
-    nodes,
-    edges,
-    threshold,
-    collapsedSet
-  );
+  // Split candidate (visible) nodes by layer so that clusters never span both views.
+  // "both" (OWL2 punned entities) are clustered with TBox — they appear in both views
+  // via the nodeLayer filter in KnowledgeCanvas, so they need a stable cluster bucket.
+  const tboxNodes = candidateNodes.filter(n => {
+    const layer = (n.data as any)?.nodeLayer as string | undefined;
+    if (layer) return layer === "tbox" || layer === "both";
+    return !!(n.data as any)?.isTBox;
+  });
+  const aboxNodes = candidateNodes.filter(n => {
+    const layer = (n.data as any)?.nodeLayer as string | undefined;
+    if (layer) return layer === "abox";
+    return !(n.data as any)?.isTBox;
+  });
 
-  // Calculate visible nodes after initial clustering
-  const visibleAfterInitial = nodes.length - claimedNodes.size + clusters.size;
+  const tboxNodeIds = new Set(tboxNodes.map(n => String(n.id)));
+  const aboxNodeIds = new Set(aboxNodes.map(n => String(n.id)));
+
+  const tboxEdges = candidateEdges.filter(e => tboxNodeIds.has(String(e.source)) && tboxNodeIds.has(String(e.target)));
+  const aboxEdges = candidateEdges.filter(e => aboxNodeIds.has(String(e.source)) && aboxNodeIds.has(String(e.target)));
+
+  const tboxResult = selectClusteringAlgorithm(algorithm, tboxNodes, tboxEdges, threshold, collapsedSet);
+  const aboxResult  = selectClusteringAlgorithm(algorithm, aboxNodes, aboxEdges, threshold, collapsedSet);
+
+  // Merge the two clustering results
+  const clusters    = new Map([...tboxResult.clusters, ...aboxResult.clusters]);
+  const claimedNodes = new Set([...tboxResult.claimedNodes, ...aboxResult.claimedNodes]);
+
+  // Calculate visible nodes after initial clustering (baseline is candidate nodes, not all nodes)
+  const visibleAfterInitial = candidateNodes.length - claimedNodes.size + clusters.size;
   
   console.log('[Clustering] Initial clusters computed:', {
     clusterCount: clusters.size,
@@ -394,19 +439,20 @@ export function applyClustering(
     visibleNodes: visibleNodeIds.size,
   });
 
-  const { visibleEdges, clusterEdges } = buildClusterEdges(edges, clusters, claimedNodes);
+  // Build boundary edges using only visible candidate edges — this prevents spurious
+  // cluster-boundary edges that would be routed through already-hidden nodes (e.g.
+  // collection-cluster members whose original edges are now hidden).
+  const { clusterEdges } = buildClusterEdges(candidateEdges, clusters, claimedNodes);
 
   console.log('[Clustering] Cluster edge processing complete:', {
-    visibleRegularEdges: visibleEdges.length,
     clusterEdgesCreated: clusterEdges.length,
-    totalEdgesAfter: visibleEdges.length + clusterEdges.length,
+    totalEdgesAfter: edges.length + clusterEdges.length,
   });
 
-  // Keep ALL cluster edges - canvas filters by visibility dynamically
-  // The viewFilteredEdges in KnowledgeCanvas.tsx handles visibility filtering
-  // based on current node visibility, allowing edges to show/hide dynamically
-  // when clusters expand/collapse
-  const allEdges = [...visibleEdges, ...clusterEdges as any];
+  // Preserve ALL original edges (including hidden ones from pre-existing clusters) so
+  // that expanding a cluster later can reveal its member edges.  Append new algorithm
+  // cluster-boundary edges on top.
+  const allEdges = [...edges, ...clusterEdges as any];
 
   // Set hidden flag on edges
   // - Original edges: hidden if EITHER endpoint is clustered (in claimedNodes)

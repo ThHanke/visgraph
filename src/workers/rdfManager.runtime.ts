@@ -21,6 +21,7 @@ import type { WorkerQuad } from "../utils/rdfSerialization.ts";
 import { WELL_KNOWN } from "../utils/wellKnownOntologies.ts";
 import { ensureDefaultNamespaceMap } from "../constants/namespaces.ts";
 import { RDF_TYPE, RDFS_LABEL, SHACL } from "../constants/vocabularies.ts";
+import { OWL_SCHEMA_AXIOMS } from "../constants/owlSchemaData.ts";
 
 const RDF_TYPE_IRI = RDF_TYPE;
 const RDFS_LABEL_IRI = RDFS_LABEL;
@@ -118,11 +119,42 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
   ];
   let workerChangeCounter = 0;
 
+  /**
+   * Seed the store with OWL/RDFS/RDF meta-ontology domain/range axioms into the
+   * ontology named graph (`urn:vg:ontologies`).  This is the same graph that
+   * buildFatMap reads, so the fat-map reconciliation automatically picks up these
+   * predicates and their domain/range values — producing correct ObjectProperty
+   * entries that the mapper uses for data-driven TBox structural classification.
+   *
+   * These subjects are blacklisted from diagram emission (owl/rdf/rdfs prefixes),
+   * so they never appear as canvas nodes. They exist solely to inform classification.
+   */
+  function loadSchemaOntology(store: any, DataFactory: any): void {
+    try {
+      const ontologiesGraph = DataFactory.namedNode("urn:vg:ontologies");
+      const RDFS_DOMAIN = DataFactory.namedNode("http://www.w3.org/2000/01/rdf-schema#domain");
+      const RDFS_RANGE  = DataFactory.namedNode("http://www.w3.org/2000/01/rdf-schema#range");
+      for (const axiom of OWL_SCHEMA_AXIOMS) {
+        const subject = DataFactory.namedNode(axiom.predicate);
+        if (axiom.domain) {
+          store.addQuad(subject, RDFS_DOMAIN, DataFactory.namedNode(axiom.domain), ontologiesGraph);
+        }
+        if (axiom.range) {
+          store.addQuad(subject, RDFS_RANGE, DataFactory.namedNode(axiom.range), ontologiesGraph);
+        }
+      }
+    } catch (err) {
+      console.error("[rdfManager.worker] loadSchemaOntology failed", err);
+    }
+  }
+
   function resetSharedStore() {
-    const { StoreCls } = resolveN3();
+    const { StoreCls, DataFactory } = resolveN3();
     if (!StoreCls) throw new Error("n3-store-unavailable");
     sharedStore = new (StoreCls as any)();
     workerChangeCounter = 0;
+    // Non-negotiable: always seed the store with OWL/RDFS/RDF meta-ontology axioms
+    if (DataFactory) loadSchemaOntology(sharedStore, DataFactory);
     return sharedStore;
   }
 
@@ -362,55 +394,22 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
     graphKey?: string;
   };
 
-  function ensureGraphKeyInStore(store: any, graphTerm: any): string | undefined {
-    try {
-      if (!store) return undefined;
-      let graphId =
-        typeof store._termToNumericId === "function" ? store._termToNumericId(graphTerm) : undefined;
-      if (!graphId && typeof store._termToNewNumericId === "function") {
-        graphId = store._termToNewNumericId(graphTerm);
-      }
-      if (graphId === undefined || graphId === null) return undefined;
-      const key = String(graphId);
-      if (store._graphs && !store._graphs[key]) {
-        const graphItem = {
-          subjects: Object.create(null),
-          predicates: Object.create(null),
-          objects: Object.create(null),
-        };
-        if (typeof Object.freeze === "function") Object.freeze(graphItem);
-        store._graphs[key] = graphItem;
-      }
-      return key;
-    } catch (_) {
-      return undefined;
-    }
-  }
-
-  function storeIdToTerm(store: any, id: unknown) {
-    try {
-      if (!store || !store._entities || typeof store._termFromId !== "function") return null;
-      const candidates: Array<string | number> = [];
-      if (typeof id === "number" || typeof id === "string") {
-        candidates.push(id);
-        if (typeof id === "number") candidates.push(String(id));
-        else {
-          const num = Number(id);
-          if (!Number.isNaN(num)) candidates.push(num);
-        }
-      }
-      for (const candidate of candidates) {
-        if (candidate in store._entities) {
-          const entity = store._entities[candidate];
-          if (entity !== undefined) {
-            return store._termFromId(entity);
-          }
-        }
-      }
-      return null;
-    } catch (_) {
-      return null;
-    }
+  /**
+   * Convert a string value emitted by the N3 Reasoner's internal _add to an RDF Term.
+   *
+   * N3 Reasoner calls `_add(c.subject.value, c.predicate.value, c.object.value, graphItem, cb)`.
+   * `.value` on a NamedNode is the plain IRI string; on a Literal it is the lexical form
+   * (datatype/language is NOT preserved at this level). We detect IRIs by checking for a
+   * URI scheme and fall back to a plain-string Literal for anything else.
+   */
+  function termFromReasonerValue(DataFactory: any, value: unknown): any {
+    if (value === null || value === undefined) return null;
+    const str = String(value);
+    if (str === "") return DataFactory.defaultGraph();
+    // Absolute or prefixed IRI: scheme followed by ':' then at least one IRI character
+    if (/^[a-zA-Z][a-zA-Z0-9+\-.]*:[^\s]/.test(str)) return DataFactory.namedNode(str);
+    // Plain literal (datatype info lost by the reasoner's .value extraction)
+    return DataFactory.literal(str);
   }
 
   function attachReasonerAddInterceptor(reasoner: any, store: any) {
@@ -519,19 +518,43 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
     quadsBySubject: SubjectQuadMap;
     snapshot: WorkerReconcileSubjectSnapshotPayload[];
   } {
+    const RDF_REST_IRI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest";
+
     const subjects: string[] = [];
     const quadsBySubject: SubjectQuadMap = {};
     const snapshot: WorkerReconcileSubjectSnapshotPayload[] = [];
-    for (const raw of subjectSet) {
+
+    // Use a queue so rdf:rest chains are followed inline.
+    // When any subject has a rdf:rest → BlankNode triple, that blank node is
+    // enqueued as an additional subject so its own quads (including rdf:first →
+    // member) are also emitted — without requiring a separate round-trip query.
+    const queue: string[] = Array.from(subjectSet);
+    const processed = new Set<string>();
+
+    while (queue.length > 0) {
+      const raw = queue.shift()!;
       try {
         const subject = String(raw || "").trim();
-        if (!subject) continue;
+        if (!subject || processed.has(subject)) continue;
+        processed.add(subject);
+
         if (isBlacklistedIri(subject)) continue;
         subjects.push(subject);
         const quads = collectWorkerQuadsForSubject(subject, store, DataFactory);
         quadsBySubject[subject] = quads;
         const entry = snapshotEntryFromQuads(subject, quads);
         if (entry) snapshot.push(entry);
+
+        // Follow rdf:rest → BlankNode chains so every cons-cell in the list is
+        // emitted together with its quads (including rdf:first → member triples).
+        for (const q of quads) {
+          if (q.predicate?.value !== RDF_REST_IRI) continue;
+          if (q.object?.termType !== "BlankNode") continue;
+          const bnSubject = `_:${String(q.object.value)}`;
+          if (!processed.has(bnSubject)) {
+            queue.push(bnSubject);
+          }
+        }
       } catch (err) {
         console.error("[rdfManager.worker] prepareSubjectEmissionFromSet item failed", err);
       }
@@ -1557,7 +1580,19 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
 
     if (mutateSharedStore) {
       sharedStoreRef = getSharedStore();
-      workingStore = sharedStoreRef;
+      // Always reason on a working copy so the N3 Reasoner's internal _addToIndex
+      // calls (which write string-keyed entries) never pollute the main store.
+      // After reasoning we persist only the captured inferred quads to urn:vg:inferred
+      // in the main store via the proper addQuad API.
+      workingStore = new (StoreCls as any)();
+      try {
+        const snapshot = sharedStoreRef.getQuads(null, null, null, null);
+        workingStore.addQuads(snapshot);
+      } catch (_) {
+        // Fallback: reason directly on the main store (old, broken behaviour).
+        // This path should never be hit with a standard N3.js store.
+        workingStore = sharedStoreRef;
+      }
     } else {
       workingStore = new (StoreCls as any)();
       for (const pq of msg.quads || []) {
@@ -1706,7 +1741,6 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
     }
 
     const inferredGraphTerm = DataFactory.namedNode("urn:vg:inferred");
-    const inferenceGraphKey = ensureGraphKeyInStore(workingStore, inferredGraphTerm);
 
     let usedReasoner = false;
     let reasonerDuration = 0;
@@ -1852,68 +1886,39 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
     const touchedSubjects = new Set<string>();
     const addedQuads: Quad[] = [];
     const additionSeen = new Set<string>();
-    const removalSeen = new Set<string>();
-    const idStore = mutateSharedStore && sharedStoreRef ? sharedStoreRef : workingStore;
 
-    if (idStore && capturedInsertions.length > 0) {
+    // capturedInsertions hold raw string values from the N3 Reasoner's internal _add
+    // (c.subject.value, c.predicate.value, c.object.value).  Convert them directly to
+    // RDF Terms and persist to urn:vg:inferred in the MAIN store.
+    // No removal step is needed: the reasoner ran on a working copy so the main store
+    // was never touched by string-keyed _addToIndex calls.
+    if (capturedInsertions.length > 0) {
       for (const insertion of capturedInsertions) {
-        const subjectTerm = storeIdToTerm(idStore, insertion.subject);
-        const predicateTerm = storeIdToTerm(idStore, insertion.predicate);
-        const objectTerm = storeIdToTerm(idStore, insertion.object);
+        const subjectTerm = termFromReasonerValue(DataFactory, insertion.subject);
+        const predicateTerm = termFromReasonerValue(DataFactory, insertion.predicate);
+        const objectTerm = termFromReasonerValue(DataFactory, insertion.object);
         if (!subjectTerm || !predicateTerm || !objectTerm) continue;
 
-        let originalGraphTerm =
-          insertion.graphKey !== undefined && insertion.graphKey !== null
-            ? storeIdToTerm(idStore, insertion.graphKey)
-            : null;
-        if (!originalGraphTerm) {
-          originalGraphTerm = DataFactory.defaultGraph();
-        }
+        const inferredQuad = DataFactory.quad(
+          subjectTerm,
+          predicateTerm,
+          objectTerm,
+          inferredGraphTerm,
+        );
+        const additionKey = quadKeyFromTerms(inferredQuad);
+        if (!additionSeen.has(additionKey)) {
+          additionSeen.add(additionKey);
+          addedQuads.push(inferredQuad);
 
-        let insertedIntoShared = true;
-        if (mutateSharedStore && sharedStoreRef) {
-          const skipRemoval =
-            typeof inferenceGraphKey === "string" && insertion.graphKey === inferenceGraphKey;
-          const removalQuad = DataFactory.quad(
-            subjectTerm,
-            predicateTerm,
-            objectTerm,
-            originalGraphTerm,
-          );
-          const removalKey = quadKeyFromTerms(removalQuad);
-          if (!skipRemoval && !removalSeen.has(removalKey)) {
-            removalSeen.add(removalKey);
+          // Persist to the main store under urn:vg:inferred
+          if (mutateSharedStore && sharedStoreRef) {
             try {
-              sharedStoreRef.removeQuad(removalQuad);
+              sharedStoreRef.addQuad(inferredQuad);
             } catch (_) {
-              /* ignore removal failure */
+              /* duplicate or store error — ignore */
             }
           }
-          try {
-            const inferredQuad = DataFactory.quad(
-              subjectTerm,
-              predicateTerm,
-              objectTerm,
-              inferredGraphTerm,
-            );
-            insertedIntoShared = sharedStoreRef.addQuad(inferredQuad) !== false;
-          } catch (_) {
-            insertedIntoShared = false;
-          }
-        }
 
-        if (!mutateSharedStore || insertedIntoShared) {
-          const additionQuad = DataFactory.quad(
-            subjectTerm,
-            predicateTerm,
-            objectTerm,
-            inferredGraphTerm,
-          );
-          const additionKey = quadKeyFromTerms(additionQuad);
-          if (!additionSeen.has(additionKey)) {
-            additionSeen.add(additionKey);
-            addedQuads.push(additionQuad);
-          }
           const subjectValue = subjectTermToString(subjectTerm, subjectTerm.value);
           if (subjectValue) touchedSubjects.add(subjectValue);
         }
