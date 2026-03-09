@@ -608,11 +608,6 @@ export interface RDFWorkerUnsubscribeRequest {
   event: RDFWorkerEventName;
 }
 
-export interface RDFWorkerAck {
-  type: "ack";
-  id: string;
-}
-
 export interface WorkerReconcileSubject {
   subject: number;
   types?: number[];
@@ -629,33 +624,6 @@ export interface WorkerReconcileSubjectSnapshotPayload {
   label?: string;
 }
 
-export interface RDFWorkerLoadProgressMessage {
-  type: "loadProgress";
-  id: string;
-  parsedQuads: number;
-}
-
-export interface RDFWorkerLoadCompleteMessage {
-  type: "end";
-  id: string;
-  prefixes?: Record<string, string>;
-  dictionary?: WorkerTerm[];
-  quadIndices?: Uint32Array;
-  quadCount?: number;
-  touchedSubjects?: string[];
-  reconcile?: WorkerReconcilePayload;
-  reconcileSnapshot?: WorkerReconcileSubjectSnapshotPayload[];
-}
-
-export interface RDFWorkerLoadFromUrlMessage {
-  type: "loadFromUrl";
-  id: string;
-  url: string;
-  timeoutMs?: number;
-  headers?: Record<string, string>;
-  graphName?: string;
-}
-
 export interface RDFWorkerRunReasoningMessage {
   type: "runReasoning";
   id: string;
@@ -669,16 +637,11 @@ export type RDFWorkerInboundMessage =
   | RDFWorkerCommand
   | RDFWorkerSubscriptionRequest
   | RDFWorkerUnsubscribeRequest
-  | RDFWorkerAck
-  | RDFWorkerLoadFromUrlMessage
   | RDFWorkerRunReasoningMessage;
 
 export type RDFWorkerOutboundMessage =
   | RDFWorkerResponse
-  | RDFWorkerEvent
-  | RDFWorkerAck
-  | RDFWorkerLoadProgressMessage
-  | RDFWorkerLoadCompleteMessage;
+  | RDFWorkerEvent;
 
 export type RDFWorkerMessage = RDFWorkerInboundMessage | RDFWorkerOutboundMessage;
 
@@ -714,13 +677,6 @@ export function assertRdfWorkerUnsubscribeRequest(
   });
   assertString(message.id, "unsubscribe.id must be a string");
   assertString(message.event, "unsubscribe.event must be a string");
-}
-
-export function assertRdfWorkerAck(value: unknown): asserts value is RDFWorkerAck {
-  assertPlainObject(value, "rdf-worker-ack must be a plain object");
-  const message = value as Record<string, unknown>;
-  invariant(message.type === "ack", "ack.type must equal 'ack'", { type: message.type });
-  assertString(message.id, "ack.id must be a string");
 }
 
 export function assertRdfWorkerResponse(value: unknown): asserts value is RDFWorkerResponse {
@@ -834,9 +790,6 @@ export function assertRdfWorkerOutbound(value: unknown): asserts value is RDFWor
     case "event":
       assertRdfWorkerEvent(message);
       return;
-    case "ack":
-      assertRdfWorkerAck(message);
-      return;
     default:
       throw new Error(`Unrecognised rdf-worker outbound message type: ${String(message.type)}`);
   }
@@ -856,23 +809,6 @@ export function assertRdfWorkerInbound(value: unknown): asserts value is RDFWork
       return;
     case "unsubscribe":
       assertRdfWorkerUnsubscribeRequest(message);
-      return;
-    case "ack":
-      assertRdfWorkerAck(message);
-      return;
-    case "loadFromUrl":
-      assertString(message.id, "loadFromUrl.id must be a string");
-      assertString(message.url, "loadFromUrl.url must be a string");
-      if (typeof message.timeoutMs !== "undefined") {
-        assertNumber(message.timeoutMs, "loadFromUrl.timeoutMs must be a finite number when provided");
-      }
-      if (typeof message.headers !== "undefined") {
-        assertPlainObject(message.headers, "loadFromUrl.headers must be an object when provided");
-        for (const [key, value] of Object.entries(message.headers as Record<string, unknown>)) {
-          assertString(key, "loadFromUrl.headers keys must be strings");
-          assertString(value, "loadFromUrl.headers values must be strings");
-        }
-      }
       return;
     case "runReasoning":
       assertString(message.id, "runReasoning.id must be a string");

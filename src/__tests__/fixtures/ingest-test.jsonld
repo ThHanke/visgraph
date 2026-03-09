@@ -1,0 +1,9 @@
+{
+  "@context": {
+    "ex": "http://example.org/",
+    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  },
+  "@id": "http://example.org/subject",
+  "@type": "ex:Thing",
+  "ex:label": "ingest-test-jsonld"
+}

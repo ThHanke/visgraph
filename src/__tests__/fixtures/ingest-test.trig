@@ -1,0 +1,6 @@
+@prefix ex: <http://example.org/> .
+
+<http://example.org/graph> {
+  ex:subject a ex:Thing ;
+    ex:label "ingest-test-trig" .
+}

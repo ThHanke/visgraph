@@ -8,8 +8,6 @@ import { assertRdfWorkerInbound } from "../utils/rdfManager.workerProtocol.ts";
 import type {
   RDFWorkerCommand,
   RDFWorkerCommandPayloads,
-  RDFWorkerLoadCompleteMessage,
-  RDFWorkerLoadFromUrlMessage,
   RDFWorkerRunReasoningMessage,
   ExportGraphPayload,
   ImportSerializedPayload,
@@ -24,7 +22,6 @@ import { WELL_KNOWN } from "../utils/wellKnownOntologies.ts";
 import { ensureDefaultNamespaceMap } from "../constants/namespaces.ts";
 import { RDF_TYPE, RDFS_LABEL, SHACL } from "../constants/vocabularies.ts";
 
-const BATCH_SIZE = 1000;
 const RDF_TYPE_IRI = RDF_TYPE;
 const RDFS_LABEL_IRI = RDFS_LABEL;
 
@@ -109,8 +106,6 @@ export interface RdfWorkerRuntime {
 export function createRdfWorkerRuntime(postMessage: (message: unknown) => void): RdfWorkerRuntime {
   (globalThis as any).Buffer = Buffer;
 
-  const pendingAcks = new Map<string, boolean>();
-
   let sharedStore: any | null = null;
   let workerNamespaces: Record<string, string> = {};
   let workerBlacklistPrefixes: Set<string> = new Set(["owl", "rdf", "rdfs", "xml", "xsd"]);
@@ -150,15 +145,6 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
       case "command":
         void handleCommand(incoming);
         return;
-      case "ack":
-        pendingAcks.set(String(incoming.id), true);
-        return;
-      case "loadFromUrl":
-        void handleLoad(incoming).catch((err) => {
-          const errorMessage = err instanceof Error ? err.message : String(err);
-          post({ type: "error", id: incoming.id, message: errorMessage });
-        });
-        return;
       case "runReasoning": {
         const hasExternalQuads = Array.isArray(incoming.quads) && incoming.quads.length > 0;
         handleRunReasoning(incoming, {
@@ -193,21 +179,6 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
 
   function post(message: any) {
     postMessage(message);
-  }
-
-  function waitForAck(id: string) {
-    return new Promise<void>((resolve) => {
-      const key = String(id);
-      const check = () => {
-        if (pendingAcks.get(key)) {
-          pendingAcks.delete(key);
-          resolve();
-          return;
-        }
-        setTimeout(check, 10);
-      };
-      check();
-    });
   }
 
   function reasoningStage(message: ReasoningStageMessage) {
@@ -689,42 +660,6 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
     return null;
   }
 
-  async function createReadable(resp: Response) {
-    if ((Readable as any).fromWeb) {
-      try {
-        return (Readable as any).fromWeb(resp.body as any);
-      } catch (_) {
-        // fall through
-      }
-    }
-    if (resp.body && typeof (resp.body as any).getReader === "function" && typeof (Readable as any).from === "function") {
-      const reader = (resp.body as any).getReader();
-      const chunks: Uint8Array[] = [];
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) chunks.push(value instanceof Uint8Array ? value : new Uint8Array(value));
-      }
-      const total = chunks.reduce((acc, c) => acc + c.length, 0);
-      const buf = new Uint8Array(total);
-      let offset = 0;
-      for (const c of chunks) {
-        buf.set(c, offset);
-        offset += c.length;
-      }
-      const BufferImpl = (globalThis as any).Buffer || Buffer;
-      if (BufferImpl && typeof (Readable as any).from === "function") {
-        return (Readable as any).from([BufferImpl.from(buf)]);
-      }
-    }
-    const arr = await resp.arrayBuffer();
-    const BufferImpl2 = (globalThis as any).Buffer || Buffer;
-    if (BufferImpl2 && typeof (Readable as any).from === "function") {
-      return (Readable as any).from([BufferImpl2.from(new Uint8Array(arr))]);
-    }
-    return null;
-  }
-
   function createReadableFromString(content: string) {
     try {
       const text = typeof content === "string" ? content : String(content ?? "");
@@ -755,295 +690,6 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
     }
     return { writerFormat: "text/turtle", mediaType: "text/turtle", dropGraph: true };
   }
-
-  async function handleLoad(msg: RDFWorkerLoadFromUrlMessage) {
-    const { id, url } = msg;
-    const timeoutMs = typeof msg.timeoutMs === "number" ? msg.timeoutMs : 15000;
-    const targetGraphName =
-      typeof msg.graphName === "string" && msg.graphName.length > 0
-        ? msg.graphName
-        : "urn:vg:data";
-
-    post({ type: "stage", id, stage: "start", url });
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    let resp: Response;
-    try {
-      resp = await fetch(url, {
-        signal: controller.signal,
-        redirect: "follow",
-        headers:
-          msg.headers ||
-          { Accept: "text/turtle, application/rdf+xml, application/ld+json, */*" },
-      });
-    } catch (err) {
-      clearTimeout(timeout);
-      post({ type: "error", id, message: String((err as Error).message || err) });
-      return;
-    }
-    clearTimeout(timeout);
-    post({ type: "stage", id, stage: "fetched", status: resp.status });
-
-    const readable = await createReadable(resp.clone ? (resp.clone() as Response) : resp);
-    if (!readable) {
-      post({ type: "error", id, message: "node-readable-unavailable" });
-      return;
-    }
-
-    let parserImpl = resolveRdfParser(rdfParsePkg);
-    if (!parserImpl) {
-      try {
-        const dyn = await import("rdf-parse").catch(() => null);
-        parserImpl = resolveRdfParser(dyn);
-      } catch (_) {
-        /* ignore */
-      }
-    }
-    if (!parserImpl) {
-      post({ type: "error", id, message: "rdf-parse-unavailable" });
-      return;
-    }
-
-    const supportedMedia = new Set<string>();
-    if (typeof parserImpl.getContentTypes === "function") {
-      try {
-        const types = await parserImpl.getContentTypes();
-        if (Array.isArray(types)) {
-          types.forEach((t: any) => {
-            if (t) supportedMedia.add(String(t).split(";")[0].trim().toLowerCase());
-          });
-        }
-      } catch (err) {
-        post({
-          type: "stage",
-          id,
-          stage: "getContentTypesFailed",
-          error: String(err),
-        });
-      }
-    }
-
-    const contentTypeHeader = resp.headers?.get("content-type") || null;
-    const ctRaw = contentTypeHeader
-      ? String(contentTypeHeader).split(";")[0].trim().toLowerCase()
-      : null;
-    const parseOpts: Record<string, unknown> = {};
-    const candidateNames: string[] = [];
-
-    try {
-      const u = new URL(url);
-      const pathSeg = u.pathname.split("/").filter(Boolean).pop();
-      if (pathSeg) candidateNames.push(pathSeg);
-      for (const value of u.searchParams.values()) {
-        if (value) candidateNames.push(value);
-      }
-    } catch (_) {
-      // ignore URL parse failure
-    }
-
-    const cdHeader = resp.headers?.get("content-disposition");
-    if (cdHeader) {
-      const filenameMatch = cdHeader.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)["']?/i);
-      if (filenameMatch && filenameMatch[1]) {
-        candidateNames.push(filenameMatch[1]);
-      }
-    }
-    candidateNames.push(url);
-
-    const mapNameToType = (name: string): string | null => {
-      const lower = name.toLowerCase();
-      if (lower.endsWith(".ttl") || lower.endsWith(".turtle")) return "text/turtle";
-      if (lower.endsWith(".nt")) return "application/n-triples";
-      if (lower.endsWith(".nq")) return "application/n-quads";
-      if (lower.endsWith(".jsonld") || lower.endsWith(".json")) return "application/ld+json";
-      if (lower.endsWith(".rdf") || lower.endsWith(".owl") || lower.endsWith(".xml")) {
-        return "application/rdf+xml";
-      }
-      if (lower.endsWith(".trig")) return "application/trig";
-      if (lower.endsWith(".trix")) return "application/trix";
-      return null;
-    };
-
-    const inferContentType = () => {
-      const canTrustRaw = ctRaw && ctRaw !== "text/plain" && supportedMedia.has(ctRaw);
-      if (canTrustRaw) return ctRaw!;
-
-      if (ctRaw === "text/plain" || !ctRaw) {
-        for (const name of candidateNames) {
-          const inferred = mapNameToType(name);
-          if (inferred) return inferred;
-        }
-      }
-      return null;
-    };
-
-    const inferred = inferContentType();
-    if (inferred) {
-      parseOpts.contentType = inferred;
-      parseOpts.path = candidateNames[0] || url;
-      post({ type: "stage", id, stage: "parser-content-type", contentType: inferred });
-    } else {
-      parseOpts.path = candidateNames[0] || url;
-      post({ type: "stage", id, stage: "parser-filename", path: String(parseOpts.path) });
-    }
-
-  const { DataFactory } = resolveN3();
-  if (!DataFactory) {
-    post({ type: "error", id, message: "n3-api-unavailable" });
-    return;
-  }
-
-    const sharedStoreRef = getSharedStore();
-    const targetGraphTerm =
-      targetGraphName === "default"
-        ? DataFactory.defaultGraph()
-        : DataFactory.namedNode(String(targetGraphName));
-
-    const prefixes: Record<string, string> = {};
-    const touchedSubjects = new Set<string>();
-    const serializedBatch: WorkerQuad[] = [];
-    let addedCount = 0;
-
-    const flushSerialized = async () => {
-      if (serializedBatch.length === 0) return;
-      const payload = serializedBatch.splice(0, serializedBatch.length);
-      post({ type: "quads", id, quads: payload });
-      await waitForAck(id);
-    };
-
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const opts = { ...parseOpts, baseIRI: url };
-        const quadStream = parserImpl.parse(readable, opts);
-
-        quadStream.on("data", async (q: any) => {
-          try {
-            const incoming = q as Quad;
-            const graphTerm =
-              incoming.graph && incoming.graph.termType && incoming.graph.termType !== "DefaultGraph"
-                ? incoming.graph
-                : targetGraphTerm;
-            const normalized = DataFactory.quad(
-              incoming.subject,
-              incoming.predicate,
-              incoming.object,
-              graphTerm,
-            );
-
-            const exists =
-              typeof sharedStoreRef.countQuads === "function"
-                ? sharedStoreRef.countQuads(
-                    normalized.subject,
-                    normalized.predicate,
-                    normalized.object,
-                    normalized.graph,
-                  ) > 0
-                : (sharedStoreRef.getQuads(
-                    normalized.subject,
-                    normalized.predicate,
-                    normalized.object,
-                    normalized.graph,
-                  ) || []).length > 0;
-            if (exists) return;
-
-            const inserted = sharedStoreRef.addQuad(normalized);
-            if (inserted === false) return;
-            addedCount += 1;
-
-            const subjectValue = subjectTermToString(
-              normalized.subject,
-              normalized.subject.value,
-            );
-            if (subjectValue) touchedSubjects.add(subjectValue);
-
-            serializedBatch.push(serializeQuad(normalized));
-            if (serializedBatch.length >= BATCH_SIZE) {
-              await flushSerialized();
-            }
-          } catch (err) {
-            console.debug("[rdfManager.worker] loadFromUrl data handler failed", {
-              error: err instanceof Error ? err.message : String(err),
-            });
-          }
-        });
-
-        quadStream.on("prefix", (pfx: string, iri: any) => {
-          const value =
-            iri && typeof iri.value === "string" ? String(iri.value) : String(iri || "");
-          if (value) {
-            prefixes[pfx] = value;
-            post({ type: "prefix", id, prefixes: { [pfx]: value } });
-          }
-        });
-
-        quadStream.on("context", (ctx: any) => {
-          post({ type: "context", id, context: ctx });
-        });
-
-        quadStream.on("error", (err: any) => {
-          quadStream.removeAllListeners();
-          reject(err);
-        });
-
-        quadStream.on("end", () => {
-          quadStream.removeAllListeners();
-          resolve();
-        });
-      });
-    } catch (err) {
-      post({ type: "error", id, message: String((err as Error).message || err) });
-      return;
-  }
-
-  try {
-    await flushSerialized();
-
-    if (addedCount > 0) {
-      emitChange({ reason: "loadFromUrl", addedCount, graphName: targetGraphName });
-    }
-      if (touchedSubjects.size > 0) {
-        const emission = prepareSubjectEmissionFromSet(
-          touchedSubjects,
-          sharedStoreRef,
-          DataFactory,
-        );
-        if (emission.subjects.length > 0) {
-          emitSubjects(
-            emission.subjects,
-            emission.quadsBySubject,
-            emission.snapshot,
-          );
-        }
-      }
-
-    const loadResult: RDFWorkerLoadCompleteMessage = {
-      type: "end",
-      id,
-      prefixes,
-      quadCount: addedCount,
-      touchedSubjects: Array.from(touchedSubjects),
-    };
-
-    post(loadResult);
-  } catch (err) {
-    try {
-      console.error("[rdfManager.worker] loadFromUrl parse failed", {
-        url,
-        inferredContentType: parseOpts.contentType ?? null,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    } catch (_) {
-      /* ignore console failures */
-    }
-    const errorMessage =
-      err instanceof Error && err.message
-        ? `[rdf.loadFromUrl] ${url} :: ${err.message}`
-        : `[rdf.loadFromUrl] ${url} :: ${String(err)}`;
-    post({ type: "error", id, message: errorMessage });
-  }
-}
-
 
 
 
@@ -2402,7 +2048,6 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
       handleInbound(message);
     },
     terminate() {
-      pendingAcks.clear();
       sharedStore = null;
       workerNamespaces = {};
       workerBlacklistPrefixes = new Set(["owl", "rdf", "rdfs", "xml", "xsd"]);
