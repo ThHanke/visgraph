@@ -40,6 +40,7 @@ interface TopBarProps {
   onToggleLayoutEnabled?: (enabled: boolean) => void;
   onExpandAll?: () => void;
   hasClusters?: boolean;
+  sidebarExpanded?: boolean;
   // Reasoning indicator props
   onOpenReasoningReport?: () => void;
   onRunReason?: () => void;
@@ -65,6 +66,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   isReasoning = false,
   onExpandAll,
   hasClusters = false,
+  sidebarExpanded = false,
 }) => {
   const { config, setLayoutSpacing } = useAppConfigStore(
     useShallow((state) => ({
@@ -101,7 +103,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   return (
     <TooltipPrimitive.Provider delayDuration={0} skipDelayDuration={0}>
-      <div className="absolute top-2 left-0 right-0 z-10 flex justify-center pointer-events-none">
+      <div className={`absolute top-2 right-0 z-10 flex justify-center pointer-events-none transition-[left] duration-300 ease-in-out ${sidebarExpanded ? 'left-72' : 'left-4'}`}>
         <div className="backdrop-blur-md shadow-sm p-1 flex flex-wrap items-center gap-2 pointer-events-auto">
           {/* Primary Action Button - Add Node */}
           <TooltipPrimitive.Root>

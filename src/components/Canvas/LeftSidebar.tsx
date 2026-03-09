@@ -82,7 +82,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     <TooltipPrimitive.Provider delayDuration={0} skipDelayDuration={0}>
       <div
         className={cn(
-          'h-full z-10',
+          'absolute left-0 top-0 h-full z-20',
           'transition-all duration-300 ease-in-out',
           isExpanded ? 'w-72' : 'w-4'
         )}

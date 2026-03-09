@@ -272,6 +272,7 @@ const KnowledgeCanvas: React.FC = () => {
   
   // State for RDF paste in Load Ontology dialog
   const [rdfBody, setRdfBody] = useState('');
+  const [ontologyUrl, setOntologyUrl] = useState('');
 
   // Build combined ontology options list (merge RDF manager namespaces with WELL_KNOWN_PREFIXES)
   const normalizeNamespaceKey = useCallback((u?: string) => {
@@ -3262,8 +3263,8 @@ const KnowledgeCanvas: React.FC = () => {
   );
 
   return (
-    <div className="h-screen w-screen bg-canvas-bg flex">
-      {/* Left Sidebar - pushes content */}
+    <div className="h-screen w-screen bg-canvas-bg relative">
+      {/* Left Sidebar - overlay (does not push content) */}
       <LeftSidebar
         isExpanded={sidebarExpanded}
         onToggle={() => setSidebarExpanded(!sidebarExpanded)}
@@ -3297,8 +3298,8 @@ const KnowledgeCanvas: React.FC = () => {
         onSettings={() => setSettingsOpen(true)}
       />
 
-      {/* Main content area */}
-      <div className="flex-1 flex flex-col relative">
+      {/* Main content area - always full screen width */}
+      <div className="w-full h-full flex flex-col relative">
         {/* Top Bar - overlays on main content */}
         <TopBar
           onAddNode={handleAddNode}
@@ -3319,6 +3320,7 @@ const KnowledgeCanvas: React.FC = () => {
           isReasoning={isReasoning}
           onExpandAll={expandAll}
           hasClusters={nodes.some(n => !n.hidden && (n.data as any)?.clusterType === 'cluster')}
+          sidebarExpanded={sidebarExpanded}
         />
 
         {/* Legend - positioned in top right */}
@@ -3549,7 +3551,7 @@ const KnowledgeCanvas: React.FC = () => {
         />
 
         {/* Load Ontology Dialog - Full rich version */}
-        <Dialog open={loadOntologyOpen} onOpenChange={setLoadOntologyOpen}>
+        <Dialog open={loadOntologyOpen} onOpenChange={(open) => { setLoadOntologyOpen(open); if (!open) setOntologyUrl(''); }}>
           <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto rounded-lg bg-popover text-popover-foreground">
             <DialogHeader>
               <DialogTitle>Load Ontology</DialogTitle>
@@ -3563,8 +3565,8 @@ const KnowledgeCanvas: React.FC = () => {
                 <Input
                   id="ontologyUrl"
                   placeholder="https://example.com/ontology.owl"
-                  value={(window as any).__VG_TEMP_ONTOLOGY_URL || ''}
-                  onChange={(e) => { (window as any).__VG_TEMP_ONTOLOGY_URL = e.target.value; }}
+                  value={ontologyUrl}
+                  onChange={(e) => setOntologyUrl(e.target.value)}
                   className="rounded-lg bg-input border-border"
                 />
               </div>
@@ -3610,10 +3612,10 @@ const KnowledgeCanvas: React.FC = () => {
                   {combinedOntologyOptions.map((opt, index) => (
                     <Button
                       key={`${opt.url}-${index}`}
-                      variant={(window as any).__VG_TEMP_ONTOLOGY_URL === opt.url ? "default" : "outline"}
+                      variant={ontologyUrl === opt.url ? "default" : "outline"}
                       size="sm"
                       className="justify-start text-left h-auto py-2"
-                      onClick={() => { (window as any).__VG_TEMP_ONTOLOGY_URL = opt.url; setLoadOntologyOpen((prev) => !prev); setLoadOntologyOpen(true); }}
+                      onClick={() => setOntologyUrl(opt.url)}
                     >
                       <div>
                         <div className="font-medium">{opt.title}</div>
@@ -3638,12 +3640,12 @@ const KnowledgeCanvas: React.FC = () => {
               )}
 
               <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setLoadOntologyOpen(false)} className="rounded-lg">
+                <Button variant="outline" onClick={() => { setLoadOntologyOpen(false); setOntologyUrl(''); }} className="rounded-lg">
                   Cancel
                 </Button>
                 <Button
                   onClick={async () => {
-                    const url = (window as any).__VG_TEMP_ONTOLOGY_URL?.trim();
+                    const url = ontologyUrl.trim();
                     if (!url) {
                       toast.error('Please enter a valid URL');
                       return;
@@ -3654,7 +3656,7 @@ const KnowledgeCanvas: React.FC = () => {
                         canvasActions.setLoading(true, Math.max(progress, 30), message);
                       });
                       toast.success('Ontology loaded successfully');
-                      (window as any).__VG_TEMP_ONTOLOGY_URL = '';
+                      setOntologyUrl('');
                       setLoadOntologyOpen(false);
                     } catch (err) {
                       console.error('Failed to load ontology:', err);
@@ -3663,7 +3665,7 @@ const KnowledgeCanvas: React.FC = () => {
                       canvasActions.setLoading(false, 0, '');
                     }
                   }}
-                  disabled={!(window as any).__VG_TEMP_ONTOLOGY_URL?.trim()}
+                  disabled={!ontologyUrl.trim()}
                   className="rounded-lg"
                 >
                   Load Ontology
