@@ -62,11 +62,15 @@ export function mergeDataOptimized(existingData: any, incomingData: any): any {
 }
 
 /**
- * Compute node changes for a batch
+ * Compute node changes for a batch.
+ * @param isFullReload - When true (e.g. post-reasoning emitAllSubjects), stale cluster nodes are
+ *   removed and the `hidden` flag from incoming nodes is honoured so that new cluster membership
+ *   overrides any previously-preserved expand/collapse state.
  */
 export function computeNodeChanges(
   nodesList: RFNode<NodeData>[],
   currentNodes: RFNode<NodeData>[],
+  isFullReload?: boolean,
 ): any[] {
   // Sort so visible nodes (hidden: false or undefined) are processed first
   // This improves perceived rendering performance by showing visible content immediately
@@ -103,12 +107,13 @@ export function computeNodeChanges(
 
       // CRITICAL: Never overwrite cluster nodes during incremental updates!
       // Cluster nodes are only created during complete data loads (emitAllSubjects, loadFromUrl)
-      // Incremental updates must not modify cluster metadata
-      const existingIsCluster = (existing.data as any)?.clusterType === 'cluster';
-      const incomingIsCluster = (node as any).data?.clusterType === 'cluster';
-      
-      if (existingIsCluster && !incomingIsCluster) {
-        // Existing is a cluster, incoming is not - preserve the cluster completely
+      // Incremental updates must not modify cluster metadata.
+      // During full reloads (isFullReload) cluster nodes ARE replaced — new clustering is authoritative.
+      const existingIsCluster = !!(existing.data as any)?.clusterType;
+      const incomingIsCluster = !!(node as any).data?.clusterType;
+
+      if (!isFullReload && existingIsCluster && !incomingIsCluster) {
+        // Existing is a cluster, incoming is not — preserve the cluster completely (incremental update)
         console.log('[Clustering] Protecting cluster node from incremental override:', id);
         continue; // ← Skip this node - keep existing cluster
       }
@@ -116,18 +121,24 @@ export function computeNodeChanges(
       // Merge and check if changed
       const mergedData = mergeDataOptimized(existing.data, (node as any).data);
 
-      // Fast path: if data reference is same, skip entirely
-      if (mergedData === existing.data) {
+      // Fast path: if data reference is same AND hidden is unchanged, skip entirely
+      const incomingHidden = (node as any).hidden;
+      const hiddenChanged = isFullReload && incomingHidden !== undefined && incomingHidden !== existing.hidden;
+      if (mergedData === existing.data && !hiddenChanged) {
         continue; // ← No change needed!
       }
 
       // Only create change object if data actually changed
-      const mergedNode = {
+      const mergedNode: any = {
         ...existing,
         type: (node as any).type ?? existing.type,
         position: existing.position ?? (node as any).position ?? { x: 0, y: 0 },
         data: mergedData,
       };
+      // On full reloads, honour the incoming hidden flag so new cluster membership takes effect
+      if (isFullReload && incomingHidden !== undefined) {
+        mergedNode.hidden = incomingHidden;
+      }
 
       delete (mergedNode as any).selected;
       // Clean up the internal flag - it's only for merge decisions
@@ -151,6 +162,18 @@ export function computeNodeChanges(
     }
   }
 
+  // On full reloads, remove any cluster nodes that are no longer in the incoming set.
+  // These are stale clusters from before reasoning; new clusters have been created by
+  // applyClustering and are already in the incoming nodesList.
+  if (isFullReload) {
+    for (const existing of current) {
+      const existingId = String(existing.id);
+      if ((existing.data as any)?.clusterType && !incomingById.has(existingId)) {
+        changes.push({ id: existingId, type: 'remove' });
+      }
+    }
+  }
+
   return changes;
 }
 
@@ -162,11 +185,15 @@ export function computeNodeChanges(
  * quads for that subject (across all graphs), so its output is authoritative:
  * any existing edge whose source is in updatedSubjects but that did not appear
  * in the mapper output no longer has a backing triple and must be removed.
+ *
+ * @param isFullReload - When true, stale cluster edges that are not in the new
+ *   mapping are also removed so that reclustered edges replace them cleanly.
  */
 export function computeEdgeChanges(
   edgesList: RFEdge<LinkData>[],
   currentEdges: RFEdge<LinkData>[],
   updatedSubjects?: Set<string>,
+  isFullReload?: boolean,
 ): any[] {
   // Sort so visible edges (hidden: false or undefined) are processed first
   // This ensures visible connections appear immediately
@@ -209,6 +236,17 @@ export function computeEdgeChanges(
       const id = String(existing.id);
       const source = String(existing.source);
       if (updatedSubjects.has(source) && !incomingIds.has(id)) {
+        changes.push({ id, type: 'remove' });
+      }
+    }
+  }
+
+  // On full reloads, remove stale cluster edges that are no longer in the new mapping.
+  // These are boundary edges for old clusters that have been replaced by reclustering.
+  if (isFullReload) {
+    for (const existing of current) {
+      const id = String(existing.id);
+      if (id.startsWith('cluster-edge-') && !incomingIds.has(id)) {
         changes.push({ id, type: 'remove' });
       }
     }
@@ -300,6 +338,7 @@ export async function applyDiagramChangeChunked(
   canvasActions?: { setLoading: (loading: boolean, progress: number, message: string) => void },
   yieldFn: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
   suppressLayoutFn?: (suppress: boolean) => void,
+  isFullReload?: boolean,
 ): Promise<void> {
   // Signal to suppress layout during chunked update
   if (suppressLayoutFn) suppressLayoutFn(true);
@@ -310,13 +349,18 @@ export async function applyDiagramChangeChunked(
     canvasActions.setLoading(true, 0, `Processing ${totalNodes} nodes...`);
   }
 
-  // Process nodes in chunks
+  // Process nodes in chunks.
+  // For full reloads: stale cluster removal is deferred to the final chunk so that all
+  // incoming cluster nodes have been seen before deciding which old ones are stale.
   for (let i = 0; i < nodesList.length; i += CHUNK_SIZE) {
     const chunk = nodesList.slice(i, i + CHUNK_SIZE);
+    const isLastChunk = i + CHUNK_SIZE >= nodesList.length;
 
     // Process chunk
     setNodes((prev: RFNode<NodeData>[]) => {
-      const changes = computeNodeChanges(chunk, prev);
+      // Pass isFullReload only for the last chunk so stale cluster removal runs once
+      // after all incoming cluster nodes are known.
+      const changes = computeNodeChanges(chunk, prev, isFullReload && isLastChunk ? true : false);
       return applyNodeChanges(changes as any, prev);
     });
 
@@ -333,7 +377,7 @@ export async function applyDiagramChangeChunked(
 
   // Process edges (single batch usually fine)
   setEdges((prev: RFEdge<LinkData>[]) => {
-    const changes = computeEdgeChanges(edgesList, prev, updatedSubjects);
+    const changes = computeEdgeChanges(edgesList, prev, updatedSubjects, isFullReload);
     const newEdgeState = applyEdgeChanges(changes as any, prev);
     return applyBidirectionalOffsets(newEdgeState);
   });
@@ -349,6 +393,9 @@ export async function applyDiagramChangeChunked(
 /**
  * Main entry point: decides between immediate or chunked apply
  * Returns true if chunking was used (caller should defer layout)
+ *
+ * @param isFullReload - Pass true for full re-maps (e.g. post-reasoning emitAllSubjects) so that
+ *   stale cluster nodes/edges are removed and hidden flags from incoming nodes are respected.
  */
 export async function applyDiagramChangeSmart(
   nodesList: RFNode<NodeData>[],
@@ -359,11 +406,12 @@ export async function applyDiagramChangeSmart(
   canvasActions?: { setLoading: (loading: boolean, progress: number, message: string) => void },
   yieldFn?: (ms: number) => Promise<void>,
   suppressLayoutFn?: (suppress: boolean) => void,
+  isFullReload?: boolean,
 ): Promise<boolean> {
   // Small updates: apply immediately (fast path)
   if (nodesList.length < CHUNK_THRESHOLD) {
     setNodes((prev: RFNode<NodeData>[]) => {
-      const changes = computeNodeChanges(nodesList, prev);
+      const changes = computeNodeChanges(nodesList, prev, isFullReload);
       // Create placeholders for edge endpoints
       const knownIds = new Set(prev.map((n) => String(n.id)));
       const newIds = new Set(nodesList.map((n) => String(n.id)));
@@ -401,7 +449,7 @@ export async function applyDiagramChangeSmart(
     });
 
     setEdges((prev: RFEdge<LinkData>[]) => {
-      const changes = computeEdgeChanges(edgesList, prev, updatedSubjects);
+      const changes = computeEdgeChanges(edgesList, prev, updatedSubjects, isFullReload);
       const newEdgeState = applyEdgeChanges(changes as any, prev);
       return applyBidirectionalOffsets(newEdgeState);
     });
@@ -419,6 +467,7 @@ export async function applyDiagramChangeSmart(
     canvasActions,
     yieldFn,
     suppressLayoutFn,
+    isFullReload,
   );
 
   return true; // Chunking was used

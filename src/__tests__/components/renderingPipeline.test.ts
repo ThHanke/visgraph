@@ -305,7 +305,7 @@ describe("mapQuadsToDiagram – incremental operations", () => {
     // Requires schema props so the mapper knows owl:someValuesFrom is both-sides TBox.
     const BN = "_:r1";
     const quads = [
-      { subject: { value: BN, termType: "BlankNode" }, predicate: { value: RDF_TYPE_IRI, termType: "NamedNode" }, object: { value: OWL.Restriction, termType: "NamedNode" }, graph: { value: "urn:vg:data" } },
+      { subject: { value: BN, termType: "BlankNode" }, predicate: { value: RDF_TYPE_IRI, termType: "NamedNode" }, object: { value: "http://www.w3.org/2002/07/owl#Restriction", termType: "NamedNode" }, graph: { value: "urn:vg:data" } },
       { subject: { value: BN, termType: "BlankNode" }, predicate: { value: "http://www.w3.org/2002/07/owl#onProperty",     termType: "NamedNode" }, object: { value: EX+"knows", termType: "NamedNode" }, graph: { value: "urn:vg:data" } },
       { subject: { value: BN, termType: "BlankNode" }, predicate: { value: "http://www.w3.org/2002/07/owl#someValuesFrom", termType: "NamedNode" }, object: { value: EX+"Person", termType: "NamedNode" }, graph: { value: "urn:vg:data" } },
       nn(EX+"Person", RDF_TYPE_IRI, OWL_CLASS),
@@ -326,7 +326,7 @@ describe("mapQuadsToDiagram – incremental operations", () => {
     const quads = [
       nn(EX+"alice",  RDF_TYPE_IRI, OWL_NI),
       nn(EX+"alice",  RDF_TYPE_IRI, EX+"Person"),
-      { subject: { value: BN, termType: "BlankNode" }, predicate: { value: RDF_TYPE_IRI,  termType: "NamedNode" }, object: { value: OWL.Restriction, termType: "NamedNode" }, graph: { value: "urn:vg:data" } },
+      { subject: { value: BN, termType: "BlankNode" }, predicate: { value: RDF_TYPE_IRI,  termType: "NamedNode" }, object: { value: "http://www.w3.org/2002/07/owl#Restriction", termType: "NamedNode" }, graph: { value: "urn:vg:data" } },
       { subject: { value: BN, termType: "BlankNode" }, predicate: { value: "http://www.w3.org/2002/07/owl#onProperty", termType: "NamedNode" }, object: { value: EX+"knows",  termType: "NamedNode" }, graph: { value: "urn:vg:data" } },
       { subject: { value: BN, termType: "BlankNode" }, predicate: { value: "http://www.w3.org/2002/07/owl#hasValue",   termType: "NamedNode" }, object: { value: EX+"alice",  termType: "NamedNode" }, graph: { value: "urn:vg:data" } },
     ];
@@ -343,14 +343,20 @@ describe("mapQuadsToDiagram – incremental operations", () => {
 // ===========================================================================
 describe("mapQuadsToDiagram – inferred graph", () => {
 
-  it("3.1 – inferred annotation property appears on existing node", () => {
+  it("3.1 – inferred annotation property appears in inferredProperties (not annotationProperties)", () => {
     const quads = [
       ...BASE_QUADS,
       lit(EX+"alice", EX+"comment", "Inferred comment", XSD_STRING, "urn:vg:inferred"),
     ];
     const { nodes } = mapQuadsToDiagram(quads, BASE_OPTS);
     const n = findNode(nodes, EX+"alice");
-    expect(hasAnnotation(n, EX+"comment", "Inferred comment")).toBe(true);
+    // Must appear in inferredProperties, NOT annotationProperties
+    const inferredProps: any[] = n?.data?.inferredProperties ?? [];
+    expect(
+      inferredProps.some((p: any) => p.property === EX+"comment" && p.value === "Inferred comment"),
+      "inferred literal must be in inferredProperties"
+    ).toBe(true);
+    expect(hasAnnotation(n, EX+"comment", "Inferred comment"), "inferred literal must NOT be in annotationProperties").toBe(false);
   });
 
   it("3.2 – inferred rdf:type does NOT appear as annotation property", () => {
@@ -390,7 +396,6 @@ describe("mapQuadsToDiagram – inferred graph", () => {
   });
 
   it("3.5 – inferred annotation does NOT appear on inferred-only subjects", () => {
-    // sanity: if the subject IS in data graph, annotation still works (already tested in 3.1)
     // if the subject is NOT in data graph, no node should be created at all
     const quads = [
       ...BASE_QUADS,
@@ -398,6 +403,36 @@ describe("mapQuadsToDiagram – inferred graph", () => {
     ];
     const { nodes } = mapQuadsToDiagram(quads, BASE_OPTS);
     expect(findNode(nodes, EX+"ghost")).toBeUndefined();
+  });
+
+  it("3.6 – inferred object property between two known subjects creates an inferred edge", () => {
+    // OWL-RL may infer ex:alice ex:locatedIn ex:somePlace via a rule
+    const quads = [
+      ...BASE_QUADS,
+      nn(EX+"alice", EX+"locatedIn", EX+"bob", "urn:vg:inferred"),
+    ];
+    const { edges } = mapQuadsToDiagram(quads, BASE_OPTS);
+    const inferredEdge = edges.find(
+      (e: any) => e.source === EX+"alice" && e.target === EX+"bob" &&
+                  e.data?.propertyUri === EX+"locatedIn" && e.data?.isInferred === true,
+    );
+    expect(inferredEdge, "inferred object-property edge must be created with isInferred=true").toBeDefined();
+  });
+
+  it("3.7 – inferred object property to unknown object goes to inferredProperties, not an edge", () => {
+    const quads = [
+      ...BASE_QUADS,
+      nn(EX+"alice", EX+"locatedIn", EX+"unknownPlace", "urn:vg:inferred"),
+    ];
+    const { nodes, edges } = mapQuadsToDiagram(quads, BASE_OPTS);
+    const n = findNode(nodes, EX+"alice");
+    // No edge to unknown place
+    expect(edges.some((e: any) => e.target === EX+"unknownPlace")).toBe(false);
+    // Should appear in inferredProperties
+    const inferredProps: any[] = n?.data?.inferredProperties ?? [];
+    expect(
+      inferredProps.some((p: any) => p.property === EX+"locatedIn" && p.value === EX+"unknownPlace"),
+    ).toBe(true);
   });
 });
 
@@ -1005,8 +1040,6 @@ describe("mapQuadsToDiagram – OWL2Bench real-ontology TBox/ABox classification
 
   // ── 7.18 owl:disjointUnionOf subject — TBox via rdf:type owl:Class ───────
   it("7.18 – Article (owl:disjointUnionOf, has owl:Class type) is TBox", () => {
-    // owl:disjointUnionOf is NOT in OWL_SCHEMA_AXIOMS, but Article has rdf:type owl:Class
-    // which puts it in TBOX_TYPE_IRIS → correctly TBox
     const listBn = "_:list1";
     const quads = [
       obType("Article", OWL_CLASS),
@@ -1020,6 +1053,81 @@ describe("mapQuadsToDiagram – OWL2Bench real-ontology TBox/ABox classification
     const { nodes } = mapQuadsToDiagram(quads as any, SCHEMA_OPTS);
     expect((findOB(nodes, "Article")?.data      as any)?.isTBox).toBe(true);
     expect((findOB(nodes, "Publication")?.data  as any)?.isTBox).toBe(true);
+  });
+
+  // ── 7.18b owl:disjointUnionOf list cons-cells are TBox ───────────────────
+  it("7.18b – owl:disjointUnionOf list cons-cells are TBox (owl:disjointUnionOf now in OWL_SCHEMA_AXIOMS)", () => {
+    // Full list chain: Article owl:disjointUnionOf (_:u1 rdf:first JournalArticle rdf:rest _:u2 ...)
+    // Prior to adding owl:disjointUnionOf to OWL_SCHEMA_AXIOMS the cons-cells were ABox.
+    const RDF_FIRST_IRI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#first";
+    const RDF_REST_IRI  = "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest";
+    const RDF_NIL_IRI   = "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil";
+    const quads = [
+      obType("Article", OWL_CLASS),
+      { subject: { value: OWL2+"Article", termType: "NamedNode" },
+        predicate: { value: OWL_DISJOINT_UNION_OF, termType: "NamedNode" },
+        object:    { value: "_:u1", termType: "BlankNode" },
+        graph:     { value: "urn:vg:data" } },
+      { subject: { value: "_:u1", termType: "BlankNode" },
+        predicate: { value: RDF_FIRST_IRI, termType: "NamedNode" },
+        object:    { value: OWL2+"JournalArticle", termType: "NamedNode" },
+        graph:     { value: "urn:vg:data" } },
+      { subject: { value: "_:u1", termType: "BlankNode" },
+        predicate: { value: RDF_REST_IRI, termType: "NamedNode" },
+        object:    { value: "_:u2", termType: "BlankNode" },
+        graph:     { value: "urn:vg:data" } },
+      { subject: { value: "_:u2", termType: "BlankNode" },
+        predicate: { value: RDF_FIRST_IRI, termType: "NamedNode" },
+        object:    { value: OWL2+"ConferenceArticle", termType: "NamedNode" },
+        graph:     { value: "urn:vg:data" } },
+      { subject: { value: "_:u2", termType: "BlankNode" },
+        predicate: { value: RDF_REST_IRI, termType: "NamedNode" },
+        object:    { value: RDF_NIL_IRI, termType: "NamedNode" },
+        graph:     { value: "urn:vg:data" } },
+      obType("JournalArticle",    OWL_CLASS),
+      obType("ConferenceArticle", OWL_CLASS),
+    ];
+    const { nodes } = mapQuadsToDiagram(quads as any, SCHEMA_OPTS);
+    // Cons-cells must be TBox (structural list machinery for a class expression)
+    for (const id of ["_:u1", "_:u2"]) {
+      const n = nodes.find((x: any) => String(x.id) === id);
+      expect(n, `cons-cell ${id} must exist`).toBeTruthy();
+      expect((n?.data as any)?.nodeLayer, `${id} must be TBox list cons-cell`).toBe("tbox");
+    }
+    // Member classes stay TBox (they have rdf:type owl:Class)
+    expect((findOB(nodes, "JournalArticle")?.data    as any)?.isTBox).toBe(true);
+    expect((findOB(nodes, "ConferenceArticle")?.data as any)?.isTBox).toBe(true);
+  });
+
+  // ── 7.21 owl:hasKey list cons-cells are TBox ─────────────────────────────
+  it("7.21 – owl:hasKey list cons-cells are TBox (owl:hasKey now in OWL_SCHEMA_AXIOMS)", () => {
+    // owl:hasKey domain is owl:Class → TBOX_STRUCT_SUBJ_ONLY → list cons-cells TBox.
+    // The list members are properties (TBox), not individuals.
+    const RDF_FIRST_IRI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#first";
+    const RDF_REST_IRI  = "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest";
+    const RDF_NIL_IRI   = "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil";
+    const OWL_HAS_KEY   = "http://www.w3.org/2002/07/owl#hasKey";
+    const quads = [
+      obType("Person", OWL_CLASS),
+      { subject: { value: OWL2+"Person", termType: "NamedNode" },
+        predicate: { value: OWL_HAS_KEY, termType: "NamedNode" },
+        object:    { value: "_:k1", termType: "BlankNode" },
+        graph:     { value: "urn:vg:data" } },
+      { subject: { value: "_:k1", termType: "BlankNode" },
+        predicate: { value: RDF_FIRST_IRI, termType: "NamedNode" },
+        object:    { value: OWL2+"ssn", termType: "NamedNode" },
+        graph:     { value: "urn:vg:data" } },
+      { subject: { value: "_:k1", termType: "BlankNode" },
+        predicate: { value: RDF_REST_IRI, termType: "NamedNode" },
+        object:    { value: RDF_NIL_IRI, termType: "NamedNode" },
+        graph:     { value: "urn:vg:data" } },
+      obType("ssn", OWL_DT_PROP),
+    ];
+    const { nodes } = mapQuadsToDiagram(quads as any, SCHEMA_OPTS);
+    const k1 = nodes.find((x: any) => String(x.id) === "_:k1");
+    expect(k1, "cons-cell _:k1 must exist").toBeTruthy();
+    expect((k1?.data as any)?.nodeLayer, "_:k1 must be TBox list cons-cell").toBe("tbox");
+    expect((findOB(nodes, "ssn")?.data as any)?.isTBox).toBe(true);
   });
 
   // ── 7.19 owl:AllDifferent blank node is ABox ────────────────────────────

@@ -57,6 +57,18 @@ export const OWL_SCHEMA_AXIOMS: readonly SchemaPredicateAxiom[] = [
   // owl:AllDifferent also uses owl:members (ABox) — handled specially in the mapper pre-scan.
   { predicate: `${OWL}members`,         domain: `${OWL}AllDisjointClasses`  },
   { predicate: `${OWL}distinctMembers`, domain: `${OWL}AllDifferent`        },
+
+  // ── OWL predicates missing from the original list (domain is a TBox metaclass) ──
+  // These were absent from the bootstrap seed, causing their list cons-cells to be
+  // mis-classified as ABox.  Adding them here ensures the fat-map has correct data
+  // from worker startup — no mapper code changes required.
+  //
+  // owl:disjointUnionOf: subject is owl:Class (TBox), range is rdf:List of member classes
+  { predicate: `${OWL}disjointUnionOf`, domain: `${OWL}Class`               },
+  // owl:hasKey: subject is owl:Class (TBox), range is rdf:List of key properties
+  { predicate: `${OWL}hasKey`,          domain: `${OWL}Class`               },
+  // owl:hasSelf: subject is owl:Restriction (TBox), range is rdfs:Resource (literal boolean)
+  { predicate: `${OWL}hasSelf`,         domain: `${OWL}Restriction`         },
 ];
 
 /**

@@ -1,13 +1,13 @@
  
 import React, { memo, useRef, useMemo } from "react";
 import {
-  Handle, 
+  Handle,
   Position,
   NodeProps,
   useConnection,
   NodeToolbar,
 } from "@xyflow/react";
-import { Minus } from "lucide-react";
+import { Minus, Sparkles } from "lucide-react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { cn } from "../../lib/utils";
 import {
@@ -159,6 +159,25 @@ function RDFNodeImpl(props: NodeProps) {
     return entries;
   }, [nodeData.properties, namespaceRegistry]);
 
+  const inferredAnnotations = useMemo(() => {
+    const source = (nodeData as any).inferredProperties;
+    if (!Array.isArray(source) || source.length === 0) return [] as Array<{ term: string; value: string }>;
+    const entries: Array<{ term: string; value: string }> = [];
+    for (const property of source as Array<{ property: unknown; value: unknown }>) {
+      if (entries.length >= 6) break;
+      if (!property || typeof property !== "object") continue;
+      const propertyIri = typeof (property as any).property === "string" ? (property as any).property : null;
+      if (!propertyIri || propertyIri.trim().length === 0) continue;
+      const rawValue = (property as any).value;
+      if (rawValue === undefined || rawValue === null) continue;
+      const valueStr = String(rawValue).trim();
+      if (!valueStr) continue;
+      const prefixed = toPrefixed(propertyIri, namespaceRegistry);
+      entries.push({ term: prefixed !== propertyIri ? prefixed : propertyIri, value: valueStr });
+    }
+    return entries;
+  }, [(nodeData as any).inferredProperties, namespaceRegistry]);
+
   const typePresentButNotLoaded =
     !nodeData.classType &&
     Array.isArray(nodeData.rdfTypes) &&
@@ -231,6 +250,23 @@ function RDFNodeImpl(props: NodeProps) {
               </ul>
             )}
           </div>
+
+          {inferredAnnotations.length > 0 && (
+            <div className="mt-2">
+              <div className="font-medium text-xs mb-1 flex items-center gap-1 text-primary">
+                <Sparkles className="w-3 h-3" />
+                Inferred
+              </div>
+              <ul className="text-sm space-y-1">
+                {inferredAnnotations.map((a, i) => (
+                  <li key={i} className="flex gap-2 italic opacity-80">
+                    <div className="w-28 text-xs text-primary/70 truncate">{a.term}</div>
+                    <div className="text-xs text-foreground truncate">{a.value}</div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {Array.isArray(typesList) && typesList.length > 0 && (
             <div className="mt-2">
@@ -365,7 +401,7 @@ function RDFNodeImpl(props: NodeProps) {
             </div>
 
             <div className="pt-2 border-t border-border">
-              {annotations.length === 0 ? (
+              {annotations.length === 0 && inferredAnnotations.length === 0 ? (
                 <div className="text-xs text-muted-foreground">No annotations</div>
               ) : (
                 <div className="space-y-2">
@@ -375,6 +411,21 @@ function RDFNodeImpl(props: NodeProps) {
                       className="grid grid-cols-[110px_1fr] gap-2 text-sm"
                     >
                       <div className="font-medium text-xs text-muted-foreground truncate">
+                        {a.term}
+                      </div>
+                      <div className="text-xs text-foreground truncate">
+                        {a.value}
+                      </div>
+                    </div>
+                  ))}
+                  {inferredAnnotations.map((a, idx) => (
+                    <div
+                      key={`inf-${idx}`}
+                      className="grid grid-cols-[110px_1fr] gap-2 text-sm italic opacity-75"
+                      title="Inferred by reasoner"
+                    >
+                      <div className="font-medium text-xs text-primary/70 truncate flex items-center gap-1">
+                        <Sparkles className="w-2.5 h-2.5 flex-none" />
                         {a.term}
                       </div>
                       <div className="text-xs text-foreground truncate">

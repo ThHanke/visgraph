@@ -276,9 +276,18 @@ export function applyClustering(
     threshold: number;
     collapsedSet?: Set<string>;
     algorithm?: "louvain" | "label-propagation" | "kmeans";
+    /** When provided, clusters are created already in the given expansion state instead of collapsed. */
+    initialExpansionLevels?: { abox: number; tbox: number };
   }
 ): { nodes: RFNode<NodeData>[]; edges: RFEdge<LinkData>[] } {
-  const { threshold, collapsedSet = new Set(), algorithm = "label-propagation" } = options; // default: label-propagation (fine)
+  const { threshold, collapsedSet = new Set(), algorithm = "label-propagation", initialExpansionLevels } = options; // default: label-propagation (fine)
+
+  /** Returns the expansion level that applies to a given node layer. */
+  const getLayerLevel = (layer: string | undefined): number => {
+    if (!initialExpansionLevels) return 0;
+    if (layer === 'tbox' || layer === 'both') return initialExpansionLevels.tbox;
+    return initialExpansionLevels.abox;
+  };
 
   // Only feed VISIBLE nodes to clustering algorithms.
   // Already-hidden nodes (e.g. collection-cluster members produced by mapper Step 8)
@@ -355,18 +364,28 @@ export function applyClustering(
     }
   }
 
+  // Pre-build lookup maps used both for cluster node creation and child mapping.
+  const nodeMap = new Map(nodes.map(n => [String(n.id), n]));
+  // Maps each child node id → its cluster parent id (the algo-cluster parent IRI).
+  const nodeToClusterParent = new Map<string, string>();
+  for (const [parentId, cluster] of clusters.entries()) {
+    for (const childId of cluster.nodeIds) {
+      nodeToClusterParent.set(childId, parentId);
+    }
+  }
+
   // Create cluster nodes
   const clusterNodesToAdd: RFNode<NodeData>[] = [];
 
   for (const [parentId, cluster] of clusters.entries()) {
-    const parentNode = nodes.find(n => String(n.id) === parentId);
+    const parentNode = nodeMap.get(parentId);
     if (!parentNode) continue;
 
     const clusterNodeId = `cluster:${parentId}`;
-    
+
     // Analyze cluster types for display on the cluster node
     const topTypes = analyzeClusterTypes(Array.from(cluster.nodeIds), nodes);
-    
+
     console.log('[Clustering] Creating cluster node:', {
       clusterNodeId,
       parentId,
@@ -375,6 +394,10 @@ export function applyClustering(
       topTypes,
     });
 
+    const clusterLayer = (parentNode.data as any)?.nodeLayer as string | undefined;
+    // Algo clusters are at level 1; hide them if the user had level >= 1 expanded.
+    const clusterHidden = getLayerLevel(clusterLayer) >= 1;
+
     clusterNodesToAdd.push({
       id: clusterNodeId,
       type: 'cluster',
@@ -382,25 +405,42 @@ export function applyClustering(
       data: {
         ...parentNode.data,
         clusterType: 'cluster',
+        clusterLevel: 1, // Level 1 = outermost (algorithmic clusters, applied after collections)
         parentIri: cluster.parentIri,
         nodeIds: Array.from(cluster.nodeIds),
         edgeIds: Array.from(cluster.edgeIds),
         nodeCount: cluster.nodeIds.size,
         topTypes, // Include top 3 types for cluster visualization
       },
-      hidden: false, // Cluster visible by default
+      hidden: clusterHidden,
     } as RFNode<NodeData>);
   }
 
-  // Mark original nodes as hidden and add cluster parent reference
+  // Mark original nodes as hidden/visible and add cluster parent reference.
+  // When initialExpansionLevels is provided the visibility is set to match the user's
+  // prior expansion state so no second render pass is needed.
   const updatedNodes = nodes.map(node => {
     const nodeId = String(node.id);
+    const nodeLayer = (node.data as any)?.nodeLayer as string | undefined;
+    const isTBox = !!(node.data as any)?.isTBox;
+    const effectiveLayer = nodeLayer ?? (isTBox ? 'tbox' : 'abox');
+    const layerLevel = getLayerLevel(effectiveLayer);
 
-    // If this node is part of any cluster, hide it and add parent reference
+    // ── Algo-cluster children ──────────────────────────────────────────────
     if (claimedNodes.has(nodeId)) {
-      const clusterParentId = Array.from(clusters.entries()).find(
-        ([_, info]) => info.nodeIds.has(nodeId)
-      )?.[0];
+      const clusterParentId = nodeToClusterParent.get(nodeId);
+      // Determine the layer from the cluster parent node (more reliable than the child).
+      const parentNode = clusterParentId ? nodeMap.get(clusterParentId) : undefined;
+      const clusterLayer = (parentNode?.data as any)?.nodeLayer as string | undefined;
+      const clusterLayerLevel = getLayerLevel(clusterLayer);
+
+      // Child is visible when the algo cluster is expanded (level >= 1).
+      let childHidden = clusterLayerLevel < 1;
+
+      // If this child is itself a collection-cluster node, also hide it at level >= 2.
+      if (!childHidden && (node.data as any)?.clusterType === 'collection' && clusterLayerLevel >= 2) {
+        childHidden = true;
+      }
 
       return {
         ...node,
@@ -408,8 +448,21 @@ export function applyClustering(
           ...node.data,
           __clusterParent: clusterParentId ? `cluster:${clusterParentId}` : undefined,
         },
-        hidden: true, // Hide original nodes when clustered
+        hidden: childHidden,
       };
+    }
+
+    // ── Standalone collection-cluster nodes (not claimed by an algo cluster) ─
+    if ((node.data as any)?.clusterType === 'collection' && layerLevel >= 2) {
+      // User had collection clusters expanded too — keep them hidden.
+      return { ...node, hidden: true };
+    }
+
+    // ── Standalone collection-cluster members (not claimed by an algo cluster) ─
+    if (node.hidden && (node.data as any)?.__clusterParent && layerLevel >= 2) {
+      // Members of a collection cluster that isn't inside an algo cluster.
+      // Reveal them because the user had level-2 (fully expanded) state.
+      return { ...node, hidden: false };
     }
 
     return node;

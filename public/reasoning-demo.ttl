@@ -1,0 +1,63 @@
+@prefix ex: <http://example.com/reasoning-demo#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+# ── Ontology declaration ─────────────────────────────────────────────────────
+<http://example.com/reasoning-demo> a owl:Ontology ;
+    rdfs:label "Reasoning Demo Ontology" .
+
+# ── TBox: Classes ─────────────────────────────────────────────────────────────
+ex:Person a owl:Class ;
+    rdfs:label "Person" .
+
+ex:Employee a owl:Class ;
+    rdfs:subClassOf ex:Person ;
+    rdfs:label "Employee" .
+
+ex:Manager a owl:Class ;
+    rdfs:subClassOf ex:Employee ;
+    rdfs:label "Manager" .
+
+# ── TBox: Properties ─────────────────────────────────────────────────────────
+ex:knows a owl:ObjectProperty ;
+    rdfs:label "knows" ;
+    rdfs:domain ex:Person ;
+    rdfs:range ex:Person .
+
+ex:hasFriend a owl:ObjectProperty ;
+    rdfs:subPropertyOf ex:knows ;
+    rdfs:label "hasFriend" ;
+    rdfs:domain ex:Person ;
+    rdfs:range ex:Person .
+
+ex:manages a owl:ObjectProperty ;
+    rdfs:label "manages" ;
+    rdfs:domain ex:Manager ;
+    rdfs:range ex:Employee .
+
+ex:worksFor a owl:ObjectProperty ;
+    rdfs:label "worksFor" ;
+    rdfs:domain ex:Employee ;
+    rdfs:range ex:Manager .
+
+# ── ABox: Individuals ────────────────────────────────────────────────────────
+ex:alice a owl:NamedIndividual, ex:Manager ;
+    rdfs:label "Alice" .
+
+ex:bob a owl:NamedIndividual, ex:Employee ;
+    rdfs:label "Bob" .
+
+ex:carol a owl:NamedIndividual, ex:Employee ;
+    rdfs:label "Carol" .
+
+# ── ABox: Assertions ─────────────────────────────────────────────────────────
+# Direct friendship → OWL-RL will infer ex:alice ex:knows ex:bob
+ex:alice ex:hasFriend ex:bob .
+
+# Management relation
+ex:alice ex:manages ex:carol .
+
+# Works-for (inverse can be inferred if declared, but here just asserted)
+ex:bob ex:worksFor ex:alice .

@@ -5,7 +5,8 @@ import {
   Plus,
   Eye,
   EyeOff,
-  Maximize2,
+  ChevronDown,
+  ChevronUp,
   Network,
   Layout,
 } from 'lucide-react';
@@ -39,7 +40,11 @@ interface TopBarProps {
   layoutEnabled?: boolean;
   onToggleLayoutEnabled?: (enabled: boolean) => void;
   onExpandAll?: () => void;
+  onExpandLevel?: () => void;
+  onCollapseLevel?: () => void;
   hasClusters?: boolean;
+  clusterDisplayLevel?: number;
+  maxClusterDisplayLevel?: number;
   sidebarExpanded?: boolean;
   // Reasoning indicator props
   onOpenReasoningReport?: () => void;
@@ -65,7 +70,11 @@ export const TopBar: React.FC<TopBarProps> = ({
   currentReasoning = null,
   isReasoning = false,
   onExpandAll,
+  onExpandLevel,
+  onCollapseLevel,
   hasClusters = false,
+  clusterDisplayLevel = 0,
+  maxClusterDisplayLevel = 0,
   sidebarExpanded = false,
 }) => {
   const { config, setLayoutSpacing } = useAppConfigStore(
@@ -197,30 +206,59 @@ export const TopBar: React.FC<TopBarProps> = ({
             </TooltipPrimitive.Portal>
           </TooltipPrimitive.Root>
 
-          {/* Expand All Clusters Button */}
+          {/* Cluster level expand/collapse split button */}
           {hasClusters && (
-            <TooltipPrimitive.Root>
-              <TooltipPrimitive.Trigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onExpandAll}
-                  className="rounded-md h-9 border border-border/20"
-                >
-                  <Maximize2 className="h-4 w-4 mr-1" />
-                  <span className="hidden md:inline text-sm">Expand All</span>
-                </Button>
-              </TooltipPrimitive.Trigger>
-              <TooltipPrimitive.Portal>
-                <TooltipPrimitive.Content
-                  className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
-                  sideOffset={5}
-                >
-                  Expand all cluster nodes
-                  <TooltipPrimitive.Arrow className="fill-popover" />
-                </TooltipPrimitive.Content>
-              </TooltipPrimitive.Portal>
-            </TooltipPrimitive.Root>
+            <div className="flex items-center rounded-md border border-border/20 overflow-hidden">
+              <TooltipPrimitive.Root>
+                <TooltipPrimitive.Trigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={onCollapseLevel}
+                    disabled={clusterDisplayLevel <= 0}
+                    className="rounded-none h-9 px-2 border-r border-border/20"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </TooltipPrimitive.Trigger>
+                <TooltipPrimitive.Portal>
+                  <TooltipPrimitive.Content
+                    className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
+                    sideOffset={5}
+                  >
+                    Collapse one cluster level
+                    <TooltipPrimitive.Arrow className="fill-popover" />
+                  </TooltipPrimitive.Content>
+                </TooltipPrimitive.Portal>
+              </TooltipPrimitive.Root>
+
+              <span className="px-2 text-xs tabular-nums text-muted-foreground select-none">
+                {clusterDisplayLevel}/{maxClusterDisplayLevel}
+              </span>
+
+              <TooltipPrimitive.Root>
+                <TooltipPrimitive.Trigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={onExpandLevel}
+                    disabled={clusterDisplayLevel >= maxClusterDisplayLevel}
+                    className="rounded-none h-9 px-2 border-l border-border/20"
+                  >
+                    <ChevronUp className="h-4 w-4" />
+                  </Button>
+                </TooltipPrimitive.Trigger>
+                <TooltipPrimitive.Portal>
+                  <TooltipPrimitive.Content
+                    className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
+                    sideOffset={5}
+                  >
+                    Expand one cluster level
+                    <TooltipPrimitive.Arrow className="fill-popover" />
+                  </TooltipPrimitive.Content>
+                </TooltipPrimitive.Portal>
+              </TooltipPrimitive.Root>
+            </div>
           )}
 
           {/* Ontology Count Popover Button */}

@@ -62,31 +62,39 @@ export const LinkPropertyEditor = ({
 
   // Read suggestions directly from the store each render (no snapshots).
   const availableProperties = useOntologyStore((s) => s.availableProperties);
-  const entityIndex = useOntologyStore((s) => (s as any).entityIndex);
-  const entitySuggestions = Array.isArray(entityIndex?.suggestions) ? entityIndex.suggestions : undefined;
+  const getCompatibleProperties = useOntologyStore((s) => s.getCompatibleProperties);
+
+  // Derive the class IRIs for source and target from the node data.
+  // classType holds the primary domain class (owl:NamedIndividual excluded).
+  // For TBox nodes (classes/properties) classType is the metaclass, which won't
+  // match any domain declaration → falls through to properties with no domain restriction.
+  const sourceClassIri: string = String(sourceNode?.classType ?? sourceNode?.rdfTypes?.[0] ?? '');
+  const targetClassIri: string = String(targetNode?.classType ?? targetNode?.rdfTypes?.[0] ?? '');
+
+  // Use getCompatibleProperties when both endpoints are known so the autocomplete
+  // only surfaces properties whose domain/range match the actual node classes.
+  // Falls back to all available properties when class info is absent (sourceClassIri
+  // or targetClassIri empty) or when getCompatibleProperties returns nothing.
   const computedAllObjectProperties = useMemo(() => {
-    if (Array.isArray(entitySuggestions) && entitySuggestions.length > 0) {
-      return entitySuggestions.map((ent: any) => ({
-        iri: String(ent.iri || ent || ''),
-        label: ent.label || undefined,
-        description: ent.display || ent.description,
-        rdfType: ent.rdfType,
-        prefixed: ent.prefixed,
-        __native: ent,
-      }));
+    let props: any[] = [];
+    if (sourceClassIri && targetClassIri && typeof getCompatibleProperties === 'function') {
+      const compatible = getCompatibleProperties(sourceClassIri, targetClassIri);
+      if (Array.isArray(compatible) && compatible.length > 0) {
+        props = compatible;
+      }
     }
-    if (Array.isArray(availableProperties)) {
-      return availableProperties.map((prop: any) => ({
-        iri: String(prop.iri || prop || ''),
-        label: prop.label || undefined,
-        description: prop.description || prop.namespace || undefined,
-        rdfType: prop.rdfType || prop.type,
-        prefixed: prop.prefixed,
-        __native: prop,
-      }));
+    if (props.length === 0 && Array.isArray(availableProperties)) {
+      props = availableProperties;
     }
-    return [];
-  }, [entitySuggestions, availableProperties]);
+    return props.map((prop: any) => ({
+      iri: String(prop.iri || prop || ''),
+      label: prop.label || undefined,
+      description: prop.description || prop.namespace || undefined,
+      rdfType: prop.rdfType || prop.type,
+      prefixed: prop.prefixed,
+      __native: prop,
+    }));
+  }, [sourceClassIri, targetClassIri, getCompatibleProperties, availableProperties]);
 
   // Use the memoized computedAllObjectProperties directly as the AutoComplete options.
   // This avoids keeping a duplicate state copy; computedAllObjectProperties is memoized and stable.
@@ -353,7 +361,7 @@ export const LinkPropertyEditor = ({
           <div className="space-y-2">
             <Label>Type</Label>
             <EntityAutoComplete
-              mode="properties"
+              entities={computedAllObjectProperties}
               value={selectedProperty}
               onChange={(ent: any) => setSelectedProperty(ent ? String(ent.iri || '') : '')}
               placeholder="Type to search for object properties..."

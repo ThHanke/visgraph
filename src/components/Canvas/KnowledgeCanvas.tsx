@@ -232,6 +232,16 @@ const KnowledgeCanvas: React.FC = () => {
   const [isReasoning, setIsReasoning] = useState(false);
   const reasoningInFlightRef = useRef(false);
 
+  // Per-view cluster display level tracking.
+  // Level 0: all clusters collapsed; Level 1: algorithmic clusters expanded;
+  // Level 2: collection clusters also expanded (fully expanded).
+  const [clusterDisplayLevels, setClusterDisplayLevels] = useState<{ abox: number; tbox: number }>({ abox: 0, tbox: 0 });
+  // Ref so the mapping pipeline closure always sees the current cluster display levels without stale-closure issues.
+  const clusterDisplayLevelsRef = useRef(clusterDisplayLevels);
+  clusterDisplayLevelsRef.current = clusterDisplayLevels;
+  // Ref so expand/collapse callbacks always see the current viewMode without stale-closure issues.
+  const viewModeRef = useRef<'abox' | 'tbox'>(config.viewMode ?? 'abox');
+
   const [viewMode, setViewMode] = useState(config.viewMode);
   const [showLegend, setShowLegendState] = useState(config.showLegend);
   const [currentLayout, setCurrentLayoutState] = useState(config.currentLayout);
@@ -751,6 +761,7 @@ const KnowledgeCanvas: React.FC = () => {
   const handleViewModeChange = useCallback(
     (mode: "abox" | "tbox") => {
       setViewMode(mode);
+      viewModeRef.current = mode;
       setPersistedViewMode(mode);
 
       setNodes((prev) =>
@@ -1218,11 +1229,12 @@ const KnowledgeCanvas: React.FC = () => {
       // Step 2: Apply optional clustering ONLY on complete data loads
       // Incremental updates must NOT re-cluster to avoid overwriting existing cluster nodes
       // Complete data loads are indicated by:
-      // - reason === 'emitAllSubjects' (explicit full emit)
+      // - reason === 'emitAllSubjects' (explicit full emit, including post-reasoning full reload)
       // - reason === 'loadFromUrl' (URL load operation)
       // - reason === 'importSerialized' (URL parameter/persisted state load)
-      // - !reason (undefined/empty) - indicates manual emitAllSubjects call after data load
-      const isCompleteDataLoad = reason === 'emitAllSubjects' || reason === 'loadFromUrl' || reason === 'importSerialized' || !reason;
+      // NOTE: reason === 'reasoning' (partial inference batch) is intentionally excluded —
+      //       clustering is deferred to the follow-up emitAllSubjects triggered after reasoning.
+      const isCompleteDataLoad = reason === 'emitAllSubjects' || reason === 'loadFromUrl' || reason === 'importSerialized';
       
       if (clusterThreshold > 0 && isCompleteDataLoad && config.clusteringAlgorithm !== "none") {
         console.log('[Pipeline] Applying clustering with threshold:', clusterThreshold, '(complete data load)');
@@ -1232,6 +1244,9 @@ const KnowledgeCanvas: React.FC = () => {
         const clustered = applyClustering(mappedNodes, mappedEdges, {
           threshold: clusterThreshold,
           algorithm: config.clusteringAlgorithm,
+          // Produce nodes already in the user's current expansion state so no
+          // second render pass is needed after the reload completes.
+          initialExpansionLevels: clusterDisplayLevelsRef.current,
         });
         const clusterDuration = Date.now() - clusterStartTime;
         
@@ -1289,7 +1304,10 @@ const KnowledgeCanvas: React.FC = () => {
           const diagram = await translateQuadsToDiagram(dataQuads, reason);
           const mappedNodes: RFNode<NodeData>[] = diagram?.nodes ?? [];
           const mappedEdges: RFEdge<LinkData>[] = diagram?.edges ?? [];
-          await applyDiagrammChange(mappedNodes, mappedEdges, updatedSubjects);
+          // Full reloads (emitAllSubjects, loadFromUrl, importSerialized) require stale cluster
+          // cleanup and honouring the incoming hidden flags from re-clustering.
+          const isFullReload = reason === 'emitAllSubjects' || reason === 'loadFromUrl' || reason === 'importSerialized';
+          await applyDiagrammChange(mappedNodes, mappedEdges, updatedSubjects, isFullReload);
         }
 
         await waitForNextFrame();
@@ -1386,6 +1404,15 @@ const KnowledgeCanvas: React.FC = () => {
       _snapshot?: any[] | undefined,
       meta?: Record<string, unknown> | null,
     ) => {
+      // Only process subjects from canvas-relevant graphs (urn:vg:data, urn:vg:inferred,
+      // or unspecified). Subjects emitted from background graphs like urn:vg:ontologies
+      // have no mapper-visible quads and would produce zero output, causing isFullReload
+      // to incorrectly wipe cluster nodes.
+      const incomingGraphName = meta && typeof meta.graphName === 'string' ? meta.graphName : null;
+      if (incomingGraphName && incomingGraphName !== 'urn:vg:data' && incomingGraphName !== 'urn:vg:inferred') {
+        return;
+      }
+
       const incomingSubjects = Array.isArray(subs)
         ? subs.map((value) => String(value))
         : [];
@@ -1516,6 +1543,26 @@ const KnowledgeCanvas: React.FC = () => {
 
     (window as any).__VG_COLLAPSE_TO_CLUSTER = (clusterParentId: string) => {
       collapseToCluster(clusterParentId);
+    };
+
+    // Level-by-level expand/collapse (used by TopBar split button and external callers)
+    (window as any).__VG_EXPAND_ONE_LEVEL = () => {
+      expandOneLevel();
+    };
+
+    (window as any).__VG_COLLAPSE_ONE_LEVEL = () => {
+      collapseOneLevel();
+    };
+
+    (window as any).__VG_EXPAND_ALL = () => {
+      expandAll();
+    };
+
+    (window as any).__VG_FIT_VIEW = () => {
+      const rfInst = reactFlowInstance.current;
+      if (rfInst && typeof (rfInst as any).fitView === 'function') {
+        try { (rfInst as any).fitView({ padding: 0.1, duration: 200 }); } catch (_) {}
+      }
     };
 
     // Persisted-layout helper: process queued apply layout requests that arrived before mount.
@@ -1930,49 +1977,59 @@ const KnowledgeCanvas: React.FC = () => {
       }),
     );
 
-    // After applying reasoning-specific updates, trigger a subject-level emission
-    // for all known nodes so consumers (mapper/canvas) receive authoritative quads
-    // even if the reasoner wrote inferred triples directly into the raw store.
+    // After applying reasoning-specific updates, trigger a full re-emit of ALL subjects
+    // so the mapper receives authoritative quads for every entity (including new subjects
+    // created by inference that were not yet on the canvas).  This also triggers a full
+    // re-cluster so that:
+    //   - newly inferred entities get correctly placed into collections / clusters
+    //   - entities whose ABox/TBox classification changed are re-classified
+    //   - stale cluster nodes from before reasoning are replaced with fresh ones
     const mgr = getRdfManagerRef.current && getRdfManagerRef.current();
-    if (mgr && typeof (mgr as any).triggerSubjectUpdate === "function") {
-      const allNodeIris = (nodes || []).map((n) =>
-        n && n.data && (n.data as any).iri
-          ? String((n.data as any).iri)
-          : String(n.id),
-      );
-      // Only trigger the subject update when the canvas has fully initialized.
-      // This prevents premature emissions during test renders before providers
-      // (e.g. TooltipProvider) are mounted, which would cause provider-required
-      // components to throw.
+    if (mgr && typeof (mgr as any).emitAllSubjects === "function") {
+      // Only trigger when the canvas has fully initialized to avoid premature emissions.
       if (
         typeof window !== "undefined" &&
         (window as any).__VG_KNOWLEDGE_CANVAS_READY
       ) {
         // Fire-and-forget but catch errors to avoid blocking UI
-        (mgr as any).triggerSubjectUpdate(allNodeIris).catch((err: any) => {
-          console.warn("KnowledgeCanvas triggerSubjectUpdate failed", err);
+        (mgr as any).emitAllSubjects("urn:vg:data").catch((err: any) => {
+          console.warn("KnowledgeCanvas post-reasoning emitAllSubjects failed", err);
         });
       } else {
-        console.warn("KnowledgeCanvas skipped triggerSubjectUpdate because canvas is not ready");
+        console.warn("KnowledgeCanvas skipped post-reasoning emitAllSubjects because canvas is not ready");
       }
     } else {
-      console.warn("KnowledgeCanvas triggerSubjectUpdate unavailable");
+      console.warn("KnowledgeCanvas post-reasoning emitAllSubjects unavailable");
     }
   }, [currentReasoning, setNodes, setEdges]);
 
-  // Expand all clusters at once
+  // Expand all clusters at once (jump directly to fully expanded)
   const expandAll = useCallback(() => {
-    setNodes(prev => prev.map(node => {
-      // Hide cluster nodes
-      if ((node.data as any)?.clusterType === 'cluster') {
-        return { ...node, hidden: true, selected: false };
-      }
-      // Reveal hidden nodes that belong to a cluster
-      if (node.hidden && (node.data as any)?.__clusterParent) {
-        return { ...node, hidden: false, selected: false };
-      }
-      return node;
-    }));
+    const vm = viewModeRef.current;
+    setNodes(prev => {
+      // Find max clusterLevel among clusters visible in the current view
+      const maxLevel = prev.reduce((max, n) => {
+        if (!(n.data as any)?.clusterType) return max;
+        const layer = (n.data as any)?.nodeLayer;
+        const inView = !layer || layer === 'both' || layer === vm;
+        if (!inView) return max;
+        const lvl = (n.data as any)?.clusterLevel;
+        return typeof lvl === 'number' ? Math.max(max, lvl) : max;
+      }, 0);
+      // Update display level to fully expanded (max + 1) for this view only
+      setClusterDisplayLevels(prev2 => ({ ...prev2, [vm]: maxLevel + 1 }));
+      return prev.map(node => {
+        // Hide ALL cluster nodes (both 'cluster' and 'collection' types)
+        if ((node.data as any)?.clusterType) {
+          return { ...node, hidden: true, selected: false };
+        }
+        // Reveal hidden nodes that belong to a cluster
+        if (node.hidden && (node.data as any)?.__clusterParent) {
+          return { ...node, hidden: false, selected: false };
+        }
+        return node;
+      });
+    });
 
     setTrackedTimeout(() => {
       const rfInst = reactFlowInstance.current;
@@ -1983,6 +2040,101 @@ const KnowledgeCanvas: React.FC = () => {
       }
     }, 100);
   }, [setNodes, setTrackedTimeout, doLayout]);
+
+  // Expand clusters one level at a time.
+  // Finds the highest clusterLevel among visible cluster nodes and expands those.
+  const expandOneLevel = useCallback(() => {
+    const rfInst = reactFlowInstance.current;
+    const allNodes: RFNode<NodeData>[] = rfInst && typeof (rfInst as any).getNodes === 'function'
+      ? (rfInst as any).getNodes()
+      : [];
+
+    const visibleClusters = allNodes.filter(n => !n.hidden && (n.data as any)?.clusterType);
+    if (visibleClusters.length === 0) return; // already fully expanded
+
+    const maxLevel = Math.max(...visibleClusters.map(n => (n.data as any)?.clusterLevel ?? 0));
+    const toExpand = visibleClusters.filter(n => ((n.data as any)?.clusterLevel ?? 0) === maxLevel);
+    const expandIds = new Set(toExpand.map(n => String(n.id)));
+
+    const childIds = new Set<string>();
+    for (const c of toExpand) {
+      for (const id of ((c.data as any)?.nodeIds ?? []) as string[]) childIds.add(id);
+    }
+
+    setNodes(prev => prev.map(node => {
+      const id = String(node.id);
+      if (expandIds.has(id)) return { ...node, hidden: true, selected: false };
+      if (childIds.has(id)) return { ...node, hidden: false, selected: false };
+      return node;
+    }));
+
+    setEdges(prev => prev.map(edge => {
+      if (edge.hidden && (childIds.has(String(edge.source)) || childIds.has(String(edge.target)))) {
+        return { ...edge, hidden: false };
+      }
+      return edge;
+    }));
+
+    setClusterDisplayLevels(prev => ({ ...prev, [viewModeRef.current]: prev[viewModeRef.current] + 1 }));
+
+    setTrackedTimeout(() => {
+      const rfInst2 = reactFlowInstance.current;
+      if (rfInst2 && typeof (rfInst2 as any).getNodes === 'function') {
+        void doLayout((rfInst2 as any).getNodes(), (rfInst2 as any).getEdges?.() ?? [], true);
+      }
+    }, 100);
+  }, [setNodes, setEdges, setTrackedTimeout, doLayout]);
+
+  // Collapse clusters one level at a time.
+  // Finds the lowest clusterLevel among hidden cluster nodes for the current view and re-collapses those.
+  const collapseOneLevel = useCallback(() => {
+    const vm = viewModeRef.current;
+    // Capture newly hidden node IDs so the edge pass (scheduled below) can hide their edges.
+    const newlyHidden = new Set<string>();
+
+    setNodes(prev => {
+      // Only consider hidden cluster nodes that belong to the current view so that
+      // collapsing A-Box clusters does not accidentally re-collapse T-Box clusters.
+      const hiddenClusters = prev.filter(n => {
+        if (!n.hidden || !(n.data as any)?.clusterType) return false;
+        const layer = (n.data as any)?.nodeLayer;
+        if (layer === 'tbox') return vm === 'tbox';
+        if (layer === 'abox') return vm === 'abox';
+        if (layer === 'both') return true;
+        const isTBox = !!(n.data as any)?.isTBox;
+        return vm === 'tbox' ? isTBox : !isTBox;
+      });
+      if (hiddenClusters.length === 0) return prev;
+
+      const minLevel = Math.min(...hiddenClusters.map(n => (n.data as any)?.clusterLevel ?? 0));
+      const toCollapse = hiddenClusters.filter(n => ((n.data as any)?.clusterLevel ?? 0) === minLevel);
+      const collapseIds = new Set(toCollapse.map(n => String(n.id)));
+      const childIds = new Set<string>();
+      for (const c of toCollapse) {
+        for (const id of ((c.data as any)?.nodeIds ?? []) as string[]) childIds.add(id);
+      }
+      for (const id of childIds) newlyHidden.add(id);
+
+      return prev.map(node => {
+        const id = String(node.id);
+        if (collapseIds.has(id)) return { ...node, hidden: false, selected: false };
+        if (childIds.has(id)) return { ...node, hidden: true, selected: false };
+        return node;
+      });
+    });
+
+    // Hide edges whose endpoints just became hidden (run after node state settles)
+    setTrackedTimeout(() => {
+      setEdges(prev => prev.map(edge => {
+        if (!edge.hidden && (newlyHidden.has(String(edge.source)) || newlyHidden.has(String(edge.target)))) {
+          return { ...edge, hidden: true };
+        }
+        return edge;
+      }));
+    }, 0);
+
+    setClusterDisplayLevels(prev => ({ ...prev, [viewModeRef.current]: Math.max(0, prev[viewModeRef.current] - 1) }));
+  }, [setNodes, setEdges, setTrackedTimeout]);
 
   // Expand cluster: toggle node visibility and trigger layout
   const expandCluster = useCallback((clusterNodeId: string) => {
@@ -2944,6 +3096,7 @@ const KnowledgeCanvas: React.FC = () => {
       incomingNodes?: RFNode<NodeData>[],
       incomingEdges?: RFEdge<LinkData>[],
       updatedSubjects?: Set<string>,
+      isFullReload?: boolean,
     ) => {
       const nodesList = Array.isArray(incomingNodes) ? incomingNodes : [];
       const edgesList = Array.isArray(incomingEdges) ? incomingEdges : [];
@@ -2966,6 +3119,7 @@ const KnowledgeCanvas: React.FC = () => {
         canvasActions,
         yieldFn,
         suppressLayoutFn,
+        isFullReload,
       );
 
       // After chunked update completes, trigger layout once if it was pending
@@ -3319,7 +3473,16 @@ const KnowledgeCanvas: React.FC = () => {
           currentReasoning={currentReasoning}
           isReasoning={isReasoning}
           onExpandAll={expandAll}
-          hasClusters={nodes.some(n => !n.hidden && (n.data as any)?.clusterType === 'cluster')}
+          onExpandLevel={expandOneLevel}
+          onCollapseLevel={collapseOneLevel}
+          hasClusters={nodes.some(n => !n.hidden && !!(n.data as any)?.clusterType) || clusterDisplayLevels[viewMode] > 0}
+          clusterDisplayLevel={clusterDisplayLevels[viewMode]}
+          maxClusterDisplayLevel={(() => {
+            // Use all cluster nodes (not view-filtered) so that newly-created cluster nodes
+            // whose nodeLayer may not yet match the current view are still counted.
+            const levels = nodes.filter(n => (n.data as any)?.clusterType).map(n => (n.data as any)?.clusterLevel ?? 0);
+            return levels.length > 0 ? Math.max(...levels) + 1 : clusterDisplayLevels[viewMode];
+          })()}
           sidebarExpanded={sidebarExpanded}
         />
 

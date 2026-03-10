@@ -388,27 +388,38 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
   }
 
   type ReasonerInsertion = {
-    subject: unknown;
-    predicate: unknown;
-    object: unknown;
-    graphKey?: string;
+    subject: string | undefined;
+    predicate: string | undefined;
+    object: string | undefined;
   };
 
   /**
-   * Convert a string value emitted by the N3 Reasoner's internal _add to an RDF Term.
+   * Convert a value from the N3.js _entities map to an RDF Term.
    *
-   * N3 Reasoner calls `_add(c.subject.value, c.predicate.value, c.object.value, graphItem, cb)`.
-   * `.value` on a NamedNode is the plain IRI string; on a Literal it is the lexical form
-   * (datatype/language is NOT preserved at this level). We detect IRIs by checking for a
-   * URI scheme and fall back to a plain-string Literal for anything else.
+   * The N3.js Store's `_entities` object maps numeric IDs to string representations:
+   *   - Named nodes: plain IRI string (e.g. "http://example.org/alice")
+   *   - Default graph: empty string ""
+   *   - Blank nodes: "_:localname"
+   *   - Literals: '"value"', '"value"@lang', '"value"^^datatype'
    */
   function termFromReasonerValue(DataFactory: any, value: unknown): any {
     if (value === null || value === undefined) return null;
     const str = String(value);
     if (str === "") return DataFactory.defaultGraph();
-    // Absolute or prefixed IRI: scheme followed by ':' then at least one IRI character
+    // Blank node
+    if (str.startsWith("_:")) return DataFactory.blankNode(str.slice(2));
+    // N3.js literal formats (all start with '"')
+    if (str.startsWith('"')) {
+      const langMatch = /^"(.*)"\@([a-zA-Z-]+)$/.exec(str);
+      if (langMatch) return DataFactory.literal(langMatch[1], langMatch[2]);
+      const typedMatch = /^"(.*)"\^\^(.+)$/.exec(str);
+      if (typedMatch) return DataFactory.literal(typedMatch[1], DataFactory.namedNode(typedMatch[2]));
+      const plainMatch = /^"(.*)"$/.exec(str);
+      if (plainMatch) return DataFactory.literal(plainMatch[1]);
+      return DataFactory.literal(str);
+    }
+    // Absolute IRI
     if (/^[a-zA-Z][a-zA-Z0-9+\-.]*:[^\s]/.test(str)) return DataFactory.namedNode(str);
-    // Plain literal (datatype info lost by the reasoner's .value extraction)
     return DataFactory.literal(str);
   }
 
@@ -419,29 +430,26 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
     const originalAdd = reasoner._add.bind(reasoner);
     const insertions: ReasonerInsertion[] = [];
     const seen = new Set<string>();
-    const graphItemToKey = new Map<any, string>();
-    const resolveGraphKey = (graphItem: any) => {
-      if (!graphItem || !store || !store._graphs) return undefined;
-      if (graphItemToKey.has(graphItem)) return graphItemToKey.get(graphItem);
-      for (const key in store._graphs) {
-        if (store._graphs[key] === graphItem) {
-          graphItemToKey.set(graphItem, key);
-          return key;
-        }
-      }
-      return undefined;
+    // N3.js Store._entities maps numeric entity IDs → N3.js term string representations
+    const entities: Record<string | number, string> = store._entities ?? {};
+
+    const resolveId = (id: any): string | undefined => {
+      if (id === null || id === undefined) return undefined;
+      return entities[id] ?? entities[String(id)];
     };
 
     reasoner._add = (subject: unknown, predicate: unknown, object: unknown, graphItem: any, cb: () => void) => {
       originalAdd(subject, predicate, object, graphItem, () => {
         try {
-          const graphKey = resolveGraphKey(graphItem);
-          const dedupeKey = `${String(subject)}|${String(predicate)}|${String(object)}|${String(
-            graphKey ?? "",
-          )}`;
-          if (!seen.has(dedupeKey)) {
-            seen.add(dedupeKey);
-            insertions.push({ subject, predicate, object, graphKey });
+          const sStr = resolveId(subject);
+          const pStr = resolveId(predicate);
+          const oStr = resolveId(object);
+          if (sStr !== undefined && pStr !== undefined && oStr !== undefined) {
+            const dedupeKey = `${sStr}|${pStr}|${oStr}`;
+            if (!seen.has(dedupeKey)) {
+              seen.add(dedupeKey);
+              insertions.push({ subject: sStr, predicate: pStr, object: oStr });
+            }
           }
         } catch (_) {
           /* ignore capture failures */
@@ -558,37 +566,6 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
       } catch (err) {
         console.error("[rdfManager.worker] prepareSubjectEmissionFromSet item failed", err);
       }
-    }
-    return { subjects, quadsBySubject, snapshot };
-  }
-
-  function prepareSubjectEmissionFromQuads(quads: Quad[]): {
-    subjects: string[];
-    quadsBySubject: SubjectQuadMap;
-    snapshot: WorkerReconcileSubjectSnapshotPayload[];
-  } {
-    const map = new Map<string, WorkerQuad[]>();
-    for (const q of quads || []) {
-      try {
-        const subject = subjectTermToString(q.subject);
-        if (!subject) continue;
-        if (isBlacklistedIri(subject)) continue;
-        const serialized = serializeQuad(q);
-        if (!map.has(subject)) map.set(subject, []);
-        map.get(subject)!.push(serialized);
-      } catch (err) {
-        console.error("[rdfManager.worker] prepareSubjectEmissionFromQuads item failed", err);
-      }
-    }
-    const subjects = Array.from(map.keys());
-    const quadsBySubject: SubjectQuadMap = {};
-    for (const subject of subjects) {
-      quadsBySubject[subject] = map.get(subject)!;
-    }
-    const snapshot: WorkerReconcileSubjectSnapshotPayload[] = [];
-    for (const subject of subjects) {
-      const entry = snapshotEntryFromQuads(subject, quadsBySubject[subject]);
-      if (entry) snapshot.push(entry);
     }
     return { subjects, quadsBySubject, snapshot };
   }
@@ -1277,8 +1254,21 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
               ? payload.graphName
               : "urn:vg:data";
           const graphTerm = createGraphTerm(graphName, DataFactory);
-          const quads = store.getQuads(null, null, null, graphTerm) || [];
-          const emission = prepareSubjectEmissionFromQuads(quads);
+          // Collect the set of subjects from the requested graph, then re-fetch
+          // complete quad sets (all graphs) for each subject so that inferred quads
+          // from urn:vg:inferred are included in the emitted snapshot.
+          const graphQuads = store.getQuads(null, null, null, graphTerm) || [];
+          const subjectSet = new Set<string>();
+          for (const q of graphQuads) {
+            try {
+              const s = subjectTermToString(q.subject);
+              if (s && !isBlacklistedIri(s)) subjectSet.add(s);
+            } catch (_) {}
+          }
+          const emission = prepareSubjectEmissionFromSet(subjectSet, store, DataFactory);
+          // Diagnostic: log total quad count across all subjects so we can verify inferred quads are included
+          const totalQuadCount = Object.values(emission.quadsBySubject).reduce((s, qs) => s + qs.length, 0);
+          console.debug("[emitAllSubjects] subjects:", emission.subjects.length, "totalQuads:", totalQuadCount, "graph:", graphName);
           if (emission.subjects.length > 0) {
             emitSubjects(
               emission.subjects,
@@ -1586,8 +1576,16 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
       // in the main store via the proper addQuad API.
       workingStore = new (StoreCls as any)();
       try {
-        const snapshot = sharedStoreRef.getQuads(null, null, null, null);
-        workingStore.addQuads(snapshot);
+        // Only copy data + ontology graphs — never feed previous inferred quads
+        // back into the reasoner, which would accumulate spurious inferences on
+        // repeated runs (OWL-RL re-applies rules to already-inferred triples).
+        const sourceGraphs = [
+          DataFactory.namedNode("urn:vg:data"),
+          DataFactory.namedNode("urn:vg:ontologies"),
+        ];
+        for (const g of sourceGraphs) {
+          workingStore.addQuads(sharedStoreRef.getQuads(null, null, null, g));
+        }
       } catch (_) {
         // Fallback: reason directly on the main store (old, broken behaviour).
         // This path should never be hit with a standard N3.js store.
@@ -1942,6 +1940,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             emission.subjects,
             emission.quadsBySubject,
             emission.snapshot,
+            { reason: "reasoning" },
           );
         }
       }

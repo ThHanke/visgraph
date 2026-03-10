@@ -891,40 +891,72 @@ export function mapQuadsToDiagram(
     }
   }
 
-  // Step 4: fold inferred quads into annotation properties (do not create new nodes)
+  // Step 4: fold inferred quads.
+  // - Inferred literals and non-resolvable references → inferredProperties (distinct from data annotations)
+  // - Inferred object properties between two known subjects → inferred edges (isInferred: true)
+  // No new nodes are created from inference alone.
   for (const quad of inferredQuads) {
     const normalized = normalizedByRef.get(quad) ?? coerceQuad(quad);
     if (!normalized) continue;
     if (!nodeMap.has(normalized.subject)) continue;
-    // Skip inferred rdf:type triples — they belong to rdfTypes classification,
-    // not annotation display, and showing them (e.g. owl:NamedIndividual on a
-    // class) would confuse the TBox/ABox separation and the property panel.
+    // Skip inferred rdf:type — classification-only, would confuse TBox/ABox separation.
     if (normalized.predicate === RDF_TYPE) continue;
 
     const entry = nodeMap.get(normalized.subject)!;
     const objectTerm = (quad as { object?: TermLike }).object ?? null;
     const value = termValue(objectTerm) ?? "";
 
-    const duplicate = entry.annotationProperties.some(
-      (ap) => ap.property === normalized.predicate && ap.value === value,
+    // If the object is a named node whose subject is already in the nodeMap,
+    // create an inferred edge instead of an annotation entry.
+    if (!isLiteral(objectTerm) && !isBlankNode(objectTerm) && value && nodeMap.has(value)) {
+      const edgeId = `${String(generateEdgeId(normalized.subject, value, normalized.predicate))}-inferred`;
+      if (!seenEdgeIds.has(edgeId)) {
+        seenEdgeIds.add(edgeId);
+        const propertyPrefixed = safeToPrefixed(normalized.predicate, options?.registry) ?? normalized.predicate;
+        const propertyLabel = propertyLabelByIri.get(normalized.predicate);
+        rfEdges.push(
+          initializeEdge({
+            id: edgeId,
+            source: normalized.subject,
+            target: value,
+            type: "floating",
+            data: {
+              key: edgeId,
+              from: normalized.subject,
+              to: value,
+              propertyUri: normalized.predicate,
+              propertyPrefixed,
+              propertyType: "",
+              label: propertyLabel,
+              namespace: "",
+              rdfType: "",
+              isInferred: true,
+            } as LinkData,
+          }),
+        );
+      }
+      continue;
+    }
+
+    // Literal or unresolvable reference → store as inferred property (shown distinctly in UI).
+    const duplicate = entry.inferredProperties.some(
+      (ip) => ip.property === normalized.predicate && ip.value === value,
     );
     if (duplicate) continue;
 
     if (isLiteral(objectTerm)) {
       const literal = resolveLiteral(objectTerm, XSD_STRING);
-      entry.annotationProperties.push({
+      entry.inferredProperties.push({
         property: normalized.predicate,
         value: literal.value,
         ...(literal.type ? { type: literal.type } : {}),
-        // Preserve original N3 Terms for exact matching during removal
         predicateTerm: (quad as any).predicate,
         objectTerm: objectTerm,
       });
     } else {
-      entry.annotationProperties.push({
+      entry.inferredProperties.push({
         property: normalized.predicate,
         value,
-        // Preserve original N3 Terms for exact matching during removal
         predicateTerm: (quad as any).predicate,
         objectTerm: objectTerm,
       });
@@ -1248,6 +1280,7 @@ export function mapQuadsToDiagram(
           data: {
             ...(headNode?.data ?? {}),
             clusterType:      "collection",
+            clusterLevel:     0, // Level 0 = innermost (RDF list / collection clusters)
             parentIri:        cluster.parentIri,
             nodeIds:          Array.from(cluster.nodeIds),
             edgeIds:          Array.from(cluster.edgeIds),

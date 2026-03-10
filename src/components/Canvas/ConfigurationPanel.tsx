@@ -132,77 +132,76 @@ export const ConfigurationPanel = ({
     }
   }, [isOpen]);
 
+  /**
+   * Clear all cluster state from the live React Flow canvas.
+   * Removes both 'cluster' and 'collection' cluster nodes, un-hides their
+   * members, and strips cluster boundary edges.  Called before emitAllSubjects
+   * triggers a fresh re-cluster so the canvas doesn't flash stale clusters.
+   */
+  const clearClusterState = () => {
+    try {
+      const reactFlowInstance = (window as any).__VG_RF_INSTANCE;
+      if (reactFlowInstance && typeof reactFlowInstance.getNodes === 'function') {
+        const currentNodes = reactFlowInstance.getNodes();
+        const currentEdges = reactFlowInstance.getEdges();
+
+        // Remove ALL cluster nodes (both 'cluster' and 'collection' types)
+        // and un-hide members that were hidden by them.
+        const cleanedNodes = currentNodes
+          .filter((n: any) => !(n.data as any)?.clusterType)
+          .map((n: any) => ({ ...n, hidden: false }));
+
+        // Remove cluster boundary edges
+        const cleanedEdges = currentEdges.filter(
+          (e: any) => !String(e.id).startsWith('cluster-edge-'),
+        );
+
+        reactFlowInstance.setNodes(cleanedNodes);
+        reactFlowInstance.setEdges(cleanedEdges);
+
+        console.log('[ConfigPanel] Cleared cluster state:', {
+          removedNodes: currentNodes.length - cleanedNodes.length,
+          removedEdges: currentEdges.length - cleanedEdges.length,
+        });
+      }
+    } catch (err) {
+      console.error('[VG_DEBUG] Failed to clear cluster state:', err);
+    }
+  };
+
+  /**
+   * Trigger a full re-cluster by emitting all subjects.
+   * The pipeline's isFullReload path will apply fresh clustering and
+   * remove any remaining stale cluster artefacts.
+   */
+  const triggerRecluster = () => {
+    try {
+      if (typeof window !== 'undefined' && (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING) {
+        (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING();
+      }
+    } catch (_) { /* ignore */ }
+
+    const mgr = getRdfManager();
+    if (mgr && typeof mgr.emitAllSubjects === 'function') {
+      mgr.emitAllSubjects('urn:vg:data').catch((err) => {
+        console.error('[VG_DEBUG] emitAllSubjects failed during re-cluster:', err);
+        toast.error('Failed to re-cluster graph');
+      });
+    }
+  };
+
   // Watch for clustering algorithm changes and trigger re-clustering
   const previousAlgorithm = useRef(config.clusteringAlgorithm);
   useEffect(() => {
     if (previousAlgorithm.current !== config.clusteringAlgorithm) {
       previousAlgorithm.current = config.clusteringAlgorithm;
-      
-      // Step 1: Clear all cluster nodes and cluster edges from the canvas
-      try {
-        // Use the global React Flow instance exposed by KnowledgeCanvas
-        const reactFlowInstance = (window as any).__VG_RF_INSTANCE;
-        
-        if (reactFlowInstance && typeof reactFlowInstance.getNodes === 'function') {
-          const currentNodes = reactFlowInstance.getNodes();
-          const currentEdges = reactFlowInstance.getEdges();
-          
-          // Remove cluster nodes and show all hidden nodes
-          const cleanedNodes = currentNodes
-            .filter((n: any) => {
-              // Remove cluster nodes
-              return (n.data as any)?.clusterType !== 'cluster';
-            })
-            .map((n: any) => {
-              // Show all hidden nodes (they were hidden by clustering)
-              return { ...n, hidden: false };
-            });
-          
-          // Remove cluster edges (edges with IDs starting with 'cluster-edge-')
-          const cleanedEdges = currentEdges.filter((e: any) => {
-            return !String(e.id).startsWith('cluster-edge-');
-          });
-          
-          // Apply cleaned state
-          reactFlowInstance.setNodes(cleanedNodes);
-          reactFlowInstance.setEdges(cleanedEdges);
-          
-          console.log('[ConfigPanel] Cleared clustering:', {
-            removedNodes: currentNodes.length - cleanedNodes.length,
-            removedEdges: currentEdges.length - cleanedEdges.length,
-            remainingNodes: cleanedNodes.length,
-            remainingEdges: cleanedEdges.length,
-          });
-        } else {
-          console.warn('[ConfigPanel] React Flow instance not available');
-        }
-      } catch (err) {
-        console.error('[VG_DEBUG] Failed to clear cluster nodes/edges:', err);
-      }
-      
-      // Step 2: Signal that the next mapping should trigger layout
-      try {
-        if (typeof window !== 'undefined' && (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING) {
-          (window as any).__VG_REQUEST_FORCE_LAYOUT_NEXT_MAPPING();
-          console.log('[ConfigPanel] Requested force layout for next mapping');
-        }
-      } catch (err) {
-        console.warn('[ConfigPanel] Failed to request force layout:', err);
-      }
-      
-      // Step 3: Trigger re-emission of all subjects to re-cluster the graph
-      const mgr = getRdfManager();
-      if (mgr && typeof mgr.emitAllSubjects === 'function') {
-        mgr.emitAllSubjects('urn:vg:data').catch((err) => {
-          console.error('[VG_DEBUG] Failed to emit all subjects after clustering change:', err);
-          toast.error('Failed to re-cluster graph');
-        });
-      }
-      
+
+      clearClusterState();
+      triggerRecluster();
+
       // Close the configuration dialog
       handleOpenChange(false);
-      
-      // Show success toast
+
       toast.success(
         config.clusteringAlgorithm === "none"
           ? "Clustering disabled"
@@ -210,11 +209,28 @@ export const ConfigurationPanel = ({
         {
           description: config.clusteringAlgorithm === "none"
             ? "Clusters cleared"
-            : "Clearing previous clusters and re-clustering...",
-        }
+            : "Re-clustering with new algorithm...",
+        },
       );
     }
   }, [config.clusteringAlgorithm, handleOpenChange]);
+
+  // Watch for collapse threshold changes and trigger re-clustering (debounced).
+  const previousThreshold = useRef(config.collapseThreshold);
+  const thresholdReclusterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (previousThreshold.current === config.collapseThreshold) return;
+    previousThreshold.current = config.collapseThreshold;
+
+    // Debounce so dragging the slider doesn't fire on every tick
+    if (thresholdReclusterTimer.current) clearTimeout(thresholdReclusterTimer.current);
+    thresholdReclusterTimer.current = setTimeout(() => {
+      thresholdReclusterTimer.current = null;
+      clearClusterState();
+      triggerRecluster();
+      console.log('[ConfigPanel] Re-clustering after threshold change:', config.collapseThreshold);
+    }, 600);
+  }, [config.collapseThreshold]);
 
 
   const handleExportConfig = () => {

@@ -77,6 +77,7 @@ export function resolveEdgeRenderProps(opts: { id?: string | number; style?: any
   const { id, style, data } = opts || {};
   const mergedStyle = style || {};
 
+  const isInferred = !!(data && (data as any).isInferred);
   const edgeStyle = {
     ...(mergedStyle || {}),
     // The actual SVG stroke attribute uses currentColor so markers using currentColor
@@ -88,6 +89,8 @@ export function resolveEdgeRenderProps(opts: { id?: string | number; style?: any
     color: (mergedStyle && (mergedStyle as any).stroke) || (mergedStyle && (mergedStyle as any).color) || "var(--edge-default)",
     strokeLinecap: "round" as any,
     strokeLinejoin: "round" as any,
+    // Inferred edges are rendered dashed and slightly transparent to distinguish them visually.
+    ...(isInferred ? { strokeDasharray: "6 3", opacity: 0.7 } : {}),
   };
 
   // Pass through markerEnd if provided on the edge data or style so callers can

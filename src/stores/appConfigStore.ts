@@ -88,7 +88,7 @@ interface AppConfigStore {
 }
 
 const STORAGE_KEY = "ontology-painter-config";
-const APP_CONFIG_VERSION = 1;
+const APP_CONFIG_VERSION = 2;
 const MIN_LAYOUT_SPACING = 50;
 const MAX_LAYOUT_SPACING = 500;
 const MIN_COLLAPSE_THRESHOLD = 1;
@@ -599,7 +599,10 @@ export const useAppConfigStore = create<AppConfigStore>()(
       name: STORAGE_KEY,
       storage: createJSONStorage(resolveStateStorage),
       version: APP_CONFIG_VERSION,
-      migrate: (persistedState: unknown) => {
+      migrate: (persistedState: unknown, _version: number) => {
+        // Called whenever the stored version < APP_CONFIG_VERSION.
+        // normalizeAppConfigInput fills in defaults for any fields added since
+        // the stored version, while preserving all valid existing user settings.
         if (!isPlainObject(persistedState)) {
           return { config: { ...defaultConfig } };
         }
@@ -607,7 +610,11 @@ export const useAppConfigStore = create<AppConfigStore>()(
         if (!typed.config) {
           return { config: { ...defaultConfig } };
         }
-        return { config: normalizeAppConfigInput(typed.config, "persistedConfig") };
+        try {
+          return { config: normalizeAppConfigInput(typed.config, "persistedConfig") };
+        } catch {
+          return { config: { ...defaultConfig } };
+        }
       },
     },
   ),

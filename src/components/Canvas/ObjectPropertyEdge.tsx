@@ -516,7 +516,12 @@ const ObjectPropertyEdge = memo((props: EdgeProps) => {
 
   return (
     <>
-      <g className={`edge-container ${isHovered ? "vg-edge--hover" : ""} ${isSelected ? "vg-edge--selected" : ""}`} onMouseEnter={onHoverEnter} onMouseLeave={onHoverLeave}>
+      <g
+        className={`edge-container ${isHovered ? "vg-edge--hover" : ""} ${isSelected ? "vg-edge--selected" : ""} ${dataTyped?.isInferred ? "vg-edge--inferred" : ""}`}
+        data-inferred={dataTyped?.isInferred ? "true" : undefined}
+        onMouseEnter={onHoverEnter}
+        onMouseLeave={onHoverLeave}
+      >
         <BaseEdge id={id} path={edgePath} markerEnd={finalMarkerEnd} style={edgeStyle} />
       </g>
 

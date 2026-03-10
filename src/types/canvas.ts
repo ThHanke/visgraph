@@ -49,6 +49,8 @@ export interface NodeData {
   literalProperties?: LiteralProperty[];
   /** Annotation properties (array of { property, value }) */
   annotationProperties?: AnnotationPropertyValue[] | Array<{ property: string; value: any }>;
+  /** Properties inferred by the reasoner (from urn:vg:inferred graph) — rendered distinctly */
+  inferredProperties?: AnnotationPropertyValue[] | Array<{ property: string; value: any }>;
 
   // Presentation metadata
   /** Single color (hex) derived from namespace/type when available */
@@ -127,6 +129,8 @@ export interface LinkData {
   rdfType: string;
   /** Link color */
   color?: string;
+  /** Whether this edge was derived by the reasoner (urn:vg:inferred) — rendered with dashed line */
+  isInferred?: boolean;
   /** Whether the link has reasoning errors */
   hasReasoningError?: boolean;
   /** Reasoning error messages */
