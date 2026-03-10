@@ -66,11 +66,15 @@ export function mergeDataOptimized(existingData: any, incomingData: any): any {
  * @param isFullReload - When true (e.g. post-reasoning emitAllSubjects), stale cluster nodes are
  *   removed and the `hidden` flag from incoming nodes is honoured so that new cluster membership
  *   overrides any previously-preserved expand/collapse state.
+ * @param allIncomingClusterIds - When provided (chunked apply), used for stale cluster removal
+ *   instead of the current chunk's incomingById. Prevents the last chunk from incorrectly removing
+ *   cluster nodes that were added in earlier chunks when there are >200 cluster nodes total.
  */
 export function computeNodeChanges(
   nodesList: RFNode<NodeData>[],
   currentNodes: RFNode<NodeData>[],
   isFullReload?: boolean,
+  allIncomingClusterIds?: Set<string>,
 ): any[] {
   // Sort so visible nodes (hidden: false or undefined) are processed first
   // This improves perceived rendering performance by showing visible content immediately
@@ -165,10 +169,13 @@ export function computeNodeChanges(
   // On full reloads, remove any cluster nodes that are no longer in the incoming set.
   // These are stale clusters from before reasoning; new clusters have been created by
   // applyClustering and are already in the incoming nodesList.
+  // Use allIncomingClusterIds when provided (chunked apply) so the last chunk can check
+  // against the full set of incoming cluster IDs — not just the IDs in this chunk.
   if (isFullReload) {
+    const clusterIdSet = allIncomingClusterIds ?? new Set(incomingById.keys());
     for (const existing of current) {
       const existingId = String(existing.id);
-      if ((existing.data as any)?.clusterType && !incomingById.has(existingId)) {
+      if ((existing.data as any)?.clusterType && !clusterIdSet.has(existingId)) {
         changes.push({ id: existingId, type: 'remove' });
       }
     }
@@ -349,6 +356,15 @@ export async function applyDiagramChangeChunked(
     canvasActions.setLoading(true, 0, `Processing ${totalNodes} nodes...`);
   }
 
+  // Pre-compute all incoming cluster node IDs from the full list.
+  // This is passed to the last chunk's computeNodeChanges so stale removal checks against
+  // the full incoming cluster set, not just the IDs in the last chunk.
+  // Without this, datasets with >200 cluster nodes would have their clusters incorrectly
+  // removed by the last chunk (which only knows about its own slice of the list).
+  const allIncomingClusterIds = isFullReload
+    ? new Set(nodesList.filter(n => (n.data as any)?.clusterType).map(n => String(n.id)))
+    : undefined;
+
   // Process nodes in chunks.
   // For full reloads: stale cluster removal is deferred to the final chunk so that all
   // incoming cluster nodes have been seen before deciding which old ones are stale.
@@ -360,7 +376,11 @@ export async function applyDiagramChangeChunked(
     setNodes((prev: RFNode<NodeData>[]) => {
       // Pass isFullReload only for the last chunk so stale cluster removal runs once
       // after all incoming cluster nodes are known.
-      const changes = computeNodeChanges(chunk, prev, isFullReload && isLastChunk ? true : false);
+      const changes = computeNodeChanges(
+        chunk, prev,
+        isFullReload && isLastChunk ? true : false,
+        isFullReload && isLastChunk ? allIncomingClusterIds : undefined,
+      );
       return applyNodeChanges(changes as any, prev);
     });
 
