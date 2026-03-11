@@ -1386,21 +1386,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     const { loadedOntologies } = get();
     const alreadyLoaded = new Set(loadedOntologies.map((o) => o.url));
 
-    const appCfg = useAppConfigStore.getState();
-    const disabled =
-      appCfg &&
-      appCfg.config &&
-      Array.isArray(appCfg.config.disabledAdditionalOntologies)
-        ? appCfg.config.disabledAdditionalOntologies
-        : [];
-    const disabledNorm = new Set(disabled.map((d) => normalizeOntologyUri(d)));
     const alreadyLoadedNorm = new Set(
       Array.from(alreadyLoaded).map((u) => normalizeOntologyUri(String(u))),
     );
 
     const toLoad = ontologyUris.filter((uri) => {
       const norm = normalizeOntologyUri(uri);
-      return !alreadyLoadedNorm.has(norm) && !disabledNorm.has(norm);
+      return !alreadyLoadedNorm.has(norm);
     });
 
     if (toLoad.length === 0) {
@@ -1500,24 +1492,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
   removeLoadedOntology: (url: string) => {
     try {
-      const appConfigStore = useAppConfigStore.getState();
       const { rdfManager, loadedOntologies } = get();
-      try {
-        if (
-          appConfigStore &&
-          typeof appConfigStore.addDisabledOntology === "function"
-        ) {
-          let norm = url;
-          try {
-            norm = new URL(String(url)).toString();
-          } catch {
-            norm = String(url).replace(/\/+$/, "");
-          }
-          appConfigStore.addDisabledOntology(norm);
-        }
-      } catch (_) {
-        /* ignore */
-      }
 
       const remainingOntologies = (loadedOntologies || []).filter(
         (o) => o.url !== url,
@@ -1545,38 +1520,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           /* ignore */
         }
       });
-
-      try {
-        if (
-          appConfigStore &&
-          typeof appConfigStore.removeAdditionalOntology === "function"
-        ) {
-          try {
-            appConfigStore.removeAdditionalOntology(url);
-          } catch (_) {
-            /* ignore */
-          }
-          let norm = url;
-          try {
-            norm = new URL(String(url)).toString();
-          } catch {
-            norm = String(url).replace(/\/+$/, "");
-          }
-          try {
-            appConfigStore.removeAdditionalOntology(norm);
-          } catch (_) {
-            /* ignore */
-          }
-          try {
-            if (typeof appConfigStore.addDisabledOntology === "function")
-              appConfigStore.addDisabledOntology(norm);
-          } catch (_) {
-            /* ignore */
-          }
-        }
-      } catch (_) {
-        /* ignore */
-      }
     } catch (err) {
       try {
         fallback(
@@ -1885,6 +1828,11 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     onProgress?: (p: number, message: string) => void;
   }) => {
     const opts = options || {};
+    // Respect the user setting — skip discovery entirely if disabled.
+    const appCfgDiscover = useAppConfigStore.getState();
+    if (appCfgDiscover && appCfgDiscover.config && appCfgDiscover.config.autoDiscoverOntologies === false) {
+      return { candidates: [] };
+    }
     const requestedGraphName =
       typeof opts.graphName === "string" && opts.graphName.trim() ? opts.graphName : "urn:vg:data";
     const graphName = "urn:vg:data";
@@ -2011,15 +1959,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       }
     }
 
-    const appCfg = useAppConfigStore.getState();
-    const disabled =
-      appCfg && appCfg.config && Array.isArray(appCfg.config.disabledAdditionalOntologies)
-        ? appCfg.config.disabledAdditionalOntologies
-        : [];
-    const disabledNorm = new Set(
-      disabled.map((d) => normalizeOntologyUri(d).toLowerCase()),
-    );
-
     const loadedOntologies = get().loadedOntologies || [];
     const alreadyLoadedNorm = new Set(
       (loadedOntologies || []).map((o: any) => normalizeOntologyUri(String(o.url)).toLowerCase()),
@@ -2044,7 +1983,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       if (!norm) continue;
       const normLower = norm.toLowerCase();
       if (!normLower.startsWith("http://") && !normLower.startsWith("https://")) continue;
-      if (disabledNorm.has(normLower)) continue;
       if (alreadyLoadedNorm.has(normLower)) continue;
       if (blacklistedPrefixes.some((prefix) => norm.startsWith(prefix))) continue;
       if (!candidates.includes(norm)) candidates.push(norm);

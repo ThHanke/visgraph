@@ -35,6 +35,7 @@ import { fallback } from '../../utils/startupDebug';
 import { toast } from 'sonner';
 import { getRdfManager } from '../../utils/storeHelpers';
 import { loadWorkflowCatalog, getWorkflowCatalogStats } from '../../utils/workflowCatalogLoader';
+import { LayoutManager } from './LayoutManager';
 
 
 
@@ -93,6 +94,7 @@ export const ConfigurationPanel = ({
     setLayoutSpacing,
     setCanvasTheme,
     setAutoReasoning,
+    setAutoDiscoverOntologies,
     setClusteringAlgorithm,
     // Reasoning rulesets setter
     setReasoningRulesets,
@@ -324,8 +326,9 @@ export const ConfigurationPanel = ({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="horizontal">Horizontal (Dagre)</SelectItem>
-                      <SelectItem value="vertical">Vertical (Dagre)</SelectItem>
+                      {new LayoutManager().getAvailableLayouts().map((layout) => (
+                        <SelectItem key={layout.type} value={layout.type}>{layout.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -499,6 +502,18 @@ export const ConfigurationPanel = ({
                   />
                 </div>
 
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor="autoDiscover">Auto-discover ontologies</Label>
+                    <p className="text-xs text-muted-foreground">Automatically load ontologies referenced in loaded data</p>
+                  </div>
+                  <Switch
+                    id="autoDiscover"
+                    checked={config.autoDiscoverOntologies ?? true}
+                    onCheckedChange={setAutoDiscoverOntologies}
+                  />
+                </div>
+
                 <div className="space-y-2">
                   <Label>Reasoning Rulesets</Label>
                   <div className="space-y-2 text-xs">
@@ -566,9 +581,8 @@ export const ConfigurationPanel = ({
                             size="sm"
                             className="h-4 w-4 p-0 text-muted-foreground hover:text-destructive"
                             onClick={() => {
-                              const { removeLoadedOntology } = useOntologyStore.getState();
-                              removeLoadedOntology(ontology);
-                              toast.success('Removed ontology from configuration');
+                              removeAdditionalOntology(ontology);
+                              toast.success('Removed ontology from autoload list');
                             }}
                           >
                             ×

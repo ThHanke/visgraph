@@ -1685,12 +1685,7 @@ const KnowledgeCanvas: React.FC = () => {
         // If user configured additional ontologies and persisted autoload is enabled,
         // load them immediately on startup (no gates/fallbacks).
         try {
-          const disabledList = Array.isArray(cfg?.disabledAdditionalOntologies)
-            ? cfg.disabledAdditionalOntologies
-            : [];
-          const toLoad = (additional || []).filter(
-            (u: any) => u && !disabledList.includes(u),
-          );
+          const toLoad = (additional || []).filter(Boolean);
           if (
             Array.isArray(toLoad) &&
             toLoad.length > 0 &&

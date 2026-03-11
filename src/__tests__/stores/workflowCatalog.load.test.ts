@@ -36,7 +36,6 @@ const testConfig: AppConfig = {
   recentOntologies: [],
   recentLayouts: [],
   additionalOntologies: [],
-  disabledAdditionalOntologies: [],
   persistedAutoload: false,
   blacklistEnabled: false,
   blacklistedPrefixes: [],

@@ -63,6 +63,7 @@ export default function EntityAutoComplete({
   const [initialDisplay, setInitialDisplay] = useState<string>("");
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
+  const isFocusedRef = useRef<boolean>(false);
 
   // Resolve selected entity object from value (iri)
   const selectedEntity = useMemo(() => {
@@ -74,24 +75,16 @@ export default function EntityAutoComplete({
     setOpen(Boolean(autoOpen));
   }, [autoOpen]);
 
-  // Display the value using toPrefixed (which returns full IRI as fallback).
-  // The fat-map is only used for searching/matching, not for display.
+  // Reset display when the value prop is cleared externally (e.g. dialog resets).
   useEffect(() => {
-    if (String(query || "").trim() !== "") return;
+    if (!value) setInitialDisplay("");
+  }, [value]);
 
-    if (value) {
-      setInitialDisplay(toPrefixed(String(value)));
-    } else {
-      setInitialDisplay("");
-    }
-  }, [value, query]);
-
-  // Build filtered list based on query; match against label, prefixed, computed prefixed, and iri
-  // IMPORTANT: do not show any suggestions when the query is empty — suggestions are shown only
-  // when the user has typed something into the field.
+  // Build filtered list based on query; match against label, prefixed, computed prefixed, and iri.
+  // When query is empty, show the top N items from the source as default suggestions.
   const filtered = useMemo(() => {
     if (!query || String(query).trim() === "") {
-      return [];
+      return optionsLimit && optionsLimit > 0 ? source.slice(0, optionsLimit) : source;
     }
     const q = String(query).trim();
     const rx = new RegExp(escapeRegExp(q), "i");
@@ -197,7 +190,15 @@ export default function EntityAutoComplete({
             }
             setHighlight(0);
           }}
-          onFocus={() => { if (String(query).trim() !== "") setOpen(true); }}
+          onFocus={() => {
+            if (!isFocusedRef.current) {
+              // First focus after blur: select all text so typing replaces it immediately
+              isFocusedRef.current = true;
+              setTimeout(() => inputRef.current?.select(), 0);
+            }
+            setOpen(true);
+          }}
+          onBlur={() => { isFocusedRef.current = false; }}
           onKeyDown={onKeyDown}
           disabled={disabled}
           aria-controls="entity-autocomplete-list"

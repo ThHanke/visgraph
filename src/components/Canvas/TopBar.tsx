@@ -86,6 +86,14 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   const loadedOntologies = useOntologyStore((s) => s.loadedOntologies ?? []);
   const removeLoadedOntology = useOntologyStore((s) => s.removeLoadedOntology);
+  const addAdditionalOntology = useAppConfigStore((s) => s.addAdditionalOntology);
+  const removeAdditionalOntology = useAppConfigStore((s) => s.removeAdditionalOntology);
+  const additionalOntologies = useAppConfigStore((s) => s.config.additionalOntologies ?? []);
+
+  const normalizeOntUrl = (u: string) => {
+    try { return new URL(u.trim()).toString().replace(/[/#]+$/, '').replace(/^http:\/\//i, 'https://'); }
+    catch { return u.trim().replace(/[/#]+$/, '').replace(/^http:\/\//i, 'https://'); }
+  };
 
   const [tempLayoutSpacing, setTempLayoutSpacing] = React.useState<number>(
     config.layoutSpacing ?? 120
@@ -282,37 +290,81 @@ export const TopBar: React.FC<TopBarProps> = ({
               <h4 className="font-medium text-sm">Loaded ontologies and auto-load status</h4>
               {loadedOntologies.length > 0 ? (
                 <div className="space-y-2">
-                  {loadedOntologies.map((ont: any, idx: number) => (
-                    <div key={idx} className="border-b pb-2 last:border-0">
-                      <div className="flex justify-between items-start gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm">{ont?.name || 'Unknown'}</div>
-                          <div className="text-xs text-muted-foreground truncate">
-                            {ont?.uri || ont?.url || 'No URI'}
+                  {loadedOntologies.map((ont: any, idx: number) => {
+                    const ontologyUrl = ont?.url || ont?.uri;
+                    const normUrl = ontologyUrl ? normalizeOntUrl(ontologyUrl) : '';
+                    // An ontology is in the autoload config if its URL matches additionalOntologies,
+                    // or if it was loaded via the autoload pipeline (source "fetched" / "auto").
+                    const inAutoloadConfig = normUrl && additionalOntologies.some(
+                      (u) => normalizeOntUrl(u) === normUrl
+                    );
+                    const isAutoSource = ont?.source === 'fetched' || ont?.source === 'auto';
+                    const isAutoloaded = !!(inAutoloadConfig || isAutoSource);
+                    const isCore = ont?.source === 'auto';
+                    return (
+                      <div key={idx} className="border-b pb-2 last:border-0">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm">{ont?.name || 'Unknown'}</div>
+                            <div className="text-xs text-muted-foreground truncate">
+                              {ontologyUrl || 'No URI'}
+                            </div>
+                            <div className="text-xs mt-1 flex items-center gap-1">
+                              <span className="text-green-600">Loaded</span>
+                              {isAutoloaded && <span className="text-muted-foreground">· autoload</span>}
+                              {isCore && <span className="text-muted-foreground">· core</span>}
+                            </div>
                           </div>
-                          <div className="text-xs text-green-600 mt-1">Loaded</div>
+                          <div className="flex gap-1 shrink-0">
+                            {!isCore && ontologyUrl && (
+                              isAutoloaded ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => {
+                                    removeAdditionalOntology(ontologyUrl);
+                                    toast.success(`Removed ${ont?.name || 'ontology'} from autoload`);
+                                  }}
+                                >
+                                  Remove from autoload
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => {
+                                    addAdditionalOntology(ontologyUrl);
+                                    toast.success(`Added ${ont?.name || 'ontology'} to autoload`);
+                                  }}
+                                >
+                                  Add to autoload
+                                </Button>
+                              )
+                            )}
+                            {config?.persistedAutoload && !isCore && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs text-destructive hover:text-destructive"
+                                onClick={() => {
+                                  if (ontologyUrl) {
+                                    removeLoadedOntology(ontologyUrl);
+                                    toast.success(`Unloaded ${ont?.name || 'ontology'}`);
+                                  } else {
+                                    toast.error('Could not unload ontology: URL not found');
+                                  }
+                                }}
+                              >
+                                Unload
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                        {config?.persistedAutoload && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs shrink-0"
-                            onClick={() => {
-                              const ontologyUrl = ont?.url || ont?.uri;
-                              if (ontologyUrl) {
-                                removeLoadedOntology(ontologyUrl);
-                                toast.success(`Removed ${ont?.name || 'ontology'} from autoload`);
-                              } else {
-                                toast.error('Could not remove ontology: URL not found');
-                              }
-                            }}
-                          >
-                            Remove
-                          </Button>
-                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">No ontologies loaded</p>

@@ -40,7 +40,7 @@ export interface AppConfig {
   recentOntologies: string[];
   recentLayouts: string[];
   additionalOntologies: string[];
-  disabledAdditionalOntologies: string[];
+  autoDiscoverOntologies: boolean;
   persistedAutoload: boolean;
   blacklistEnabled: boolean;
   blacklistedPrefixes: string[];
@@ -62,6 +62,7 @@ interface AppConfigStore {
   setAutoApplyLayout: (enabled: boolean) => void;
   setPersistedAutoload: (enabled: boolean) => void;
   setAutoReasoning: (enabled: boolean) => void;
+  setAutoDiscoverOntologies: (enabled: boolean) => void;
   setCollapseThreshold: (threshold: number) => void;
   setClusteringAlgorithm: (algorithm: "none" | "louvain" | "label-propagation" | "kmeans") => void;
   toggleNodeCollapsed: (iri: string) => void;
@@ -76,8 +77,6 @@ interface AppConfigStore {
   addRecentLayout: (layout: string) => void;
   addAdditionalOntology: (uri: string) => void;
   removeAdditionalOntology: (uri: string) => void;
-  addDisabledOntology: (uri: string) => void;
-  removeDisabledOntology: (uri: string) => void;
   setWorkflowCatalogEnabled: (enabled: boolean) => void;
   setWorkflowCatalogUrls: (urls: Partial<WorkflowCatalogUrls>) => void;
   setLoadWorkflowCatalogOnStartup: (enabled: boolean) => void;
@@ -88,7 +87,6 @@ interface AppConfigStore {
 }
 
 const STORAGE_KEY = "ontology-painter-config";
-const APP_CONFIG_VERSION = 2;
 const MIN_LAYOUT_SPACING = 50;
 const MAX_LAYOUT_SPACING = 500;
 const MIN_COLLAPSE_THRESHOLD = 1;
@@ -117,7 +115,7 @@ const defaultConfig: AppConfig = {
   debugRdfLogging: true,
   debugAll: false,
   collapseThreshold: 10,
-  clusteringAlgorithm: "louvain",
+  clusteringAlgorithm: "label-propagation",
   collapsedNodes: [],
   reasoningRulesets: ["best-practice.n3", "owl-rl.n3"],
   recentOntologies: [],
@@ -127,7 +125,7 @@ const defaultConfig: AppConfig = {
     "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
     "http://www.w3.org/2000/01/rdf-schema#",
   ],
-  disabledAdditionalOntologies: [],
+  autoDiscoverOntologies: true,
   persistedAutoload: true,
   blacklistEnabled: false,
   blacklistedPrefixes: ["owl", "rdf", "rdfs", "xml", "xsd"],
@@ -221,6 +219,11 @@ function normalizeAppConfigInput(value: unknown, context: string): AppConfig {
       `${context}.autoReasoning`,
       cfg.autoReasoning,
     ),
+    autoDiscoverOntologies: normalizeBooleanFlag(
+      input.autoDiscoverOntologies,
+      `${context}.autoDiscoverOntologies`,
+      cfg.autoDiscoverOntologies,
+    ),
     collapseThreshold,
     clusteringAlgorithm,
     collapsedNodes: normalizeStringArray(
@@ -248,10 +251,6 @@ function normalizeAppConfigInput(value: unknown, context: string): AppConfig {
     additionalOntologies: normalizeStringSet(
       input.additionalOntologies ?? cfg.additionalOntologies,
       `${context}.additionalOntologies`,
-    ),
-    disabledAdditionalOntologies: normalizeStringSet(
-      input.disabledAdditionalOntologies ?? cfg.disabledAdditionalOntologies,
-      `${context}.disabledAdditionalOntologies`,
     ),
     persistedAutoload: normalizeBooleanFlag(
       input.persistedAutoload,
@@ -384,6 +383,13 @@ export const useAppConfigStore = create<AppConfigStore>()(
         updateConfig(set, (config) => ({
           ...config,
           autoReasoning: normalizeBoolean(enabled, "setAutoReasoning.enabled"),
+        }));
+      },
+
+      setAutoDiscoverOntologies: (enabled: boolean) => {
+        updateConfig(set, (config) => ({
+          ...config,
+          autoDiscoverOntologies: normalizeBoolean(enabled, "setAutoDiscoverOntologies.enabled"),
         }));
       },
 
@@ -522,26 +528,6 @@ export const useAppConfigStore = create<AppConfigStore>()(
         }));
       },
 
-      addDisabledOntology: (uri: string) => {
-        const normalized = normalizeString(uri, "addDisabledOntology.uri");
-        updateConfig(set, (config) => ({
-          ...config,
-          disabledAdditionalOntologies: normalizeStringSet(
-            [...config.disabledAdditionalOntologies, normalized],
-            "addDisabledOntology.next",
-          ),
-        }));
-      },
-
-      removeDisabledOntology: (uri: string) => {
-        const normalized = normalizeString(uri, "removeDisabledOntology.uri");
-        updateConfig(set, (config) => ({
-          ...config,
-          disabledAdditionalOntologies: config.disabledAdditionalOntologies.filter(
-            (entry) => entry !== normalized,
-          ),
-        }));
-      },
 
       setWorkflowCatalogEnabled: (enabled: boolean) => {
         updateConfig(set, (config) => ({
@@ -598,22 +584,14 @@ export const useAppConfigStore = create<AppConfigStore>()(
     {
       name: STORAGE_KEY,
       storage: createJSONStorage(resolveStateStorage),
-      version: APP_CONFIG_VERSION,
-      migrate: (persistedState: unknown, _version: number) => {
-        // Called whenever the stored version < APP_CONFIG_VERSION.
-        // normalizeAppConfigInput fills in defaults for any fields added since
-        // the stored version, while preserving all valid existing user settings.
-        if (!isPlainObject(persistedState)) {
-          return { config: { ...defaultConfig } };
-        }
-        const typed = persistedState as { config?: unknown };
-        if (!typed.config) {
-          return { config: { ...defaultConfig } };
-        }
+      merge: (persisted: unknown, current) => {
+        if (!isPlainObject(persisted)) return current;
+        const typed = persisted as { config?: unknown };
+        if (!typed.config) return current;
         try {
-          return { config: normalizeAppConfigInput(typed.config, "persistedConfig") };
+          return { ...current, config: normalizeAppConfigInput(typed.config, "persistedConfig") };
         } catch {
-          return { config: { ...defaultConfig } };
+          return current;
         }
       },
     },
