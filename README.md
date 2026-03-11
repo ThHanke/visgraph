@@ -40,6 +40,22 @@ Notes about startup loading
 - For safety the loader only accepts http(s) URLs or inline TTL. Local filesystem paths are not automatically loaded.
 - If startup loading fails, check the browser console for parse errors and the Network tab for CORS issues.
 
+Reasoning demo
+--------------
+The reasoning demo ontology showcases OWL-RL inference directly in the browser. Load it via the live GitHub deployment:
+
+https://thhanke.github.io/visgraph/?rdfUrl=https://raw.githubusercontent.com/ThHanke/visgraph/refs/heads/main/public/reasoning-demo.ttl
+
+The demo ontology (`public/reasoning-demo.ttl`) defines a small employee hierarchy (Person → Employee → Manager → Executive) and includes ABox assertions that drive five distinct inference patterns:
+
+1. **Inferred object property via rdfs:subPropertyOf** — `ex:hasFriend` is a sub-property of `ex:knows`, so asserting `alice hasFriend bob` causes the reasoner to infer `alice knows bob`.
+2. **Inferred object property via owl:inverseOf** — `ex:isManagedBy` is the inverse of `ex:manages`, so asserting `alice manages carol` causes the reasoner to infer `carol isManagedBy alice`.
+3. **Inferred object property via owl:SymmetricProperty** — `ex:isColleagueOf` is symmetric, so asserting `bob isColleagueOf carol` causes the reasoner to infer the reverse direction.
+4. **Inferred object property via owl:TransitiveProperty** — `ex:hasSupervisor` is transitive, so `bob → alice` and `alice → dave` causes the reasoner to infer `bob → dave`.
+5. **Inferred node type via rdfs:domain** — `ex:dave` has no explicit `rdf:type`, but because he is the subject of `ex:manages` (which has domain `ex:Manager`), the reasoner infers `dave rdf:type ex:Manager`.
+
+Click **Run reasoning** in the toolbar to apply OWL-RL inference and watch new (dashed) edges appear. Running it a second time is idempotent — no further changes occur.
+
 CORS and proxies
 ----------------
 - The app fetches remote RDF directly from the browser. If the remote host does not allow cross-origin requests (CORS), the browser will block the fetch.

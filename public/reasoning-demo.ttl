@@ -4,11 +4,12 @@
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-# ── Ontology declaration ─────────────────────────────────────────────────────
+# ── Ontology declaration ──────────────────────────────────────────────────────
 <http://example.com/reasoning-demo> a owl:Ontology ;
-    rdfs:label "Reasoning Demo Ontology" .
+    rdfs:label "Reasoning Demo Ontology" ;
+    rdfs:comment "Demonstrates OWL-RL inference: inferred types, inferred object properties, and inferred annotations." .
 
-# ── TBox: Classes ─────────────────────────────────────────────────────────────
+# ── TBox: Class hierarchy ─────────────────────────────────────────────────────
 ex:Person a owl:Class ;
     rdfs:label "Person" .
 
@@ -20,7 +21,14 @@ ex:Manager a owl:Class ;
     rdfs:subClassOf ex:Employee ;
     rdfs:label "Manager" .
 
-# ── TBox: Properties ─────────────────────────────────────────────────────────
+ex:Executive a owl:Class ;
+    rdfs:subClassOf ex:Manager ;
+    rdfs:label "Executive" .
+
+# ── TBox: Object Properties ───────────────────────────────────────────────────
+
+# subPropertyOf chain: hasFriend → knows
+# Asserting hasFriend will infer knows (inferred object property via subPropertyOf)
 ex:knows a owl:ObjectProperty ;
     rdfs:label "knows" ;
     rdfs:domain ex:Person ;
@@ -32,19 +40,45 @@ ex:hasFriend a owl:ObjectProperty ;
     rdfs:domain ex:Person ;
     rdfs:range ex:Person .
 
+# manages / isManagedBy: inverseOf
+# Asserting manages will infer isManagedBy (inferred object property via inverseOf)
 ex:manages a owl:ObjectProperty ;
     rdfs:label "manages" ;
     rdfs:domain ex:Manager ;
     rdfs:range ex:Employee .
 
-ex:worksFor a owl:ObjectProperty ;
-    rdfs:label "worksFor" ;
+ex:isManagedBy a owl:ObjectProperty ;
+    owl:inverseOf ex:manages ;
+    rdfs:label "isManagedBy" ;
     rdfs:domain ex:Employee ;
     rdfs:range ex:Manager .
 
-# ── ABox: Individuals ────────────────────────────────────────────────────────
-ex:alice a owl:NamedIndividual, ex:Manager ;
+# isColleagueOf: symmetric
+# Asserting A isColleagueOf B will infer B isColleagueOf A
+ex:isColleagueOf a owl:ObjectProperty, owl:SymmetricProperty ;
+    rdfs:label "isColleagueOf" ;
+    rdfs:domain ex:Person ;
+    rdfs:range ex:Person .
+
+# hasSupervisor: transitive
+# Asserting A→B and B→C will infer A→C (inferred object property via transitivity)
+ex:hasSupervisor a owl:ObjectProperty, owl:TransitiveProperty ;
+    rdfs:label "hasSupervisor" ;
+    rdfs:domain ex:Employee ;
+    rdfs:range ex:Manager .
+
+# ── TBox: Annotation Properties ───────────────────────────────────────────────
+
+# jobTitle is a sub-property of rdfs:comment
+# Asserting jobTitle will infer rdfs:comment (inferred annotation via subPropertyOf)
+ex:jobTitle a owl:AnnotationProperty ;
+    rdfs:subPropertyOf rdfs:comment ;
+    rdfs:label "jobTitle" .
+
+# ── ABox: Individuals with explicit types ─────────────────────────────────────
+ex:alice a owl:NamedIndividual, ex:Executive ;
     rdfs:label "Alice" .
+# Inferred: also rdf:type ex:Manager, ex:Employee, ex:Person (subClassOf chain)
 
 ex:bob a owl:NamedIndividual, ex:Employee ;
     rdfs:label "Bob" .
@@ -52,12 +86,40 @@ ex:bob a owl:NamedIndividual, ex:Employee ;
 ex:carol a owl:NamedIndividual, ex:Employee ;
     rdfs:label "Carol" .
 
-# ── ABox: Assertions ─────────────────────────────────────────────────────────
-# Direct friendship → OWL-RL will infer ex:alice ex:knows ex:bob
+# dave has NO explicit rdf:type — his type will be inferred from property domain
+ex:dave a owl:NamedIndividual ;
+    rdfs:label "Dave" .
+# Inferred: rdf:type ex:Manager (because manages has domain ex:Manager)
+
+# ── ABox: Assertions that drive inference ─────────────────────────────────────
+
+# 1. INFERRED OBJECT PROPERTY via rdfs:subPropertyOf
+#    Asserting hasFriend → reasoner infers knows
 ex:alice ex:hasFriend ex:bob .
+# Inferred: ex:alice ex:knows ex:bob
 
-# Management relation
+# 2. INFERRED OBJECT PROPERTY via owl:inverseOf
+#    Asserting manages → reasoner infers isManagedBy
 ex:alice ex:manages ex:carol .
+ex:dave ex:manages ex:bob .
+# Inferred: ex:carol ex:isManagedBy ex:alice
+# Inferred: ex:bob ex:isManagedBy ex:dave
+# Inferred (domain): ex:dave rdf:type ex:Manager  ← NEW NODE TYPE
 
-# Works-for (inverse can be inferred if declared, but here just asserted)
-ex:bob ex:worksFor ex:alice .
+# 3. INFERRED OBJECT PROPERTY via owl:SymmetricProperty
+#    Asserting one direction → reasoner infers the reverse
+ex:bob ex:isColleagueOf ex:carol .
+# Inferred: ex:carol ex:isColleagueOf ex:bob
+
+# 4. INFERRED OBJECT PROPERTY via owl:TransitiveProperty
+#    A→B and B→C → reasoner infers A→C
+ex:bob ex:hasSupervisor ex:alice .
+ex:alice ex:hasSupervisor ex:dave .
+# Inferred: ex:bob ex:hasSupervisor ex:dave
+
+# 5. INFERRED ANNOTATION via rdfs:subPropertyOf
+#    jobTitle subPropertyOf rdfs:comment → reasoner infers rdfs:comment
+ex:alice ex:jobTitle "Chief Executive" .
+ex:dave ex:jobTitle "Division Manager" .
+# Inferred: ex:alice rdfs:comment "Chief Executive"
+# Inferred: ex:dave rdfs:comment "Division Manager"
