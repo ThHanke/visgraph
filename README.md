@@ -65,20 +65,82 @@ CORS and proxies
 
 Using the UI
 ------------
-Top toolbar (left → right):
-- Add Node: create a new node by IRI (supports prefixed form that the RDF manager can expand).
-- Load Ontology: load one or more ontologies configured in application settings.
-- A-Box / T-Box: switch between data-level (individuals) and ontology-level (classes/properties).
-- Legend: show/hide namespace legend (colors and prefixes).
-- Layout selector: choose horizontal / vertical layouts.
-- Load File: open a local RDF file from disk (TTL/JSON-LD/RDF/XML).
-- Export: export current graph (Turtle / OWL-XML / JSON-LD).
+The annotated diagram below identifies the numbered UI elements described in this section.
+
+![VisGraph UI overview](public/ui-overview.svg)
+
+Toolbar (① – ⑨, top bar spanning the full width):
+
+① Add Node — opens a dialog to create a new RDF node by full IRI or prefixed name (e.g. ex:Alice).
+   The RDF manager expands known prefixes automatically.
+
+② A-Box view — switches the canvas to show ABox individuals (data instances). Active by default.
+
+③ T-Box view — switches the canvas to show TBox entities: classes and properties. Useful for
+   inspecting the ontology structure independently of the instance data.
+
+④ Legend — toggles the namespace colour key. Each namespace prefix is assigned a distinct colour
+   used for node borders and edge labels throughout the canvas.
+
+⑤ Cluster expand — expands or collapses all node clusters on the canvas at once. The indicator
+   shows how many clusters are currently collapsed.
+
+⑥ Ontologies — shows the number of ontologies currently loaded and the number configured in
+   settings. Click to open the ontology manager. Ontologies can also be auto-loaded on startup
+   via the rdfUrl URL parameter (see "Startup / URL usage" above).
+
+⑦ Layout toggle — enables automatic layout and opens the algorithm selector. Available algorithms
+   include Dagre (horizontal / vertical) and ELK variants. When enabled the canvas re-positions
+   nodes deterministically on every graph update.
+
+⑧ Reasoning indicator — shows whether OWL-RL reasoning has been applied to the current graph.
+   Click it to open the reasoning report, which lists all inferred triples grouped by inference rule.
+
+⑨ Run reasoning — triggers the OWL-RL reasoner over all loaded graphs. Inferred triples are added
+   to the store and displayed as dashed edges on the canvas. Running it again is idempotent.
+
+Sidebar icon buttons (⑩ – ⑭, top of the left panel):
+
+⑩ Onto — opens the ontology loader. You can load ontologies by entering any HTTP(S) URL directly,
+   or choose from the list of URLs pre-configured in application settings.
+
+⑪ File — opens a file picker to load a local RDF file from disk. Supported formats: Turtle (.ttl),
+   JSON-LD (.jsonld), RDF/XML (.rdf / .owl), and N-Triples (.nt).
+
+⑫ Clear — removes all loaded graphs and resets the canvas to an empty state.
+
+⑬ Export — exports the current graph in the chosen serialisation format: Turtle, OWL-XML, or
+   JSON-LD. The download is generated entirely in the browser.
+
+⑭ Settings — opens the application settings panel where you can configure default layout,
+   clustering algorithm, ontology URLs for auto-loading, and other preferences.
+
+Sidebar content (⑮):
+
+⑮ Workflows panel — lists reusable workflow templates. Drag a template card onto the canvas to
+   instantiate it as a connected subgraph. Templates describe multi-step data-processing patterns.
+
+Canvas elements (⑯ – ⑲):
+
+⑯ Cluster handle — the coloured badge at the top of a node that belongs to a cluster. Click it to
+   expand or collapse the cluster, revealing or hiding the member nodes grouped under it.
+
+⑰ Individual node — represents an RDF subject. The header shows the local name (IRI), a coloured
+   type badge (OWL class), and the annotation properties (rdfs:label, custom annotations) in a
+   table below. Double-click to open the node editor.
+
+⑱ Edge / predicate — an arrow connecting two nodes, labelled with the RDF predicate. Dashed edges
+   indicate inferred triples produced by the OWL-RL reasoner. Double-click to edit the predicate.
+
+⑲ Minimap — a small overview of the entire graph in the bottom-right corner of the canvas. Click
+   anywhere on the minimap to jump to that area, or drag the viewport rectangle to pan.
 
 Canvas interactions:
-- Double-click a node to open node editor (edit labels, annotation properties).
+- Double-click a node to open the node editor (edit labels and annotation properties).
 - Double-click an edge to edit its predicate or properties.
-- Drag from a node handle to another node to start creating an edge (the editor will open to confirm predicate).
-- Use Controls to zoom, fit view, and reset.
+- Drag from a node handle to another node to create a new edge (a dialog confirms the predicate).
+- Use the zoom controls or scroll to zoom; drag the background to pan.
+- Use the fit-view button in the controls panel to reset the viewport to show all nodes.
 
 Developer utilities (window globals)
 ------------------------------------
