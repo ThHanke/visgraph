@@ -171,6 +171,35 @@ const inferRdfMediaType = (
   return undefined;
 };
 
+/** Returns true if the URL looks like a SPARQL endpoint (by path pattern). */
+const isSparqlEndpointUrl = (url: string): boolean => {
+  try {
+    const path = new URL(url).pathname.replace(/\/$/, "").toLowerCase();
+    return path.endsWith("/sparql") || path.endsWith("/query") || path.endsWith("/sparql/query");
+  } catch {
+    return false;
+  }
+};
+
+/** Returns true if the content-type indicates a SPARQL endpoint (not raw RDF). */
+const isSparqlEndpointResponse = (contentType: string | null): boolean => {
+  if (!contentType) return false;
+  const ct = contentType.toLowerCase();
+  return (
+    ct.includes("text/html") ||
+    ct.includes("application/sparql-results") ||
+    ct.includes("application/sparql+json")
+  );
+};
+
+/** Builds a SPARQL CONSTRUCT ALL query URL from a SPARQL endpoint URL.
+ *  Queries both the default graph and all named graphs via UNION. */
+const buildSparqlConstructUrl = (endpoint: string): string => {
+  const query = "CONSTRUCT { ?s ?p ?o } WHERE { { ?s ?p ?o } UNION { GRAPH ?g { ?s ?p ?o } } }";
+  const sep = endpoint.includes("?") ? "&" : "?";
+  return `${endpoint}${sep}query=${encodeURIComponent(query)}`;
+};
+
 const sanitizeBlankNodeValue = (value: string): string => value.replace(/^_:/, "");
 
 type TermContext = "subject" | "predicate" | "object" | "graph";
@@ -783,6 +812,7 @@ export class RDFManagerImpl {
     graphName?: string,
     mimeType?: string,
     filename?: string,
+    forceGraph?: boolean,
   ): Promise<void> {
     if (typeof rdfContent !== "string" || rdfContent.trim().length === 0) {
       throw new Error("Empty RDF content provided to loadRDFIntoGraph");
@@ -792,6 +822,7 @@ export class RDFManagerImpl {
       graphName: graphName || DEFAULT_GRAPH,
       contentType: mimeType,
       filename,
+      forceGraph,
     };
     const result = await this.worker.call("importSerialized", payload);
     if (isPlainObject(result)) {
@@ -810,24 +841,86 @@ export class RDFManagerImpl {
     }
   }
 
+  /** Fetches a URL, falling back to the local /rdf-proxy endpoint on network/CORS errors. */
+  private async fetchWithCorsFallback(
+    url: string,
+    headers: Record<string, string>,
+    signal: AbortSignal,
+    authHeader?: { name: string; value: string },
+  ): Promise<Response> {
+    const reqHeaders = authHeader
+      ? { ...headers, [authHeader.name]: authHeader.value }
+      : headers;
+    try {
+      return await fetch(url, { signal, headers: reqHeaders });
+    } catch {
+      // Network error — may be CORS (duplicate Access-Control-Allow-Origin, blocked origin, etc.)
+      // Retry via the local proxy server which fetches server-side, bypassing browser CORS.
+      const proxyUrl = `/rdf-proxy?url=${encodeURIComponent(url)}`;
+      return await fetch(proxyUrl, { signal, headers: { Accept: headers["Accept"] ?? "*/*" } });
+    }
+  }
+
   async loadRDFFromUrl(
     url: string,
     graphName?: string,
-    options?: { timeoutMs?: number },
+    options?: { timeoutMs?: number; apiKey?: string; apiKeyHeader?: string },
   ): Promise<void> {
     if (!url) throw new Error("loadRDFFromUrl requires a url");
     const timeoutMs = options?.timeoutMs ?? 120000;
     const controller = new AbortController();
     const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+    const authHeader = options?.apiKey
+      ? { name: options.apiKeyHeader || "Authorization", value: options.apiKey }
+      : undefined;
     try {
-      const response = await fetch(url, { signal: controller.signal });
+      // If the URL pattern identifies a SPARQL endpoint, skip the probe fetch and go straight to CONSTRUCT.
+      if (isSparqlEndpointUrl(url)) {
+        const sparqlUrl = buildSparqlConstructUrl(url);
+        const sparqlResponse = await this.fetchWithCorsFallback(
+          sparqlUrl,
+          { Accept: "text/turtle, application/n-triples" },
+          controller.signal,
+          authHeader,
+        );
+        if (!sparqlResponse.ok) {
+          throw new Error(`SPARQL CONSTRUCT query failed: ${sparqlResponse.status}`);
+        }
+        const text = await sparqlResponse.text();
+        const ct = sparqlResponse.headers.get("content-type");
+        const inferredContentType = inferRdfMediaType(ct, sparqlUrl, text);
+        await this.loadRDFIntoGraph(text, graphName || DEFAULT_GRAPH, inferredContentType, url, true);
+        return;
+      }
+
+      const rdfAccept = "text/turtle, application/n-triples, text/n3, application/rdf+xml, */*;q=0.1";
+      const response = await this.fetchWithCorsFallback(url, { Accept: rdfAccept }, controller.signal, authHeader);
       if (!response.ok) {
         throw new Error(`Failed to fetch RDF: ${response.status}`);
       }
-      const text = await response.text();
       const contentTypeHeader = response.headers.get("content-type");
-      const inferredContentType = inferRdfMediaType(contentTypeHeader, url, text);
-      await this.loadRDFIntoGraph(text, graphName || DEFAULT_GRAPH, inferredContentType, url);
+
+      if (isSparqlEndpointResponse(contentTypeHeader)) {
+        // The URL returned HTML or SPARQL results — re-fetch using a CONSTRUCT ALL query
+        const sparqlUrl = buildSparqlConstructUrl(url);
+        const sparqlResponse = await this.fetchWithCorsFallback(
+          sparqlUrl,
+          { Accept: "text/turtle, application/n-triples" },
+          controller.signal,
+          authHeader,
+        );
+        if (!sparqlResponse.ok) {
+          throw new Error(`SPARQL CONSTRUCT query failed: ${sparqlResponse.status}`);
+        }
+        const text = await sparqlResponse.text();
+        const ct = sparqlResponse.headers.get("content-type");
+        const inferredContentType = inferRdfMediaType(ct, sparqlUrl, text);
+        await this.loadRDFIntoGraph(text, graphName || DEFAULT_GRAPH, inferredContentType, url, true);
+      } else {
+        const text = await response.text();
+        const inferredContentType = inferRdfMediaType(contentTypeHeader, url, text);
+        await this.loadRDFIntoGraph(text, graphName || DEFAULT_GRAPH, inferredContentType, url, true);
+      }
     } finally {
       clearTimeout(timeoutHandle);
     }

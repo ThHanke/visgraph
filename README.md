@@ -23,22 +23,90 @@ Quick start (development)
 3. Open the app in your browser:
    http://localhost:8080/
 
-Startup / URL usage
--------------------
-You can open the app with a URL parameter to make it load a remote RDF file on startup (developer-friendly feature):
+Startup / URL parameters
+------------------------
+VisGraph supports several URL query parameters that control what is loaded on startup.
 
-- Preferred query parameter: rdfUrl
-  Example (encoded):
-  http://localhost:8080/?rdfUrl=https%3A%2F%2Fraw.githubusercontent.com%2FMat-O-Lab%2FIOFMaterialsTutorial%2Frefs%2Fheads%2Fmain%2FLengthMeasurement.ttl
+### RDF data URL
 
-Notes about startup loading
-- The application will accept:
-  1) an inline TTL string via the window flag __VG_STARTUP_TTL
-  2) the rdfUrl query parameter (preferred)
-  3) legacy url or vg_url query params
-  4) explicit window overrides (window.__VG_STARTUP_URL) or environment VITE_STARTUP_URL
-- For safety the loader only accepts http(s) URLs or inline TTL. Local filesystem paths are not automatically loaded.
-- If startup loading fails, check the browser console for parse errors and the Network tab for CORS issues.
+| Parameter | Aliases | Description |
+|-----------|---------|-------------|
+| `rdfUrl`  | `url`, `vg_url` | HTTP(S) URL of an RDF resource to load into the data graph on startup. |
+
+The loader accepts any of the three aliases; `rdfUrl` is preferred.
+
+**What can be loaded:**
+
+1. **Plain RDF files** — Turtle (.ttl), N-Triples (.nt), N3, RDF/XML, JSON-LD. The format is detected from the `Content-Type` response header and from the file extension / content.
+
+   ```text
+   ?rdfUrl=https://example.org/mydata.ttl
+   ```
+
+2. **SPARQL endpoints** — URLs whose path ends with `/sparql` or `/query` are recognised automatically. VisGraph runs a `CONSTRUCT { ?s ?p ?o } WHERE { { ?s ?p ?o } UNION { GRAPH ?g { ?s ?p ?o } } }` query to retrieve all triples from both the default graph and all named graphs.
+
+   ```text
+   ?rdfUrl=https://example.org/fuseki/$/sparql
+   ```
+
+3. **Fuseki / CKAN Fuseki proxy root** — The Fuseki dataset root endpoint (e.g. `/fuseki/$/`) returns the full dataset. VisGraph remaps all named-graph quads into the data graph so they appear on the canvas.
+
+   ```text
+   ?rdfUrl=https://docker-dev.iwm.fraunhofer.de/dataset/<uuid>/fuseki/$/
+   ```
+
+Named-graph information from TriG or N-Quads responses is intentionally flattened into the single data graph so that all triples are visible on the canvas regardless of their original graph assignment.
+
+### Authentication (API key)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `apiKey`  | —       | Value sent as an authentication header with the RDF fetch request. |
+| `apiKeyHeader` | `Authorization` | Name of the HTTP header used to send the API key. |
+
+Use these to access private datasets that require token-based authentication (e.g. CKAN API keys, Bearer tokens).
+
+```text
+?rdfUrl=https://docker-dev.iwm.fraunhofer.de/dataset/<uuid>/fuseki/$/
+&apiKey=<your-ckan-api-key>
+```
+
+```text
+?rdfUrl=https://private-endpoint.example.org/data.ttl
+&apiKey=Bearer+my-token
+&apiKeyHeader=Authorization
+```
+
+The API key is sent only with the RDF fetch request(s). CORS: the receiving server must echo the request origin in `Access-Control-Allow-Origin` and set `Access-Control-Allow-Credentials: true` when an `Authorization` header is present — a wildcard `*` origin is incompatible with authenticated requests.
+
+**CKAN + Fuseki setup notes:**
+- Log into CKAN, navigate to your profile and copy your API key.
+- The dataset must have been loaded into Fuseki via the CKAN Fuseki plugin.
+- The nginx CORS configuration must whitelist the VisGraph origin (see pmd-ckan nginx config).
+
+### Full example (CKAN private dataset via Fuseki SPARQL)
+
+```text
+http://docker-dev.iwm.fraunhofer.de:8080/
+  ?rdfUrl=https://docker-dev.iwm.fraunhofer.de/dataset/<uuid>/fuseki/$/sparql
+  &apiKey=<ckan-api-jwt-token>
+```
+
+Or via the Fuseki root (returns full dataset as RDF):
+
+```text
+http://docker-dev.iwm.fraunhofer.de:8080/
+  ?rdfUrl=https://docker-dev.iwm.fraunhofer.de/dataset/<uuid>/fuseki/$/
+  &apiKey=<ckan-api-jwt-token>
+```
+
+### Other startup mechanisms
+
+- `window.__VG_STARTUP_TTL` — inline Turtle string loaded before any URL parameter.
+- `window.__VG_STARTUP_URL` — programmatic URL override (takes precedence over `rdfUrl`).
+- `VITE_STARTUP_URL` environment variable — build-time default startup URL.
+
+For safety the loader only accepts `http(s)` URLs. Local filesystem paths are not loaded automatically.
 
 Reasoning demo
 --------------

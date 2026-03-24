@@ -1671,6 +1671,8 @@ const KnowledgeCanvas: React.FC = () => {
           : [];
 
         let startupUrl = "";
+        let startupApiKey = "";
+        let startupApiKeyHeader = "";
         try {
           const u = new URL(String(window.location.href));
           startupUrl =
@@ -1678,6 +1680,8 @@ const KnowledgeCanvas: React.FC = () => {
             u.searchParams.get("rdfUrl") ||
             u.searchParams.get("vg_url") ||
             "";
+          startupApiKey = u.searchParams.get("apiKey") || "";
+          startupApiKeyHeader = u.searchParams.get("apiKeyHeader") || "";
         } catch {
           startupUrl = "";
         }
@@ -1745,6 +1749,7 @@ const KnowledgeCanvas: React.FC = () => {
                 canvasActions.setLoading(true, Math.max(progress, 5), message);
               },
               timeout: 30000,
+              ...(startupApiKey ? { apiKey: startupApiKey, apiKeyHeader: startupApiKeyHeader || undefined } : {}),
             });
             toast.success("Startup knowledge graph loaded");
             loadTriggerRef.current = true;

@@ -510,6 +510,8 @@ interface OntologyStore {
       onProgress?: (progress: number, message: string) => void;
       timeout?: number;
       filename?: string;
+      apiKey?: string;
+      apiKeyHeader?: string;
     },
   ) => Promise<void>;
   loadAdditionalOntologies: (
@@ -1252,6 +1254,9 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     options?: {
       onProgress?: (progress: number, message: string) => void;
       timeout?: number;
+      filename?: string;
+      apiKey?: string;
+      apiKeyHeader?: string;
     },
   ) => {
     logCallGraph?.("loadKnowledgeGraph:start", source);
@@ -1267,7 +1272,11 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         if (!mgrInstance) throw new Error("No RDF manager available to load URL");
 
         // Delegate fetch + parse + store insertion to rdfManager; it will handle formats and prefix merging.
-        await (mgrInstance as any).loadRDFFromUrl(source, "urn:vg:data", { timeoutMs: timeout });
+        await (mgrInstance as any).loadRDFFromUrl(source, "urn:vg:data", {
+          timeoutMs: timeout,
+          apiKey: options?.apiKey,
+          apiKeyHeader: options?.apiKeyHeader,
+        });
         // (mgrInstance as any).addNamespace(":", String(source));
 
         // Intentionally do NOT request a canvas layout here.

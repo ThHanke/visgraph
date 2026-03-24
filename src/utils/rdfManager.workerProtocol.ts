@@ -52,6 +52,8 @@ export interface ImportSerializedPayload {
   contentType?: string;
   filename?: string;
   baseIri?: string;
+  /** If true, remap all quads (including named-graph quads) into graphName. */
+  forceGraph?: boolean;
 }
 
 export interface ExportGraphPayload {

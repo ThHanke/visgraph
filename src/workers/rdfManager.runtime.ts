@@ -992,9 +992,10 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             quadStream.on("data", (incoming: Quad) => {
               try {
                 const graphTerm =
-                  incoming.graph && incoming.graph.termType && incoming.graph.termType !== "DefaultGraph"
-                    ? incoming.graph
-                    : targetGraph;
+                  (payload as any).forceGraph ||
+                  !incoming.graph || !incoming.graph.termType || incoming.graph.termType === "DefaultGraph"
+                    ? targetGraph
+                    : incoming.graph;
                 const normalized = DataFactory.quad(
                   incoming.subject,
                   incoming.predicate,
