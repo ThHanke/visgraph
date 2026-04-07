@@ -27,6 +27,8 @@ import { useShallow } from 'zustand/react/shallow';
 import { LayoutManager } from './LayoutManager';
 import { useOntologyStore } from '../../stores/ontologyStore';
 
+const EMPTY_STRINGS: readonly string[] = [];
+
 interface TopBarProps {
   onAddNode: () => void;
   onToggleLegend: () => void;
@@ -88,7 +90,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   const removeLoadedOntology = useOntologyStore((s) => s.removeLoadedOntology);
   const addAdditionalOntology = useAppConfigStore((s) => s.addAdditionalOntology);
   const removeAdditionalOntology = useAppConfigStore((s) => s.removeAdditionalOntology);
-  const additionalOntologies = useAppConfigStore((s) => s.config.additionalOntologies ?? []);
+  const additionalOntologies = useAppConfigStore((s) => s.config.additionalOntologies ?? EMPTY_STRINGS);
 
   const normalizeOntUrl = (u: string) => {
     try { return new URL(u.trim()).toString().replace(/[/#]+$/, '').replace(/^http:\/\//i, 'https://'); }
@@ -103,8 +105,7 @@ export const TopBar: React.FC<TopBarProps> = ({
     setTempLayoutSpacing(config.layoutSpacing ?? 120);
   }, [config.layoutSpacing]);
 
-  const layoutManager = new LayoutManager();
-  const layoutOptions = layoutManager.getAvailableLayouts();
+  const layoutOptions = React.useMemo(() => new LayoutManager().getAvailableLayouts(), []);
 
   const getLayoutIcon = (iconName?: string) => {
     const icons: Record<string, any> = {
