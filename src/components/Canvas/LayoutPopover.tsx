@@ -113,7 +113,13 @@ export const LayoutPopover: React.FC<LayoutPopoverProps> = ({ onApplyLayout }) =
             <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', opacity: 0.5, whiteSpace: 'nowrap' }}>
               Spacing
             </div>
-            <div style={{ flex: 1 }}>
+            <div
+              style={{ flex: 1 }}
+              onPointerUp={() => {
+                setLayoutSpacing(tempSpacing);
+                if (config.autoApplyLayout) onApplyLayout();
+              }}
+            >
               <Slider
                 value={[tempSpacing]}
                 onValueChange={([v]) => setTempSpacing(v)}
