@@ -311,8 +311,14 @@ export default function ReactodiaCanvas() {
     setSettingsOpen(true);
   }, []);
 
-  const handleExport = React.useCallback(() => {
-    // Delegate to Reactodia's built-in export via the DefaultWorkspace toolbar
+  const handleExport = React.useCallback(async () => {
+    try {
+      const { exportPngFull } = await import('./core/downloadHelpers');
+      await exportPngFull();
+    } catch (err) {
+      console.error('[ReactodiaCanvas] PNG export failed', err);
+      toast.error('PNG export failed');
+    }
   }, []);
 
   // Custom drop handler: dragging a type label from the class tree puts the type IRI
@@ -422,7 +428,66 @@ export default function ReactodiaCanvas() {
                 linkTemplateResolver: rdfLinkTemplateResolver,
               }}
               dropOnCanvas={{ getDroppedItems: handleDropOnCanvas }}
-            />
+              menu={null}
+              search={null}
+            >
+              <Reactodia.ViewportDock dock="n">
+                <div style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'flex-start',
+                  gap: 4,
+                  width: '100%',
+                  padding: '0 var(--reactodia-viewport-dock-margin, 10px)',
+                  boxSizing: 'border-box',
+                  pointerEvents: 'none',
+                }}>
+                  {/* Reactodia hamburger + search (no Toolbar wrapper to avoid nested ViewportDock) */}
+                  <div className="reactodia-toolbar" role="toolbar" style={{ display: 'flex', alignItems: 'center', pointerEvents: 'auto' }}>
+                    <Reactodia.DropdownMenu
+                      className="reactodia-toolbar__menu"
+                      direction="down"
+                      title="Menu"
+                    >
+                      <Reactodia.ToolbarActionExport kind="exportRaster" />
+                      <Reactodia.ToolbarActionExport kind="exportSvg" />
+                      <Reactodia.ToolbarActionExport kind="print" />
+                      <Reactodia.ToolbarAction
+                        title={canvasState.showLegend ? 'Hide Legend' : 'Show Legend'}
+                        onSelect={actions.toggleLegend}
+                      >
+                        {canvasState.showLegend ? 'Hide Legend' : 'Show Legend'}
+                      </Reactodia.ToolbarAction>
+                    </Reactodia.DropdownMenu>
+                    <div className="reactodia-toolbar__quick-access-group reactodia-btn-group reactodia-btn-group-sm">
+                      <Reactodia.UnifiedSearch
+                        sections={[
+                          { key: 'elementTypes', label: 'Classes', title: 'Search element types', component: <Reactodia.SearchSectionElementTypes /> },
+                          { key: 'entities', label: 'Entities', title: 'Search entities', component: <Reactodia.SearchSectionEntities /> },
+                          { key: 'linkTypes', label: 'Link types', title: 'Search link types', component: <Reactodia.SearchSectionLinkTypes /> },
+                        ]}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Spacer */}
+                  <div style={{ flex: 1 }} />
+
+                  {/* Custom items */}
+                  <div style={{ pointerEvents: 'auto' }}>
+                    <TopBar
+                      viewMode={canvasState.viewMode as 'abox' | 'tbox'}
+                      onViewModeChange={actions.setViewMode}
+                      ontologyCount={ontologyCount}
+                      onOpenReasoningReport={() => actions.toggleReasoningReport(true)}
+                      onRunReason={handleRunReasoning}
+                      currentReasoning={currentReasoning}
+                      isReasoning={isReasoning}
+                    />
+                  </div>
+                </div>
+              </Reactodia.ViewportDock>
+            </Reactodia.DefaultWorkspace>
           </PrefixContext.Provider>
         </Reactodia.Workspace>
       </div>
@@ -438,20 +503,7 @@ export default function ReactodiaCanvas() {
         onSettings={() => setSettingsOpen(true)}
       />
 
-      <TopBar
-        onAddNode={handleAddNode}
-        onToggleLegend={actions.toggleLegend}
-        showLegend={canvasState.showLegend}
-        viewMode={canvasState.viewMode as 'abox' | 'tbox'}
-        onViewModeChange={actions.setViewMode}
-        ontologyCount={ontologyCount}
-        onLayoutChange={handleLayoutChange}
-        sidebarExpanded={sidebarExpanded}
-        onOpenReasoningReport={() => actions.toggleReasoningReport(true)}
-        onRunReason={handleRunReasoning}
-        currentReasoning={currentReasoning}
-        isReasoning={isReasoning}
-      />
+
 
       {canvasState.showLegend && <ResizableNamespaceLegend />}
 

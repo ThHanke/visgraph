@@ -16,8 +16,8 @@ import * as htmlToImage from "html-to-image";
 export async function exportViewportSvgMinimal(): Promise<string> {
   if (typeof document === "undefined") throw new Error("exportViewportSvgMinimal must run in a browser environment");
   // Prefer common renderer/portal selectors so portalled React Flow content is captured.
-  const viewport = document.querySelector('.react-flow__viewport') as HTMLElement | null;
-  if (!viewport) throw new Error('Viewport element ".react-flow__viewport" not found');
+  const viewport = document.querySelector('.reactodia-canvas-area') as HTMLElement | null;
+  if (!viewport) throw new Error('Viewport element ".reactodia-canvas-area" not found');
   // Small delay to allow any portalled renderer content to attach/paint.
   if (typeof window === "undefined") {
     // In non-browser/test environments, schedule a microtask instead of a real timeout
@@ -37,8 +37,8 @@ export async function exportViewportSvgMinimal(): Promise<string> {
 export async function exportViewportPngMinimal(scale = 2): Promise<string> {
   if (typeof document === "undefined") throw new Error("exportViewportPngMinimal must run in a browser environment");
   // Prefer common renderer/portal selectors so portalled React Flow content is captured.
-  const viewport = document.querySelector('.react-flow__viewport') as HTMLElement | null;
-  if (!viewport) throw new Error('Viewport element ".react-flow__viewport" not found');
+  const viewport = document.querySelector('.reactodia-canvas-area') as HTMLElement | null;
+  if (!viewport) throw new Error('Viewport element ".reactodia-canvas-area" not found');
   // Small delay to allow any portalled renderer content to attach/paint.
   if (typeof window === "undefined") {
     // In non-browser/test environments, schedule a microtask instead of a real timeout
