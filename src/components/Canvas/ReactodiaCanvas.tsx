@@ -520,6 +520,16 @@ export default function ReactodiaCanvas() {
               dropOnCanvas={{ getDroppedItems: handleDropOnCanvas }}
               menu={null}
               search={null}
+              actions={<>
+                <Reactodia.ToolbarActionUndo />
+                <Reactodia.ToolbarActionRedo />
+                <Reactodia.ToolbarAction
+                  title="Apply Layout"
+                  onSelect={() => performLayoutRef.current?.()}
+                >
+                  Layout
+                </Reactodia.ToolbarAction>
+              </>}
             >
               <Reactodia.ViewportDock dock="n">
                 <div style={{
