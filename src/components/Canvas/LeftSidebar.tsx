@@ -99,35 +99,32 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           isExpanded ? 'w-72' : 'w-10'
         )}
       >
-        {/* Floating collapse/expand tab on the right edge */}
-        <TooltipPrimitive.Root>
-          <TooltipPrimitive.Trigger asChild>
-            <button
-              onClick={onToggle}
-              aria-label={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
-              className="absolute right-0 top-1/2 -translate-y-1/2 z-30 flex items-center justify-center w-6 h-10 rounded-r-lg border border-l-0 border-border/40 bg-background/80 backdrop-blur-sm shadow-sm hover:bg-accent/60 transition-colors text-muted-foreground hover:text-foreground"
-            >
-              {isExpanded
-                ? <ChevronLeft className="h-3 w-3" />
-                : <ChevronRight className="h-3 w-3" />}
-            </button>
-          </TooltipPrimitive.Trigger>
-          <TooltipPrimitive.Portal>
-            <TooltipPrimitive.Content
-              className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
-              sideOffset={8}
-              side="right"
-            >
-              {isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
-              <TooltipPrimitive.Arrow className="fill-popover" />
-            </TooltipPrimitive.Content>
-          </TooltipPrimitive.Portal>
-        </TooltipPrimitive.Root>
-
         {/* Collapsed state - icon rail */}
         {!isExpanded && (
-          <div className="h-full w-full flex flex-col items-center py-2 gap-1 px-1 bg-background border-r border-border/40 shadow-lg">
+          <div className="h-full w-full flex flex-col bg-background border-r border-border/40 shadow-lg overflow-visible">
+            {/* Top spacer — full-bleed, chevron centered, lip div grows on hover */}
+            <TooltipPrimitive.Root>
+              <TooltipPrimitive.Trigger asChild>
+                <div
+                  role="button"
+                  onClick={onToggle}
+                  aria-label="Expand sidebar"
+                  className="group flex-shrink-0 w-full h-12 border-b border-border/40 flex items-center justify-center relative overflow-visible cursor-pointer"
+                >
+                  <div className="group relative flex items-center justify-center w-full h-8 overflow-visible text-muted-foreground group-hover:text-foreground group-hover:bg-accent transition-colors duration-150">
+                    <ChevronRight className="h-[18px] w-[18px] shrink-0" />
+                    <div className="absolute right-0 top-0 bottom-0 w-0 group-hover:w-3 translate-x-full bg-accent rounded-r-md transition-[width] duration-200" />
+                  </div>
+                </div>
+              </TooltipPrimitive.Trigger>
+              <TooltipPrimitive.Portal>
+                <TooltipPrimitive.Content className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md" sideOffset={5} side="right">
+                  Expand sidebar<TooltipPrimitive.Arrow className="fill-popover" />
+                </TooltipPrimitive.Content>
+              </TooltipPrimitive.Portal>
+            </TooltipPrimitive.Root>
             {/* Action icons */}
+            <div className="flex flex-col items-center gap-1 px-1 py-2 flex-1">
             <TooltipPrimitive.Root>
               <TooltipPrimitive.Trigger asChild>
                 <button className="rail-btn" onClick={onLoadOntology} aria-label="Load Ontology">
@@ -199,6 +196,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 </TooltipPrimitive.Content>
               </TooltipPrimitive.Portal>
             </TooltipPrimitive.Root>
+            </div>{/* end icons div */}
           </div>
         )}
 
@@ -206,8 +204,29 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         {isExpanded && (
           <div className="glass h-full w-full flex flex-col">
           {/* Toggle button at top */}
-          <div className="flex items-center bg-background  justify-between px-3 py-2 border-b border-border/40">
+          <div className="flex items-center bg-background justify-between px-3 py-2 border-b border-border/40">
             <span className="text-sm font-medium text-foreground">Menu</span>
+            <TooltipPrimitive.Root>
+              <TooltipPrimitive.Trigger asChild>
+                <button
+                  onClick={onToggle}
+                  aria-label="Collapse sidebar"
+                  className="h-8 w-8 flex items-center justify-center rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+              </TooltipPrimitive.Trigger>
+              <TooltipPrimitive.Portal>
+                <TooltipPrimitive.Content
+                  className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
+                  sideOffset={5}
+                  side="right"
+                >
+                  Collapse sidebar
+                  <TooltipPrimitive.Arrow className="fill-popover" />
+                </TooltipPrimitive.Content>
+              </TooltipPrimitive.Portal>
+            </TooltipPrimitive.Root>
           </div>
 
           {/* Compact file operations row - 5 columns */}
