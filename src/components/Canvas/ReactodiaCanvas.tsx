@@ -47,6 +47,9 @@ const knownSubjects = new Set<string>();
 // Current view mode state
 let currentViewMode: ViewMode = 'abox';
 
+// Persisted layout per view mode, saved via model.exportLayout() before each switch
+const savedLayoutsByMode: Partial<Record<ViewMode, Reactodia.SerializedDiagram>> = {};
+
 
 export default function ReactodiaCanvas() {
   const { defaultLayout } = Reactodia.useWorker(Layouts);
@@ -97,26 +100,50 @@ export default function ReactodiaCanvas() {
 
   const modelRef = React.useRef<Reactodia.DataDiagramModel | null>(null);
   const commandBusRef = React.useRef<((topic: any) => any) | null>(null);
+  const contextRef = React.useRef<Reactodia.WorkspaceContext | null>(null);
+
+  // Always-current layout function for calls from outside the init callback
+  const defaultLayoutRef = React.useRef(defaultLayout);
+  defaultLayoutRef.current = defaultLayout;
 
   const { onMount } = Reactodia.useLoadedWorkspace(async ({ context, signal }) => {
-    const { model, getCommandBus } = context;
+    const { model, view, getCommandBus } = context;
     modelRef.current = model;
     commandBusRef.current = getCommandBus;
+    contextRef.current = context;
 
-    performLayoutRef.current = () =>
-      context.performLayout({ layoutFunction: defaultLayout, animate: true, signal });
+    // Wire up the toolbar "Re-layout" button — uses its own controller, independent
+    // of the init signal which is tied to workspace lifetime.
+    performLayoutRef.current = () => {
+      const ctx = contextRef.current;
+      if (!ctx) return Promise.resolve();
+      const controller = new AbortController();
+      return ctx.performLayout({
+        layoutFunction: defaultLayoutRef.current,
+        animate: true,
+        signal: controller.signal,
+      });
+    };
 
-    await model.createNewDiagram({ dataProvider, signal });
+    // importLayout (without a diagram) starts an empty canvas, same semantics as
+    // createNewDiagram but consistent with the restore-from-diagram pattern we use
+    // for the view-mode switch below.
+    await model.importLayout({ dataProvider, signal });
 
-    for (const iri of dataProvider.filterByViewMode([...knownSubjects])) {
+    const filtered = dataProvider.filterByViewMode([...knownSubjects]);
+    for (const iri of filtered) {
       model.createElement(iri as Reactodia.ElementIri);
     }
 
-    if (knownSubjects.size > 0) {
+    if (filtered.length > 0) {
       await model.requestData();
-      await context.performLayout({ layoutFunction: defaultLayout, animate: false, signal });
+      await context.performLayout({ layoutFunction: defaultLayoutRef.current, animate: false, signal });
     }
-  }, [defaultLayout]);
+
+    const canvas = view.findAnyCanvas();
+    canvas?.zoomToFit();
+    model.history.reset();
+  }, []);
 
   // Subscribe to rdfManager changes — incremental sync to live model
   React.useEffect(() => {
@@ -179,23 +206,58 @@ export default function ReactodiaCanvas() {
   React.useEffect(() => {
     const mode = canvasState.viewMode as ViewMode;
     if (mode === currentViewMode) return;
+    const prevMode = currentViewMode;
     currentViewMode = mode;
 
     const model = modelRef.current;
-    if (!model) return;
+    const ctx = contextRef.current;
+    if (!model || !ctx) return;
+
+    // Snapshot the current layout before switching so we can restore it on the way back
+    savedLayoutsByMode[prevMode] = model.exportLayout();
 
     dataProvider.setViewMode(mode);
+    const filtered = dataProvider.filterByViewMode([...knownSubjects]);
+    const savedDiagram = savedLayoutsByMode[mode];
 
     // Defer model mutations out of the React lifecycle to avoid flushSync warnings
-    const filtered = dataProvider.filterByViewMode([...knownSubjects]);
-    queueMicrotask(() => {
-      for (const el of [...model.elements]) {
-        model.removeElement(el.id);
+    queueMicrotask(async () => {
+      const controller = new AbortController();
+
+      if (savedDiagram) {
+        // Restore the previously computed layout for this mode
+        await model.importLayout({ dataProvider, diagram: savedDiagram, signal: controller.signal });
+
+        // Add any elements that were added while we were in the other mode
+        const inModel = new Set(
+          model.elements
+            .filter((e): e is Reactodia.EntityElement => e instanceof Reactodia.EntityElement)
+            .map(e => e.data.id)
+        );
+        const newIris = filtered.filter(iri => !inModel.has(iri));
+        for (const iri of newIris) {
+          model.createElement(iri as Reactodia.ElementIri);
+        }
+        if (newIris.length > 0) {
+          await model.requestData();
+          await performLayoutRef.current?.();
+        }
+      } else {
+        // First time in this mode — lay everything out fresh
+        await model.importLayout({ dataProvider, signal: controller.signal });
+        for (const iri of filtered) {
+          model.createElement(iri as Reactodia.ElementIri);
+        }
+        if (filtered.length > 0) {
+          await model.requestData();
+          await ctx.performLayout({
+            layoutFunction: defaultLayoutRef.current,
+            animate: true,
+            signal: controller.signal,
+          });
+        }
+        ctx.view.findAnyCanvas()?.zoomToFit();
       }
-      for (const iri of filtered) {
-        model.createElement(iri as Reactodia.ElementIri);
-      }
-      void model.requestData();
     });
   }, [canvasState.viewMode]);
 
@@ -395,7 +457,7 @@ export default function ReactodiaCanvas() {
   );
 
   return (
-    <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
+    <div style={{ width: '100vw', height: '100vh', position: 'relative', background: 'var(--canvas-bg)' }}>
       {/* Hidden file input for RDF file loading */}
       <input
         ref={fileInputRef}
@@ -409,10 +471,11 @@ export default function ReactodiaCanvas() {
       <div style={{
         position: 'absolute',
         top: 0,
-        left: sidebarExpanded ? 288 : 16,
+        left: sidebarExpanded ? 288 : 40,
         right: 0,
         bottom: 0,
         transition: 'left 300ms ease-in-out',
+        background: 'var(--canvas-bg)',
       }}>
         <Reactodia.Workspace
           ref={onMount}
@@ -459,15 +522,13 @@ export default function ReactodiaCanvas() {
                         {canvasState.showLegend ? 'Hide Legend' : 'Show Legend'}
                       </Reactodia.ToolbarAction>
                     </Reactodia.DropdownMenu>
-                    <div className="reactodia-toolbar__quick-access-group reactodia-btn-group reactodia-btn-group-sm">
-                      <Reactodia.UnifiedSearch
-                        sections={[
-                          { key: 'elementTypes', label: 'Classes', title: 'Search element types', component: <Reactodia.SearchSectionElementTypes /> },
-                          { key: 'entities', label: 'Entities', title: 'Search entities', component: <Reactodia.SearchSectionEntities /> },
-                          { key: 'linkTypes', label: 'Link types', title: 'Search link types', component: <Reactodia.SearchSectionLinkTypes /> },
-                        ]}
-                      />
-                    </div>
+                    <Reactodia.UnifiedSearch
+                      sections={[
+                        { key: 'elementTypes', label: 'Classes', title: 'Search element types', component: <Reactodia.SearchSectionElementTypes /> },
+                        { key: 'entities', label: 'Entities', title: 'Search entities', component: <Reactodia.SearchSectionEntities /> },
+                        { key: 'linkTypes', label: 'Link types', title: 'Search link types', component: <Reactodia.SearchSectionLinkTypes /> },
+                      ]}
+                    />
                   </div>
 
                   {/* Spacer */}
@@ -508,6 +569,7 @@ export default function ReactodiaCanvas() {
       {canvasState.showLegend && <ResizableNamespaceLegend />}
 
       <ConfigurationPanel
+        triggerVariant="none"
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
       />

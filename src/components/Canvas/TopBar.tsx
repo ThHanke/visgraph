@@ -40,12 +40,13 @@ export const TopBar: React.FC<TopBarProps> = ({
     <div className="reactodia-toolbar" role="toolbar" style={{
       display: 'flex',
       whiteSpace: 'nowrap',
+      gap: '4px',
     }}>
+      {/* A-Box / T-Box group */}
       <div className="reactodia-btn-group reactodia-btn-group-sm">
-        {/* A-Box / T-Box toggle */}
         <button
           type="button"
-          className={`reactodia-btn ${viewMode === 'abox' ? 'reactodia-btn-primary' : 'reactodia-btn-default'}`}
+          className={`reactodia-btn reactodia-btn-default glass-btn ${viewMode === 'abox' ? 'glass-btn--active' : ''}`}
           onClick={() => onViewModeChange('abox')}
           title="View instance data (A-Box)"
         >
@@ -53,21 +54,21 @@ export const TopBar: React.FC<TopBarProps> = ({
         </button>
         <button
           type="button"
-          className={`reactodia-btn ${viewMode === 'tbox' ? 'reactodia-btn-primary' : 'reactodia-btn-default'}`}
+          className={`reactodia-btn reactodia-btn-default glass-btn ${viewMode === 'tbox' ? 'glass-btn--active' : ''}`}
           onClick={() => onViewModeChange('tbox')}
           title="View ontology schema (T-Box)"
         >
           T-Box
         </button>
+      </div>
 
         {/* Ontology count */}
         <Popover>
           <PopoverTrigger asChild>
             <button
               type="button"
-              className="reactodia-btn reactodia-btn-default"
+              className="reactodia-btn reactodia-btn-default glass-btn"
               title="Loaded ontologies"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                 <circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="16"/>
@@ -107,7 +108,8 @@ export const TopBar: React.FC<TopBarProps> = ({
                           {!isCore && ontologyUrl && (
                             isAutoloaded ? (
                               <button
-                                className="reactodia-btn reactodia-btn-default reactodia-btn-sm"
+                                className="glass-btn"
+                                style={{ fontSize: 12, padding: '3px 8px' }}
                                 onClick={() => {
                                   removeAdditionalOntology(ontologyUrl);
                                   toast.success(`Removed ${ont?.name || 'ontology'} from autoload`);
@@ -117,7 +119,8 @@ export const TopBar: React.FC<TopBarProps> = ({
                               </button>
                             ) : (
                               <button
-                                className="reactodia-btn reactodia-btn-default reactodia-btn-sm"
+                                className="glass-btn"
+                                style={{ fontSize: 12, padding: '3px 8px' }}
                                 onClick={() => {
                                   addAdditionalOntology(ontologyUrl);
                                   toast.success(`Added ${ont?.name || 'ontology'} to autoload`);
@@ -129,8 +132,8 @@ export const TopBar: React.FC<TopBarProps> = ({
                           )}
                           {config?.persistedAutoload && !isCore && (
                             <button
-                              className="reactodia-btn reactodia-btn-default reactodia-btn-sm"
-                              style={{ color: 'var(--reactodia-error-color, #d00)' }}
+                              className="glass-btn glass-btn--status-error"
+                              style={{ fontSize: 12, padding: '3px 8px' }}
                               onClick={() => {
                                 if (ontologyUrl) {
                                   removeLoadedOntology(ontologyUrl);
@@ -154,15 +157,19 @@ export const TopBar: React.FC<TopBarProps> = ({
         </PopoverContent>
       </Popover>
 
-        {/* Reasoning */}
+        {/* Reasoning group */}
         {onOpenReasoningReport && onRunReason && (
-          <>
+          <div className="reactodia-btn-group reactodia-btn-group-sm">
             <button
               type="button"
-              className="reactodia-btn reactodia-btn-default"
+              className={`reactodia-btn reactodia-btn-default glass-btn ${
+                isReasoning ? '' :
+                currentReasoning?.errors?.length ? 'glass-btn--status-error' :
+                currentReasoning?.warnings?.length ? 'glass-btn--status-warn' :
+                currentReasoning ? 'glass-btn--status-ok' : ''
+              }`}
               onClick={onOpenReasoningReport}
               title="View reasoning results"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
             >
               {isReasoning ? (
                 <>
@@ -173,15 +180,15 @@ export const TopBar: React.FC<TopBarProps> = ({
                 </>
               ) : currentReasoning ? (
                 currentReasoning.errors?.length ? (
-                  <span style={{ color: '#e55' }}>
+                  <span>
                     ⚠ {currentReasoning.errors.length} Error{currentReasoning.errors.length !== 1 ? 's' : ''}
                   </span>
                 ) : currentReasoning.warnings?.length ? (
-                  <span style={{ color: '#ea0' }}>
+                  <span>
                     ⚠ {currentReasoning.warnings.length} Warning{currentReasoning.warnings.length !== 1 ? 's' : ''}
                   </span>
                 ) : (
-                  <span style={{ color: '#4a4' }}>✓ Valid</span>
+                  <span>✓ Valid</span>
                 )
               ) : (
                 'Ready'
@@ -195,9 +202,8 @@ export const TopBar: React.FC<TopBarProps> = ({
             >
               ▶
             </button>
-          </>
+          </div>
         )}
-      </div>
     </div>
   );
 };

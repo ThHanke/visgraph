@@ -108,11 +108,11 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
         flexDirection: 'row',
         minWidth: 180,
         maxWidth: 320,
-        background: 'var(--reactodia-paper-bg, #fff)',
+        background: 'var(--reactodia-paper-bg)',
         borderRadius: 6,
         border: onlySelected
           ? '2px solid var(--reactodia-selection-color, #3b82f6)'
-          : '1px solid #d1d5db',
+          : '1px solid var(--reactodia-paper-border, #d1d5db)',
         overflow: 'hidden',
         boxShadow: onlySelected
           ? '0 0 0 2px rgba(59,130,246,0.25)'
@@ -139,7 +139,7 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
             style={{
               padding: '3px 8px 0',
               fontSize: 10,
-              color: '#6b7280',
+              color: 'var(--reactodia-paper-fg-muted, #6b7280)',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
@@ -175,7 +175,7 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
-              color: 'var(--reactodia-paper-fg, #111)',
+              color: 'var(--reactodia-paper-fg)',
             }}
             title={data.id}
           >
@@ -186,7 +186,7 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
         {/* Expanded panel */}
         {isExpanded && (
           <div style={{
-            borderTop: '1px solid #e5e7eb',
+            borderTop: '1px solid var(--reactodia-paper-border, #e5e7eb)',
             padding: '6px 8px 6px',
             display: 'flex',
             flexDirection: 'column',
@@ -196,11 +196,11 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
           }}>
             {/* IRI */}
             <div>
-              <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, marginBottom: 1 }}>
+              <div style={{ fontSize: 10, color: 'var(--reactodia-paper-fg-muted, #9ca3af)', fontWeight: 600, marginBottom: 1 }}>
                 IRI
               </div>
               <div
-                style={{ fontSize: 10, color: '#6b7280', wordBreak: 'break-all', lineHeight: 1.4 }}
+                style={{ fontSize: 10, color: 'var(--reactodia-paper-fg-muted, #6b7280)', wordBreak: 'break-all', lineHeight: 1.4 }}
                 title={data.id}
               >
                 {data.id}
@@ -209,11 +209,11 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
 
             {/* Annotation properties */}
             {properties.length > 0 && (
-              <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ borderTop: '1px solid var(--reactodia-paper-border, #f3f4f6)', paddingTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {properties.map(({ keyIri, keyShort, values }) => (
                   <div key={keyIri}>
                     <div
-                      style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600 }}
+                      style={{ fontSize: 10, color: 'var(--reactodia-paper-fg-muted, #9ca3af)', fontWeight: 600 }}
                       title={keyIri}
                     >
                       {keyShort}
@@ -223,7 +223,7 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
                         key={i}
                         style={{
                           fontSize: 11,
-                          color: 'var(--reactodia-paper-fg, #374151)',
+                          color: 'var(--reactodia-paper-fg)',
                           lineHeight: 1.5,
                           paddingLeft: 6,
                           borderLeft: `2px solid ${nsColor}`,
@@ -241,7 +241,7 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
             )}
 
             {properties.length === 0 && (
-              <div style={{ fontSize: 10, color: '#9ca3af', fontStyle: 'italic' }}>
+              <div style={{ fontSize: 10, color: 'var(--reactodia-paper-fg-muted, #9ca3af)', fontStyle: 'italic' }}>
                 No annotation properties
               </div>
             )}

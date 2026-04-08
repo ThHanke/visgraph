@@ -52,6 +52,16 @@
   /* Glassmorphism / animation variables */
   --glass-shadow: 0 8px 32px oklch(0.3752 0.0394 256.8 / 0.08);
   --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Glass surface tokens */
+  --glass-surface: rgba(255, 255, 255, 0.55);
+  --glass-border-color: rgba(255, 255, 255, 0.7);
+  --glass-blur: blur(14px);
+
+  /* Reactodia node template variables — light mode */
+  --reactodia-paper-bg: #ffffff;
+  --reactodia-paper-fg: #111827;
+  --reactodia-paper-border: #d1d5db;
+  --reactodia-paper-fg-muted: #6b7280;
 }
 
 .dark {
@@ -74,6 +84,15 @@
   --node-border: oklch(31.1% 0.025 256.8);
   --node-muted: oklch(26.1% 0.024 256.8);
   --node-shadow: 0 4px 20px oklch(0.1906 0.0105 248.4 / 0.12);
+  --glass-surface: rgba(30, 35, 50, 0.65);
+  --glass-border-color: rgba(255, 255, 255, 0.09);
+  --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.35), 0 1.5px 6px rgba(0, 0, 0, 0.2);
+
+  /* Reactodia node template variables — dark mode */
+  --reactodia-paper-bg: #1e2130;
+  --reactodia-paper-fg: #e2e8f0;
+  --reactodia-paper-border: #374151;
+  --reactodia-paper-fg-muted: #9ca3af;
 }
 
 /* Minimal base layer: keep only what is required globally */
@@ -373,3 +392,270 @@
 .react-flow__edgelabel-renderer {
 	z-index: 2;
 }
+
+/* Glass utilities */
+
+/* Base glass surface — apply to panels and containers */
+.glass {
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-border-color);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow);
+}
+
+/* Glass button — replaces reactodia-btn-default */
+.glass-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border-color);
+  background: var(--glass-surface);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07);
+  color: var(--foreground);
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.glass-btn:hover {
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  transform: translateY(-0.5px);
+}
+
+.dark .glass-btn:hover {
+  background: rgba(60, 70, 100, 0.75);
+}
+
+/* Active/primary state — used for A-Box/T-Box active toggle */
+.glass-btn--active {
+  background: rgba(124, 92, 228, 0.15);
+  border-color: rgba(124, 92, 228, 0.35);
+  color: var(--primary);
+  box-shadow: inset 0 0 0 1px rgba(124, 92, 228, 0.2);
+}
+
+.dark .glass-btn--active {
+  background: rgba(140, 110, 240, 0.22);
+  border-color: rgba(140, 110, 240, 0.4);
+}
+
+/* Status ok — used for Ready/Valid reasoning state */
+.glass-btn--status-ok {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #16a34a;
+}
+
+.dark .glass-btn--status-ok {
+  background: rgba(34, 197, 94, 0.12);
+  color: #4ade80;
+}
+
+/* Status warning */
+.glass-btn--status-warn {
+  background: rgba(234, 179, 8, 0.1);
+  border-color: rgba(234, 179, 8, 0.3);
+  color: #a16207;
+}
+
+.dark .glass-btn--status-warn {
+  color: #fbbf24;
+}
+
+/* Status error */
+.glass-btn--status-error {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #dc2626;
+}
+
+.dark .glass-btn--status-error {
+  color: #f87171;
+}
+
+/* Rail button — icon + label stacked, used in LeftSidebar collapsed and expanded */
+.rail-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 100%;
+  padding: 5px 4px;
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.rail-btn:hover {
+  background: rgba(124, 92, 228, 0.1);
+  border-color: rgba(124, 92, 228, 0.2);
+  color: var(--primary);
+}
+
+.dark .rail-btn:hover {
+  background: rgba(140, 110, 240, 0.15);
+}
+
+/* Reactodia toolbar overrides — glass theme */
+
+/* The .reactodia-toolbar wrapper is kept (required by Reactodia for dock positioning)
+   but its background is removed so it is transparent. */
+.reactodia-toolbar {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+/* Override Reactodia color tokens — light workspace */
+.reactodia-workspace {
+  /* Buttons */
+  --reactodia-button-default-background-color: rgba(255, 255, 255, 0.55);
+  --reactodia-button-default-background-color-focus: rgba(255, 255, 255, 0.80);
+  --reactodia-button-default-background-color-active: rgba(124, 92, 228, 0.18);
+  --reactodia-button-default-border-color: rgba(255, 255, 255, 0.7);
+  --reactodia-button-default-color: oklch(25% 0.045 256.8);
+  --reactodia-button-default-color-focus: oklch(25% 0.045 256.8);
+  /* Surfaces (unified search, dropdowns, dialogs) */
+  --reactodia-background-color-surface: rgba(255, 255, 255, 0.55);
+  --reactodia-border-color-base: rgba(255, 255, 255, 0.7);
+  /* Inputs */
+  --reactodia-input-background-color: rgba(255, 255, 255, 0.4);
+  --reactodia-input-color: oklch(25% 0.045 256.8);
+  --reactodia-input-color-placeholder: oklch(58% 0.039 256.8);
+  --reactodia-input-border-color: rgba(255, 255, 255, 0.7);
+  /* Navigator/minimap */
+  --reactodia-navigator-background-fill: rgba(255, 255, 255, 0.55);
+  --reactodia-navigator-viewport-stroke-color: rgba(124, 92, 228, 0.5);
+  /* Canvas background */
+  --reactodia-background-color: oklch(44.6% 0.03 256.802);
+}
+
+/* Override Reactodia color tokens — dark workspace */
+.reactodia-workspace-dark {
+  /* Buttons */
+  --reactodia-button-default-background-color: rgba(30, 35, 50, 0.65);
+  --reactodia-button-default-background-color-focus: rgba(50, 60, 85, 0.80);
+  --reactodia-button-default-background-color-active: rgba(124, 92, 228, 0.25);
+  --reactodia-button-default-border-color: rgba(255, 255, 255, 0.09);
+  --reactodia-button-default-color: oklch(96.1% 0.004 247.9);
+  --reactodia-button-default-color-focus: oklch(96.1% 0.004 247.9);
+  /* Surfaces (unified search, dropdowns, dialogs) */
+  --reactodia-background-color-surface: rgba(30, 35, 50, 0.65);
+  --reactodia-border-color-base: rgba(255, 255, 255, 0.09);
+  /* Inputs */
+  --reactodia-input-background-color: rgba(30, 35, 50, 0.50);
+  --reactodia-input-color: oklch(96.1% 0.004 247.9);
+  --reactodia-input-color-placeholder: oklch(58% 0.016 256.7);
+  --reactodia-input-border-color: rgba(255, 255, 255, 0.09);
+  /* Navigator/minimap */
+  --reactodia-navigator-background-fill: rgba(30, 35, 50, 0.80);
+  --reactodia-navigator-viewport-stroke-color: rgba(140, 110, 240, 0.6);
+  /* Canvas background */
+  --reactodia-background-color: oklch(17.5% 0.008 186.6);
+}
+
+/* glass-btn inside our own groups (TopBar A-Box/T-Box, Reasoning) */
+.reactodia-btn-group .glass-btn.glass-btn--active {
+  background: rgba(124, 92, 228, 0.22) !important;
+  border-color: rgba(124, 92, 228, 0.35) !important;
+  color: var(--primary) !important;
+  box-shadow: none !important;
+}
+
+.dark .reactodia-btn-group .glass-btn.glass-btn--active {
+  background: rgba(140, 110, 240, 0.28) !important;
+}
+
+/* Unified search — let Reactodia's native styles handle the panel appearance */
+
+/* Hamburger dropdown panel — scope to toolbar menu only, NOT unified search panel */
+.reactodia-toolbar__menu .reactodia-dropdown__content {
+  background: var(--glass-surface) !important;
+  border: 1px solid var(--glass-border-color) !important;
+  border-radius: 10px !important;
+  backdrop-filter: var(--glass-blur) !important;
+  -webkit-backdrop-filter: var(--glass-blur) !important;
+  box-shadow: var(--glass-shadow) !important;
+  overflow: hidden !important;
+  padding: 4px !important;
+  z-index: 99999 !important;
+}
+
+.reactodia-toolbar__menu .reactodia-dropdown-menu__items {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+}
+
+/* Items inside the hamburger dropdown */
+.reactodia-toolbar__menu .reactodia-dropdown__content .reactodia-btn {
+  border: none !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  border-radius: 7px !important;
+  justify-content: flex-start !important;
+  width: 100% !important;
+  text-align: left !important;
+  transform: none !important;
+}
+
+.reactodia-toolbar__menu .reactodia-dropdown__content .reactodia-btn:hover {
+  background: rgba(124, 92, 228, 0.1) !important;
+  color: var(--primary) !important;
+  box-shadow: none !important;
+}
+
+.dark .reactodia-toolbar__menu .reactodia-dropdown__content .reactodia-btn:hover {
+  background: rgba(140, 110, 240, 0.15) !important;
+}
+
+/* Focus-visible ring — applies to all glass interactive elements */
+.glass-btn:focus-visible,
+.rail-btn:focus-visible,
+.reactodia-btn:focus-visible {
+  outline: 2px solid var(--ring) !important;
+  outline-offset: 2px !important;
+}
+
+/* Node halo ghost buttons — theme-aware light/dark.
+   Use background-color (NOT background shorthand) to preserve background-image SVG icons. */
+.reactodia-selection-action {
+  background-color: transparent !important;
+}
+
+.reactodia-selection-action:hover {
+  background-color: rgba(124, 92, 228, 0.12) !important;
+}
+
+.dark .reactodia-selection-action:hover {
+  background-color: rgba(140, 110, 240, 0.18) !important;
+}
+
+/* Dark mode: invert SVG sprite icons so they read as light on dark canvas */
+.dark .reactodia-selection-action {
+  filter: invert(1) !important;
+}
+
+.dark .reactodia-selection-action:hover {
+  filter: invert(1) hue-rotate(240deg) !important;
+}
+
+/* Dropdown menu trigger — inherits glass from .reactodia-btn, no extra override needed */
