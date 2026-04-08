@@ -54,6 +54,7 @@ function elkAlgorithmOptions(algorithm: string, spacing: number): Record<string,
         'org.eclipse.elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
         'org.eclipse.elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
         'org.eclipse.elk.layered.cycleBreaking.strategy': 'GREEDY',
+        'org.eclipse.elk.layered.spacing.nodeNodeBetweenLayers': String(spacing),
       };
     case 'force':
       return {

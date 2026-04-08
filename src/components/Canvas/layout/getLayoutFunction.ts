@@ -20,7 +20,14 @@ export function getLayoutFunction(
     case 'elk-stress':
       return createElkLayout('stress', spacing);
     case 'reactodia-default':
-    default:
-      return defaultLayout;
+    default: {
+      // The worker proxy forwards all arguments; pass spacing as preferredLinkLength
+      // and scale padding proportionally (default cola padding is {x:50, y:50} at spacing 120)
+      const pad = Math.round((spacing / 120) * 50);
+      return (graph, state) =>
+        (defaultLayout as (g: typeof graph, s: typeof state, o: object) => Promise<typeof state>)(
+          graph, state, { preferredLinkLength: spacing, padding: { x: pad, y: pad } }
+        );
+    }
   }
 }
