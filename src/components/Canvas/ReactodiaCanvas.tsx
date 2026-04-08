@@ -21,6 +21,7 @@ import { rdfLinkTemplateResolver } from '@/templates/RdfLinkTemplate';
 import { PrefixContext } from '@/providers/PrefixContext';
 import ResizableNamespaceLegend from './ResizableNamespaceLegend';
 import { useAppConfigStore } from '@/stores/appConfigStore';
+import { getLayoutFunction } from './layout/getLayoutFunction';
 import { toast } from 'sonner';
 
 function extractNamespace(iri: string): string {
@@ -102,46 +103,30 @@ export default function ReactodiaCanvas() {
   const commandBusRef = React.useRef<((topic: any) => any) | null>(null);
   const contextRef = React.useRef<Reactodia.WorkspaceContext | null>(null);
 
-  // Always-current layout function for calls from outside the init callback
-  const defaultLayoutRef = React.useRef(defaultLayout);
-  defaultLayoutRef.current = defaultLayout;
-
   const { onMount } = Reactodia.useLoadedWorkspace(async ({ context, signal }) => {
     const { model, view, getCommandBus } = context;
     modelRef.current = model;
     commandBusRef.current = getCommandBus;
     contextRef.current = context;
 
-    // Wire up the toolbar "Re-layout" button — uses its own controller, independent
-    // of the init signal which is tied to workspace lifetime.
+    // Wire up the toolbar "Re-layout" button with its own AbortController,
+    // independent of the init signal. Omitting layoutFunction lets the Workspace
+    // use the worker-based defaultLayout passed via the defaultLayout prop.
     performLayoutRef.current = () => {
       const ctx = contextRef.current;
       if (!ctx) return Promise.resolve();
       const controller = new AbortController();
+      const cfg = (useAppConfigStore as any).getState().config;
       return ctx.performLayout({
-        layoutFunction: defaultLayoutRef.current,
-        animate: true,
+        layoutFunction: getLayoutFunction(cfg.currentLayout, cfg, defaultLayout),
+        animate: cfg.layoutAnimations,
         signal: controller.signal,
       });
     };
 
-    // importLayout (without a diagram) starts an empty canvas, same semantics as
-    // createNewDiagram but consistent with the restore-from-diagram pattern we use
-    // for the view-mode switch below.
+    // Start with an empty canvas. Elements arrive via the onSubjectsChange handler
+    // (including the emitAllSubjects burst on startup) which also triggers layout.
     await model.importLayout({ dataProvider, signal });
-
-    const filtered = dataProvider.filterByViewMode([...knownSubjects]);
-    for (const iri of filtered) {
-      model.createElement(iri as Reactodia.ElementIri);
-    }
-
-    if (filtered.length > 0) {
-      await model.requestData();
-      await context.performLayout({ layoutFunction: defaultLayoutRef.current, animate: false, signal });
-    }
-
-    const canvas = view.findAnyCanvas();
-    canvas?.zoomToFit();
     model.history.reset();
   }, []);
 
@@ -150,14 +135,15 @@ export default function ReactodiaCanvas() {
     const handler = (subjects: string[], quads?: WorkerQuad[], _snapshot?: unknown, meta?: Record<string, unknown> | null) => {
       if (metadataProvider.suppressSync) return;
 
-      // Exact same graph filter as the original KnowledgeCanvas on main:
-      // only process subjects from urn:vg:data or urn:vg:inferred (or unspecified).
+      // Only process subjects from urn:vg:data or urn:vg:inferred (or unspecified).
       const incomingGraphName = meta && typeof meta.graphName === 'string' ? meta.graphName : null;
       if (incomingGraphName && incomingGraphName !== 'urn:vg:data' && incomingGraphName !== 'urn:vg:inferred') {
         return;
       }
 
+      const isFullRefresh = meta?.reason === 'emitAllSubjects';
       const model = modelRef.current;
+      const ctx = contextRef.current;
 
       // Determine which subjects are new vs already on canvas
       const existingIris = new Set(
@@ -176,25 +162,55 @@ export default function ReactodiaCanvas() {
         dataProvider.addGraph(workerQuadsToRdf(quads as unknown as ConverterQuad[]));
       }
 
-      if (!model) return;
+      if (!model || !ctx) return;
 
       // Filter by current view mode now that quads (and their rdf:type triples) are in the provider
       const addedFiltered = dataProvider.filterByViewMode(added);
 
+      // Read autoApplyLayout without subscribing — we only need the value at call time
+      const autoApplyLayout = (useAppConfigStore as any).getState().config.autoApplyLayout as boolean;
+
       // Defer model mutations out of the React lifecycle to avoid flushSync warnings
-      queueMicrotask(() => {
+      queueMicrotask(async () => {
         for (const iri of addedFiltered) {
           model.createElement(iri as Reactodia.ElementIri);
         }
-        // Lookup element by IRI and redraw if data changed
+        // Redraw elements whose data changed
         for (const iri of changed) {
           const el = model.elements
             .filter((e): e is Reactodia.EntityElement => e instanceof Reactodia.EntityElement)
             .find(e => e.data.id === iri);
           el?.redraw();
         }
-        // Load element data (types, properties) and links for all placeholder elements
-        void model.requestData();
+
+        await model.requestData();
+
+        if (!autoApplyLayout || addedFiltered.length === 0) return;
+
+        const controller = new AbortController();
+
+        const cfg = (useAppConfigStore as any).getState().config;
+        const layoutFn = getLayoutFunction(cfg.currentLayout, cfg, defaultLayout);
+
+        if (isFullRefresh) {
+          // emitAllSubjects = full dataset reload: lay out the whole canvas
+          await ctx.performLayout({ layoutFunction: layoutFn, animate: cfg.layoutAnimations, signal: controller.signal });
+        } else {
+          // Incremental add: only lay out the newly added elements so existing
+          // positions are preserved.
+          const newElements = new Set(
+            model.elements.filter(
+              (e): e is Reactodia.EntityElement =>
+                e instanceof Reactodia.EntityElement && addedFiltered.includes(e.data.id)
+            )
+          );
+          await ctx.performLayout({
+            layoutFunction: layoutFn,
+            selectedElements: newElements,
+            animate: cfg.layoutAnimations,
+            signal: controller.signal,
+          });
+        }
       });
     };
 
@@ -223,10 +239,14 @@ export default function ReactodiaCanvas() {
     // Defer model mutations out of the React lifecycle to avoid flushSync warnings
     queueMicrotask(async () => {
       const controller = new AbortController();
+      const cfg = (useAppConfigStore as any).getState().config;
+      const autoApplyLayout = cfg.autoApplyLayout as boolean;
+      const layoutFn = getLayoutFunction(cfg.currentLayout, cfg, defaultLayout);
 
       if (savedDiagram) {
+        const diagram = savedDiagram;
         // Restore the previously computed layout for this mode
-        await model.importLayout({ dataProvider, diagram: savedDiagram, signal: controller.signal });
+        await model.importLayout({ dataProvider, diagram, signal: controller.signal });
 
         // Add any elements that were added while we were in the other mode
         const inModel = new Set(
@@ -240,21 +260,28 @@ export default function ReactodiaCanvas() {
         }
         if (newIris.length > 0) {
           await model.requestData();
-          await performLayoutRef.current?.();
+          if (autoApplyLayout) {
+            // Layout only the elements without a saved position
+            const newElements = new Set(
+              model.elements.filter(
+                (e): e is Reactodia.EntityElement =>
+                  e instanceof Reactodia.EntityElement && newIris.includes(e.data.id)
+              )
+            );
+            await ctx.performLayout({ layoutFunction: layoutFn, selectedElements: newElements, animate: cfg.layoutAnimations, signal: controller.signal });
+          }
         }
       } else {
-        // First time in this mode — lay everything out fresh
+        // First time in this mode — add all filtered elements and layout if enabled
         await model.importLayout({ dataProvider, signal: controller.signal });
         for (const iri of filtered) {
           model.createElement(iri as Reactodia.ElementIri);
         }
         if (filtered.length > 0) {
           await model.requestData();
-          await ctx.performLayout({
-            layoutFunction: defaultLayoutRef.current,
-            animate: true,
-            signal: controller.signal,
-          });
+          if (autoApplyLayout) {
+            await ctx.performLayout({ layoutFunction: layoutFn, animate: cfg.layoutAnimations, signal: controller.signal });
+          }
         }
         ctx.view.findAnyCanvas()?.zoomToFit();
       }
