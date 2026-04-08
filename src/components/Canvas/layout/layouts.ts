@@ -64,12 +64,11 @@ const ELK_ALGORITHM_OPTIONS: Record<string, Record<string, string>> = {
   },
 };
 
-const elkInstance = new ELK();
-
 export function createElkLayout(
   algorithm: 'layered' | 'force' | 'stress',
   spacing: number
 ): LayoutFunction {
+  const elkInstance = new ELK();
   return async (graph: LayoutGraph, state: LayoutState): Promise<LayoutState> => {
     const elkGraph = {
       id: 'root',
