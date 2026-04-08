@@ -524,8 +524,8 @@ export default function ReactodiaCanvas() {
                 <Reactodia.ToolbarActionUndo />
                 <Reactodia.ToolbarActionRedo />
                 <Reactodia.ToolbarAction
-                  title="Apply Layout"
-                  onSelect={() => performLayoutRef.current?.()}
+                  title="Layout Settings"
+                  onSelect={() => setSettingsOpen(true)}
                 >
                   Layout
                 </Reactodia.ToolbarAction>
@@ -609,6 +609,7 @@ export default function ReactodiaCanvas() {
         triggerVariant="none"
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
+        onApplyLayout={() => performLayoutRef.current?.()}
       />
 
       <ReasoningReportModal

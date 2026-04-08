@@ -43,12 +43,14 @@ export interface ConfigurationPanelProps {
   // New: support controlled mode for external open state management
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  onApplyLayout?: () => void;
 }
 
-export const ConfigurationPanel = ({ 
+export const ConfigurationPanel = ({
   triggerVariant = 'default',
   open: controlledOpen,
   onOpenChange,
+  onApplyLayout,
 }: ConfigurationPanelProps) => {
   // Use internal state when not controlled, otherwise use props
   const [internalOpen, setInternalOpen] = useState(false);
@@ -366,6 +368,16 @@ export const ConfigurationPanel = ({
                 </div>
               </CardContent>
               </Card>
+              {onApplyLayout && (
+                <div className="flex justify-end pt-2">
+                  <button
+                    className="reactodia-btn reactodia-btn-primary"
+                    onClick={() => { onApplyLayout(); handleOpenChange(false); }}
+                  >
+                    Apply Layout
+                  </button>
+                </div>
+              )}
           </TabsContent>
 
           {/* UI Settings */}
