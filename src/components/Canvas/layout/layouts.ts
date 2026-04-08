@@ -47,22 +47,29 @@ const ELK_ALGORITHM_IDS: Record<string, string> = {
   stress: 'org.eclipse.elk.stress',
 };
 
-const ELK_ALGORITHM_OPTIONS: Record<string, Record<string, string>> = {
-  layered: {
-    'org.eclipse.elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
-    'org.eclipse.elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
-    'org.eclipse.elk.layered.cycleBreaking.strategy': 'GREEDY',
-  },
-  force: {
-    'org.eclipse.elk.force.repulsion': '100',
-    'org.eclipse.elk.force.temperature': '0.001',
-    'org.eclipse.elk.force.iterations': '300',
-  },
-  stress: {
-    'org.eclipse.elk.stress.desiredEdgeLength': '100',
-    'org.eclipse.elk.stress.epsilon': '0.0001',
-  },
-};
+function elkAlgorithmOptions(algorithm: string, spacing: number): Record<string, string> {
+  switch (algorithm) {
+    case 'layered':
+      return {
+        'org.eclipse.elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
+        'org.eclipse.elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
+        'org.eclipse.elk.layered.cycleBreaking.strategy': 'GREEDY',
+      };
+    case 'force':
+      return {
+        'org.eclipse.elk.force.repulsion': String(spacing),
+        'org.eclipse.elk.force.temperature': '0.001',
+        'org.eclipse.elk.force.iterations': '300',
+      };
+    case 'stress':
+      return {
+        'org.eclipse.elk.stress.desiredEdgeLength': String(spacing),
+        'org.eclipse.elk.stress.epsilon': '0.0001',
+      };
+    default:
+      return {};
+  }
+}
 
 export function createElkLayout(
   algorithm: 'layered' | 'force' | 'stress',
@@ -75,7 +82,7 @@ export function createElkLayout(
       layoutOptions: {
         'org.eclipse.elk.algorithm': ELK_ALGORITHM_IDS[algorithm],
         'org.eclipse.elk.spacing.nodeNode': String(spacing),
-        ...(ELK_ALGORITHM_OPTIONS[algorithm] ?? {}),
+        ...elkAlgorithmOptions(algorithm, spacing),
       },
       children: Object.keys(graph.nodes).map((id) => {
         const b = state.bounds[id];
