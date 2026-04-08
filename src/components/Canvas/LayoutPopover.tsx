@@ -56,7 +56,7 @@ export const LayoutPopover: React.FC<LayoutPopoverProps> = ({ onApplyLayout }) =
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button className="glass-btn" title="Layout settings">
+        <button className="reactodia-btn reactodia-btn-default glass-btn" title="Layout settings">
           <Layout style={{ width: 14, height: 14 }} />
           <span>Layout</span>
         </button>
