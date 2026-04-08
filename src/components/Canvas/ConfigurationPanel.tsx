@@ -40,17 +40,14 @@ import { loadWorkflowCatalog, getWorkflowCatalogStats } from '../../utils/workfl
 
 export interface ConfigurationPanelProps {
   triggerVariant?: 'default' | 'none' | 'fixed-icon' | 'inline-icon';
-  // New: support controlled mode for external open state management
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  onApplyLayout?: () => void;
 }
 
 export const ConfigurationPanel = ({
   triggerVariant = 'default',
   open: controlledOpen,
   onOpenChange,
-  onApplyLayout,
 }: ConfigurationPanelProps) => {
   // Use internal state when not controlled, otherwise use props
   const [internalOpen, setInternalOpen] = useState(false);
@@ -302,83 +299,14 @@ export const ConfigurationPanel = ({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="layout" className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
-            <TabsTrigger value="layout">Layout</TabsTrigger>
+        <Tabs defaultValue="ui" className="w-full">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="ui">Interface</TabsTrigger>
             <TabsTrigger value="performance">Performance</TabsTrigger>
             <TabsTrigger value="reasoning">Reasoning</TabsTrigger>
             <TabsTrigger value="workflows">Workflows</TabsTrigger>
             <TabsTrigger value="advanced">Advanced</TabsTrigger>
           </TabsList>
-
-          {/* Layout Settings */}
-          <TabsContent value="layout" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Layout Preferences</CardTitle>
-                <CardDescription>Configure how graphs are displayed and animated</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Current Layout</Label>
-                  <Select value={config.currentLayout} onValueChange={setCurrentLayout}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[
-                        { type: 'horizontal', label: 'Horizontal (Dagre)' },
-                        { type: 'vertical', label: 'Vertical (Dagre)' },
-                        { type: 'elk-layered', label: 'Layered (ELK)' },
-                        { type: 'elk-force', label: 'Force (ELK)' },
-                        { type: 'elk-stress', label: 'Stress (ELK)' },
-                        { type: 'reactodia-default', label: 'Reactodia Default' },
-                      ].map((layout) => (
-                        <SelectItem key={layout.type} value={layout.type}>{layout.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="animations">Layout Animations</Label>
-                  <Switch
-                    id="animations"
-                    checked={config.layoutAnimations}
-                    onCheckedChange={setLayoutAnimations}
-                  />
-                </div>
-
-
-                <div className="space-y-2">
-                  <Label>Recent Layouts</Label>
-                  <div className="flex flex-wrap gap-1">
-                    {config.recentLayouts.map((layout, index) => (
-                      <Badge 
-                        key={index} 
-                        variant={layout === config.currentLayout ? "default" : "secondary"}
-                        className="text-xs cursor-pointer"
-                        onClick={() => setCurrentLayout(layout)}
-                      >
-                        {layout}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-              </Card>
-              {onApplyLayout && (
-                <div className="flex justify-end pt-2">
-                  <button
-                    className="reactodia-btn reactodia-btn-primary"
-                    onClick={() => { onApplyLayout(); handleOpenChange(false); }}
-                  >
-                    Apply Layout
-                  </button>
-                </div>
-              )}
-          </TabsContent>
 
           {/* UI Settings */}
           <TabsContent value="ui" className="space-y-4">
@@ -388,6 +316,15 @@ export const ConfigurationPanel = ({
                 <CardDescription>Customize the user interface appearance</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="animations">Layout Animations</Label>
+                  <Switch
+                    id="animations"
+                    checked={config.layoutAnimations}
+                    onCheckedChange={setLayoutAnimations}
+                  />
+                </div>
+
                 <div className="space-y-2">
                   <Label>Canvas Theme</Label>
                   <Select value={config.canvasTheme} onValueChange={setCanvasTheme}>

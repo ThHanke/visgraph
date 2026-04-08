@@ -22,6 +22,7 @@ import { PrefixContext } from '@/providers/PrefixContext';
 import ResizableNamespaceLegend from './ResizableNamespaceLegend';
 import { useAppConfigStore } from '@/stores/appConfigStore';
 import { getLayoutFunction } from './layout/getLayoutFunction';
+import { LayoutPopover } from './LayoutPopover';
 import { toast } from 'sonner';
 
 function extractNamespace(iri: string): string {
@@ -524,8 +525,8 @@ export default function ReactodiaCanvas() {
                 <Reactodia.ToolbarActionUndo />
                 <Reactodia.ToolbarActionRedo />
                 <Reactodia.ToolbarAction
-                  title="Layout Settings"
-                  onSelect={() => setSettingsOpen(true)}
+                  title="Re-apply current layout"
+                  onSelect={() => performLayoutRef.current?.()}
                 >
                   Layout
                 </Reactodia.ToolbarAction>
@@ -572,7 +573,8 @@ export default function ReactodiaCanvas() {
                   <div style={{ flex: 1 }} />
 
                   {/* Custom items */}
-                  <div style={{ pointerEvents: 'auto' }}>
+                  <div style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <LayoutPopover onApplyLayout={() => performLayoutRef.current?.()} />
                     <TopBar
                       viewMode={canvasState.viewMode as 'abox' | 'tbox'}
                       onViewModeChange={actions.setViewMode}
@@ -609,7 +611,6 @@ export default function ReactodiaCanvas() {
         triggerVariant="none"
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
-        onApplyLayout={() => performLayoutRef.current?.()}
       />
 
       <ReasoningReportModal
