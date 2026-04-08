@@ -35,7 +35,6 @@ import { fallback } from '../../utils/startupDebug';
 import { toast } from 'sonner';
 import { getRdfManager } from '../../utils/storeHelpers';
 import { loadWorkflowCatalog, getWorkflowCatalogStats } from '../../utils/workflowCatalogLoader';
-import { LayoutManager } from './LayoutManager';
 
 
 
@@ -326,7 +325,14 @@ export const ConfigurationPanel = ({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {new LayoutManager().getAvailableLayouts().map((layout) => (
+                      {[
+                        { type: 'horizontal', label: 'Horizontal (Dagre)' },
+                        { type: 'vertical', label: 'Vertical (Dagre)' },
+                        { type: 'elk-layered', label: 'Layered (ELK)' },
+                        { type: 'elk-force', label: 'Force (ELK)' },
+                        { type: 'elk-stress', label: 'Stress (ELK)' },
+                        { type: 'reactodia-default', label: 'Reactodia Default' },
+                      ].map((layout) => (
                         <SelectItem key={layout.type} value={layout.type}>{layout.label}</SelectItem>
                       ))}
                     </SelectContent>
