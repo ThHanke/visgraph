@@ -53,6 +53,26 @@ export class N3DataProvider implements DataProvider {
     this.inner.addGraph(arr);
   }
 
+  /**
+   * Remove all quads whose subject matches any of the given IRIs, then add the
+   * replacement quads. Use this when updating existing entities so stale triples
+   * don't linger in the store alongside the new ones.
+   */
+  replaceSubjectQuads(subjectIris: string[], newQuads: Rdf.Quad[]): void {
+    const dataset = (this.inner as any).dataset;
+    for (const iri of subjectIris) {
+      const node = this.inner.factory.namedNode(iri);
+      // Collect all quads for this subject across every graph, then delete them
+      const toRemove = [...dataset.iterateMatches(node, null, null)];
+      for (const q of toRemove) {
+        dataset.delete(q);
+      }
+      // Clear cached rdf:type so it is rebuilt from the new quads
+      this.typeMap.delete(iri);
+    }
+    this.addGraph(newQuads);
+  }
+
   clear(): void { this.inner.clear(); this.typeMap.clear(); this.allSubjects.clear(); }
   setViewMode(mode: ViewMode): void { this.viewMode = mode; }
 

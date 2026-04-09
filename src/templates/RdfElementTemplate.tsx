@@ -69,7 +69,17 @@ function getProperties(
 
 function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
   const { element, isExpanded, onlySelected } = props;
-  const { model } = Reactodia.useWorkspace();
+  const { model, editor } = Reactodia.useWorkspace();
+
+  // Track authoring state to detect changed properties
+  const authoringEvent = Reactodia.useObservedProperty(
+    editor.events,
+    'changeAuthoringState',
+    () => element instanceof Reactodia.EntityElement
+      ? editor.authoringState.elements.get(element.data.id)
+      : undefined
+  );
+  const beforeData = authoringEvent?.type === 'entityChange' ? authoringEvent.before : undefined;
 
   const registry = useOntologyStore(
     s => (Array.isArray(s.namespaceRegistry) ? s.namespaceRegistry : [])
@@ -200,7 +210,15 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
                 IRI
               </div>
               <div
-                style={{ fontSize: 10, color: 'var(--reactodia-paper-fg-muted, #6b7280)', wordBreak: 'break-all', lineHeight: 1.4 }}
+                style={{
+                  fontSize: 10,
+                  color: 'var(--reactodia-paper-fg-muted, #6b7280)',
+                  wordBreak: 'break-all',
+                  lineHeight: 1.4,
+                  ...(beforeData && beforeData.id !== data.id
+                    ? { borderLeft: '3px solid var(--reactodia-color-primary)', paddingLeft: 4 }
+                    : {}),
+                }}
                 title={data.id}
               >
                 {data.id}
@@ -210,7 +228,16 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
             {/* Annotation properties */}
             {properties.length > 0 && (
               <div style={{ borderTop: '1px solid var(--reactodia-paper-border, #f3f4f6)', paddingTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {properties.map(({ keyIri, keyShort, values }) => (
+                {properties.map(({ keyIri, keyShort, values }) => {
+                  const beforeValues = beforeData?.properties[keyIri];
+                  const beforeStrings = beforeValues?.map(v => v.value) ?? [];
+                  const isNew = beforeData && !beforeValues;
+                  const isChanged = beforeData && beforeValues &&
+                    JSON.stringify(values) !== JSON.stringify(beforeStrings);
+                  const changeColor = isNew ? 'var(--reactodia-color-success)'
+                    : isChanged ? 'var(--reactodia-color-primary)'
+                    : undefined;
+                  return (
                   <div key={keyIri}>
                     <div
                       style={{ fontSize: 10, color: 'var(--reactodia-paper-fg-muted, #9ca3af)', fontWeight: 600 }}
@@ -218,6 +245,20 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
                     >
                       {keyShort}
                     </div>
+                    {/* Old values struck through when changed */}
+                    {isChanged && beforeStrings.map((old, i) => (
+                      <div key={`old-${i}`} style={{
+                        fontSize: 11,
+                        color: 'var(--reactodia-paper-fg-muted)',
+                        lineHeight: 1.5,
+                        paddingLeft: 6,
+                        borderLeft: `2px solid var(--reactodia-color-danger)`,
+                        marginLeft: 2,
+                        marginTop: 1,
+                        textDecoration: 'line-through',
+                        opacity: 0.7,
+                      }}>{old}</div>
+                    ))}
                     {values.map((val, i) => (
                       <div
                         key={i}
@@ -226,7 +267,7 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
                           color: 'var(--reactodia-paper-fg)',
                           lineHeight: 1.5,
                           paddingLeft: 6,
-                          borderLeft: `2px solid ${nsColor}`,
+                          borderLeft: `2px solid ${changeColor ?? nsColor}`,
                           marginLeft: 2,
                           marginTop: 1,
                           userSelect: 'text',
@@ -236,7 +277,8 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
                       </div>
                     ))}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 

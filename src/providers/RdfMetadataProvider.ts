@@ -20,11 +20,19 @@ interface RdfManagerLike {
   getNamespaces(): Record<string, string>;
 }
 
+export interface OntologyAccessor {
+  getCompatibleProperties(srcType: string, tgtType: string): ReadonlyArray<{ iri: string }>;
+  getAllProperties(): ReadonlyArray<{ iri: string }>;
+}
+
 export class RdfMetadataProvider implements MetadataProvider {
   /** Set to true before writing to rdfManager to suppress the sync loop */
   suppressSync = false;
 
-  constructor(private readonly rdfManager: RdfManagerLike) {}
+  constructor(
+    private readonly rdfManager: RdfManagerLike,
+    private readonly ontology?: () => OntologyAccessor,
+  ) {}
 
   getLiteralLanguages(): ReadonlyArray<string> {
     return ['en', 'de', 'fr'];
@@ -91,7 +99,37 @@ export class RdfMetadataProvider implements MetadataProvider {
     linkType: LinkTypeIri | undefined,
     options: { readonly signal?: AbortSignal }
   ): Promise<MetadataCanConnect[]> {
-    return [];
+    const accessor = this.ontology?.();
+    const allProps = accessor?.getAllProperties() ?? [];
+
+    // No ontology loaded → allow everything
+    if (allProps.length === 0) {
+      return [{ targetTypes: new Set<ElementTypeIri>(), inLinks: [], outLinks: [] }];
+    }
+
+    const allOutLinks = allProps.map(p => p.iri as LinkTypeIri);
+
+    // Mid-drag (no target yet) → allow drag, offer all properties
+    if (!target) {
+      return [{ targetTypes: new Set<ElementTypeIri>(), inLinks: [], outLinks: allOutLinks }];
+    }
+
+    const srcType = source.types[0] ?? '';
+    const tgtType = target.types[0] ?? '';
+
+    const compatible = srcType && tgtType
+      ? accessor!.getCompatibleProperties(srcType, tgtType)
+      : [];
+
+    const outLinks = compatible.length > 0
+      ? compatible.map(p => p.iri as LinkTypeIri)
+      : allOutLinks; // no domain/range match → fall back to all
+
+    return [{
+      targetTypes: new Set(target.types as ElementTypeIri[]),
+      inLinks: [],
+      outLinks,
+    }];
   }
 
   async canModifyEntity(
@@ -107,14 +145,20 @@ export class RdfMetadataProvider implements MetadataProvider {
     target: ElementModel,
     options: { readonly signal?: AbortSignal }
   ): Promise<MetadataCanModifyRelation> {
-    return { canEdit: true, canDelete: true };
+    return { canChangeType: true, canEdit: true, canDelete: true };
   }
 
   async getEntityShape(
     types: ReadonlyArray<ElementTypeIri>,
     options: { readonly signal?: AbortSignal }
   ): Promise<MetadataEntityShape> {
-    return { properties: new Map() };
+    // Allow any existing literal property to appear in the form by providing
+    // an extraProperty shape. FormInputGroup will render a row for every
+    // property already present in ElementModel.properties.
+    return {
+      extraProperty: { valueShape: { termType: 'Literal' } },
+      properties: new Map(),
+    };
   }
 
   async getRelationShape(

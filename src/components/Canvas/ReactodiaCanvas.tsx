@@ -5,9 +5,11 @@ import { UnifiedSearchTopic } from '@reactodia/workspace';
 // rdfManager.ts → rdfManager.impl.ts → ontologyStore.ts → rdfManager (TDZ if rdfManager starts first)
 import { useOntologyStore } from '@/stores/ontologyStore';
 import { rdfManager } from '@/utils/rdfManager';
+import { DataFactory } from 'n3';
+const { namedNode } = DataFactory;
 import type { ReasoningResult } from '@/utils/rdfManager';
 import { N3DataProvider, type ViewMode } from '@/providers/N3DataProvider';
-import { RdfMetadataProvider } from '@/providers/RdfMetadataProvider';
+import { RdfMetadataProvider, type OntologyAccessor } from '@/providers/RdfMetadataProvider';
 import { RdfValidationProvider } from '@/providers/RdfValidationProvider';
 import { workerQuadsToRdf, type WorkerQuad as ConverterQuad } from '@/providers/quadConverter';
 import type { WorkerQuad } from '@/utils/rdfSerialization';
@@ -23,6 +25,7 @@ import ResizableNamespaceLegend from './ResizableNamespaceLegend';
 import { useAppConfigStore } from '@/stores/appConfigStore';
 import { getLayoutFunction } from './layout/getLayoutFunction';
 import { LayoutPopover } from './LayoutPopover';
+import { RdfPropertyEditor } from './rdfPropertyEditor';
 import { toast } from 'sonner';
 
 function extractNamespace(iri: string): string {
@@ -40,17 +43,108 @@ const Layouts = Reactodia.defineLayoutWorker(() =>
 
 // Singletons — one per app lifetime
 const dataProvider = new N3DataProvider();
-const metadataProvider = new RdfMetadataProvider(rdfManager);
+const metadataProvider = new RdfMetadataProvider(rdfManager, (): OntologyAccessor => {
+  const s = (useOntologyStore as any).getState();
+  return {
+    getCompatibleProperties: (src, tgt) =>
+      typeof s.getCompatibleProperties === 'function' ? s.getCompatibleProperties(src, tgt) : [],
+    getAllProperties: () =>
+      Array.isArray(s.availableProperties) ? s.availableProperties : [],
+  };
+});
 const validationProvider = new RdfValidationProvider();
 
 // Track all subject IRIs ever seen (for initial load and incremental adds)
 const knownSubjects = new Set<string>();
+
+/**
+ * Flush all staged authoring state to the RDF store in one batch per subject.
+ * This is the vanilla Reactodia pattern: stage many edits, then commit once.
+ */
+async function flushAuthoringState(
+  editor: Reactodia.EditorController,
+  model: Reactodia.DataDiagramModel,
+): Promise<void> {
+  const state = editor.authoringState;
+  if (Reactodia.AuthoringState.isEmpty(state)) return;
+
+  const removes: any[] = [];
+  const adds: any[] = [];
+
+  // Collect canvas-model cleanup tasks to run after the RDF write
+  const linksToRemove: Reactodia.Link[] = [];
+  const elementsToRemove: Reactodia.Element[] = [];
+
+  // --- Relations ---
+  for (const [, event] of state.links) {
+    if (event.type === 'relationAdd') {
+      // Already written by metadataProvider.createRelation — idempotent add
+      adds.push({ subject: namedNode(event.data.sourceId), predicate: namedNode(event.data.linkTypeId), object: namedNode(event.data.targetId) });
+    } else if (event.type === 'relationDelete') {
+      removes.push({ subject: namedNode(event.data.sourceId), predicate: namedNode(event.data.linkTypeId), object: namedNode(event.data.targetId) });
+      // Remove the link from the canvas model
+      const link = model.findLink(event.data.linkTypeId as Reactodia.LinkTypeIri, event.data.sourceId as Reactodia.ElementIri, event.data.targetId as Reactodia.ElementIri);
+      if (link) linksToRemove.push(link);
+    } else if (event.type === 'relationChange') {
+      removes.push({ subject: namedNode(event.before.sourceId), predicate: namedNode(event.before.linkTypeId), object: namedNode(event.before.targetId) });
+      adds.push({ subject: namedNode(event.data.sourceId), predicate: namedNode(event.data.linkTypeId), object: namedNode(event.data.targetId) });
+      // Remove the old link — changeRelation already added the new one to the canvas
+      const oldLink = model.findLink(event.before.linkTypeId as Reactodia.LinkTypeIri, event.before.sourceId as Reactodia.ElementIri, event.before.targetId as Reactodia.ElementIri);
+      if (oldLink) linksToRemove.push(oldLink);
+    }
+  }
+
+  // --- Entities ---
+  for (const [, event] of state.elements) {
+    if (event.type === 'entityAdd') {
+      const rdfType = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
+      for (const typeIri of event.data.types) {
+        adds.push({ subject: namedNode(event.data.id), predicate: namedNode(rdfType), object: namedNode(typeIri) });
+      }
+      for (const [propIri, terms] of Object.entries(event.data.properties)) {
+        for (const t of terms) adds.push({ subject: namedNode(event.data.id), predicate: namedNode(propIri), object: t });
+      }
+    } else if (event.type === 'entityDelete') {
+      // Remove all quads for this subject via the data provider's internal dataset
+      const dataset = (dataProvider as any).inner?.dataset;
+      if (dataset) {
+        for (const q of dataset.iterateMatches(namedNode(event.data.id), null, null)) {
+          removes.push({ subject: namedNode((q.subject as any).value), predicate: namedNode((q.predicate as any).value), object: q.object });
+        }
+      }
+      const el = model.elements.find(e => e instanceof Reactodia.EntityElement && e.data.id === event.data.id);
+      if (el) elementsToRemove.push(el);
+    } else if (event.type === 'entityChange') {
+      const subjNode = namedNode(event.data.id);
+      for (const [propIri, oldTerms] of Object.entries(event.before.properties)) {
+        for (const t of oldTerms) removes.push({ subject: subjNode, predicate: namedNode(propIri), object: t });
+      }
+      for (const [propIri, newTerms] of Object.entries(event.data.properties)) {
+        for (const t of newTerms) adds.push({ subject: subjNode, predicate: namedNode(propIri), object: t });
+      }
+    }
+  }
+
+  if (removes.length > 0 || adds.length > 0) {
+    await rdfManager.applyBatch({ removes, adds }, 'urn:vg:data');
+  }
+
+  // Clean up canvas model — must happen in a microtask to stay outside React's render cycle
+  queueMicrotask(() => {
+    for (const link of linksToRemove) model.removeLink(link.id);
+    for (const el of elementsToRemove) model.removeElement(el.id);
+  });
+
+  // Clear the authoring state — changes are now in the RDF store
+  editor.setAuthoringState(Reactodia.AuthoringState.empty);
+}
 
 // Current view mode state
 let currentViewMode: ViewMode = 'abox';
 
 // Persisted layout per view mode, saved via model.exportLayout() before each switch
 const savedLayoutsByMode: Partial<Record<ViewMode, Reactodia.SerializedDiagram>> = {};
+
 
 
 export default function ReactodiaCanvas() {
@@ -103,12 +197,16 @@ export default function ReactodiaCanvas() {
   const modelRef = React.useRef<Reactodia.DataDiagramModel | null>(null);
   const commandBusRef = React.useRef<((topic: any) => any) | null>(null);
   const contextRef = React.useRef<Reactodia.WorkspaceContext | null>(null);
+  const flushAuthoringStateRef = React.useRef<(() => Promise<void>) | null>(null);
 
   const { onMount } = Reactodia.useLoadedWorkspace(async ({ context, signal }) => {
-    const { model, view, getCommandBus } = context;
+    const { model, view, editor, getCommandBus } = context;
     modelRef.current = model;
     commandBusRef.current = getCommandBus;
     contextRef.current = context;
+
+    // Enable authoring mode so link/element halo buttons (edit, delete, move) are visible
+    editor.setAuthoringMode(true);
 
     // Wire up the toolbar "Re-layout" button with its own AbortController,
     // independent of the init signal. Omitting layoutFunction lets the Workspace
@@ -129,11 +227,15 @@ export default function ReactodiaCanvas() {
     // (including the emitAllSubjects burst on startup) which also triggers layout.
     await model.importLayout({ dataProvider, signal });
     model.history.reset();
+
+    // Store flush function for use by the Save toolbar action
+    flushAuthoringStateRef.current = () => flushAuthoringState(editor, model);
   }, []);
 
   // Subscribe to rdfManager changes — incremental sync to live model
   React.useEffect(() => {
     const handler = (subjects: string[], quads?: WorkerQuad[], _snapshot?: unknown, meta?: Record<string, unknown> | null) => {
+      console.debug("[canvas] subjects received", subjects, meta);
       if (metadataProvider.suppressSync) return;
 
       // Only process subjects from urn:vg:data or urn:vg:inferred (or unspecified).
@@ -160,7 +262,19 @@ export default function ReactodiaCanvas() {
       subjects.forEach(s => knownSubjects.add(s));
 
       if (quads && quads.length > 0) {
-        dataProvider.addGraph(workerQuadsToRdf(quads as unknown as ConverterQuad[]));
+        const rdfQuads = workerQuadsToRdf(quads as unknown as ConverterQuad[]);
+        if (changed.length > 0) {
+          // For subjects already on the canvas, replace their quads so stale
+          // triples don't persist alongside the updated ones.
+          dataProvider.replaceSubjectQuads(changed, rdfQuads);
+          // Then add any quads for brand-new subjects (addGraph deduplicates internally)
+          if (added.length > 0) {
+            const addedSet = new Set(added);
+            dataProvider.addGraph(rdfQuads.filter(q => q.subject.termType === 'NamedNode' && addedSet.has((q.subject as any).value)));
+          }
+        } else {
+          dataProvider.addGraph(rdfQuads);
+        }
       }
 
       if (!model || !ctx) return;
@@ -176,12 +290,22 @@ export default function ReactodiaCanvas() {
         for (const iri of addedFiltered) {
           model.createElement(iri as Reactodia.ElementIri);
         }
-        // Redraw elements whose data changed
-        for (const iri of changed) {
-          const el = model.elements
-            .filter((e): e is Reactodia.EntityElement => e instanceof Reactodia.EntityElement)
-            .find(e => e.data.id === iri);
-          el?.redraw();
+
+        // Re-fetch data + links for elements already on canvas whose triples changed
+        if (changed.length > 0) {
+          const changedSet = new Set(changed);
+          // Remove all links whose source or target is in the changed set —
+          // they'll be re-fetched below with the updated predicates from the store
+          for (const link of [...model.links]) {
+            if (
+              link instanceof Reactodia.RelationLink &&
+              (changedSet.has(link.data.sourceId) || changedSet.has(link.data.targetId))
+            ) {
+              model.removeLink(link.id);
+            }
+          }
+          await model.requestElementData(changed as Reactodia.ElementIri[]);
+          await model.requestLinks({ addedElements: changed as Reactodia.ElementIri[] });
         }
 
         await model.requestData();
@@ -411,6 +535,11 @@ export default function ReactodiaCanvas() {
     }
   }, []);
 
+  const propertyEditor = React.useCallback<Reactodia.PropertyEditor>(
+    (options) => <RdfPropertyEditor options={options} />,
+    [],
+  );
+
   // Custom drop handler: dragging a type label from the class tree puts the type IRI
   // in `text/uri-list` (browser anchor default). Instead of placing the type class itself
   // on the canvas, we create a NEW instance with that type.
@@ -521,9 +650,26 @@ export default function ReactodiaCanvas() {
               dropOnCanvas={{ getDroppedItems: handleDropOnCanvas }}
               menu={null}
               search={null}
+              annotations={null}
+              visualAuthoring={{ propertyEditor }}
+              halo={{
+                children: <>
+                  <Reactodia.SelectionActionRemove dock='nw' dockRow={1} />
+                  <Reactodia.SelectionActionZoomToFit dock='nw' dockRow={3} />
+                  <Reactodia.SelectionActionLayout dock='nw' dockRow={4} />
+                  <Reactodia.SelectionActionExpand dock='se' dockColumn={0} />
+                  <Reactodia.SelectionActionEstablishLink dock='e' />
+                </>
+              }}
               actions={<>
                 <Reactodia.ToolbarActionUndo />
                 <Reactodia.ToolbarActionRedo />
+                <Reactodia.ToolbarActionSave
+                  mode="authoring"
+                  onSelect={() => flushAuthoringStateRef.current?.()}
+                >
+                  Save
+                </Reactodia.ToolbarActionSave>
                 <Reactodia.ToolbarAction
                   title="Re-apply current layout"
                   onSelect={() => performLayoutRef.current?.()}

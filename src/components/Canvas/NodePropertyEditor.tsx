@@ -1,0 +1,1258 @@
+ 
+/**
+ * Node Property Editor (streamlined)
+ *
+ * - Initializes purely from the node object passed in via props (node or node.data).
+ * - Uses only the fat-map (availableEntities / availableClasses / availableProperties)
+ *   for autocomplete / suggestions — no RDF store lookups during initialization or render.
+ * - On save/delete the editor will perform minimal RDF store writes (add/remove quads)
+ *   to the urn:vg:data graph and then call onSave/onOpenChange. It will NOT attempt to
+ *   read or discover types from the RDF store at render time.
+ *
+ * This rebuild removes any heavy synchronous store reads and any fallback discovery logic.
+ */
+
+import React, { useEffect, useMemo, useState, useRef } from "react";
+import { DataFactory } from "n3";
+const { namedNode, blankNode, literal } = DataFactory;
+import { useCanvasState } from "../../hooks/useCanvasState";
+import { RDF_TYPE, OWL_NAMED_INDIVIDUAL } from "../../constants/vocabularies";
+import { rdfManager as directRdfManager } from "../../utils/rdfManager";
+
+// Module-scoped counter for generated blank-node identifiers used when creating new nodes
+let __vg_blank_counter = 1;
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import EntityAutoComplete from "../ui/EntityAutoComplete";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { useOntologyStore } from "../../stores/ontologyStore";
+import { toPrefixed, expandPrefixed } from "../../utils/termUtils";
+import { getNamespaceRegistry, getRdfManager } from "../../utils/storeHelpers";
+import { X, Plus, Info } from "lucide-react";
+// React Flow selection hook — allow editor to derive node when no explicit prop provided
+
+// Simple termForIri helper used for constructing N3 terms (handles blank nodes like "_:b0")
+const termForIri = (iri: string) => {
+  if (typeof iri === "string" && iri.startsWith("_:")) {
+    return blankNode(iri.slice(2));
+  }
+  return namedNode(String(iri));
+};
+
+/**
+ * Represents a literal property with value and type
+ */
+interface LiteralProperty {
+  key: string;
+  value: string;
+  type?: string;
+  // Optional native term objects when available from the mapper
+  predicateTerm?: any;
+  objectTerm?: any;
+  // Optional language tag when datatype is xsd:string (e.g. "en")
+  lang?: string;
+}
+
+const DISPLAY_DATATYPE = "xsd:string";
+
+const toPrefixedSafe = (value: string): string => {
+  try {
+    return toPrefixed(value) || value;
+  } catch {
+    return value;
+  }
+};
+
+/**
+ * Expand a prefixed IRI or return as-is if already absolute.
+ * Blank nodes (starting with _:) pass through unchanged.
+ */
+const expandIriIfNeeded = (input: string): string => {
+  const raw = typeof input === "string" ? input.trim() : String(input ?? "").trim();
+  if (!raw) return raw;
+  if (raw.startsWith("_:")) return raw;
+  if (raw.includes("://")) return raw;
+
+  // Try to expand using the namespace registry
+  const registry = getNamespaceRegistry();
+  const expanded = expandPrefixed(raw, registry as any);
+
+  // If expansion didn't change the value and it contains a colon, it's a prefixed IRI
+  // that we couldn't expand - return it as-is (let RDF manager handle it)
+  return expanded;
+};
+
+function cloneLiteralProperty(source: LiteralProperty): LiteralProperty {
+  return {
+    key: source.key,
+    value: source.value,
+    type: source.type,
+    predicateTerm: source.predicateTerm,
+    objectTerm: source.objectTerm,
+    lang: source.lang,
+  };
+}
+
+function coerceLiteralProperty(entry: any): LiteralProperty | null {
+  if (!entry || typeof entry !== "object") return null;
+  const key =
+    typeof entry.property === "string"
+      ? entry.property
+      : typeof entry.propertyUri === "string"
+      ? entry.propertyUri
+      : typeof entry.key === "string"
+      ? entry.key
+      : "";
+  if (!key) return null;
+
+  const rawValue =
+    entry.value ??
+    (entry.objectTerm && typeof entry.objectTerm.value === "string"
+      ? entry.objectTerm.value
+      : entry.object);
+  if (rawValue === undefined || rawValue === null) return null;
+
+  const rawType =
+    typeof entry.type === "string" && entry.type.length > 0
+      ? entry.type
+      : entry.objectTerm &&
+          entry.objectTerm.datatype &&
+          typeof entry.objectTerm.datatype.value === "string"
+        ? entry.objectTerm.datatype.value
+        : undefined;
+  const rawLang =
+    typeof entry.lang === "string" && entry.lang.length > 0
+      ? entry.lang
+      : entry.objectTerm && typeof entry.objectTerm.language === "string"
+        ? entry.objectTerm.language
+        : undefined;
+
+  return {
+    key,
+    value: String(rawValue),
+    // Store the FULL IRI datatype, not prefixed - this ensures exact matching on removal
+    type: rawLang
+      ? DISPLAY_DATATYPE
+      : rawType
+      ? rawType  // ← Keep full IRI, don't convert to prefixed
+      : DISPLAY_DATATYPE,
+    lang: rawLang,
+    predicateTerm: entry.predicateTerm ?? entry.predicate,
+    objectTerm: entry.objectTerm ?? entry.object,
+  };
+}
+
+/**
+ * Props for the NodePropertyEditor component
+ */
+interface NodePropertyEditorProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  nodeData: any; // expected to be the React Flow node object or an object with .data
+  onSave: (updatedData: any) => void;
+  // optional callback so parent can immediately remove the node from the canvas (deleteElements)
+  onDelete?: (iriOrId: string) => void;
+  // optional list of available entities for the autocomplete (passed from canvas)
+  availableEntities?: any[];
+  // When true and this is a create flow, ensure owl:NamedIndividual is added as an rdf:type on save
+  addNamedIndividualOnSave?: boolean;
+}
+
+/**
+ * Props for use inside an externally-managed dialog (Reactodia overlay).
+ * Same as NodePropertyEditorProps but without open/onOpenChange — the parent controls dialog lifecycle.
+ */
+export interface NodePropertyEditorContentProps {
+  nodeData: any;
+  onSave: (updatedData: any) => void;
+  onDelete?: (iriOrId: string) => void;
+  onClose: () => void;
+  addNamedIndividualOnSave?: boolean;
+}
+
+/**
+ * Simplified NodePropertyEditor that relies on passed nodeData and fat-map suggestions.
+ * Persistence to the RDF store is handled here only on save/delete (writes only).
+ */
+export const NodePropertyEditor = ({
+  open,
+  onOpenChange,
+  nodeData,
+  onSave,
+  onDelete,
+  addNamedIndividualOnSave = false,
+}: NodePropertyEditorProps) => {
+  // Local form state
+  const [nodeIri, setNodeIri] = useState<string>("");
+  const [nodeType, setNodeType] = useState<string>("");
+  const [properties, setProperties] = useState<LiteralProperty[]>([]);
+  const [rdfTypesState, setRdfTypesState] = useState<string[]>([]);
+
+  // Keep a ref of the initial properties so we can compute diffs on save
+  const initialPropertiesRef = useRef<LiteralProperty[]>([]);
+  const initialRdfTypesRef = useRef<string[]>([]);
+  const { actions: canvasActions } = useCanvasState();
+
+  // Minimal selector used only for UI affordances (popover) to detect whether a chosen
+  // rdf:type is present in the loaded fat-map. This is lightweight and avoids any
+  // snapshotting logic while keeping the dialog simple.
+  const availableClasses = useOntologyStore((s) => s.availableClasses || []);
+
+
+  // Initialize local form state from the passed nodeData when dialog opens.
+  useEffect(() => {
+    if (!open) return;
+
+    const sourceNode =
+      nodeData && typeof nodeData === "object"
+        ? (nodeData as any).data ?? nodeData
+        : null;
+
+    if (!sourceNode) {
+      setNodeIri("");
+      setNodeType("");
+      setProperties([]);
+      setRdfTypesState([]);
+      initialPropertiesRef.current = [];
+      initialRdfTypesRef.current = [];
+      return;
+    }
+
+    const iri =
+      typeof sourceNode.iri === "string"
+        ? sourceNode.iri
+        : typeof sourceNode.id === "string"
+        ? sourceNode.id
+        : typeof sourceNode.key === "string"
+        ? sourceNode.key
+        : "";
+    setNodeIri(iri);
+
+      const rdfTypes: string[] = Array.isArray(sourceNode.rdfTypes)
+        ? sourceNode.rdfTypes.filter((type: unknown): type is string => typeof type === "string")
+        : sourceNode.rdfType
+        ? [String(sourceNode.rdfType)]
+        : [];
+      setRdfTypesState(rdfTypes);
+      initialRdfTypesRef.current = rdfTypes.slice();
+
+    const chosenType =
+      rdfTypes.length > 0
+        ? rdfTypes[0]
+        : typeof sourceNode.classType === "string"
+        ? sourceNode.classType
+        : typeof sourceNode.displayType === "string"
+        ? sourceNode.displayType
+        : "";
+    setNodeType(chosenType);
+
+    const normalizedProps: LiteralProperty[] = [];
+    if (Array.isArray(sourceNode.annotationProperties)) {
+      for (const entry of sourceNode.annotationProperties) {
+        const normalized = coerceLiteralProperty(entry);
+        if (normalized) normalizedProps.push(normalized);
+      }
+    } else if (Array.isArray(sourceNode.annotations)) {
+      for (const annotation of sourceNode.annotations) {
+        if (!annotation || typeof annotation !== "object") continue;
+        const [key, value] = Object.entries(annotation)[0] ?? ["", ""];
+        const normalized = coerceLiteralProperty({
+          property: key,
+          value,
+        });
+        if (normalized) normalizedProps.push(normalized);
+      }
+    }
+
+    setProperties(normalizedProps);
+    initialPropertiesRef.current = normalizedProps.map(cloneLiteralProperty);
+  }, [open, nodeData]);
+
+  // Handlers for RDF types
+  const handleAddType = (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setRdfTypesState((prev) => [...prev, ""]);
+  };
+
+  const handleRemoveType = (index: number, e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setRdfTypesState((prev) => {
+      const updated = prev.filter((_, i) => i !== index);
+      // Update nodeType to be the first type if we removed the current nodeType
+      if (updated.length > 0 && nodeType === prev[index]) {
+        setNodeType(updated[0]);
+      } else if (updated.length === 0) {
+        setNodeType("");
+      }
+      return updated;
+    });
+  };
+
+  const handleUpdateType = (index: number, value: string) => {
+    setRdfTypesState((prev) => {
+      const updated = prev.map((t, i) => (i === index ? value : t));
+      // Sync nodeType with the first type
+      if (index === 0) {
+        setNodeType(value);
+      }
+      return updated;
+    });
+  };
+
+  // Handlers for properties
+  const handleAddProperty = (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setProperties((prev) => [
+      ...prev,
+      { key: "", value: "", type: DISPLAY_DATATYPE },
+    ]);
+  };
+
+  const handleRemoveProperty = (index: number, e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setProperties((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateProperty = (index: number, field: keyof LiteralProperty, value: string) => {
+    setProperties((prev) =>
+      prev.map((p, i) => {
+        if (i !== index) return p;
+    const updated: LiteralProperty = { ...p, [field]: value };
+    if (field === "value" || field === "type") {
+      updated.objectTerm = undefined;
+    }
+    if (field === "key") {
+      updated.predicateTerm = undefined;
+    }
+    if (field === "type" && value !== DISPLAY_DATATYPE) {
+      updated.lang = undefined;
+    }
+    if (field === "lang" && value && value.trim()) {
+      updated.type = DISPLAY_DATATYPE;
+    }
+        return updated;
+      }),
+    );
+  };
+
+  // Utility to diff annotation properties (simple equality on key+value+type)
+  const diffProperties = (before: LiteralProperty[], after: LiteralProperty[]) => {
+    const key = (p: LiteralProperty) =>
+      `${p.key}||${p.value}||${p.type || ""}||${p.lang || ""}`;
+    const beforeSet = new Set(before.map(key));
+    const afterSet = new Set(after.map(key));
+    const toAdd = after.filter(p => !beforeSet.has(key(p)));
+    const toRemove = before.filter(p => !afterSet.has(key(p)));
+    return { toAdd, toRemove };
+  };
+
+  // Save: persist annotation properties (writes only) and rdf:type when applicable,
+  // then close the dialog. Errors are allowed to surface (no silent fallbacks).
+  const handleSave = async (e?: React.MouseEvent) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    try {
+      try { canvasActions.setLoading(true, 0, "Saving node..."); } catch (_) {/* noop */}
+    } catch (_) {/* noop */}
+
+    // Validate properties: no empty keys
+    if (properties.some(p => !p.key || !p.key.trim())) {
+      try { canvasActions.setLoading(false, 0, ""); } catch (_) {/* noop */}
+      throw new Error("Please provide property names for all annotation properties (no empty keys).");
+    }
+
+    // Subject IRI (allow empty during "create" flows — we will generate a blank node id)
+    const rawSubjectInput = String(nodeIri || "").trim();
+    let subjIri = rawSubjectInput;
+    const isCreate = !(nodeData && (nodeData.iri || nodeData.id || nodeData.key));
+    let generatedBlank = false;
+    if (!subjIri && isCreate) {
+      // Generate a session-unique blank node id (client-side only)
+      subjIri = `_:vgb${String(__vg_blank_counter++)}`;
+      generatedBlank = true;
+    }
+    if (!subjIri) {
+      try { canvasActions.setLoading(false, 0, ""); } catch (_) {/* noop */}
+      throw new Error("Node IRI missing; cannot persist node properties.");
+    }
+
+    // Acquire RDF manager (must exist)
+    const mgr = getRdfManager();
+
+    if (!mgr || typeof (mgr as any).applyBatch !== "function") {
+      try { canvasActions.setLoading(false, 0, ""); } catch (_) {/* noop */}
+      throw new Error("RDF manager unavailable or does not support applyBatch; cannot persist node properties.");
+    }
+
+    // Use our simplified expansion helper for non-blank nodes
+    if (!generatedBlank) {
+      subjIri = expandIriIfNeeded(subjIri);
+    }
+
+    // Simplified strategy: Remove ALL initial annotation properties, then add ALL current ones
+    // This is more reliable than diffing and avoids Term matching issues
+    const propsToRemove = initialPropertiesRef.current || [];
+    const propsToAdd = properties || [];
+
+    // Compute rdf:type diffs (use rdfTypesState if present, otherwise use nodeType)
+    const currentTypes = (Array.isArray(rdfTypesState) && rdfTypesState.length > 0) ? rdfTypesState.slice() : (nodeType ? [String(nodeType)] : []);
+    // If requested by caller, add owl:NamedIndividual for create flows without pre-setting it in the UI.
+    try {
+      if (isCreate && addNamedIndividualOnSave) {
+        if (!currentTypes.includes(OWL_NAMED_INDIVIDUAL)) currentTypes.push(OWL_NAMED_INDIVIDUAL);
+      }
+    } catch (_) { /* ignore */ }
+    const initialTypes = Array.isArray(initialRdfTypesRef.current) ? initialRdfTypesRef.current.slice() : [];
+    const typesToAdd = currentTypes.filter((t) => t && !initialTypes.includes(t));
+    const typesToRemove = initialTypes.filter((t) => t && !currentTypes.includes(t));
+
+    // Prepare removes/adds in the shape expected by rdfManager.applyBatch.
+    // Prefer existing native Term objects (objectTerm / predicateTerm) when present.
+    const annotationProperties = (properties || [])
+      .filter((p) => p && typeof p.key === "string" && p.key.trim().length > 0)
+      .map((p) => {
+        const key = String(p.key).trim();
+        const expandedKey = expandIriIfNeeded(key);
+        return {
+          propertyUri: expandedKey,
+          key,
+          value: p.value,
+          type: p.type || DISPLAY_DATATYPE,
+        };
+      });
+
+    let createPayloadDelivered = false;
+    if (
+      rawSubjectInput &&
+      rawSubjectInput !== subjIri &&
+      rawSubjectInput.includes(":") &&
+      !rawSubjectInput.includes("://") &&
+      mgr &&
+      typeof (mgr as any).removeAllQuadsForIri === "function"
+    ) {
+      try {
+        await (mgr as any).removeAllQuadsForIri(
+          rawSubjectInput,
+          "urn:vg:data",
+        );
+      } catch (_) {
+        /* ignore cleanup failures */
+      }
+    }
+
+    if (isCreate && typeof onSave === "function") {
+      try {
+        const createPayload = {
+          iri: subjIri,
+          classCandidate: nodeType ? String(nodeType) : undefined,
+          namespace: undefined,
+          annotationProperties,
+          rdfTypes: currentTypes || [],
+        };
+        onSave(createPayload);
+        createPayloadDelivered = true;
+      } catch (_) {
+        /* ignore parent onSave errors; persistence will still attempt */
+      }
+    }
+
+    // rdf:type is well-known, just use the full IRI directly
+    const expandedRdfTypePred = RDF_TYPE;
+
+    const valueToTerm = (val: any, type?: string) => {
+      try {
+        const s = typeof val === "string" ? String(val) : String(val || "");
+        if (/^_:/i.test(s)) return blankNode(s.replace(/^_:/, ""));
+
+        // If type is a language marker like "@en", create a language-tagged literal
+        if (type && String(type).trim() && String(type).startsWith("@")) {
+          const lang = String(type).slice(1);
+          return literal(s, lang);
+        }
+
+        // If a datatype is provided prefer it (expand prefixed types if manager supports it)
+        if (type && String(type).trim()) {
+          let dtIri = String(type).trim();
+          
+          // Expand xsd: prefix if needed
+          if (dtIri.startsWith("xsd:")) {
+            dtIri = dtIri.replace("xsd:", "http://www.w3.org/2001/XMLSchema#");
+          } else if (!dtIri.includes("://")) {
+            // Try expansion for other prefixed forms
+            dtIri = expandIriIfNeeded(dtIri);
+          }
+          
+          return literal(s, namedNode(dtIri));
+        }
+
+        // Treat any scheme-like string (urn:, http:, https:, etc.) as a NamedNode.
+        if (/^[a-z][a-z0-9+.-]*:/i.test(s)) {
+          const expandedObj = expandIriIfNeeded(s);
+          return namedNode(expandedObj);
+        }
+        // Fallback: literal (no datatype)
+        return literal(s);
+      } catch (_) {
+        return literal(String(val || ""));
+      }
+    };
+
+    const removesPrepared = (propsToRemove || []).map((p: any) => {
+      try {
+        // CRITICAL: Use the preserved original N3 Terms directly from the mapper
+        // These Terms have the exact termType/datatype/language that's in the store
+        let objTerm;
+        let predTerm;
+        
+        // Use predicateTerm directly if available (preserved from mapper)
+        if (p && p.predicateTerm && typeof p.predicateTerm === 'object' && 'termType' in p.predicateTerm) {
+          predTerm = p.predicateTerm;
+        } else {
+          // Fallback: construct from property IRI
+          const rawPred = String(p.key || p.property || "").trim();
+          if (!rawPred) return null;
+          predTerm = termForIri(expandIriIfNeeded(rawPred));
+        }
+        
+        // Use objectTerm directly if available (preserved from mapper)
+        if (p && p.objectTerm && typeof p.objectTerm === 'object' && 'termType' in p.objectTerm) {
+          objTerm = p.objectTerm;
+          console.debug("[NodePropertyEditor] Using preserved objectTerm for removal:", {
+            value: p.value,
+            objectTerm: objTerm,
+            hasDatatype: !!objTerm.datatype,
+            datatype: objTerm.datatype
+          });
+        } else {
+          // Fallback: reconstruct from value/type
+          objTerm = valueToTerm(p.value, p.lang ? `@${p.lang}` : p.type);
+          console.debug("[NodePropertyEditor] Reconstructed objectTerm for removal:", {
+            value: p.value,
+            type: p.type,
+            objectTerm: objTerm
+          });
+        }
+        
+        return {
+          subject: subjIri,
+          predicate: predTerm,
+          object: objTerm,
+        };
+      } catch (_) {
+        return null;
+      }
+    }).filter(Boolean) as any[];
+
+    // RDF type removals (use NamedNode for types)
+    for (const t of typesToRemove || []) {
+      try {
+        const typeFull = expandIriIfNeeded(String(t));
+        removesPrepared.push({
+          subject: subjIri,
+          predicate: expandedRdfTypePred,
+          object: namedNode(typeFull),
+        });
+      } catch (_) { /* ignore per-item */ }
+    }
+
+    const addsPrepared = (propsToAdd || []).map((p: any) => {
+      try {
+        const objTerm = p && p.objectTerm && (p.objectTerm.termType || p.objectTerm.termType === 0)
+          ? p.objectTerm
+          : valueToTerm(p.value, p.lang ? `@${p.lang}` : p.type);
+        
+        // CRITICAL: Use Term objects for predicate, not strings
+        let predTerm;
+        if (p && p.predicateTerm && typeof p.predicateTerm === 'object' && 'termType' in p.predicateTerm) {
+          predTerm = p.predicateTerm;
+        } else {
+          const rawPred = String(p.key || p.property || "").trim();
+          if (!rawPred) return null;
+          predTerm = termForIri(expandIriIfNeeded(rawPred));
+        }
+        
+        return {
+          subject: subjIri,
+          predicate: predTerm,
+          object: objTerm,
+        };
+      } catch (_) {
+        return null;
+      }
+    }).filter(Boolean) as any[];
+
+    for (const t of typesToAdd || []) {
+      try {
+        const typeFull = expandIriIfNeeded(String(t));
+        addsPrepared.push({
+          subject: subjIri,
+          predicate: expandedRdfTypePred,
+          object: namedNode(typeFull),
+        });
+      } catch (_) { /* ignore per-item */ }
+    }
+    // Apply batch (manager will accept Term objects directly)
+    try {
+      try {
+        console.debug("[NodePropertyEditor] applyBatch payload", {
+          subject: subjIri,
+          removes: removesPrepared,
+          adds: addsPrepared,
+        });
+      } catch (_) {
+        /* ignore logging failures */
+      }
+      await (mgr as any).applyBatch({ removes: removesPrepared, adds: addsPrepared }, "urn:vg:data");
+    } catch (err) {
+      if (createPayloadDelivered && typeof onDelete === "function") {
+        try { onDelete(String(subjIri)); } catch (_) { /* ignore */ }
+      }
+      try { console.warn("NodePropertyEditor.applyBatch.failed", err); } catch (_) { void 0; }
+      try { canvasActions.setLoading(false, 0, ""); } catch (_) {/* noop */}
+      throw err;
+    }
+
+    // Preserve existing contract for edit flows (legacy behavior)
+    if (!isCreate && typeof onSave === "function") onSave(annotationProperties);
+
+    // Close dialog (manager already emits change notifications)
+    onOpenChange(false);
+
+    // Update initial snapshots so subsequent edits compute diffs relative to latest saved state
+    { initialPropertiesRef.current = (properties || []).map(p => ({ ...p })); }
+    { initialRdfTypesRef.current = (currentTypes || []).slice(); }
+    try { canvasActions.setLoading(false, 0, ""); } catch (_) {/* noop */}
+  };
+
+  // Delete: remove triples with subject OR object equal to nodeIri from urn:vg:data (writes only).
+  const handleDelete = async (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    if (!nodeIri) return;
+    if (!confirm(`Delete node ${nodeIri}? This will remove triples in urn:vg:data where this IRI is subject or object.`)) return;
+
+    try {
+      const mgr = getRdfManager();
+      if (mgr && typeof (mgr as any).removeAllQuadsForIri === "function") {
+        try {
+          // CRITICAL: Expand prefixed IRI to full IRI before deletion
+          // The worker needs the full IRI to match against stored Terms
+          const expandedIri = expandIriIfNeeded(String(nodeIri));
+          console.debug("[NodePropertyEditor] Deleting node:", {
+            original: nodeIri,
+            expanded: expandedIri
+          });
+          await (mgr as any).removeAllQuadsForIri(expandedIri, "urn:vg:data");
+        } catch (err) {
+          console.warn("[NodePropertyEditor] removeAllQuadsForIri failed:", err);
+          /* ignore manager delete failures */
+        }
+      }
+    } catch (err) {
+      try { console.warn("NodePropertyEditor.delete.failed", err); } catch (_) { void 0; }
+    }
+
+    // Ask parent to remove the node visually and then close the dialog
+    // Pass the original nodeIri for UI purposes (canvas uses this to find the node)
+    { if (typeof onDelete === "function") onDelete(String(nodeIri)); }
+    onOpenChange(false);
+  };
+
+
+  const getXSDTypes = () => [
+    DISPLAY_DATATYPE,
+    "xsd:boolean",
+    "xsd:integer",
+    "xsd:decimal",
+    "xsd:double",
+    "xsd:float",
+    "xsd:date",
+    "xsd:dateTime",
+    "xsd:time",
+    "xsd:anyURI",
+  ];
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange} modal>
+      <DialogContent
+        className="sm:max-w-2xl max-h-[90vh] max-w-[min(90vw,48rem)] overflow-y-auto text-foreground"
+        onInteractOutside={(e) => {
+          // Prevent closing when clicking on popover content
+          const target = e.target as Element;
+          if (target.closest("[data-radix-popper-content-wrapper]") ||
+              target.closest("[data-radix-select-content]") ||
+              target.closest("[cmdk-root]") ||
+              target.closest("[data-radix-command]")) {
+            e.preventDefault();
+          }
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>Edit Node Properties</DialogTitle>
+          <DialogDescription>
+            Change the type, IRI, and annotation properties of this node.
+            In A-box mode, owl:NamedIndividual is preserved by the mapping pipeline.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="nodeType">Node Type (Meaningful Class)</Label>
+            <div className="flex items-center gap-2">
+              <EntityAutoComplete
+                mode="classes"
+                optionsLimit={5}
+                value={nodeType}
+                onChange={(ent: any) => { const val = ent ? String(ent.iri || '') : ''; setNodeType(val); setRdfTypesState(val ? [val] : []); }}
+                placeholder="Type to search for classes..."
+                emptyMessage="No OWL classes found. Load an ontology first."
+                className="w-full"
+              />
+              {nodeType && !availableClasses.find(e => (String(e.iri || '') === String(nodeType))) && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground">
+                      <Info className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent side="top">
+                    <div className="text-xs">
+                      The selected rdf:type is not present in the loaded fat-map. It will be saved as the displayType but not resolved to a known class.
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              owl:NamedIndividual will be preserved by the mapping pipeline if applicable.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="nodeIri">Node IRI</Label>
+            <Input
+              id="nodeIri"
+              value={nodeIri}
+              onChange={(e) => setNodeIri(e.target.value)}
+              placeholder="https://example.com/entity"
+            />
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label>RDF Types (rdf:type assertions)</Label>
+              <Button type="button" variant="outline" size="sm" onClick={(e) => handleAddType(e)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Type
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              {rdfTypesState.map((type, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <EntityAutoComplete
+                    mode="classes"
+                    optionsLimit={5}
+                    value={type}
+                    onChange={(ent: any) => handleUpdateType(index, ent ? String(ent.iri || '') : '')}
+                    placeholder="Type to search for classes..."
+                    emptyMessage="No OWL classes found. Load an ontology first."
+                    className="flex-1"
+                  />
+                  <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveType(index, e)} className="h-9 px-2">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+
+              {rdfTypesState.length === 0 && (
+                <div className="text-center py-4 text-muted-foreground border-2 border-dashed border-border/20 rounded-lg">
+                  <p className="text-sm">No RDF types assigned</p>
+                  <p className="text-xs">Click "Add Type" to assign type(s) to this individual</p>
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Multiple types can trigger disjoint class violation warnings if classes are declared disjoint.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label>Annotation Properties</Label>
+              <Button type="button" variant="outline" size="sm" onClick={(e) => handleAddProperty(e)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Property
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              {properties.map((property, index) => (
+                <div key={index} className="grid grid-cols-12 gap-2 items-end">
+                  <div className="col-span-4">
+                    <Label className="text-xs">Property *</Label>
+                    <EntityAutoComplete
+                      mode="properties"
+                      value={property.key}
+                      onChange={(ent) => handleUpdateProperty(index, "key", ent ? String(ent.iri || '') : "")}
+                      placeholder="Select property..."
+                      className={!property.key.trim() ? "border-destructive" : ""}
+                    />
+                    {!property.key.trim() && (
+                      <p className="text-xs text-destructive mt-1">Property is required</p>
+                    )}
+                  </div>
+
+                  <div className="col-span-5">
+                    <Label className="text-xs">Value</Label>
+                    <Input
+                      value={property.value}
+                      onChange={(e) => handleUpdateProperty(index, "value", e.target.value)}
+                      placeholder="Property value..."
+                    />
+                  </div>
+
+                  <div className="col-span-1">
+                    <Label className="text-xs">Type</Label>
+                    <Select
+                      value={property.type || DISPLAY_DATATYPE}
+                      onValueChange={(value) => {
+                        handleUpdateProperty(index, "type", value);
+                        if (value !== DISPLAY_DATATYPE) {
+                          handleUpdateProperty(index, "lang", "");
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select type..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {getXSDTypes().map((type) => (
+                          <SelectItem key={type} value={type}>
+                            {type}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {property.type === DISPLAY_DATATYPE && (
+                    <div className="col-span-1">
+                      <Label className="text-xs">Lang</Label>
+                      <Input
+                        value={property.lang || ""}
+                        onChange={(e) => {
+                          const v = String(e.target.value || "").trim();
+                          // if lang set, ensure type is xsd:string
+                          if (v) {
+                            handleUpdateProperty(index, "lang", v);
+                            handleUpdateProperty(index, "type", DISPLAY_DATATYPE);
+                          } else {
+                            handleUpdateProperty(index, "lang", "");
+                          }
+                        }}
+                        placeholder="en"
+                        className="w-full"
+                      />
+                    </div>
+                  )}
+
+                  <div className="col-span-1">
+                    <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveProperty(index, e)} className="h-9 px-2">
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+
+              {properties.length === 0 && (
+                <div className="text-center py-4 text-muted-foreground border-2 border-dashed border-border/20 rounded-lg">
+                  <p className="text-sm">No annotation properties</p>
+                  <p className="text-xs">Click "Add Property" to add annotation properties</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button type="button" variant="destructive" onClick={(e) => handleDelete(e)}>
+              Delete
+            </Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" onClick={(e) => handleSave(e)}>
+              Save Changes
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+/**
+ * Form-only version of NodePropertyEditor for use inside Reactodia's overlay dialog.
+ * No Dialog wrapper — the dialog chrome is provided by the caller.
+ * Shows IRI (read-only), RDF Types (editable), and Annotation Properties (editable).
+ * Writes directly to the N3 store on save.
+ */
+export const NodePropertyEditorContent = ({
+  nodeData,
+  onSave,
+  onClose,
+}: NodePropertyEditorContentProps) => {
+  const [nodeIri, setNodeIri] = useState<string>("");
+  const [rdfTypesState, setRdfTypesState] = useState<string[]>([]);
+  const [properties, setProperties] = useState<LiteralProperty[]>([]);
+  const initialPropertiesRef = useRef<LiteralProperty[]>([]);
+  const initialRdfTypesRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    const sourceNode =
+      nodeData && typeof nodeData === "object"
+        ? (nodeData as any).data ?? nodeData
+        : null;
+
+    if (!sourceNode) {
+      setNodeIri("");
+      setProperties([]);
+      initialPropertiesRef.current = [];
+      return;
+    }
+
+    const iri =
+      typeof sourceNode.iri === "string"
+        ? sourceNode.iri
+        : typeof sourceNode.id === "string"
+        ? sourceNode.id
+        : "";
+    setNodeIri(iri);
+
+    const rdfTypes: string[] = Array.isArray(sourceNode.rdfTypes)
+      ? sourceNode.rdfTypes.filter((t: unknown): t is string => typeof t === "string")
+      : [];
+    setRdfTypesState(rdfTypes);
+    initialRdfTypesRef.current = rdfTypes.slice();
+
+    const normalizedProps: LiteralProperty[] = [];
+    if (Array.isArray(sourceNode.annotationProperties)) {
+      for (const entry of sourceNode.annotationProperties) {
+        const normalized = coerceLiteralProperty(entry);
+        if (normalized) normalizedProps.push(normalized);
+      }
+    }
+    setProperties(normalizedProps);
+    initialPropertiesRef.current = normalizedProps.map(cloneLiteralProperty);
+  }, [nodeData]);
+
+  const handleAddType = (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setRdfTypesState((prev) => [...prev, ""]);
+  };
+
+  const handleRemoveType = (index: number, e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setRdfTypesState((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateType = (index: number, value: string) => {
+    setRdfTypesState((prev) => prev.map((t, i) => (i === index ? value : t)));
+  };
+
+  const handleAddProperty = (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setProperties((prev) => [...prev, { key: "", value: "", type: DISPLAY_DATATYPE }]);
+  };
+
+  const handleRemoveProperty = (index: number, e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setProperties((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateProperty = (index: number, field: keyof LiteralProperty, value: string) => {
+    setProperties((prev) =>
+      prev.map((p, i) => {
+        if (i !== index) return p;
+        const updated: LiteralProperty = { ...p, [field]: value };
+        if (field === "value" || field === "type") updated.objectTerm = undefined;
+        if (field === "key") updated.predicateTerm = undefined;
+        if (field === "type" && value !== DISPLAY_DATATYPE) updated.lang = undefined;
+        if (field === "lang" && value && value.trim()) updated.type = DISPLAY_DATATYPE;
+        return updated;
+      })
+    );
+  };
+
+  const getXSDTypes = () => [
+    DISPLAY_DATATYPE,
+    "xsd:boolean",
+    "xsd:integer",
+    "xsd:decimal",
+    "xsd:double",
+    "xsd:float",
+    "xsd:date",
+    "xsd:dateTime",
+    "xsd:time",
+    "xsd:anyURI",
+  ];
+
+  const handleSave = async (e?: React.MouseEvent) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+
+    if (properties.some(p => !p.key || !p.key.trim())) {
+      throw new Error("Please provide property names for all annotation properties.");
+    }
+
+    const subjIri = expandIriIfNeeded(String(nodeIri || "").trim());
+    if (!subjIri) return;
+
+    const mgr = directRdfManager;
+    if (!mgr || typeof (mgr as any).applyBatch !== "function") {
+      console.error("[NodePropertyEditorContent] rdfManager unavailable");
+      return;
+    }
+
+    // Use N3.js DataFactory — applyBatch runs terms through coerceWorkerTerm→serializeTerm
+    // which reads .termType/.value directly, so proper N3 Term objects work correctly.
+    const termForIri = (iri: string) =>
+      /^_:/i.test(iri) ? blankNode(iri.replace(/^_:/, "")) : namedNode(iri);
+
+    const valueToTerm = (val: any, type?: string) => {
+      const s = String(val ?? "");
+      if (/^_:/i.test(s)) return blankNode(s.replace(/^_:/, ""));
+      if (type && type.startsWith("@")) return literal(s, type.slice(1));
+      if (type && type.trim()) {
+        let dtIri = type.trim();
+        if (dtIri.startsWith("xsd:")) dtIri = dtIri.replace("xsd:", "http://www.w3.org/2001/XMLSchema#");
+        else if (!dtIri.includes("://")) dtIri = expandIriIfNeeded(dtIri);
+        return literal(s, namedNode(dtIri));
+      }
+      return literal(s);
+    };
+
+    const subjectTerm = termForIri(subjIri);
+    const propsToRemove = initialPropertiesRef.current;
+    const propsToAdd = properties;
+
+    const removesPrepared = propsToRemove.map((p: any) => {
+      try {
+        const key = String(p.key || "").trim();
+        if (!key) return null;
+        const predTerm = p.predicateTerm && typeof p.predicateTerm === 'object' && 'termType' in p.predicateTerm
+          ? p.predicateTerm
+          : namedNode(expandIriIfNeeded(key));
+        const objTerm = p.objectTerm && typeof p.objectTerm === 'object' && 'termType' in p.objectTerm
+          ? p.objectTerm
+          : valueToTerm(p.value, p.lang ? `@${p.lang}` : p.type);
+        return { subject: subjectTerm, predicate: predTerm, object: objTerm };
+      } catch (_) { return null; }
+    }).filter(Boolean) as any[];
+
+    const addsPrepared = propsToAdd.map((p: any) => {
+      try {
+        const key = String(p.key || "").trim();
+        if (!key) return null;
+        const predTerm = namedNode(expandIriIfNeeded(key));
+        const objTerm = valueToTerm(p.value, p.lang ? `@${p.lang}` : p.type);
+        return { subject: subjectTerm, predicate: predTerm, object: objTerm };
+      } catch (_) { return null; }
+    }).filter(Boolean) as any[];
+
+    // rdf:type diffs
+    const initialTypes = initialRdfTypesRef.current;
+    const typesToAdd = rdfTypesState.filter(t => t && !initialTypes.includes(t));
+    const typesToRemove = initialTypes.filter(t => t && !rdfTypesState.includes(t));
+    for (const t of typesToRemove) {
+      removesPrepared.push({ subject: subjectTerm, predicate: namedNode(RDF_TYPE), object: namedNode(expandIriIfNeeded(t)) });
+    }
+    for (const t of typesToAdd) {
+      addsPrepared.push({ subject: subjectTerm, predicate: namedNode(RDF_TYPE), object: namedNode(expandIriIfNeeded(t)) });
+    }
+
+    console.debug("[NodePropertyEditorContent] applyBatch", { subject: subjIri, removes: removesPrepared, adds: addsPrepared });
+    try {
+      await (mgr as any).applyBatch({ removes: removesPrepared, adds: addsPrepared }, "urn:vg:data");
+      console.debug("[NodePropertyEditorContent] applyBatch resolved ok");
+    } catch (err) {
+      console.error("[NodePropertyEditorContent] applyBatch failed", err);
+      return;
+    }
+
+    if (typeof onSave === "function") {
+      onSave(properties.filter(p => p.key?.trim()).map(p => ({
+        propertyUri: expandIriIfNeeded(p.key),
+        key: p.key,
+        value: p.value,
+        type: p.type || DISPLAY_DATATYPE,
+      })));
+    }
+
+    initialPropertiesRef.current = properties.map(cloneLiteralProperty);
+    initialRdfTypesRef.current = rdfTypesState.slice();
+    onClose();
+  };
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space-y-6 p-4">
+      <div className="space-y-2">
+        <Label htmlFor="nodeIri">IRI</Label>
+        <Input id="nodeIri" value={nodeIri} readOnly className="text-muted-foreground" />
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <Label>RDF Types</Label>
+          <Button type="button" variant="outline" size="sm" onClick={(e) => handleAddType(e)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Type
+          </Button>
+        </div>
+        <div className="space-y-2">
+          {rdfTypesState.map((type, index) => (
+            <div key={index} className="flex items-center gap-2">
+              <EntityAutoComplete
+                mode="classes"
+                optionsLimit={5}
+                value={type}
+                onChange={(ent: any) => handleUpdateType(index, ent ? String(ent.iri || "") : "")}
+                placeholder="Type to search for classes..."
+                emptyMessage="No OWL classes found. Load an ontology first."
+                className="flex-1"
+              />
+              <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveType(index, e)} className="h-9 px-2">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+          {rdfTypesState.length === 0 && (
+            <p className="text-xs text-muted-foreground">No RDF types assigned</p>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <Label>Annotation Properties</Label>
+          <Button type="button" variant="outline" size="sm" onClick={(e) => handleAddProperty(e)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Property
+          </Button>
+        </div>
+
+        <div className="space-y-3">
+          {properties.map((property, index) => (
+            <div key={index} className="grid grid-cols-12 gap-2 items-end">
+              <div className="col-span-4">
+                <Label className="text-xs">Property *</Label>
+                <EntityAutoComplete
+                  mode="properties"
+                  value={property.key}
+                  onChange={(ent) => handleUpdateProperty(index, "key", ent ? String(ent.iri || "") : "")}
+                  placeholder="Select property..."
+                  className={!property.key.trim() ? "border-destructive" : ""}
+                />
+                {!property.key.trim() && (
+                  <p className="text-xs text-destructive mt-1">Property is required</p>
+                )}
+              </div>
+
+              <div className="col-span-5">
+                <Label className="text-xs">Value</Label>
+                <Input
+                  value={property.value}
+                  onChange={(e) => handleUpdateProperty(index, "value", e.target.value)}
+                  placeholder="Property value..."
+                />
+              </div>
+
+              <div className="col-span-1">
+                <Label className="text-xs">Type</Label>
+                <Select
+                  value={property.type || DISPLAY_DATATYPE}
+                  onValueChange={(value) => {
+                    handleUpdateProperty(index, "type", value);
+                    if (value !== DISPLAY_DATATYPE) handleUpdateProperty(index, "lang", "");
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {getXSDTypes().map((type) => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {property.type === DISPLAY_DATATYPE && (
+                <div className="col-span-1">
+                  <Label className="text-xs">Lang</Label>
+                  <Input
+                    value={property.lang || ""}
+                    onChange={(e) => {
+                      const v = e.target.value.trim();
+                      if (v) {
+                        handleUpdateProperty(index, "lang", v);
+                        handleUpdateProperty(index, "type", DISPLAY_DATATYPE);
+                      } else {
+                        handleUpdateProperty(index, "lang", "");
+                      }
+                    }}
+                    placeholder="en"
+                    className="w-full"
+                  />
+                </div>
+              )}
+
+              <div className="col-span-1">
+                <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveProperty(index, e)} className="h-9 px-2">
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
+
+          {properties.length === 0 && (
+            <div className="text-center py-4 text-muted-foreground border-2 border-dashed border-border/20 rounded-lg">
+              <p className="text-sm">No annotation properties</p>
+              <p className="text-xs">Click "Add Property" to add annotation properties</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2 pt-4 border-t">
+        <Button type="button" variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" onClick={(e) => handleSave(e)}>
+          Apply
+        </Button>
+      </div>
+    </form>
+  );
+};

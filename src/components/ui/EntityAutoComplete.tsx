@@ -75,10 +75,17 @@ export default function EntityAutoComplete({
     setOpen(Boolean(autoOpen));
   }, [autoOpen]);
 
-  // Reset display when the value prop is cleared externally (e.g. dialog resets).
+  // Sync display with value prop (on mount and when value/source changes).
+  // Skip update while the user is actively typing (isFocusedRef guards against that).
   useEffect(() => {
-    if (!value) setInitialDisplay("");
-  }, [value]);
+    if (isFocusedRef.current) return;
+    if (!value) {
+      setInitialDisplay("");
+      return;
+    }
+    const found = source.find((e) => String(e.iri || "") === String(value));
+    setInitialDisplay(found ? (found.prefixed || String(found.iri)) : value);
+  }, [value, source]);
 
   // Build filtered list based on query; match against label, prefixed, computed prefixed, and iri.
   // When query is empty, show the top N items from the source as default suggestions.
