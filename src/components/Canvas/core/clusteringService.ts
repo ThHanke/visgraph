@@ -111,10 +111,14 @@ function selectClusteringAlgorithm(
   nodes: ClusterNode[],
   edges: ClusterEdge[],
   options: { threshold: number }
-) {
+): ReturnType<typeof computeClustersLabelPropagation> {
   switch (algorithm) {
-    case 'louvain':          return computeClustersLouvainNgraph(nodes, edges, options);
+    case 'louvain':           return computeClustersLouvainNgraph(nodes, edges, options);
     case 'label-propagation': return computeClustersLabelPropagation(nodes, edges, options);
     case 'kmeans':            return computeClustersKmeans(nodes, edges, options);
+    default: {
+      const _exhaustive: never = algorithm;
+      throw new Error(`[ClusteringService] Unknown algorithm: ${_exhaustive}`);
+    }
   }
 }
