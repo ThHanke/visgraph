@@ -24,6 +24,7 @@ import { PrefixContext } from '@/providers/PrefixContext';
 import ResizableNamespaceLegend from './ResizableNamespaceLegend';
 import { useAppConfigStore } from '@/stores/appConfigStore';
 import { getLayoutFunction } from './layout/getLayoutFunction';
+import { applyCanvasClustering, clearCanvasClustering } from './core/clusteringService';
 import { LayoutPopover } from './LayoutPopover';
 import { RdfPropertyEditor } from './rdfPropertyEditor';
 import { toast } from 'sonner';
@@ -366,6 +367,9 @@ export default function ReactodiaCanvas() {
         if (isFullRefresh) {
           // emitAllSubjects = full dataset reload: lay out the whole canvas
           await ctx.performLayout({ layoutFunction: layoutFn, animate: cfg.layoutAnimations, signal: controller.signal });
+          if (cfg.clusteringAlgorithm !== 'none') {
+            applyCanvasClustering(model, cfg.clusteringAlgorithm, cfg.collapseThreshold);
+          }
         } else {
           // Incremental add: only lay out the newly added elements so existing
           // positions are preserved.
@@ -388,6 +392,21 @@ export default function ReactodiaCanvas() {
     rdfManager.onSubjectsChange(handler as any);
     return () => rdfManager.offSubjectsChange(handler as any);
   }, []);
+
+  // Re-cluster when the user changes the algorithm or threshold in settings
+  const clusteringAlgorithm = useAppConfigStore(s => s.config.clusteringAlgorithm);
+  const collapseThreshold   = useAppConfigStore(s => s.config.collapseThreshold);
+  const isFirstRender = React.useRef(true);
+  React.useEffect(() => {
+    // Skip on mount — the emitAllSubjects handler takes care of the initial cluster
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    const model = modelRef.current;
+    if (!model) return;
+    clearCanvasClustering(model);
+    if (clusteringAlgorithm !== 'none') {
+      applyCanvasClustering(model, clusteringAlgorithm as 'label-propagation' | 'louvain' | 'kmeans', collapseThreshold);
+    }
+  }, [clusteringAlgorithm, collapseThreshold]);
 
   // Handle view mode changes (ABox/TBox)
   React.useEffect(() => {
