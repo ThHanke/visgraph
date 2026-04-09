@@ -568,8 +568,9 @@ export default function ReactodiaCanvas() {
 
   const handleCluster = React.useCallback(() => {
     const model = modelRef.current;
-    const cfg = (useAppConfigStore as any).getState().config;
+    const cfg = useAppConfigStore.getState().config;
     if (!model || cfg.clusteringAlgorithm === 'none') return;
+    clearCanvasClustering(model);
     applyCanvasClustering(model, cfg.clusteringAlgorithm, cfg.collapseThreshold);
   }, []);
 
