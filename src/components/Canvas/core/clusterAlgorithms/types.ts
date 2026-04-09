@@ -1,14 +1,23 @@
 /**
- * Shared types for clustering algorithms
+ * Shared types for clustering algorithms.
+ * No dependency on React Flow or any canvas framework.
  */
 
-import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
-import type { NodeData, LinkData } from "../../../../types/canvas";
+export interface ClusterNode {
+  id: string;
+  connectivity: number;
+  position?: { x: number; y: number };
+}
+
+export interface ClusterEdge {
+  id: string;
+  source: string;
+  target: string;
+}
 
 export interface ClusterInfo {
   parentIri: string;
   nodeIds: Set<string>;
-  edgeIds: Set<string>;
 }
 
 export interface ClusterResult {
@@ -18,11 +27,10 @@ export interface ClusterResult {
 
 export interface ClusterAlgorithmOptions {
   threshold: number;
-  collapsedSet: Set<string>;
 }
 
 export type ClusterAlgorithm = (
-  nodes: RFNode<NodeData>[],
-  edges: RFEdge<LinkData>[],
+  nodes: ClusterNode[],
+  edges: ClusterEdge[],
   options: ClusterAlgorithmOptions
 ) => ClusterResult;
