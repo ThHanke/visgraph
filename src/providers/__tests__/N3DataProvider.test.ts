@@ -23,7 +23,6 @@ describe('N3DataProvider', () => {
 
 const RDFS_DOMAIN = 'http://www.w3.org/2000/01/rdf-schema#domain';
 const RDFS_RANGE  = 'http://www.w3.org/2000/01/rdf-schema#range';
-const RDF_TYPE    = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 
 describe('N3DataProvider.getDomainRange', () => {
   it('returns domains and ranges declared for a property', () => {
