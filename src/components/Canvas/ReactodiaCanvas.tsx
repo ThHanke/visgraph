@@ -629,13 +629,24 @@ export default function ReactodiaCanvas() {
     setSettingsOpen(true);
   }, []);
 
-  const handleExport = React.useCallback(async () => {
+  const handleExportRdf = React.useCallback(async (format: 'turtle' | 'json-ld' | 'rdf-xml') => {
     try {
-      const { exportPngFull } = await import('./core/downloadHelpers');
-      await exportPngFull();
+      const { exportGraph } = useOntologyStore.getState();
+      const content = await exportGraph(format);
+      const ext = format === 'turtle' ? 'ttl' : format === 'json-ld' ? 'jsonld' : 'rdf';
+      const mime = format === 'turtle' ? 'text/turtle' : format === 'json-ld' ? 'application/ld+json' : 'application/rdf+xml';
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `knowledgegraph.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
     } catch (err) {
-      console.error('[ReactodiaCanvas] PNG export failed', err);
-      toast.error('PNG export failed');
+      console.error('[ReactodiaCanvas] RDF export failed', err);
+      toast.error('RDF export failed');
     }
   }, []);
 
@@ -850,7 +861,7 @@ export default function ReactodiaCanvas() {
         onLoadOntology={handleLoadOntology}
         onLoadFile={handleLoadFile}
         onClearData={handleClearData}
-        onExport={handleExport}
+        onExportRdf={handleExportRdf}
         onSettings={() => setSettingsOpen(true)}
       />
 

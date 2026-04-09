@@ -22,10 +22,20 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '../ui/accordion';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu';
 import { WorkflowTemplateCard } from './WorkflowTemplateCard';
 import { getWorkflowTemplates, type WorkflowTemplate } from '../../utils/workflowInstantiator';
 import { useAppConfigStore } from '../../stores/appConfigStore';
 import { cn } from '../../lib/utils';
+
+export type RdfExportFormat = 'turtle' | 'json-ld' | 'rdf-xml';
 
 interface LeftSidebarProps {
   isExpanded: boolean;
@@ -33,7 +43,7 @@ interface LeftSidebarProps {
   onLoadOntology: () => void;
   onLoadFile: () => void;
   onClearData: () => void;
-  onExport: () => void;
+  onExportRdf: (format: RdfExportFormat) => void;
   onSettings: () => void;
 }
 
@@ -43,7 +53,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onLoadOntology,
   onLoadFile,
   onClearData,
-  onExport,
+  onExportRdf,
   onSettings,
 }) => {
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
@@ -167,19 +177,27 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               </TooltipPrimitive.Portal>
             </TooltipPrimitive.Root>
 
-            <TooltipPrimitive.Root>
-              <TooltipPrimitive.Trigger asChild>
-                <button className="rail-btn" onClick={onExport} aria-label="Export">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="rail-btn" aria-label="Export">
                   <Download className="h-[18px] w-[18px]" />
                   <span>Export</span>
                 </button>
-              </TooltipPrimitive.Trigger>
-              <TooltipPrimitive.Portal>
-                <TooltipPrimitive.Content className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md" sideOffset={5} side="right">
-                  Export<TooltipPrimitive.Arrow className="fill-popover" />
-                </TooltipPrimitive.Content>
-              </TooltipPrimitive.Portal>
-            </TooltipPrimitive.Root>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="right" align="start" className="z-[99999] min-w-[10rem]">
+                <DropdownMenuLabel className="text-xs text-muted-foreground">Export RDF</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => onExportRdf('turtle')}>
+                  Turtle (.ttl)
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onExportRdf('json-ld')}>
+                  JSON-LD (.jsonld)
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onExportRdf('rdf-xml')}>
+                  RDF/XML (.rdf)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             <div className="flex-1" />
 
@@ -286,23 +304,27 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 </TooltipPrimitive.Portal>
               </TooltipPrimitive.Root>
 
-              <TooltipPrimitive.Root>
-                <TooltipPrimitive.Trigger asChild>
-                  <button className="rail-btn h-14" onClick={onExport}>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="rail-btn h-14" aria-label="Export">
                     <Download className="h-4 w-4" />
                     <span>Export</span>
                   </button>
-                </TooltipPrimitive.Trigger>
-                <TooltipPrimitive.Portal>
-                  <TooltipPrimitive.Content
-                    className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
-                    sideOffset={5}
-                  >
-                    Export
-                    <TooltipPrimitive.Arrow className="fill-popover" />
-                  </TooltipPrimitive.Content>
-                </TooltipPrimitive.Portal>
-              </TooltipPrimitive.Root>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="bottom" align="start" className="z-[99999] min-w-[10rem]">
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">Export RDF</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => onExportRdf('turtle')}>
+                    Turtle (.ttl)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => onExportRdf('json-ld')}>
+                    JSON-LD (.jsonld)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => onExportRdf('rdf-xml')}>
+                    RDF/XML (.rdf)
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               <TooltipPrimitive.Root>
                 <TooltipPrimitive.Trigger asChild>
