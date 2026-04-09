@@ -3,19 +3,21 @@
  *
  * Bridges Reactodia's --reactodia-* CSS variables to the app's shadcn design tokens.
  *
- * CONSTRAINTS — never override:
- *   layout/positioning: --reactodia-z-index-base, --reactodia-dock-*, --reactodia-halo-*,
- *     --reactodia-spacing-*, --reactodia-toolbar-height, --reactodia-viewport-dock-margin,
- *     --reactodia-selection-single-box-margin, --reactodia-draggable-handle-*,
- *     --reactodia-border-radius-*, --reactodia-border-width-base, --reactodia-font-size-base,
- *     --reactodia-line-height-base, --reactodia-transition-duration,
- *     --reactodia-paper-panning-overlay-z-index, --reactodia-dialog-viewport-breakpoint-s,
- *     --reactodia-link-button-margin, --reactodia-link-button-size,
- *     --reactodia-resizable-box-border-width, --reactodia-accordion-transition-duration
+ * CONSTRAINTS — never override these Reactodia layout/positioning variables:
+ *   --reactodia-z-index-base, --reactodia-dock-*, --reactodia-halo-*,
+ *   --reactodia-spacing-*, --reactodia-toolbar-height, --reactodia-viewport-dock-margin,
+ *   --reactodia-selection-single-box-margin, --reactodia-draggable-handle-*,
+ *   --reactodia-border-radius-*, --reactodia-border-width-base, --reactodia-font-size-base,
+ *   --reactodia-line-height-base, --reactodia-transition-duration,
+ *   --reactodia-paper-panning-overlay-z-index, --reactodia-dialog-viewport-breakpoint-s,
+ *   --reactodia-link-button-margin, --reactodia-link-button-size,
+ *   --reactodia-resizable-box-border-width, --reactodia-accordion-transition-duration
  *
- *   CSS properties: position, z-index, inset, margin, padding, width, height, display,
- *     flex-*, grid-*, transform, backdrop-filter, filter (except selection-action),
- *     opacity, isolation, will-change
+ * Sections 2 and 3 (dialog overrides and form resets) must use CSS variable overrides only —
+ * never add backdrop-filter, filter, transform, opacity, isolation, will-change, position,
+ * or z-index to .reactodia-dialog, as these create new stacking contexts that break dialog
+ * positioning. Section 1 toolbar/dropdown overrides may use layout properties where needed
+ * for existing intentional behaviour.
  *
  * Three sections:
  *   1. Color variable bridge  (.reactodia-workspace / .reactodia-workspace-dark)
