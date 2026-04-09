@@ -13,6 +13,8 @@ interface TopBarProps {
   onRunReason?: () => void;
   currentReasoning?: ReasoningResult | null;
   isReasoning?: boolean;
+  onCluster?: () => void;
+  onExpandAll?: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -23,8 +25,12 @@ export const TopBar: React.FC<TopBarProps> = ({
   onRunReason,
   currentReasoning = null,
   isReasoning = false,
+  onCluster,
+  onExpandAll,
 }) => {
   const config = useAppConfigStore((s) => s.config);
+  const clusteringAlgorithm = useAppConfigStore(s => s.config.clusteringAlgorithm);
+  const setClusteringAlgorithm = useAppConfigStore(s => s.setClusteringAlgorithm);
   const loadedOntologies = useOntologyStore((s) => s.loadedOntologies ?? []);
   const removeLoadedOntology = useOntologyStore((s) => s.removeLoadedOntology);
   const addAdditionalOntology = useAppConfigStore((s) => s.addAdditionalOntology);
@@ -42,6 +48,40 @@ export const TopBar: React.FC<TopBarProps> = ({
       whiteSpace: 'nowrap',
       gap: '4px',
     }}>
+      {/* Clustering controls */}
+      <div className="reactodia-btn-group reactodia-btn-group-sm" style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <select
+          className="reactodia-btn reactodia-btn-default glass-btn"
+          style={{ fontSize: 11, padding: '2px 4px', cursor: 'pointer' }}
+          value={clusteringAlgorithm}
+          title="Clustering algorithm"
+          onChange={e => setClusteringAlgorithm(e.target.value as any)}
+        >
+          <option value="none">No clustering</option>
+          <option value="label-propagation">Label Propagation</option>
+          <option value="louvain">Louvain</option>
+          <option value="kmeans">K-Means</option>
+        </select>
+        <button
+          type="button"
+          className="reactodia-btn reactodia-btn-default glass-btn"
+          title="Cluster visible nodes"
+          disabled={clusteringAlgorithm === 'none' || !onCluster}
+          onClick={onCluster}
+        >
+          Cluster
+        </button>
+        <button
+          type="button"
+          className="reactodia-btn reactodia-btn-default glass-btn"
+          title="Expand all groups"
+          disabled={!onExpandAll}
+          onClick={onExpandAll}
+        >
+          Expand All
+        </button>
+      </div>
+
       {/* A-Box / T-Box group */}
       <div className="reactodia-btn-group reactodia-btn-group-sm">
         <button
