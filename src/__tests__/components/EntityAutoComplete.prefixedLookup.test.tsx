@@ -82,3 +82,46 @@ describe("EntityAutoComplete - prefixed & IRI lookup", () => {
     });
   });
 });
+
+import { vi } from 'vitest';
+import type { N3DataProvider } from '../../providers/N3DataProvider';
+
+function mockDataProvider(linkTypes: Array<{ id: string; label?: Record<string, string> }> = []): N3DataProvider {
+  return {
+    knownLinkTypes: vi.fn().mockResolvedValue(linkTypes),
+    knownElementTypes: vi.fn().mockResolvedValue({ elementTypes: [], subtypes: new Map() }),
+    getDomainRange: vi.fn().mockReturnValue({ domains: [], ranges: [] }),
+  } as unknown as N3DataProvider;
+}
+
+describe('EntityAutoComplete - dataProvider mode', () => {
+  it('loads link types from dataProvider when mode=properties', async () => {
+    const dp = mockDataProvider([{ id: 'http://ex.org/knows', label: { en: 'knows' } }]);
+    const { container } = render(
+      <EntityAutoComplete mode="properties" dataProvider={dp} onChange={() => {}} />
+    );
+    const input = container.querySelector('input')!;
+    fireEvent.focus(input);
+    await waitFor(() => {
+      expect(screen.getByText('knows')).toBeTruthy();
+    });
+  });
+
+  it('shows tier separator when sourceClassIri and targetClassIri provided', async () => {
+    const dp = mockDataProvider([{ id: 'http://ex.org/knows', label: { en: 'knows' } }]);
+    render(
+      <EntityAutoComplete
+        mode="properties"
+        dataProvider={dp}
+        sourceClassIri="http://ex.org/Person"
+        targetClassIri="http://ex.org/Person"
+        autoOpen
+        onChange={() => {}}
+      />
+    );
+    await waitFor(() => {
+      // Score 2 (unconstrained, no domain/range) → should show "General" tier label
+      expect(screen.getByText('General')).toBeTruthy();
+    });
+  });
+});

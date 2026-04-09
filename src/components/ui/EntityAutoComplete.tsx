@@ -1,22 +1,20 @@
-import React, { useMemo, useState, useEffect, useRef } from "react";
-import { useOntologyStore } from "../../stores/ontologyStore";
-import { toPrefixed } from "../../utils/termUtils";
-import { cn } from "../../lib/utils";
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { toPrefixed } from '../../utils/termUtils';
+import { cn } from '../../lib/utils';
+import { fetchClasses, fetchLinkTypes, scoreLinkTypes, type FatMapEntity } from '../../utils/ontologyQueries';
+import type { N3DataProvider } from '../../providers/N3DataProvider';
 
-export interface FatMapEntity {
-  iri: string;
-  label?: string;
-  prefixed?: string;
-  namespace?: string;
-  rdfType?: string;
-  [k: string]: any;
-}
+// Re-export so existing importers of FatMapEntity from this file keep working
+export type { FatMapEntity };
 
 interface Props {
-  mode?: "classes" | "properties";
-  entities?: FatMapEntity[]; // optional override; if provided it is used
+  mode?: 'classes' | 'properties';
+  entities?: FatMapEntity[];
+  dataProvider?: N3DataProvider;
+  sourceClassIri?: string;
+  targetClassIri?: string;
   optionsLimit?: number;
-  value?: string; // selected iri
+  value?: string;
   onChange?: (entity: FatMapEntity | null) => void;
   placeholder?: string;
   emptyMessage?: string;
@@ -25,181 +23,191 @@ interface Props {
   disabled?: boolean;
 }
 
-/* Utility: escape regex special chars */
+const TIER_LABELS: Record<number, string> = { 0: 'Best match', 1: 'Compatible', 2: 'General', 3: 'Other' };
+
 function escapeRegExp(s: string) {
-  return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/* Minimal, deterministic AutoComplete that reads fat-map entries from the store
-   when mode is provided, or uses the supplied entities array. Matching is a
-   case-insensitive substring test; extended to match label, prefixed, computed
-   prefixed and full IRI. */
 export default function EntityAutoComplete({
   mode,
   entities,
+  dataProvider,
+  sourceClassIri,
+  targetClassIri,
   optionsLimit = 8,
   value,
   onChange,
-  placeholder = "Select option...",
-  emptyMessage = "No options found.",
+  placeholder = 'Select option...',
+  emptyMessage = 'No options found.',
   className,
   autoOpen = false,
   disabled = false,
 }: Props) {
-  const storeClasses = useOntologyStore((s) => s.availableClasses);
-  const storeProperties = useOntologyStore((s) => s.availableProperties);
+  const [loadedItems, setLoadedItems] = useState<FatMapEntity[]>([]);
 
-  // Decide source array: entities prop takes precedence; otherwise read from store via mode.
-  const source = useMemo(() => {
+  // Async load from DataProvider when mode is set
+  useEffect(() => {
+    if (!dataProvider || !mode) return;
+    let cancelled = false;
+    const load = async () => {
+      const result = mode === 'classes'
+        ? await fetchClasses(dataProvider)
+        : await fetchLinkTypes(dataProvider);
+      if (!cancelled) setLoadedItems(result);
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [dataProvider, mode]);
+
+  // Decide source: explicit entities prop overrides everything
+  const baseSource = useMemo<FatMapEntity[]>(() => {
     if (Array.isArray(entities) && entities.length > 0) return entities as FatMapEntity[];
-    if (mode === "classes") return Array.isArray(storeClasses) ? (storeClasses as unknown as FatMapEntity[]) : [];
-    if (mode === "properties") return Array.isArray(storeProperties) ? (storeProperties as unknown as FatMapEntity[]) : [];
+    if (dataProvider && mode) return loadedItems;
     return Array.isArray(entities) ? (entities as FatMapEntity[]) : [];
-  }, [entities, mode, storeClasses, storeProperties]);
+  }, [entities, dataProvider, mode, loadedItems]);
+
+  // Apply domain/range scoring when context is available
+  const source = useMemo<FatMapEntity[]>(() => {
+    if (mode === 'properties' && dataProvider && (sourceClassIri || targetClassIri)) {
+      return scoreLinkTypes(baseSource, sourceClassIri, targetClassIri, dataProvider);
+    }
+    return baseSource;
+  }, [baseSource, mode, dataProvider, sourceClassIri, targetClassIri]);
 
   const [open, setOpen] = useState<boolean>(Boolean(autoOpen));
-  const [query, setQuery] = useState<string>("");
+  const [query, setQuery] = useState<string>('');
   const [highlight, setHighlight] = useState<number>(-1);
-  const [initialDisplay, setInitialDisplay] = useState<string>("");
+  const [initialDisplay, setInitialDisplay] = useState<string>('');
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
   const isFocusedRef = useRef<boolean>(false);
 
-  // Resolve selected entity object from value (iri)
   const selectedEntity = useMemo(() => {
     if (!value) return null;
-    return source.find((e) => String(e.iri || "") === String(value)) || null;
+    return source.find(e => String(e.iri || '') === String(value)) || null;
   }, [value, source]);
 
-  useEffect(() => {
-    setOpen(Boolean(autoOpen));
-  }, [autoOpen]);
+  useEffect(() => { setOpen(Boolean(autoOpen)); }, [autoOpen]);
 
-  // Sync display with value prop (on mount and when value/source changes).
-  // Skip update while the user is actively typing (isFocusedRef guards against that).
   useEffect(() => {
     if (isFocusedRef.current) return;
-    if (!value) {
-      setInitialDisplay("");
-      return;
-    }
-    const found = source.find((e) => String(e.iri || "") === String(value));
+    if (!value) { setInitialDisplay(''); return; }
+    const found = source.find(e => String(e.iri || '') === String(value));
     setInitialDisplay(found ? (found.prefixed || String(found.iri)) : value);
   }, [value, source]);
 
-  // Build filtered list based on query; match against label, prefixed, computed prefixed, and iri.
-  // When query is empty, show the top N items from the source as default suggestions.
-  const filtered = useMemo(() => {
-    if (!query || String(query).trim() === "") {
-      return optionsLimit && optionsLimit > 0 ? source.slice(0, optionsLimit) : source;
+  const filtered = useMemo<FatMapEntity[]>(() => {
+    if (!query || String(query).trim() === '') {
+      return optionsLimit > 0 ? source.slice(0, optionsLimit) : source;
     }
-    const q = String(query).trim();
-    const rx = new RegExp(escapeRegExp(q), "i");
-    const matched = source.filter((e) => {
-      const lab = String(e?.label || "");
-      const pref = String(e?.prefixed || "");
-      const iri = String(e?.iri || "");
-
-      // Match label
-      if (lab && rx.test(lab)) return true;
-      // Match stored prefixed form
-      if (pref && rx.test(pref)) return true;
-      // Match full IRI
-      if (iri && rx.test(iri)) return true;
-      // If no stored prefixed, try computing one and match against it (toPrefixed may throw)
-      if (!pref && iri) {
-        try {
-          const computed = String(toPrefixed(iri) || "");
-          if (computed && rx.test(computed)) return true;
-        } catch (_) {
-          // ignore toPrefixed failures
-        }
+    const rx = new RegExp(escapeRegExp(String(query).trim()), 'i');
+    const matched = source.filter(e => {
+      if (rx.test(String(e?.label || ''))) return true;
+      if (rx.test(String(e?.prefixed || ''))) return true;
+      if (rx.test(String(e?.iri || ''))) return true;
+      if (!e?.prefixed && e?.iri) {
+        try { const c = String(toPrefixed(e.iri) || ''); if (c && rx.test(c)) return true; } catch {}
       }
       return false;
     });
-    return optionsLimit && optionsLimit > 0 ? matched.slice(0, optionsLimit) : matched;
+    return optionsLimit > 0 ? matched.slice(0, optionsLimit) : matched;
   }, [source, query, optionsLimit]);
 
-  // Handle keyboard navigation
+  const hasTiers = filtered.some(e => typeof e.domainRangeScore === 'number');
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "ArrowDown") {
+    if (e.key === 'ArrowDown') {
       e.preventDefault();
       if (!open) setOpen(true);
-      setHighlight((h) => Math.min(h + 1, filtered.length - 1));
-    } else if (e.key === "ArrowUp") {
+      setHighlight(h => Math.min(h + 1, filtered.length - 1));
+    } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setHighlight((h) => Math.max(h - 1, 0));
-    } else if (e.key === "Enter") {
+      setHighlight(h => Math.max(h - 1, 0));
+    } else if (e.key === 'Enter') {
       e.preventDefault();
       if (open && highlight >= 0 && highlight < filtered.length) {
         const ent = filtered[highlight];
-        if (typeof onChange === "function") onChange(ent || null);
+        onChange?.(ent || null);
         setOpen(false);
-        setQuery("");
-        try {
-          setInitialDisplay(ent && ent.prefixed ? String(ent.prefixed) : "");
-        } catch (_) {
-          setInitialDisplay("");
-        }
+        setQuery('');
+        try { setInitialDisplay(ent?.prefixed ? String(ent.prefixed) : ''); } catch { setInitialDisplay(''); }
       }
-    } else if (e.key === "Escape") {
+    } else if (e.key === 'Escape') {
       e.preventDefault();
       setOpen(false);
       setHighlight(-1);
-      setQuery("");
-      if (typeof onChange === "function") onChange(null);
-      setInitialDisplay("");
+      setQuery('');
+      onChange?.(null);
+      setInitialDisplay('');
     }
   };
 
-  // Click selection handler
   const handleSelect = (ent: FatMapEntity) => {
-    if (typeof onChange === "function") onChange(ent || null);
+    onChange?.(ent || null);
     setOpen(false);
-    setQuery("");
-    try {
-      setInitialDisplay(ent && ent.prefixed ? String(ent.prefixed) : "");
-    } catch (_) {
-      setInitialDisplay("");
-    }
+    setQuery('');
+    try { setInitialDisplay(ent?.prefixed ? String(ent.prefixed) : ''); } catch { setInitialDisplay(''); }
     inputRef.current?.focus();
   };
 
-  // Input displays the current user query while typing. When query is empty,
-  // show the selected entity's prefixed form inside the input (so the value
-  // appears in-field rather than in a separate overlay). If no selected
-  // entity with a prefixed value exists, leave the input empty so the
-  // placeholder is visible.
-  const inputValue = query !== ""
-    ? query
-    : initialDisplay;
+  const inputValue = query !== '' ? query : initialDisplay;
+
+  // Build list items with tier separators
+  const listItems: React.ReactNode[] = [];
+  let lastScore: number | undefined = undefined;
+  let flatIdx = 0;
+  for (const ent of filtered) {
+    const score = typeof ent.domainRangeScore === 'number' ? ent.domainRangeScore : undefined;
+    if (hasTiers && score !== undefined && score !== lastScore) {
+      listItems.push(
+        <li key={`sep-${score}`} className="px-3 py-1 text-xs font-semibold text-muted-foreground border-t first:border-t-0 bg-muted/40 select-none">
+          {TIER_LABELS[score]}
+        </li>
+      );
+      lastScore = score;
+    }
+    const idx = flatIdx++;
+    const isHighlighted = idx === highlight;
+    listItems.push(
+      <li
+        key={String(ent.iri || idx)}
+        role="option"
+        aria-selected={isHighlighted}
+        onMouseEnter={() => setHighlight(idx)}
+        onMouseDown={ev => { ev.preventDefault(); handleSelect(ent); }}
+        className={cn(
+          'cursor-pointer px-3 py-2',
+          isHighlighted ? 'bg-accent text-accent-foreground' : 'bg-transparent text-foreground',
+        )}
+      >
+        <div className="text-sm font-medium">{ent.prefixed || String(ent.iri)}</div>
+        <div className="text-xs text-muted-foreground">{ent.label || ''}</div>
+      </li>
+    );
+  }
+
+  void selectedEntity; // suppress unused variable warning
 
   return (
-    <div className={cn(className || "relative w-full")} style={{ minWidth: 0 }}>
+    <div className={cn(className || 'relative w-full')} style={{ minWidth: 0 }}>
       <div role="combobox" aria-expanded={open} aria-haspopup="listbox" className="flex items-center gap-2">
-          <input
+        <input
           ref={inputRef}
           type="text"
           className={cn(
-            "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+            'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
           )}
           placeholder={placeholder}
           value={inputValue}
-          onChange={(ev) => {
+          onChange={ev => {
             const v = ev.target.value;
             setQuery(v);
-            // open only when user has typed something — entering text will open suggestions
-            if (String(v).trim() !== "") {
-              setOpen(true);
-            } else {
-              // user cleared the field explicitly — keep input empty so placeholder shows
-              setInitialDisplay("");
-            }
+            if (String(v).trim() !== '') { setOpen(true); } else { setInitialDisplay(''); }
             setHighlight(0);
           }}
           onFocus={() => {
             if (!isFocusedRef.current) {
-              // First focus after blur: select all text so typing replaces it immediately
               isFocusedRef.current = true;
               setTimeout(() => inputRef.current?.select(), 0);
             }
@@ -220,33 +228,10 @@ export default function EntityAutoComplete({
           ref={listRef}
           className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded border bg-popover shadow"
         >
-          {filtered.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-muted-foreground">{emptyMessage}</li>
-          ) : (
-            filtered.map((ent, idx) => {
-              const isHighlighted = idx === highlight;
-              return (
-                <li
-                  key={String(ent.iri || idx)}
-                  role="option"
-                  aria-selected={isHighlighted}
-                  onMouseEnter={() => setHighlight(idx)}
-                  onMouseDown={(ev) => {
-                    // prevent blur before click
-                    ev.preventDefault();
-                    handleSelect(ent);
-                  }}
-                  className={cn(
-                    "cursor-pointer px-3 py-2",
-                    isHighlighted ? "bg-accent text-accent-foreground" : "bg-transparent text-foreground"
-                  )}
-                >
-                  <div className="text-sm font-medium">{ent.prefixed || String(ent.iri)}</div>
-                  <div className="text-xs text-muted-foreground">{ent.label || ""}</div>
-                </li>
-              );
-            })
-          )}
+          {filtered.length === 0
+            ? <li className="px-3 py-2 text-sm text-muted-foreground">{emptyMessage}</li>
+            : listItems
+          }
         </ul>
       )}
     </div>
