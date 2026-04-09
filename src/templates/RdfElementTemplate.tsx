@@ -3,6 +3,7 @@ import * as Reactodia from '@reactodia/workspace';
 import { useOntologyStore } from '@/stores/ontologyStore';
 import { PrefixContext } from '@/providers/PrefixContext';
 import { prefixShorten } from '@/providers/prefixShorten';
+import { INFERRED_TYPES_PROP, INFERRED_DATA_PROPS_PROP, SYNTHETIC_VG_PROPS } from '../providers/N3DataProvider';
 
 const RDF_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
 
@@ -54,7 +55,7 @@ function getProperties(
 ): PropertyEntry[] {
   const result: PropertyEntry[] = [];
   for (const [propIri, values] of Object.entries(data.properties)) {
-    if (propIri === RDF_LABEL) continue;
+    if (propIri === RDF_LABEL || SYNTHETIC_VG_PROPS.has(propIri)) continue;
     if (!values || values.length === 0) continue;
     const literals = values.filter(v => v.termType === 'Literal');
     if (literals.length === 0) continue;
@@ -103,6 +104,12 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
   const iconLetter = label.replace(/^[^a-zA-Z0-9]*/, '').charAt(0).toUpperCase() || '✳';
 
   const properties = getProperties(data, prefixes);
+  const inferredTypesSet = new Set<string>(
+    (data.properties[INFERRED_TYPES_PROP] ?? []).map(v => v.value)
+  );
+  const inferredDataPropsSet = new Set<string>(
+    (data.properties[INFERRED_DATA_PROPS_PROP] ?? []).map(v => v.value)
+  );
 
   const onDoubleClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -156,7 +163,16 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
             }}
             title={data.types.join(', ')}
           >
-            {typeLabels.join(', ')}
+            {typeLabels.map((label, i) => (
+              <span
+                key={data.types[i]}
+                style={inferredTypesSet.has(data.types[i])
+                  ? { color: 'var(--vg-inferred-color)', fontStyle: 'italic' }
+                  : undefined}
+              >
+                {i > 0 ? ', ' : ''}{label}
+              </span>
+            ))}
           </div>
         )}
 
@@ -234,13 +250,21 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
                   const isNew = beforeData && !beforeValues;
                   const isChanged = beforeData && beforeValues &&
                     JSON.stringify(values) !== JSON.stringify(beforeStrings);
+                  const isInferredProp = inferredDataPropsSet.has(keyIri);
                   const changeColor = isNew ? 'var(--reactodia-color-success)'
                     : isChanged ? 'var(--reactodia-color-primary)'
                     : undefined;
                   return (
                   <div key={keyIri}>
                     <div
-                      style={{ fontSize: 10, color: 'var(--reactodia-paper-fg-muted, #9ca3af)', fontWeight: 600 }}
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        color: isInferredProp
+                          ? 'var(--vg-inferred-color)'
+                          : 'var(--reactodia-paper-fg-muted, #9ca3af)',
+                        fontStyle: isInferredProp ? 'italic' : undefined,
+                      }}
                       title={keyIri}
                     >
                       {keyShort}
@@ -264,10 +288,13 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
                         key={i}
                         style={{
                           fontSize: 11,
-                          color: 'var(--reactodia-paper-fg)',
+                          color: isInferredProp
+                            ? 'var(--vg-inferred-color)'
+                            : 'var(--reactodia-paper-fg)',
+                          fontStyle: isInferredProp ? 'italic' : undefined,
                           lineHeight: 1.5,
                           paddingLeft: 6,
-                          borderLeft: `2px solid ${changeColor ?? nsColor}`,
+                          borderLeft: `2px solid ${changeColor ?? (isInferredProp ? 'var(--vg-inferred-color)' : nsColor)}`,
                           marginLeft: 2,
                           marginTop: 1,
                           userSelect: 'text',
