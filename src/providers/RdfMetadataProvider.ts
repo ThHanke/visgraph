@@ -14,15 +14,12 @@ import {
   type ElementModel,
   type LinkModel,
 } from '@reactodia/workspace';
+import type { N3DataProvider } from './N3DataProvider';
+import { fetchLinkTypes, scoreLinkTypes } from '../utils/ontologyQueries';
 
 interface RdfManagerLike {
   applyBatch(changes: { adds?: any[]; removes?: any[] }, graph?: string): Promise<void>;
   getNamespaces(): Record<string, string>;
-}
-
-export interface OntologyAccessor {
-  getCompatibleProperties(srcType: string, tgtType: string): ReadonlyArray<{ iri: string }>;
-  getAllProperties(): ReadonlyArray<{ iri: string }>;
 }
 
 export class RdfMetadataProvider implements MetadataProvider {
@@ -31,7 +28,7 @@ export class RdfMetadataProvider implements MetadataProvider {
 
   constructor(
     private readonly rdfManager: RdfManagerLike,
-    private readonly ontology?: () => OntologyAccessor,
+    private readonly dataProvider?: N3DataProvider,
   ) {}
 
   getLiteralLanguages(): ReadonlyArray<string> {
@@ -40,11 +37,9 @@ export class RdfMetadataProvider implements MetadataProvider {
 
   async createEntity(
     type: ElementTypeIri,
-    options: MetadataCreateOptions
+    options: MetadataCreateOptions,
   ): Promise<MetadataCreatedEntity> {
     const iri = `urn:vg:entity:${Date.now()}` as ElementIri;
-    // Do NOT write to the RDF store here — flushAuthoringState handles the
-    // write on Save, after the user has finished editing the new entity.
     const data: ElementModel = { id: iri, types: [type], properties: {} };
     return { data };
   }
@@ -53,12 +48,8 @@ export class RdfMetadataProvider implements MetadataProvider {
     source: ElementModel,
     target: ElementModel,
     linkType: LinkTypeIri,
-    options: MetadataCreateOptions
+    options: MetadataCreateOptions,
   ): Promise<MetadataCreatedRelation> {
-    // Do NOT write to the RDF store here. Reactodia stages the relation in
-    // AuthoringState first; the user may change the type before saving.
-    // flushAuthoringState (triggered by the Save button) performs the single
-    // authoritative write with the final linkType.
     const data: LinkModel = {
       linkTypeId: linkType,
       sourceId: source.id,
@@ -72,33 +63,28 @@ export class RdfMetadataProvider implements MetadataProvider {
     source: ElementModel,
     target: ElementModel | undefined,
     linkType: LinkTypeIri | undefined,
-    options: { readonly signal?: AbortSignal }
+    options: { readonly signal?: AbortSignal },
   ): Promise<MetadataCanConnect[]> {
-    const accessor = this.ontology?.();
-    const allProps = accessor?.getAllProperties() ?? [];
-
-    // No ontology loaded → allow everything
-    if (allProps.length === 0) {
+    if (!this.dataProvider) {
       return [{ targetTypes: new Set<ElementTypeIri>(), inLinks: [], outLinks: [] }];
     }
 
-    const allOutLinks = allProps.map(p => p.iri as LinkTypeIri);
+    const allEntities = await fetchLinkTypes(this.dataProvider);
+    if (allEntities.length === 0) {
+      return [{ targetTypes: new Set<ElementTypeIri>(), inLinks: [], outLinks: [] }];
+    }
 
-    // Mid-drag (no target yet) → allow drag, offer all properties
+    const allOutLinks = allEntities.map(e => e.iri as LinkTypeIri);
+
     if (!target) {
       return [{ targetTypes: new Set<ElementTypeIri>(), inLinks: [], outLinks: allOutLinks }];
     }
 
-    const srcType = source.types[0] ?? '';
-    const tgtType = target.types[0] ?? '';
+    const srcType = source.types[0];
+    const tgtType = target.types[0];
 
-    const compatible = srcType && tgtType
-      ? accessor!.getCompatibleProperties(srcType, tgtType)
-      : [];
-
-    const outLinks = compatible.length > 0
-      ? compatible.map(p => p.iri as LinkTypeIri)
-      : allOutLinks; // no domain/range match → fall back to all
+    const scored = scoreLinkTypes(allEntities, srcType, tgtType, this.dataProvider);
+    const outLinks = scored.map(e => e.iri as LinkTypeIri);
 
     return [{
       targetTypes: new Set(target.types as ElementTypeIri[]),
@@ -109,7 +95,7 @@ export class RdfMetadataProvider implements MetadataProvider {
 
   async canModifyEntity(
     entity: ElementModel,
-    options: { readonly signal?: AbortSignal }
+    options: { readonly signal?: AbortSignal },
   ): Promise<MetadataCanModifyEntity> {
     return { canEdit: true, canDelete: true };
   }
@@ -118,18 +104,15 @@ export class RdfMetadataProvider implements MetadataProvider {
     link: LinkModel,
     source: ElementModel,
     target: ElementModel,
-    options: { readonly signal?: AbortSignal }
+    options: { readonly signal?: AbortSignal },
   ): Promise<MetadataCanModifyRelation> {
     return { canChangeType: true, canEdit: true, canDelete: true };
   }
 
   async getEntityShape(
     types: ReadonlyArray<ElementTypeIri>,
-    options: { readonly signal?: AbortSignal }
+    options: { readonly signal?: AbortSignal },
   ): Promise<MetadataEntityShape> {
-    // Allow any existing literal property to appear in the form by providing
-    // an extraProperty shape. FormInputGroup will render a row for every
-    // property already present in ElementModel.properties.
     return {
       extraProperty: { valueShape: { termType: 'Literal' } },
       properties: new Map(),
@@ -140,14 +123,14 @@ export class RdfMetadataProvider implements MetadataProvider {
     linkType: LinkTypeIri,
     source: ElementModel,
     target: ElementModel,
-    options: { readonly signal?: AbortSignal }
+    options: { readonly signal?: AbortSignal },
   ): Promise<MetadataRelationShape> {
     return { properties: new Map() };
   }
 
   async filterConstructibleTypes(
     types: ReadonlySet<ElementTypeIri>,
-    options: { readonly signal?: AbortSignal }
+    options: { readonly signal?: AbortSignal },
   ): Promise<ReadonlySet<ElementTypeIri>> {
     return types;
   }
