@@ -9,7 +9,7 @@ import { DataFactory } from 'n3';
 const { namedNode } = DataFactory;
 import type { ReasoningResult } from '@/utils/rdfManager';
 import { N3DataProvider, type ViewMode } from '@/providers/N3DataProvider';
-import { RdfMetadataProvider, type OntologyAccessor } from '@/providers/RdfMetadataProvider';
+import { RdfMetadataProvider } from '@/providers/RdfMetadataProvider';
 import { RdfValidationProvider } from '@/providers/RdfValidationProvider';
 import { workerQuadsToRdf, type WorkerQuad as ConverterQuad } from '@/providers/quadConverter';
 import type { WorkerQuad } from '@/utils/rdfSerialization';
@@ -42,16 +42,8 @@ const Layouts = Reactodia.defineLayoutWorker(() =>
 );
 
 // Singletons — one per app lifetime
-const dataProvider = new N3DataProvider();
-const metadataProvider = new RdfMetadataProvider(rdfManager, (): OntologyAccessor => {
-  const s = (useOntologyStore as any).getState();
-  return {
-    getCompatibleProperties: (src, tgt) =>
-      typeof s.getCompatibleProperties === 'function' ? s.getCompatibleProperties(src, tgt) : [],
-    getAllProperties: () =>
-      Array.isArray(s.availableProperties) ? s.availableProperties : [],
-  };
-});
+export const dataProvider = new N3DataProvider();
+const metadataProvider = new RdfMetadataProvider(rdfManager, dataProvider);
 const validationProvider = new RdfValidationProvider();
 
 // Track all subject IRIs ever seen (for initial load and incremental adds)
@@ -238,11 +230,10 @@ export default function ReactodiaCanvas() {
       console.debug("[canvas] subjects received", subjects, meta);
       if (metadataProvider.suppressSync) return;
 
-      // Only process subjects from urn:vg:data or urn:vg:inferred (or unspecified).
       const incomingGraphName = meta && typeof meta.graphName === 'string' ? meta.graphName : null;
-      if (incomingGraphName && incomingGraphName !== 'urn:vg:data' && incomingGraphName !== 'urn:vg:inferred') {
-        return;
-      }
+      const isDataGraph = !incomingGraphName
+        || incomingGraphName === 'urn:vg:data'
+        || incomingGraphName === 'urn:vg:inferred';
 
       const isFullRefresh = meta?.reason === 'emitAllSubjects';
       const model = modelRef.current;
@@ -259,11 +250,13 @@ export default function ReactodiaCanvas() {
       const added = subjects.filter(s => !existingIris.has(s));
       const changed = subjects.filter(s => existingIris.has(s));
 
-      subjects.forEach(s => knownSubjects.add(s));
-
       if (quads && quads.length > 0) {
         const rdfQuads = workerQuadsToRdf(quads as unknown as ConverterQuad[]);
-        if (changed.length > 0) {
+        if (!isDataGraph) {
+          // Ontology/schema graph: load into DataProvider for schema awareness only.
+          // Do NOT manipulate canvas elements for these subjects.
+          dataProvider.addGraph(rdfQuads);
+        } else if (changed.length > 0) {
           // For subjects already on the canvas, replace their quads so stale
           // triples don't persist alongside the updated ones.
           dataProvider.replaceSubjectQuads(changed, rdfQuads);
@@ -276,6 +269,11 @@ export default function ReactodiaCanvas() {
           dataProvider.addGraph(rdfQuads);
         }
       }
+
+      // Only track data-graph subjects and update canvas elements for data/inferred graphs
+      if (!isDataGraph) return;
+
+      subjects.forEach(s => knownSubjects.add(s));
 
       if (!model || !ctx) return;
 
