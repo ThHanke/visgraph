@@ -78,6 +78,8 @@
   /* Inline entity / group */
   --reactodia-inline-entity-color: var(--primary);
   --reactodia-standard-group-color: var(--muted-foreground);
+  /* Inferred-knowledge accent — used for dashed links, type badges, property values from urn:vg:inferred */
+  --vg-inferred-color: oklch(72% 0.16 75);
   --reactodia-element-background-color: var(--card);
   --reactodia-link-stroke-color: var(--edge-default);
   --reactodia-selection-link-color: var(--primary);
@@ -177,6 +179,7 @@
   /* Inline entity / group */
   --reactodia-inline-entity-color: var(--primary);
   --reactodia-standard-group-color: var(--muted-foreground);
+  --vg-inferred-color: oklch(80% 0.18 75);
   --reactodia-element-background-color: var(--card);
   --reactodia-link-stroke-color: var(--edge-default);
   --reactodia-selection-link-color: var(--primary);
