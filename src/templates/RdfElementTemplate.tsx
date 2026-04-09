@@ -304,7 +304,10 @@ export const RdfElementTemplate: Reactodia.ElementTemplate = {
 
 export function rdfElementTemplateResolver(
   _types: readonly string[],
-  _element: Reactodia.Element
+  element: Reactodia.Element
 ): Reactodia.ElementTemplate {
+  if (element instanceof Reactodia.EntityGroup) {
+    return Reactodia.StandardTemplate;
+  }
   return RdfElementTemplate;
 }

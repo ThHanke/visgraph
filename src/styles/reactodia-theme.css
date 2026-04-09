@@ -78,6 +78,7 @@
   /* Inline entity / group */
   --reactodia-inline-entity-color: var(--primary);
   --reactodia-standard-group-color: var(--muted-foreground);
+  --reactodia-element-background-color: var(--card);
   --reactodia-link-stroke-color: var(--edge-default);
   --reactodia-selection-link-color: var(--primary);
   /* Tree */
@@ -176,6 +177,7 @@
   /* Inline entity / group */
   --reactodia-inline-entity-color: var(--primary);
   --reactodia-standard-group-color: var(--muted-foreground);
+  --reactodia-element-background-color: var(--card);
   --reactodia-link-stroke-color: var(--edge-default);
   --reactodia-selection-link-color: var(--primary);
   /* Tree */
