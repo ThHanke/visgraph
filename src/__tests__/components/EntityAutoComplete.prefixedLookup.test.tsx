@@ -1,6 +1,7 @@
 import React from "react";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import type { N3DataProvider } from "../../providers/N3DataProvider";
 import EntityAutoComplete from "../../components/ui/EntityAutoComplete";
 
 /**
@@ -82,9 +83,6 @@ describe("EntityAutoComplete - prefixed & IRI lookup", () => {
     });
   });
 });
-
-import { vi } from 'vitest';
-import type { N3DataProvider } from '../../providers/N3DataProvider';
 
 function mockDataProvider(linkTypes: Array<{ id: string; label?: Record<string, string> }> = []): N3DataProvider {
   return {

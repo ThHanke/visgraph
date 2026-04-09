@@ -6,6 +6,7 @@ import { InputList, InputText } from '@reactodia/workspace/forms';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { dataProvider } from './ReactodiaCanvas';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../ui/select';
@@ -210,6 +211,7 @@ const EntityEditor = ({ options }: EntityEditorProps) => {
               placeholder="Search for class..."
               emptyMessage="No classes found"
               className="flex-1"
+              dataProvider={dataProvider}
             />
             <Button type="button" variant="ghost" size="sm" className="h-8 px-2" onClick={() => removeType(i)}>
               <X className="h-4 w-4" />
@@ -239,6 +241,7 @@ const EntityEditor = ({ options }: EntityEditorProps) => {
                 onChange={(ent) => updateRow(i, 'key', ent ? String(ent.iri || '') : '')}
                 placeholder="Select property..."
                 className={!row.key.trim() ? 'border-destructive' : ''}
+                dataProvider={dataProvider}
               />
             </div>
             <div className="col-span-4">

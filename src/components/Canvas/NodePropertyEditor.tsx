@@ -18,6 +18,7 @@ const { namedNode, blankNode, literal } = DataFactory;
 import { useCanvasState } from "../../hooks/useCanvasState";
 import { RDF_TYPE, OWL_NAMED_INDIVIDUAL } from "../../constants/vocabularies";
 import { rdfManager as directRdfManager } from "../../utils/rdfManager";
+import { dataProvider } from "./ReactodiaCanvas";
 
 // Module-scoped counter for generated blank-node identifiers used when creating new nodes
 let __vg_blank_counter = 1;
@@ -725,6 +726,7 @@ export const NodePropertyEditor = ({
                 placeholder="Type to search for classes..."
                 emptyMessage="No OWL classes found. Load an ontology first."
                 className="w-full"
+                dataProvider={dataProvider}
               />
               {nodeType && !availableClasses.find(e => (String(e.iri || '') === String(nodeType))) && (
                 <Popover>
@@ -776,6 +778,7 @@ export const NodePropertyEditor = ({
                     placeholder="Type to search for classes..."
                     emptyMessage="No OWL classes found. Load an ontology first."
                     className="flex-1"
+                    dataProvider={dataProvider}
                   />
                   <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveType(index, e)} className="h-9 px-2">
                     <X className="h-4 w-4" />
@@ -815,6 +818,7 @@ export const NodePropertyEditor = ({
                       onChange={(ent) => handleUpdateProperty(index, "key", ent ? String(ent.iri || '') : "")}
                       placeholder="Select property..."
                       className={!property.key.trim() ? "border-destructive" : ""}
+                      dataProvider={dataProvider}
                     />
                     {!property.key.trim() && (
                       <p className="text-xs text-destructive mt-1">Property is required</p>
@@ -1141,6 +1145,7 @@ export const NodePropertyEditorContent = ({
                 placeholder="Type to search for classes..."
                 emptyMessage="No OWL classes found. Load an ontology first."
                 className="flex-1"
+                dataProvider={dataProvider}
               />
               <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveType(index, e)} className="h-9 px-2">
                 <X className="h-4 w-4" />
@@ -1173,6 +1178,7 @@ export const NodePropertyEditorContent = ({
                   onChange={(ent) => handleUpdateProperty(index, "key", ent ? String(ent.iri || "") : "")}
                   placeholder="Select property..."
                   className={!property.key.trim() ? "border-destructive" : ""}
+                  dataProvider={dataProvider}
                 />
                 {!property.key.trim() && (
                   <p className="text-xs text-destructive mt-1">Property is required</p>
