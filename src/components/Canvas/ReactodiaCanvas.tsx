@@ -566,6 +566,19 @@ export default function ReactodiaCanvas() {
     performLayoutRef.current?.();
   }, []);
 
+  const handleCluster = React.useCallback(() => {
+    const model = modelRef.current;
+    const cfg = (useAppConfigStore as any).getState().config;
+    if (!model || cfg.clusteringAlgorithm === 'none') return;
+    applyCanvasClustering(model, cfg.clusteringAlgorithm, cfg.collapseThreshold);
+  }, []);
+
+  const handleExpandAll = React.useCallback(() => {
+    const model = modelRef.current;
+    if (!model) return;
+    clearCanvasClustering(model);
+  }, []);
+
   const handleClearData = React.useCallback(() => {
     knownSubjects.clear();
     const model = modelRef.current;
@@ -865,6 +878,8 @@ export default function ReactodiaCanvas() {
                       onRunReason={handleRunReasoning}
                       currentReasoning={currentReasoning}
                       isReasoning={isReasoning}
+                      onCluster={handleCluster}
+                      onExpandAll={handleExpandAll}
                     />
                   </div>
                 </div>
