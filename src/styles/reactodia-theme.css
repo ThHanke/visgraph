@@ -117,7 +117,8 @@
   --reactodia-color-gray-800:  oklch(35%   0.041 257.0);
   --reactodia-color-gray-900:  oklch(28%   0.043 257.0);
   --reactodia-color-gray-1000: oklch(25%   0.045 256.8);
-  /* Emphasis scale */
+  /* Emphasis scale — intentionally mirrors gray scale; Reactodia uses both semantically
+     (gray = neutral surfaces, emphasis = interactive states) but we unify them to one ramp */
   --reactodia-color-emphasis-0:    oklch(98.4% 0.002 247.8);
   --reactodia-color-emphasis-100:  oklch(95%   0.004 250.0);
   --reactodia-color-emphasis-200:  oklch(88%   0.008 252.0);
@@ -214,7 +215,8 @@
   --reactodia-color-gray-800:  oklch(82.3% 0.016 256.7);
   --reactodia-color-gray-900:  oklch(91.0% 0.008 248.0);
   --reactodia-color-gray-1000: oklch(96.1% 0.004 247.9);
-  /* Emphasis scale */
+  /* Emphasis scale — intentionally mirrors gray scale; Reactodia uses both semantically
+     (gray = neutral surfaces, emphasis = interactive states) but we unify them to one ramp */
   --reactodia-color-emphasis-0:    oklch(18.7% 0.017 256.8);
   --reactodia-color-emphasis-100:  oklch(23.0% 0.020 256.8);
   --reactodia-color-emphasis-200:  oklch(26.1% 0.022 256.8);
@@ -332,6 +334,10 @@
  * child z-index / dialog positioning.
  */
 .reactodia-dialog {
+  /* Primary purpose: override surface to solid (not glass) so dialogs are opaque.
+     The remaining variable re-declarations below are defensive — .reactodia-dialog
+     can be portalled outside the .reactodia-workspace scope in some Reactodia versions,
+     so we ensure all needed tokens resolve correctly regardless of mount point. */
   --reactodia-background-color-surface: var(--card);
   --reactodia-border-color-base: var(--border);
   --reactodia-font-color-base: var(--foreground);
