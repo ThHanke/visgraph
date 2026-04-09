@@ -40,11 +40,9 @@ import {
   SelectValue,
 } from "../ui/select";
 import EntityAutoComplete from "../ui/EntityAutoComplete";
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import { useOntologyStore } from "../../stores/ontologyStore";
 import { toPrefixed, expandPrefixed } from "../../utils/termUtils";
 import { getNamespaceRegistry, getRdfManager } from "../../utils/storeHelpers";
-import { X, Plus, Info } from "lucide-react";
+import { X, Plus } from "lucide-react";
 // React Flow selection hook — allow editor to derive node when no explicit prop provided
 
 // Simple termForIri helper used for constructing N3 terms (handles blank nodes like "_:b0")
@@ -208,12 +206,6 @@ export const NodePropertyEditor = ({
   const initialPropertiesRef = useRef<LiteralProperty[]>([]);
   const initialRdfTypesRef = useRef<string[]>([]);
   const { actions: canvasActions } = useCanvasState();
-
-  // Minimal selector used only for UI affordances (popover) to detect whether a chosen
-  // rdf:type is present in the loaded fat-map. This is lightweight and avoids any
-  // snapshotting logic while keeping the dialog simple.
-  const availableClasses = useOntologyStore((s) => s.availableClasses || []);
-
 
   // Initialize local form state from the passed nodeData when dialog opens.
   useEffect(() => {
@@ -728,20 +720,6 @@ export const NodePropertyEditor = ({
                 className="w-full"
                 dataProvider={dataProvider}
               />
-              {nodeType && !availableClasses.find(e => (String(e.iri || '') === String(nodeType))) && (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground">
-                      <Info className="h-4 w-4" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent side="top">
-                    <div className="text-xs">
-                      The selected rdf:type is not present in the loaded fat-map. It will be saved as the displayType but not resolved to a known class.
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              )}
             </div>
             <p className="text-xs text-muted-foreground">
               owl:NamedIndividual will be preserved by the mapping pipeline if applicable.

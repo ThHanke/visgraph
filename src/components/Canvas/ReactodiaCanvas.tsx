@@ -107,12 +107,41 @@ async function flushAuthoringState(
       const el = model.elements.find(e => e instanceof Reactodia.EntityElement && e.data.id === event.data.id);
       if (el) elementsToRemove.push(el);
     } else if (event.type === 'entityChange') {
-      const subjNode = namedNode(event.data.id);
-      for (const [propIri, oldTerms] of Object.entries(event.before.properties)) {
-        for (const t of oldTerms) removes.push({ subject: subjNode, predicate: namedNode(propIri), object: t });
-      }
-      for (const [propIri, newTerms] of Object.entries(event.data.properties)) {
-        for (const t of newTerms) adds.push({ subject: subjNode, predicate: namedNode(propIri), object: t });
+      const beforeSubj = namedNode(event.before.id);
+      const afterSubj  = namedNode(event.data.id);
+      const iriChanged = event.before.id !== event.data.id;
+      const rdfType = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
+
+      if (iriChanged) {
+        // IRI rename: remove ALL triples from old subject, add all to new subject
+        for (const t of event.before.types) {
+          removes.push({ subject: beforeSubj, predicate: namedNode(rdfType), object: namedNode(t) });
+        }
+        for (const [propIri, oldTerms] of Object.entries(event.before.properties)) {
+          for (const t of oldTerms) removes.push({ subject: beforeSubj, predicate: namedNode(propIri), object: t });
+        }
+        for (const t of event.data.types) {
+          adds.push({ subject: afterSubj, predicate: namedNode(rdfType), object: namedNode(t) });
+        }
+        for (const [propIri, newTerms] of Object.entries(event.data.properties)) {
+          for (const t of newTerms) adds.push({ subject: afterSubj, predicate: namedNode(propIri), object: t });
+        }
+      } else {
+        // Same IRI: diff types and properties
+        const beforeTypes = new Set(event.before.types);
+        const afterTypes  = new Set(event.data.types);
+        for (const t of beforeTypes) {
+          if (!afterTypes.has(t)) removes.push({ subject: afterSubj, predicate: namedNode(rdfType), object: namedNode(t) });
+        }
+        for (const t of afterTypes) {
+          if (!beforeTypes.has(t)) adds.push({ subject: afterSubj, predicate: namedNode(rdfType), object: namedNode(t) });
+        }
+        for (const [propIri, oldTerms] of Object.entries(event.before.properties)) {
+          for (const t of oldTerms) removes.push({ subject: afterSubj, predicate: namedNode(propIri), object: t });
+        }
+        for (const [propIri, newTerms] of Object.entries(event.data.properties)) {
+          for (const t of newTerms) adds.push({ subject: afterSubj, predicate: namedNode(propIri), object: t });
+        }
       }
     }
   }
@@ -142,7 +171,7 @@ const savedLayoutsByMode: Partial<Record<ViewMode, Reactodia.SerializedDiagram>>
 export default function ReactodiaCanvas() {
   const { defaultLayout } = Reactodia.useWorker(Layouts);
   const { state: canvasState, actions } = useCanvasState();
-  const [sidebarExpanded, setSidebarExpanded] = React.useState(true);
+  const [sidebarExpanded, setSidebarExpanded] = React.useState(false);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [isReasoning, setIsReasoning] = React.useState(false);
   const [currentReasoning, setCurrentReasoning] = React.useState<ReasoningResult | null>(null);
@@ -406,7 +435,19 @@ export default function ReactodiaCanvas() {
             await ctx.performLayout({ layoutFunction: layoutFn, animate: cfg.layoutAnimations, signal: controller.signal });
           }
         }
-        ctx.view.findAnyCanvas()?.zoomToFit();
+        const canvas = ctx.view.findAnyCanvas();
+        if (canvas) {
+          const FIT_PADDING = 100;
+          const bbox = Reactodia.getContentFittingBox(
+            ctx.model.elements, ctx.model.links, canvas.renderingState
+          );
+          void canvas.zoomToFitRect({
+            x: bbox.x - FIT_PADDING,
+            y: bbox.y - FIT_PADDING,
+            width: bbox.width + FIT_PADDING * 2,
+            height: bbox.height + FIT_PADDING * 2,
+          });
+        }
       }
     });
   }, [canvasState.viewMode]);
@@ -644,6 +685,7 @@ export default function ReactodiaCanvas() {
               canvas={{
                 elementTemplateResolver: rdfElementTemplateResolver,
                 linkTemplateResolver: rdfLinkTemplateResolver,
+                zoomOptions: { fitPadding: 50, min: 0.05 },
               }}
               dropOnCanvas={{ getDroppedItems: handleDropOnCanvas }}
               menu={null}

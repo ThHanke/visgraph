@@ -130,10 +130,10 @@
   --reactodia-color-emphasis-800:  oklch(35%   0.041 257.0);
   --reactodia-color-emphasis-900:  oklch(28%   0.043 257.0);
   --reactodia-color-emphasis-1000: oklch(25%   0.045 256.8);
-  /* Selection */
+  /* Selection — dashed border only; no extra box-shadow ring to avoid visual overlap on small nodes */
   --reactodia-selection-single-box-color: var(--primary);
-  --reactodia-selection-single-box-shadow: 0 0 0 2px var(--ring);
-  --reactodia-selection-multiple-box-shadow: 0 0 0 1px var(--ring);
+  --reactodia-selection-single-box-shadow: none;
+  --reactodia-selection-multiple-box-shadow: none;
 }
 
 /* Override Reactodia color tokens — dark workspace */
@@ -230,8 +230,8 @@
   --reactodia-color-emphasis-1000: oklch(96.1% 0.004 247.9);
   /* Selection */
   --reactodia-selection-single-box-color: var(--primary);
-  --reactodia-selection-single-box-shadow: 0 0 0 2px var(--ring);
-  --reactodia-selection-multiple-box-shadow: 0 0 0 1px var(--ring);
+  --reactodia-selection-single-box-shadow: none;
+  --reactodia-selection-multiple-box-shadow: none;
 }
 
 /* glass-btn inside our own groups (TopBar A-Box/T-Box, Reasoning) */
@@ -297,27 +297,64 @@
   outline-offset: 2px !important;
 }
 
-/* Node halo ghost buttons — theme-aware light/dark.
-   Use background-color (NOT background shorthand) to preserve background-image SVG icons. */
+/* ── Halo buttons (node + link) ──────────────────────────────────────────────
+   Both use SVG background-image icons. Transparent background lets the canvas
+   show through; invert(1) in dark mode flips black icons to white.
+   Use background-color (NOT background shorthand) to preserve the SVG icons. */
+
+/* Node halo */
 .reactodia-selection-action {
   background-color: transparent !important;
 }
-
 .reactodia-selection-action:hover {
   background-color: rgba(124, 92, 228, 0.12) !important;
 }
-
-.dark .reactodia-selection-action:hover {
-  background-color: rgba(140, 110, 240, 0.18) !important;
-}
-
-/* Dark mode: invert SVG sprite icons so they read as light on dark canvas */
 .dark .reactodia-selection-action {
   filter: invert(1) !important;
 }
-
 .dark .reactodia-selection-action:hover {
+  background-color: rgba(140, 110, 240, 0.18) !important;
   filter: invert(1) hue-rotate(240deg) !important;
+}
+
+/* Link halo buttons — badge style so they're readable ON the link line.
+   Node halos float in canvas space (transparent works). Link buttons sit on a 2px
+   line and need a background to be visible as distinct interactive targets.
+   White-ish background keeps the black SVG icons readable in both light and dark mode. */
+.reactodia-link-action__button {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
+}
+.dark .reactodia-link-action__button {
+  background-color: rgba(255, 255, 255, 0.82) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45) !important;
+}
+/* Hover: primary-tinted badge; invert icon to white */
+.reactodia-link-action__button:hover {
+  background-color: oklch(67.5% 0.123 290.4 / 0.88) !important;
+  filter: invert(1) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3) !important;
+}
+.dark .reactodia-link-action__button:hover {
+  background-color: oklch(62% 0.145 289.1 / 0.88) !important;
+  filter: invert(1) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* ── Authoring state edit/delete buttons ─────────────────────────────────────
+   These are text+icon buttons (::before mask icon + text child) rendered near
+   a node when visual authoring mode is active. Use foreground color so the
+   mask icons are visible, full opacity always (the default 0.5 is too faint). */
+.reactodia-authoring-state__action {
+  color: var(--foreground) !important;
+  font-size: 11px !important;
+  opacity: 0.75 !important;
+}
+.reactodia-authoring-state__action:hover {
+  opacity: 1 !important;
+}
+.reactodia-authoring-state__action[disabled] {
+  opacity: 0.25 !important;
 }
 
 /* ============================================================
@@ -345,6 +382,18 @@
   --reactodia-input-border-color: var(--border);
   --reactodia-input-color: var(--foreground);
   --reactodia-input-color-placeholder: var(--muted-foreground);
+}
+
+/*
+ * Dialog content fill + scroll.
+ * .reactodia-dialog is display:flex flex-direction:column with a JS-set fixed height.
+ * Any direct child that isn't the header must fill the remaining flex space and scroll.
+ * This applies to both our EntityEditor form and Reactodia's DefaultPropertyEditor.
+ */
+.reactodia-dialog > :not(.reactodia-dialog__header) {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 /* ============================================================

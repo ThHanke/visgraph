@@ -18,8 +18,8 @@ import {
   isWorkerQuad,
   serializeTerm,
 } from "./rdfSerialization";
-import { useOntologyStore } from "../stores/ontologyStore";
 import { useAppConfigStore } from "../stores/appConfigStore";
+import { syncNamespaceRegistryFromRdfManager } from "../stores/ontologyStore";
 import { ensureDefaultNamespaceMap } from "../constants/namespaces";
 
 type ChangeSubscriber = (count: number, meta?: unknown) => void;
@@ -436,40 +436,12 @@ const flattenSubjectQuadMap = (map: Record<string, WorkerQuad[]> | undefined): W
   return all;
 };
 
-const workerQuadToFatEntry = (quad: WorkerQuad) => {
-  return {
-    subject: {
-      termType: quad.subject.termType,
-      value: quad.subject.value,
-    },
-    predicate: {
-      termType: quad.predicate.termType,
-      value: quad.predicate.value,
-    },
-    object: (() => {
-      if (quad.object.termType === "Literal") {
-        return {
-          termType: "Literal",
-          value: quad.object.value,
-          datatype: quad.object.datatype,
-          language: quad.object.language,
-        };
-      }
-      return {
-        termType: quad.object.termType,
-        value: quad.object.value,
-      };
-    })(),
-    graph: quad.graph,
-  };
-};
 
 export class RDFManagerImpl {
   private worker: RdfManagerWorkerClient;
   private changeSubscribers = new Set<ChangeSubscriber>();
   private subjectsSubscribers = new Set<SubjectsSubscriber>();
   private changeCount = 0;
-  private reconcileInProgress: Promise<void> | null = null;
   private namespaces: Record<string, string> = ensureDefaultNamespaceMap({});
   private blacklistPrefixes: Set<string> = new Set(DEFAULT_BLACKLIST_PREFIXES);
   private blacklistUris: string[] = [...DEFAULT_BLACKLIST_URIS];
@@ -604,64 +576,8 @@ export class RDFManagerImpl {
       })
       .filter(Boolean) as WorkerReconcileSubjectSnapshotPayload[];
 
-    let reconcilePromise: Promise<void> | undefined;
-    if (snapshot.length > 0) {
-      reconcilePromise = this.runReconcile(undefined, snapshot);
-    } else if (quads.length > 0) {
-      reconcilePromise = this.runReconcile(quads);
-    } else {
-      reconcilePromise = this.runReconcile();
-    }
-
-    const finalize = () =>
-      this.notifySubjectSubscribers(subjects, quads, snapshot, meta);
-    if (reconcilePromise) {
-      reconcilePromise.then(finalize, (err) => {
-        console.error("[rdfManager] reconcile during subjects event failed", err);
-        finalize();
-      });
-    } else {
-      finalize();
-    }
+    this.notifySubjectSubscribers(subjects, quads, snapshot, meta);
   };
-
-  private async runReconcile(
-    quads?: WorkerQuad[],
-    snapshot?: WorkerReconcileSubjectSnapshotPayload[],
-  ): Promise<void> {
-    const perform = async () => {
-      try {
-        const os = (useOntologyStore as any)?.getState?.();
-        if (!os) return;
-        if (snapshot && snapshot.length > 0 && typeof os.updateFatMapFromWorker === "function") {
-          await os.updateFatMapFromWorker(snapshot);
-          return;
-        }
-        if (Array.isArray(quads) && quads.length > 0) {
-          const converted = quads.map(workerQuadToFatEntry);
-          if (typeof os.updateFatMap === "function") {
-            await os.updateFatMap(converted);
-          }
-          return;
-        }
-        if (typeof os.updateFatMap === "function") {
-          await os.updateFatMap();
-        }
-      } catch (err) {
-        console.error("[rdfManager] runReconcile failed", err);
-      } finally {
-        this.reconcileInProgress = null;
-      }
-    };
-
-    if (this.reconcileInProgress) {
-      this.reconcileInProgress = this.reconcileInProgress.then(() => perform());
-      return this.reconcileInProgress;
-    }
-
-    this.reconcileInProgress = perform();
-    return this.reconcileInProgress;
-  }
 
   getBlacklist(): { prefixes: string[]; uris: string[] } {
     return {
@@ -804,6 +720,8 @@ export class RDFManagerImpl {
           console.debug("[rdfManager] persist namespaces failed", err);
         }
       }
+      // Sync into ontology store namespace registry (single source of truth for toPrefixed).
+      syncNamespaceRegistryFromRdfManager(this.namespaces);
     }
   }
 
@@ -831,12 +749,6 @@ export class RDFManagerImpl {
           result.prefixes as Record<string, string>,
           payload.graphName,
         );
-      }
-      if (Array.isArray((result as any).quads)) {
-        const quads = ((result as any).quads as WorkerQuad[]).filter(isWorkerQuad);
-        if (quads.length > 0) {
-          await this.runReconcile(quads);
-        }
       }
     }
   }

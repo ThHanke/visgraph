@@ -11,7 +11,6 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../ui/select';
 import EntityAutoComplete from '../ui/EntityAutoComplete';
-import { useOntologyStore } from '../../stores/ontologyStore';
 import { expandPrefixed, toPrefixed } from '../../utils/termUtils';
 import { getNamespaceRegistry } from '../../utils/storeHelpers';
 import { X, Plus } from 'lucide-react';
@@ -137,15 +136,12 @@ const EntityEditor = ({ options }: EntityEditorProps) => {
   const [rows, setRows] = useState<PropRow[]>(() => elementData ? rowsFromElementModel(elementData) : []);
 
   // Re-initialize when a different entity is opened
-  const prevIdRef = useRef(entityId);
-  if (prevIdRef.current !== entityId) {
-    prevIdRef.current = entityId;
+  useEffect(() => {
     setNodeIri(entityId);
     setTypes(elementData ? [...elementData.types] : []);
     setRows(elementData ? rowsFromElementModel(elementData) : []);
-  }
-
-  const availableClasses = useOntologyStore((s) => s.availableClasses || []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityId]);
 
   if (!elementData) return null;
 
@@ -183,96 +179,102 @@ const EntityEditor = ({ options }: EntityEditorProps) => {
   };
 
   return (
-    <form onSubmit={handleApply} className="space-y-5 p-1">
-      {/* IRI */}
-      <div className="space-y-1">
-        <Label>IRI</Label>
-        <Input value={nodeIri} onChange={e => setNodeIri(e.target.value)} />
-      </div>
-
-      {/* RDF Types */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label>RDF Types</Label>
-          <Button type="button" variant="outline" size="sm" onClick={addType}>
-            <Plus className="h-4 w-4 mr-1" />Add
-          </Button>
+    // flex-1 + min-h-0: fills remaining height inside .reactodia-dialog (flex column)
+    // overflow-hidden: clips content, inner div handles scroll
+    <form onSubmit={handleApply} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-y-auto min-h-0 space-y-5 p-3">
+        {/* IRI */}
+        <div className="space-y-1">
+          <Label>IRI</Label>
+          <Input value={nodeIri} onChange={e => setNodeIri(e.target.value)} />
         </div>
-        {types.length === 0 && (
-          <p className="text-xs text-muted-foreground">No types assigned</p>
-        )}
-        {types.map((t, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <EntityAutoComplete
-              mode="classes"
-              optionsLimit={5}
-              value={t}
-              onChange={(ent: any) => updateType(i, ent ? String(ent.iri || '') : '')}
-              placeholder="Search for class..."
-              emptyMessage="No classes found"
-              className="flex-1"
-              dataProvider={dataProvider}
-            />
-            <Button type="button" variant="ghost" size="sm" className="h-8 px-2" onClick={() => removeType(i)}>
-              <X className="h-4 w-4" />
+
+        {/* RDF Types */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>RDF Types</Label>
+            <Button type="button" variant="outline" size="sm" onClick={addType}>
+              <Plus className="h-4 w-4 mr-1" />Add
             </Button>
           </div>
-        ))}
-      </div>
-
-      {/* Annotation Properties */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label>Annotation Properties</Label>
-          <Button type="button" variant="outline" size="sm" onClick={addRow}>
-            <Plus className="h-4 w-4 mr-1" />Add
-          </Button>
-        </div>
-        {rows.length === 0 && (
-          <p className="text-xs text-muted-foreground">No annotation properties</p>
-        )}
-        {rows.map((row, i) => (
-          <div key={i} className="grid grid-cols-12 gap-2 items-end">
-            <div className="col-span-4">
-              <Label className="text-xs">Property</Label>
+          {types.length === 0 && (
+            <p className="text-xs text-muted-foreground">No types assigned</p>
+          )}
+          {types.map((t, i) => (
+            <div key={i} className="flex items-center gap-2">
               <EntityAutoComplete
-                mode="properties"
-                value={row.key}
-                onChange={(ent) => updateRow(i, 'key', ent ? String(ent.iri || '') : '')}
-                placeholder="Select property..."
-                className={!row.key.trim() ? 'border-destructive' : ''}
+                mode="classes"
+                optionsLimit={5}
+                value={t}
+                onChange={(ent: any) => updateType(i, ent ? String(ent.iri || '') : '')}
+                placeholder="Search for class..."
+                emptyMessage="No classes found"
+                className="flex-1"
                 dataProvider={dataProvider}
               />
-            </div>
-            <div className="col-span-4">
-              <Label className="text-xs">Value</Label>
-              <Input value={row.value} onChange={e => updateRow(i, 'value', e.target.value)} placeholder="Value..." />
-            </div>
-            <div className="col-span-2">
-              <Label className="text-xs">Type</Label>
-              <Select value={row.type || DISPLAY_DATATYPE} onValueChange={v => updateRow(i, 'type', v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {XSD_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            {row.type === DISPLAY_DATATYPE && (
-              <div className="col-span-1">
-                <Label className="text-xs">Lang</Label>
-                <Input value={row.lang} onChange={e => updateRow(i, 'lang', e.target.value)} placeholder="en" />
-              </div>
-            )}
-            <div className="col-span-1">
-              <Button type="button" variant="ghost" size="sm" className="h-8 px-2" onClick={() => removeRow(i)}>
+              <Button type="button" variant="ghost" size="sm" className="h-8 px-2" onClick={() => removeType(i)}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
+          ))}
+        </div>
+
+        {/* Annotation Properties */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>Annotation Properties</Label>
+            <Button type="button" variant="outline" size="sm" onClick={addRow}>
+              <Plus className="h-4 w-4 mr-1" />Add
+            </Button>
           </div>
-        ))}
+          {rows.length === 0 && (
+            <p className="text-xs text-muted-foreground">No annotation properties</p>
+          )}
+          {rows.map((row, i) => (
+            <div key={i} className="grid grid-cols-12 gap-2 items-end">
+              <div className="col-span-4">
+                <Label className="text-xs">Property</Label>
+                <EntityAutoComplete
+                  mode="properties"
+                  value={row.key}
+                  onChange={(ent) => updateRow(i, 'key', ent ? String(ent.iri || '') : '')}
+                  placeholder="Select property..."
+                  className={!row.key.trim() ? 'border-destructive' : ''}
+                  dataProvider={dataProvider}
+                />
+              </div>
+              <div className="col-span-4">
+                <Label className="text-xs">Value</Label>
+                <Input value={row.value} onChange={e => updateRow(i, 'value', e.target.value)} placeholder="Value..." />
+              </div>
+              <div className="col-span-2">
+                <Label className="text-xs">Type</Label>
+                <Select value={row.type || DISPLAY_DATATYPE} onValueChange={v => updateRow(i, 'type', v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {XSD_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              {row.type === DISPLAY_DATATYPE && (
+                <div className="col-span-1">
+                  <Label className="text-xs">Lang</Label>
+                  <Input value={row.lang} onChange={e => updateRow(i, 'lang', e.target.value)} placeholder="en" />
+                </div>
+              )}
+              <div className="col-span-1">
+                <Button type="button" variant="ghost" size="sm" className="h-8 px-2" onClick={() => removeRow(i)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
-      <div className="flex justify-end gap-2 pt-3 border-t">
+      {/* Pinned footer — always visible at bottom of dialog */}
+      <div className="shrink-0 flex justify-end gap-2 px-3 py-2 border-t">
         <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
         <Button type="submit">Apply</Button>
       </div>

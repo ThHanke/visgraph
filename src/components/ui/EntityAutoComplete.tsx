@@ -1,6 +1,7 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { toPrefixed } from '../../utils/termUtils';
+import React, { useMemo, useState, useEffect, useRef, useContext } from 'react';
 import { cn } from '../../lib/utils';
+import { PrefixContext } from '../../providers/PrefixContext';
+import { prefixShorten } from '../../providers/prefixShorten';
 import { fetchClasses, fetchLinkTypes, scoreLinkTypes, type FatMapEntity } from '../../utils/ontologyQueries';
 import type { N3DataProvider } from '../../providers/N3DataProvider';
 
@@ -45,6 +46,9 @@ export default function EntityAutoComplete({
   disabled = false,
 }: Props) {
   const [loadedItems, setLoadedItems] = useState<FatMapEntity[]>([]);
+  const prefixes = useContext(PrefixContext);
+
+  const prefixedIri = (iri: string): string => prefixShorten(iri, prefixes);
 
   // Async load from DataProvider when mode is set
   useEffect(() => {
@@ -83,18 +87,13 @@ export default function EntityAutoComplete({
   const listRef = useRef<HTMLUListElement | null>(null);
   const isFocusedRef = useRef<boolean>(false);
 
-  const selectedEntity = useMemo(() => {
-    if (!value) return null;
-    return source.find(e => String(e.iri || '') === String(value)) || null;
-  }, [value, source]);
-
   useEffect(() => { setOpen(Boolean(autoOpen)); }, [autoOpen]);
 
   useEffect(() => {
     if (isFocusedRef.current) return;
     if (!value) { setInitialDisplay(''); return; }
     const found = source.find(e => String(e.iri || '') === String(value));
-    setInitialDisplay(found ? (found.prefixed || String(found.iri)) : value);
+    setInitialDisplay(found ? prefixedIri(String(found.iri)) : value);
   }, [value, source]);
 
   const filtered = useMemo<FatMapEntity[]>(() => {
@@ -104,11 +103,8 @@ export default function EntityAutoComplete({
     const rx = new RegExp(escapeRegExp(String(query).trim()), 'i');
     const matched = source.filter(e => {
       if (rx.test(String(e?.label || ''))) return true;
-      if (rx.test(String(e?.prefixed || ''))) return true;
+      if (rx.test(prefixedIri(String(e?.iri || '')))) return true;
       if (rx.test(String(e?.iri || ''))) return true;
-      if (!e?.prefixed && e?.iri) {
-        try { const c = String(toPrefixed(e.iri) || ''); if (c && rx.test(c)) return true; } catch {}
-      }
       return false;
     });
     return optionsLimit > 0 ? matched.slice(0, optionsLimit) : matched;
@@ -131,7 +127,7 @@ export default function EntityAutoComplete({
         onChange?.(ent || null);
         setOpen(false);
         setQuery('');
-        try { setInitialDisplay(ent?.prefixed ? String(ent.prefixed) : ''); } catch { setInitialDisplay(''); }
+        try { setInitialDisplay(prefixedIri(String(ent?.iri || ''))); } catch { setInitialDisplay(''); }
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
@@ -147,7 +143,7 @@ export default function EntityAutoComplete({
     onChange?.(ent || null);
     setOpen(false);
     setQuery('');
-    try { setInitialDisplay(ent?.prefixed ? String(ent.prefixed) : ''); } catch { setInitialDisplay(''); }
+    try { setInitialDisplay(prefixedIri(String(ent?.iri || ''))); } catch { setInitialDisplay(''); }
     inputRef.current?.focus();
   };
 
@@ -181,13 +177,11 @@ export default function EntityAutoComplete({
           isHighlighted ? 'bg-accent text-accent-foreground' : 'bg-transparent text-foreground',
         )}
       >
-        <div className="text-sm font-medium">{ent.prefixed || String(ent.iri)}</div>
+        <div className="text-sm font-medium">{prefixedIri(String(ent.iri))}</div>
         <div className="text-xs text-muted-foreground">{ent.label || ''}</div>
       </li>
     );
   }
-
-  void selectedEntity; // suppress unused variable warning
 
   return (
     <div className={cn(className || 'relative w-full')} style={{ minWidth: 0 }}>

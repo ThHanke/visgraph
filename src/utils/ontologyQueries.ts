@@ -9,31 +9,34 @@ export interface FatMapEntity {
   [k: string]: any;
 }
 
-function getLabel(label: Record<string, string> | undefined): string | undefined {
-  if (!label) return undefined;
-  return label['en'] ?? label[''] ?? Object.values(label)[0] ?? undefined;
+function getLabel(label: ReadonlyArray<{ value: string; language?: string }> | undefined): string | undefined {
+  if (!label || label.length === 0) return undefined;
+  const en = label.find(l => l.language === 'en');
+  if (en) return en.value;
+  return label[0].value;
 }
 
 function tryPrefixed(iri: string): string | undefined {
-  try { return toPrefixed(iri) || undefined; } catch { return undefined; }
+  try {
+    const result = toPrefixed(iri);
+    return (result && result !== iri) ? result : undefined;
+  } catch { return undefined; }
 }
 
 export async function fetchClasses(dataProvider: N3DataProvider): Promise<FatMapEntity[]> {
   const graph = await dataProvider.knownElementTypes({});
-  return graph.elementTypes.map(t => ({
-    iri:      t.id as string,
-    label:    getLabel(t.label as Record<string, string> | undefined),
-    prefixed: tryPrefixed(t.id as string),
-  }));
+  return graph.elementTypes.map(t => {
+    const iri = String(t.id);
+    return { iri, label: getLabel(t.label as any), prefixed: tryPrefixed(iri) };
+  });
 }
 
 export async function fetchLinkTypes(dataProvider: N3DataProvider): Promise<FatMapEntity[]> {
   const types = await dataProvider.knownLinkTypes({});
-  return types.map(t => ({
-    iri:      t.id as string,
-    label:    getLabel(t.label as Record<string, string> | undefined),
-    prefixed: tryPrefixed(t.id as string),
-  }));
+  return types.map(t => {
+    const iri = String(t.id);
+    return { iri, label: getLabel(t.label as any), prefixed: tryPrefixed(iri) };
+  });
 }
 
 function computeScore(
