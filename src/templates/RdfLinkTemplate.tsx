@@ -1,11 +1,11 @@
 import React from 'react';
 import * as Reactodia from '@reactodia/workspace';
-const INFERRED_PRED = 'urn:vg:isInferred';
+import { IS_INFERRED_PROP } from '../providers/N3DataProvider';
 
 function isInferred(link: Reactodia.Link): boolean {
   if (link instanceof Reactodia.RelationLink) {
     const props = link.data?.properties;
-    return !!(props && props[INFERRED_PRED] && props[INFERRED_PRED].length > 0);
+    return !!(props && props[IS_INFERRED_PROP] && props[IS_INFERRED_PROP].length > 0);
   }
   return false;
 }
@@ -18,7 +18,13 @@ function RdfLinkBody({ inferred, ...rest }: RdfLinkBodyProps) {
   return (
     <Reactodia.StandardRelation
       {...rest}
-      pathProps={inferred ? { strokeDasharray: '6 3' } : undefined}
+      pathProps={inferred ? {
+        strokeDasharray: '6 3',
+        stroke: 'var(--vg-inferred-color)',
+      } : undefined}
+      primaryLabelProps={inferred ? {
+        style: { color: 'var(--vg-inferred-color)' },
+      } : undefined}
     />
   );
 }
@@ -31,7 +37,6 @@ export const RdfLinkTemplate: Reactodia.LinkTemplate = {
   },
 };
 
-// Canvas.linkTemplateResolver signature: (linkType: LinkTypeIri | undefined, link: Link) => LinkTemplate | undefined
 export function rdfLinkTemplateResolver(
   _linkType: Reactodia.LinkTypeIri | undefined,
   _link: Reactodia.Link
