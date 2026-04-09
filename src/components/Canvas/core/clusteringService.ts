@@ -76,15 +76,19 @@ export function applyCanvasClustering(
     entityElements.map(el => [el.data.id, el])
   );
 
-  // Create one EntityGroup per cluster
+  // Create one EntityGroup per cluster.
+  // Track already-grouped IRIs to handle any overlapping community output (e.g. SLPA).
+  const alreadyGrouped = new Set<string>();
   for (const [, clusterInfo] of clusters) {
     const members: Reactodia.EntityElement[] = [];
     for (const iri of clusterInfo.nodeIds) {
+      if (alreadyGrouped.has(iri)) continue;
       const el = elementByIri.get(iri);
       if (el) members.push(el);
     }
     if (members.length < 2) continue;
     model.group(members);
+    for (const m of members) alreadyGrouped.add(m.data.id);
   }
 
   // Regroup links so that cross-group links become RelationGroups
