@@ -403,8 +403,9 @@ export default function ReactodiaCanvas() {
     const model = modelRef.current;
     if (!model) return;
     clearCanvasClustering(model);
-    if (clusteringAlgorithm !== 'none') {
-      applyCanvasClustering(model, clusteringAlgorithm as 'label-propagation' | 'louvain' | 'kmeans', collapseThreshold);
+    const algo = clusteringAlgorithm;
+    if (algo !== 'none') {
+      applyCanvasClustering(model, algo, collapseThreshold);
     }
   }, [clusteringAlgorithm, collapseThreshold]);
 
