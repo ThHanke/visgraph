@@ -1,13 +1,14 @@
 import React from 'react';
 import * as Reactodia from '@reactodia/workspace';
-import { IS_INFERRED_PROP } from '../providers/N3DataProvider';
+import { VG_GRAPH_NAME_PROP, VG_GRAPH_NAME_STATE } from '../providers/N3DataProvider';
 
 function isInferred(link: Reactodia.Link): boolean {
-  if (link instanceof Reactodia.RelationLink) {
-    const props = link.data?.properties;
-    return !!(props && props[IS_INFERRED_PROP] && props[IS_INFERRED_PROP].length > 0);
-  }
-  return false;
+  if (!(link instanceof Reactodia.RelationLink)) return false;
+  // linkState persists across importLayout (serialized in diagram snapshot).
+  if (link.linkState?.get(VG_GRAPH_NAME_STATE) === 'urn:vg:inferred') return true;
+  // data.properties fallback for the initial render right after reasoning.
+  const graphName = link.data?.properties[VG_GRAPH_NAME_PROP]?.[0];
+  return graphName?.termType === 'NamedNode' && graphName.value === 'urn:vg:inferred';
 }
 
 interface RdfLinkBodyProps extends Reactodia.LinkTemplateProps {
@@ -18,13 +19,10 @@ function RdfLinkBody({ inferred, ...rest }: RdfLinkBodyProps) {
   return (
     <Reactodia.StandardRelation
       {...rest}
-      pathProps={inferred ? {
-        strokeDasharray: '6 3',
-        stroke: 'var(--vg-inferred-color)',
-      } : undefined}
-      primaryLabelProps={inferred ? {
-        style: { color: 'var(--vg-inferred-color)' },
-      } : undefined}
+      pathProps={inferred ? { strokeDasharray: '6 3', stroke: 'var(--vg-inferred-color)' } : undefined}
+      primaryLabelProps={inferred ? { style: { color: 'var(--vg-inferred-color)', fontStyle: 'italic' } } : undefined}
+      // Hide the synthetic urn:vg:graphName property — it must not render as a visible label
+      propertyLabelProps={(iri) => iri === VG_GRAPH_NAME_PROP ? null : undefined}
     />
   );
 }

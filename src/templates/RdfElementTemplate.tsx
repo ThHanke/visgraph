@@ -3,7 +3,7 @@ import * as Reactodia from '@reactodia/workspace';
 import { useOntologyStore } from '@/stores/ontologyStore';
 import { PrefixContext } from '@/providers/PrefixContext';
 import { prefixShorten } from '@/providers/prefixShorten';
-import { INFERRED_TYPES_PROP, INFERRED_DATA_PROPS_PROP, SYNTHETIC_VG_PROPS } from '../providers/N3DataProvider';
+import { INFERRED_TYPES_PROP, INFERRED_DATA_PROPS_PROP, VG_GRAPH_NAME_PROP, SYNTHETIC_VG_PROPS } from '../providers/N3DataProvider';
 
 const RDF_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
 
@@ -167,7 +167,7 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
               <span
                 key={data.types[i]}
                 style={inferredTypesSet.has(data.types[i])
-                  ? { color: 'var(--vg-inferred-color)', fontStyle: 'italic' }
+                  ? { fontStyle: 'italic', color: 'var(--vg-inferred-color)', opacity: 0.9 }
                   : undefined}
               >
                 {i > 0 ? ', ' : ''}{label}
@@ -260,10 +260,9 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
                       style={{
                         fontSize: 10,
                         fontWeight: 600,
-                        color: isInferredProp
-                          ? 'var(--vg-inferred-color)'
-                          : 'var(--reactodia-paper-fg-muted, #9ca3af)',
+                        color: isInferredProp ? 'var(--vg-inferred-color)' : 'var(--reactodia-paper-fg-muted, #9ca3af)',
                         fontStyle: isInferredProp ? 'italic' : undefined,
+                        opacity: isInferredProp ? 0.85 : undefined,
                       }}
                       title={keyIri}
                     >
@@ -288,13 +287,12 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
                         key={i}
                         style={{
                           fontSize: 11,
-                          color: isInferredProp
-                            ? 'var(--vg-inferred-color)'
-                            : 'var(--reactodia-paper-fg)',
+                          color: 'var(--reactodia-paper-fg)',
                           fontStyle: isInferredProp ? 'italic' : undefined,
+                          opacity: isInferredProp ? 0.75 : undefined,
                           lineHeight: 1.5,
                           paddingLeft: 6,
-                          borderLeft: `2px solid ${changeColor ?? (isInferredProp ? 'var(--vg-inferred-color)' : nsColor)}`,
+                          borderLeft: `2px solid ${changeColor ?? nsColor}`,
                           marginLeft: 2,
                           marginTop: 1,
                           userSelect: 'text',

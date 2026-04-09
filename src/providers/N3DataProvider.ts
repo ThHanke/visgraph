@@ -1,5 +1,5 @@
 import {
-  RdfDataProvider,
+  RdfDataProvider, TemplateState,
   type DataProvider, type ElementIri, type ElementTypeIri, type LinkTypeIri,
   type PropertyTypeIri, type ElementTypeGraph, type ElementTypeModel,
   type LinkTypeModel, type PropertyTypeModel, type ElementModel, type LinkModel,
@@ -28,13 +28,25 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 /** IRIs of synthetic marker properties injected into ElementModel / LinkModel. */
 export const INFERRED_TYPES_PROP = 'urn:vg:inferredTypes' as PropertyTypeIri;
 export const INFERRED_DATA_PROPS_PROP = 'urn:vg:inferredDataProps' as PropertyTypeIri;
-export const IS_INFERRED_PROP = 'urn:vg:isInferred' as PropertyTypeIri;
+/**
+ * Graph-name property injected into both ElementModel and LinkModel when the
+ * subject / triple originates from a named graph. Value is the graph IRI as a
+ * NamedNode, e.g. `urn:vg:inferred`. Templates use this as the primary
+ * decoration signal — no extra queries needed.
+ */
+export const VG_GRAPH_NAME_PROP = 'urn:vg:graphName' as PropertyTypeIri;
+
+/**
+ * Typed TemplateState property key for persisting graph origin in link/element
+ * template state so it survives importLayout (serialized in SerializedLink.linkState).
+ */
+export const VG_GRAPH_NAME_STATE = TemplateState.property(VG_GRAPH_NAME_PROP).of<string>();
 
 /** Properties injected by the DataProvider that must be hidden from UI rendering. */
 export const SYNTHETIC_VG_PROPS = new Set<string>([
   INFERRED_TYPES_PROP,
   INFERRED_DATA_PROPS_PROP,
-  IS_INFERRED_PROP,
+  VG_GRAPH_NAME_PROP,
 ]);
 
 /** Encode a quad object term to a stable string key. */
@@ -190,6 +202,10 @@ export class N3DataProvider implements DataProvider {
           p => ({ termType: 'NamedNode', value: p }) as Rdf.NamedNode
         );
       }
+      // Graph-name marker: templates use this as the primary decoration signal.
+      enriched.properties[VG_GRAPH_NAME_PROP] = [
+        { termType: 'NamedNode', value: 'urn:vg:inferred' } as Rdf.NamedNode,
+      ];
       result.set(iri, enriched);
     }
     return result;
@@ -201,14 +217,21 @@ export class N3DataProvider implements DataProvider {
       const entry = this.inferredBySubject.get(link.sourceId);
       if (!entry) return link;
       if (!entry.triples.has(`${link.linkTypeId}\x00${link.targetId}`)) return link;
+      // Graph-name property: templates use this to decide link decoration.
       return {
         ...link,
         properties: {
           ...link.properties,
-          [IS_INFERRED_PROP]: [{ termType: 'Literal', value: 'true', datatype: { termType: 'NamedNode', value: 'http://www.w3.org/2001/XMLSchema#boolean' } }] as Rdf.Literal[],
+          [VG_GRAPH_NAME_PROP]: [{ termType: 'NamedNode', value: 'urn:vg:inferred' } as Rdf.NamedNode],
         },
       };
     });
+  }
+
+  /** True when at least one inferred triple has been loaded — used by the canvas
+   *  to decide whether validateLinks is needed on importLayout. */
+  hasInferredData(): boolean {
+    return this.inferredBySubject.size > 0;
   }
 
   connectedLinkStats(p: { elementId: ElementIri; inexactCount?: boolean; signal?: AbortSignal }): Promise<DataProviderLinkCount[]> {

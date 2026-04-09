@@ -1941,7 +1941,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             emission.subjects,
             emission.quadsBySubject,
             emission.snapshot,
-            { reason: "reasoning" },
+            { reason: "reasoning", graphName: "urn:vg:inferred" },
           );
         }
       }

@@ -9,7 +9,7 @@ const df = DataFactory;
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 const INFERRED_TYPES_PROP = 'urn:vg:inferredTypes';
 const INFERRED_DATA_PROPS_PROP = 'urn:vg:inferredDataProps';
-const IS_INFERRED_PROP = 'urn:vg:isInferred';
+const VG_GRAPH_NAME_PROP = 'urn:vg:graphName';
 
 function quad(s: string, p: string, o: string) {
   return df.quad(df.namedNode(s), df.namedNode(p), df.namedNode(o), df.defaultGraph());
@@ -73,7 +73,7 @@ describe('N3DataProvider graph tracking', () => {
     }
   });
 
-  it('marks inferred object-property links with urn:vg:isInferred', async () => {
+  it('marks inferred object-property links with urn:vg:graphName', async () => {
     dp.addGraph([quad('ex:Alice', 'ex:manages', 'ex:Dave')]);
     dp.addGraph([quad('ex:Alice', 'ex:isColleagueOf', 'ex:Dave')], 'urn:vg:inferred');
 
@@ -86,12 +86,13 @@ describe('N3DataProvider graph tracking', () => {
     const inferredLink = links.find(l => l.linkTypeId === ('ex:isColleagueOf' as LinkTypeIri));
 
     expect(assertedLink).toBeDefined();
-    expect(assertedLink!.properties[IS_INFERRED_PROP]).toBeUndefined();
+    expect(assertedLink!.properties[VG_GRAPH_NAME_PROP]).toBeUndefined();
 
     expect(inferredLink).toBeDefined();
-    const isInferredVal = inferredLink!.properties[IS_INFERRED_PROP];
-    expect(isInferredVal).toBeDefined();
-    expect(isInferredVal![0].value).toBe('true');
+    const graphNameVal = inferredLink!.properties[VG_GRAPH_NAME_PROP];
+    expect(graphNameVal).toBeDefined();
+    expect(graphNameVal![0].termType).toBe('NamedNode');
+    expect(graphNameVal![0].value).toBe('urn:vg:inferred');
   });
 
   it('clears inferred tracking on replaceSubjectQuads', async () => {

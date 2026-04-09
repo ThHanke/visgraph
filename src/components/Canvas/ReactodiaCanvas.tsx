@@ -8,7 +8,7 @@ import { rdfManager } from '@/utils/rdfManager';
 import { DataFactory } from 'n3';
 const { namedNode } = DataFactory;
 import type { ReasoningResult } from '@/utils/rdfManager';
-import { N3DataProvider, type ViewMode } from '@/providers/N3DataProvider';
+import { N3DataProvider, VG_GRAPH_NAME_PROP, VG_GRAPH_NAME_STATE, type ViewMode } from '@/providers/N3DataProvider';
 import { RdfMetadataProvider } from '@/providers/RdfMetadataProvider';
 import { RdfValidationProvider } from '@/providers/RdfValidationProvider';
 import { workerQuadsToRdf, type WorkerQuad as ConverterQuad } from '@/providers/quadConverter';
@@ -48,6 +48,7 @@ const validationProvider = new RdfValidationProvider();
 
 // Track all subject IRIs ever seen (for initial load and incremental adds)
 const knownSubjects = new Set<string>();
+
 
 /**
  * Flush all staged authoring state to the RDF store in one batch per subject.
@@ -286,14 +287,15 @@ export default function ReactodiaCanvas() {
           // Ontology/schema graph: load for schema awareness only, no canvas elements.
           dataProvider.addGraph(rdfQuads);
         } else if (isInferredGraph) {
-          // Inferred graph: only load quads for subjects already known as data subjects.
-          // This prevents OWL vocabulary terms (owl:Thing, rdfs:Class, etc.) that are
-          // touched by OWL-RL inference from entering the DataProvider and flooding the canvas.
+          // Inferred graph: load quads for known data subjects WITHOUT the inferred
+          // graphName tag. Inferred-triple tracking is done separately in
+          // handleRunReasoning via fetchQuadsPage, which returns ONLY the quads that
+          // are truly in urn:vg:inferred (not all quads for those subjects from all graphs).
           const filteredInferredQuads = rdfQuads.filter(
             q => q.subject.termType === 'NamedNode' && knownSubjects.has(q.subject.value)
           );
           if (filteredInferredQuads.length > 0) {
-            dataProvider.addGraph(filteredInferredQuads, 'urn:vg:inferred');
+            dataProvider.addGraph(filteredInferredQuads);
           }
         } else if (changed.length > 0) {
           // For subjects already on the canvas, replace their quads so stale
@@ -312,7 +314,12 @@ export default function ReactodiaCanvas() {
       // Only track data-graph subjects and update canvas elements for data/inferred graphs
       if (!isDataGraph) return;
 
-      subjects.forEach(s => knownSubjects.add(s));
+      // Inferred-graph subjects include OWL vocabulary terms emitted by the reasoner
+      // (owl:Thing, rdfs:Class, etc.). Only data-graph subjects belong in knownSubjects;
+      // inferred-graph subjects must NOT be tracked or they'll flood the canvas on view-mode switch.
+      if (!isInferredGraph) {
+        subjects.forEach(s => knownSubjects.add(s));
+      }
 
       if (!model || !ctx) return;
 
@@ -409,8 +416,16 @@ export default function ReactodiaCanvas() {
 
       if (savedDiagram) {
         const diagram = savedDiagram;
-        // Restore the previously computed layout for this mode
-        await model.importLayout({ dataProvider, diagram, signal: controller.signal });
+        // Restore the previously computed layout for this mode.
+        // validateLinks forces dataProvider.links() to be called, which re-injects
+        // VG_GRAPH_NAME_PROP on inferred links. Only enabled when inferred data
+        // exists so ordinary view-mode switches (no reasoning) pay zero extra cost.
+        await model.importLayout({
+          dataProvider,
+          diagram,
+          signal: controller.signal,
+          validateLinks: dataProvider.hasInferredData(),
+        });
 
         // Add any elements that were added while we were in the other mode
         const inModel = new Set(
@@ -550,6 +565,42 @@ export default function ReactodiaCanvas() {
       const result = await rdfManager.runReasoning({ rulesets });
       setCurrentReasoning(result);
       setReasoningHistory(h => [...h, result]);
+
+      // Fetch ONLY the quads that are truly in urn:vg:inferred (not the full subject
+      // quads emitted by onSubjectsChange, which includes asserted triples too).
+      // This is what drives the inferred-decoration markers in N3DataProvider.
+      const inferredPage = await rdfManager.fetchQuadsPage({
+        graphName: 'urn:vg:inferred',
+        offset: 0,
+        limit: 0,       // 0 = no limit
+        serialize: false,
+      });
+      if (Array.isArray(inferredPage?.items) && inferredPage.items.length > 0) {
+        const rdfQuads = workerQuadsToRdf(inferredPage.items as unknown as ConverterQuad[]);
+        const filtered = rdfQuads.filter(
+          q => q.subject.termType === 'NamedNode' && knownSubjects.has(q.subject.value as string)
+        );
+        if (filtered.length > 0) {
+          dataProvider.addGraph(filtered, 'urn:vg:inferred');
+          const model = modelRef.current;
+          if (model) {
+            const subjects = [...new Set(filtered.map(q => q.subject.value as Reactodia.ElementIri))];
+            await model.requestElementData(subjects);
+            await model.requestLinks({ addedElements: subjects });
+            // Stamp inferred links with linkState so the decoration survives
+            // importLayout (linkState is serialized in the diagram snapshot).
+            for (const link of model.links) {
+              if (!(link instanceof Reactodia.RelationLink)) continue;
+              const graphName = link.data?.properties[VG_GRAPH_NAME_PROP]?.[0];
+              if (graphName?.termType === 'NamedNode' && graphName.value === 'urn:vg:inferred') {
+                const state = (link.linkState ?? Reactodia.TemplateState.empty)
+                  .set(VG_GRAPH_NAME_STATE, 'urn:vg:inferred');
+                model.history.execute(Reactodia.setLinkState(link, state));
+              }
+            }
+          }
+        }
+      }
     } finally {
       setIsReasoning(false);
     }
