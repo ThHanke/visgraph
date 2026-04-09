@@ -74,6 +74,19 @@ export class N3DataProvider implements DataProvider {
   }
 
   clear(): void { this.inner.clear(); this.typeMap.clear(); this.allSubjects.clear(); }
+
+  getDomainRange(propertyIri: string): { domains: string[]; ranges: string[] } {
+    const RDFS_DOMAIN = 'http://www.w3.org/2000/01/rdf-schema#domain';
+    const RDFS_RANGE  = 'http://www.w3.org/2000/01/rdf-schema#range';
+    const dataset = (this.inner as any).dataset;
+    const propNode    = this.inner.factory.namedNode(propertyIri);
+    const domainPred  = this.inner.factory.namedNode(RDFS_DOMAIN);
+    const rangePred   = this.inner.factory.namedNode(RDFS_RANGE);
+    const domains = [...dataset.iterateMatches(propNode, domainPred, null)].map((q: any) => q.object.value);
+    const ranges  = [...dataset.iterateMatches(propNode, rangePred,  null)].map((q: any) => q.object.value);
+    return { domains, ranges };
+  }
+
   setViewMode(mode: ViewMode): void { this.viewMode = mode; }
 
   /** Synchronously filter IRIs to those matching the current view mode. */
