@@ -263,6 +263,7 @@ export default function ReactodiaCanvas() {
       const isDataGraph = !incomingGraphName
         || incomingGraphName === 'urn:vg:data'
         || incomingGraphName === 'urn:vg:inferred';
+      const isInferredGraph = incomingGraphName === 'urn:vg:inferred';
 
       const isFullRefresh = meta?.reason === 'emitAllSubjects';
       const model = modelRef.current;
@@ -282,9 +283,18 @@ export default function ReactodiaCanvas() {
       if (quads && quads.length > 0) {
         const rdfQuads = workerQuadsToRdf(quads as unknown as ConverterQuad[]);
         if (!isDataGraph) {
-          // Ontology/schema graph: load into DataProvider for schema awareness only.
-          // Do NOT manipulate canvas elements for these subjects.
+          // Ontology/schema graph: load for schema awareness only, no canvas elements.
           dataProvider.addGraph(rdfQuads);
+        } else if (isInferredGraph) {
+          // Inferred graph: only load quads for subjects already known as data subjects.
+          // This prevents OWL vocabulary terms (owl:Thing, rdfs:Class, etc.) that are
+          // touched by OWL-RL inference from entering the DataProvider and flooding the canvas.
+          const filteredInferredQuads = rdfQuads.filter(
+            q => q.subject.termType === 'NamedNode' && knownSubjects.has(q.subject.value)
+          );
+          if (filteredInferredQuads.length > 0) {
+            dataProvider.addGraph(filteredInferredQuads, 'urn:vg:inferred');
+          }
         } else if (changed.length > 0) {
           // For subjects already on the canvas, replace their quads so stale
           // triples don't persist alongside the updated ones.
@@ -306,8 +316,10 @@ export default function ReactodiaCanvas() {
 
       if (!model || !ctx) return;
 
-      // Filter by current view mode now that quads (and their rdf:type triples) are in the provider
-      const addedFiltered = dataProvider.filterByViewMode(added);
+      // Filter by current view mode now that quads (and their rdf:type triples) are in the provider.
+      // Inferred graph subjects only decorate existing elements — don't create new canvas nodes
+      // (OWL-RL inference touches vocabulary terms like owl:Thing that shouldn't appear on canvas).
+      const addedFiltered = isInferredGraph ? [] : dataProvider.filterByViewMode(added);
 
       // Read autoApplyLayout without subscribing — we only need the value at call time
       const autoApplyLayout = (useAppConfigStore as any).getState().config.autoApplyLayout as boolean;
@@ -533,7 +545,9 @@ export default function ReactodiaCanvas() {
   const handleRunReasoning = React.useCallback(async () => {
     setIsReasoning(true);
     try {
-      const result = await rdfManager.runReasoning();
+      const cfg = useAppConfigStore.getState().config;
+      const rulesets = Array.isArray(cfg?.reasoningRulesets) ? cfg.reasoningRulesets : [];
+      const result = await rdfManager.runReasoning({ rulesets });
       setCurrentReasoning(result);
       setReasoningHistory(h => [...h, result]);
     } finally {
