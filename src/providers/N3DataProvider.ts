@@ -25,16 +25,45 @@ const TBOX_TYPES = new Set([
 
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 
+/** IRIs of synthetic marker properties injected into ElementModel / LinkModel. */
+export const INFERRED_TYPES_PROP = 'urn:vg:inferredTypes' as PropertyTypeIri;
+export const INFERRED_DATA_PROPS_PROP = 'urn:vg:inferredDataProps' as PropertyTypeIri;
+export const IS_INFERRED_PROP = 'urn:vg:isInferred' as PropertyTypeIri;
+
+/** Properties injected by the DataProvider that must be hidden from UI rendering. */
+export const SYNTHETIC_VG_PROPS = new Set<string>([
+  INFERRED_TYPES_PROP,
+  INFERRED_DATA_PROPS_PROP,
+  IS_INFERRED_PROP,
+]);
+
+/** Encode a quad object term to a stable string key. */
+function objectKey(term: Rdf.Term): string {
+  if (term.termType === 'Literal') return `"${term.value}`;
+  return term.value;
+}
+
+interface InferredSubjectEntry {
+  /** Predicate IRIs that have ≥1 inferred triple for this subject. */
+  predicates: Set<string>;
+  /** `${predicateIri}\x00${objectKey}` for exact triple lookup. */
+  triples: Set<string>;
+}
+
 export class N3DataProvider implements DataProvider {
   private inner = new RdfDataProvider();
   private viewMode: ViewMode = 'abox';
   private typeMap = new Map<string, Set<string>>();
   private allSubjects = new Set<string>();
+  /** Per-subject tracking of which triples originated from urn:vg:inferred. */
+  private inferredBySubject = new Map<string, InferredSubjectEntry>();
 
   get factory() { return this.inner.factory; }
 
-  addGraph(quads: Iterable<Rdf.Quad>): void {
+  addGraph(quads: Iterable<Rdf.Quad>, graphName?: string): void {
     const arr = Array.isArray(quads) ? quads : [...quads];
+    const trackInferred = graphName === 'urn:vg:inferred';
+
     for (const q of arr) {
       if (q.subject.termType === 'NamedNode') {
         this.allSubjects.add(q.subject.value);
@@ -49,6 +78,13 @@ export class N3DataProvider implements DataProvider {
         if (!types) { types = new Set(); this.typeMap.set(q.subject.value, types); }
         types.add(q.object.value);
       }
+      if (trackInferred && q.subject.termType === 'NamedNode' && q.predicate.termType === 'NamedNode') {
+        const subj = q.subject.value;
+        let entry = this.inferredBySubject.get(subj);
+        if (!entry) { entry = { predicates: new Set(), triples: new Set() }; this.inferredBySubject.set(subj, entry); }
+        entry.predicates.add(q.predicate.value);
+        entry.triples.add(`${q.predicate.value}\x00${objectKey(q.object)}`);
+      }
     }
     this.inner.addGraph(arr);
   }
@@ -58,22 +94,26 @@ export class N3DataProvider implements DataProvider {
    * replacement quads. Use this when updating existing entities so stale triples
    * don't linger in the store alongside the new ones.
    */
-  replaceSubjectQuads(subjectIris: string[], newQuads: Rdf.Quad[]): void {
+  replaceSubjectQuads(subjectIris: string[], newQuads: Rdf.Quad[], graphName?: string): void {
     const dataset = (this.inner as any).dataset;
     for (const iri of subjectIris) {
       const node = this.inner.factory.namedNode(iri);
-      // Collect all quads for this subject across every graph, then delete them
       const toRemove = [...dataset.iterateMatches(node, null, null)];
       for (const q of toRemove) {
         dataset.delete(q);
       }
-      // Clear cached rdf:type so it is rebuilt from the new quads
       this.typeMap.delete(iri);
+      this.inferredBySubject.delete(iri);
     }
-    this.addGraph(newQuads);
+    this.addGraph(newQuads, graphName);
   }
 
-  clear(): void { this.inner.clear(); this.typeMap.clear(); this.allSubjects.clear(); }
+  clear(): void {
+    this.inner.clear();
+    this.typeMap.clear();
+    this.allSubjects.clear();
+    this.inferredBySubject.clear();
+  }
 
   getDomainRange(propertyIri: string): { domains: string[]; ranges: string[] } {
     const RDFS_DOMAIN = 'http://www.w3.org/2000/01/rdf-schema#domain';
@@ -112,54 +152,94 @@ export class N3DataProvider implements DataProvider {
   propertyTypes(p: { propertyIds: ReadonlyArray<PropertyTypeIri>; signal?: AbortSignal }): Promise<Map<PropertyTypeIri, PropertyTypeModel>> {
     return this.inner.propertyTypes(p);
   }
-  elements(p: { elementIds: ReadonlyArray<ElementIri>; signal?: AbortSignal }): Promise<Map<ElementIri, ElementModel>> {
-    return this.inner.elements(p);
+
+  async elements(p: { elementIds: ReadonlyArray<ElementIri>; signal?: AbortSignal }): Promise<Map<ElementIri, ElementModel>> {
+    const result = await this.inner.elements(p);
+    for (const [iri, model] of result) {
+      const entry = this.inferredBySubject.get(iri);
+      if (!entry) continue;
+
+      const inferredTypeIris: string[] = [];
+      for (const typeIri of model.types) {
+        if (entry.triples.has(`${RDF_TYPE}\x00${typeIri}`)) {
+          inferredTypeIris.push(typeIri);
+        }
+      }
+
+      const inferredPropIris: string[] = [];
+      for (const propIri of Object.keys(model.properties)) {
+        if (SYNTHETIC_VG_PROPS.has(propIri)) continue;
+        if (entry.predicates.has(propIri)) {
+          inferredPropIris.push(propIri);
+        }
+      }
+
+      if (inferredTypeIris.length === 0 && inferredPropIris.length === 0) continue;
+
+      const enriched: ElementModel = {
+        ...model,
+        properties: { ...model.properties },
+      };
+      if (inferredTypeIris.length > 0) {
+        enriched.properties[INFERRED_TYPES_PROP] = inferredTypeIris.map(
+          t => ({ termType: 'NamedNode', value: t }) as Rdf.NamedNode
+        );
+      }
+      if (inferredPropIris.length > 0) {
+        enriched.properties[INFERRED_DATA_PROPS_PROP] = inferredPropIris.map(
+          p => ({ termType: 'NamedNode', value: p }) as Rdf.NamedNode
+        );
+      }
+      result.set(iri, enriched);
+    }
+    return result;
   }
-  links(p: { primary: ReadonlyArray<ElementIri>; secondary: ReadonlyArray<ElementIri>; linkTypeIds?: ReadonlyArray<LinkTypeIri>; signal?: AbortSignal }): Promise<LinkModel[]> {
-    return this.inner.links(p);
+
+  async links(p: { primary: ReadonlyArray<ElementIri>; secondary: ReadonlyArray<ElementIri>; linkTypeIds?: ReadonlyArray<LinkTypeIri>; signal?: AbortSignal }): Promise<LinkModel[]> {
+    const result = await this.inner.links(p);
+    return result.map(link => {
+      const entry = this.inferredBySubject.get(link.sourceId);
+      if (!entry) return link;
+      if (!entry.triples.has(`${link.linkTypeId}\x00${link.targetId}`)) return link;
+      return {
+        ...link,
+        properties: {
+          ...link.properties,
+          [IS_INFERRED_PROP]: [{ termType: 'Literal', value: 'true', datatype: { termType: 'NamedNode', value: 'http://www.w3.org/2001/XMLSchema#boolean' } }] as Rdf.Literal[],
+        },
+      };
+    });
   }
+
   connectedLinkStats(p: { elementId: ElementIri; inexactCount?: boolean; signal?: AbortSignal }): Promise<DataProviderLinkCount[]> {
     return this.inner.connectedLinkStats(p);
   }
+
   async lookup(p: DataProviderLookupParams): Promise<DataProviderLookupItem[]> {
-    // Connection-based lookup (refElementId): delegate entirely to inner provider.
-    // No view-mode filter — search is for discovery, not gated by canvas mode.
     if (p.refElementId) {
       return this.inner.lookup(p);
     }
-
-    // Delegate to inner first (handles label-based text search + type-based search).
     const innerResults = await this.inner.lookup(p);
-
-    // If no text filter, inner results are sufficient (type-based or empty query).
     if (!p.text) {
       return innerResults;
     }
-
-    // Text filter: also match by IRI local name (segment after last # or /).
-    // This covers entities that have no rdfs:label but are identified by IRI alone.
     const textLower = p.text.toLowerCase();
     const innerIds = new Set(innerResults.map(r => r.element.id));
-
     const candidateIris: ElementIri[] = [];
     for (const iri of this.allSubjects) {
       if (innerIds.has(iri as ElementIri)) continue;
       const localName = (iri.split(/[/#]/).pop() ?? iri).toLowerCase();
       if (!localName.includes(textLower)) continue;
-      // Apply elementTypeId filter if present
       if (p.elementTypeId) {
         const types = this.typeMap.get(iri);
         if (!types?.has(p.elementTypeId)) continue;
       }
       candidateIris.push(iri as ElementIri);
     }
-
     if (candidateIris.length === 0) return innerResults;
-
     const limit = typeof p.limit === 'number' ? p.limit : 100;
     const toFetch = candidateIris.slice(0, Math.max(0, limit - innerResults.length));
     if (toFetch.length === 0) return innerResults;
-
     const elementsMap = await this.elements({ elementIds: toFetch });
     const iriResults: DataProviderLookupItem[] = toFetch
       .filter(iri => elementsMap.has(iri))
@@ -168,14 +248,13 @@ export class N3DataProvider implements DataProvider {
         inLinks: EMPTY_LINKS,
         outLinks: EMPTY_LINKS,
       }));
-
     return [...innerResults, ...iriResults];
   }
 
   private matchesViewMode(types: readonly ElementTypeIri[]): boolean {
     const isA = types.some(t => ABOX_TYPES.has(t));
     const isT = types.some(t => TBOX_TYPES.has(t));
-    if (isA && isT) return true; // punned — show in both
+    if (isA && isT) return true;
     if (this.viewMode === 'abox') return isA || (!isA && !isT);
     return isT;
   }
