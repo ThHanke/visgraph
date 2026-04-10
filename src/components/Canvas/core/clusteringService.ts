@@ -101,13 +101,49 @@ export async function applyCanvasClustering(
     groupPlans.push(members);
   }
 
-  // Phase 2: animate all clusters simultaneously.
-  // groupEntities calls canvas.animateGraph() internally; concurrent calls stack
-  // Reactodia's CSS animation counter so all clusters animate in one pass.
-  // Member sets are disjoint, so concurrent model.group() calls don't conflict.
-  await Promise.all(
-    groupPlans.map(members => Reactodia.groupEntities(ctx, { elements: members, canvas }))
-  );
+  // Phase 2: capture group centers from current layout (before any mutation).
+  const groupCenters: Reactodia.Vector[] = groupPlans.map(members => {
+    const box = Reactodia.getContentFittingBox(members, [], canvas.renderingState);
+    return Reactodia.Rect.center(box);
+  });
+
+  // Phase 3: ONE animateGraph call — all members from all clusters converge simultaneously.
+  if (animate) {
+    await canvas.animateGraph(() => {
+      for (let i = 0; i < groupPlans.length; i++) {
+        const groupCenter = groupCenters[i];
+        for (const element of groupPlans[i]) {
+          const bounds = Reactodia.boundsOf(element, canvas.renderingState);
+          const atCenter: Reactodia.Vector = {
+            x: groupCenter.x - bounds.width / 2,
+            y: groupCenter.y - bounds.height / 2,
+          };
+          const normal = Reactodia.Vector.normalize(
+            Reactodia.Vector.subtract(element.position, groupCenter)
+          );
+          element.setPosition(Reactodia.Vector.add(
+            atCenter,
+            Reactodia.Vector.scale(normal, Math.min(bounds.width, bounds.height) / 2)
+          ));
+        }
+      }
+    });
+  }
+
+  // Phase 4: create all groups at once, then ONE syncUpdate — no per-group flicker.
+  const entityGroups = groupPlans.map(members => model.group(members));
+  canvas.renderingState.syncUpdate();
+
+  // Phase 5: position all groups at their computed centers.
+  for (let i = 0; i < entityGroups.length; i++) {
+    const group = entityGroups[i];
+    const groupCenter = groupCenters[i];
+    const bounds = Reactodia.boundsOf(group, canvas.renderingState);
+    group.setPosition({
+      x: groupCenter.x - bounds.width / 2,
+      y: groupCenter.y - bounds.height / 2,
+    });
+  }
 
   // Layout the resulting graph (groups + remaining ungrouped nodes) so groups are
   // compactly positioned — without this, groups sit at member centroids and leave
