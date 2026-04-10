@@ -21,8 +21,7 @@ type Algorithm = 'label-propagation' | 'louvain' | 'kmeans';
  * pass so groups are compactly positioned with no empty gaps.
  *
  * All code paths (Cluster button, algo/threshold change) use this function via
- * runClustering in ReactodiaCanvas. Initial clustering is intentionally disabled
- * until animation performance for bulk operations is resolved.
+ * runClustering in ReactodiaCanvas.
  */
 export async function applyCanvasClustering(
   ctx: Reactodia.WorkspaceContext,
