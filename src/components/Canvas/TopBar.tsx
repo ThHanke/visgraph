@@ -11,6 +11,7 @@ interface TopBarProps {
   ontologyCount: number;
   onOpenReasoningReport?: () => void;
   onRunReason?: () => void;
+  onClearInferred?: () => void;
   currentReasoning?: ReasoningResult | null;
   isReasoning?: boolean;
   isClustered?: boolean;
@@ -24,6 +25,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   ontologyCount,
   onOpenReasoningReport,
   onRunReason,
+  onClearInferred,
   currentReasoning = null,
   isReasoning = false,
   isClustered = false,
@@ -236,6 +238,17 @@ export const TopBar: React.FC<TopBarProps> = ({
               ) : (
                 'Ready'
               )}
+            </button>
+            <button
+              type="button"
+              className="reactodia-btn reactodia-btn-default"
+              onClick={onClearInferred}
+              disabled={!currentReasoning || isReasoning}
+              title="Clear inferred graph"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline', verticalAlign: 'middle' }}>
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+              </svg>
             </button>
             <button
               type="button"

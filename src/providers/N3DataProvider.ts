@@ -120,6 +120,18 @@ export class N3DataProvider implements DataProvider {
     this.addGraph(newQuads, graphName);
   }
 
+  clearInferred(): void {
+    this.inferredBySubject.clear();
+    const dataset = (this.inner as any).dataset;
+    if (dataset && typeof dataset.iterateMatches === 'function' && typeof dataset.delete === 'function') {
+      const graphNode = this.inner.factory.namedNode('urn:vg:inferred');
+      const toRemove = [...dataset.iterateMatches(null, null, null, graphNode)];
+      for (const q of toRemove) {
+        dataset.delete(q);
+      }
+    }
+  }
+
   clear(): void {
     this.inner.clear();
     this.typeMap.clear();

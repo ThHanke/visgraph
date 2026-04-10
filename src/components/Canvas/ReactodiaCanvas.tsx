@@ -626,6 +626,12 @@ export default function ReactodiaCanvas() {
     });
   }, []);
 
+  const handleClearInferred = React.useCallback(() => {
+    dataProvider.clearInferred();
+    rdfManager.removeGraph('urn:vg:inferred');
+    setCurrentReasoning(null);
+  }, []);
+
   const handleRunReasoning = React.useCallback(async () => {
     setIsReasoning(true);
     try {
@@ -918,6 +924,7 @@ export default function ReactodiaCanvas() {
                       onExpandAll={handleExpandAll}
                       onOpenReasoningReport={() => actions.toggleReasoningReport(true)}
                       onRunReason={handleRunReasoning}
+                      onClearInferred={handleClearInferred}
                       currentReasoning={currentReasoning}
                       isReasoning={isReasoning}
                     />
