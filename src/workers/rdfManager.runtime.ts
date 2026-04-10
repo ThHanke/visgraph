@@ -12,6 +12,7 @@ import type {
   ExportGraphPayload,
   ImportSerializedPayload,
   PurgeNamespacePayload,
+  RenameNamespaceUriPayload,
   RemoveQuadsByNamespacePayload,
   WorkerReconcileSubjectSnapshotPayload,
 } from "../utils/rdfManager.workerProtocol.ts";
@@ -1387,6 +1388,89 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             }
           }
           result = { removed, namespaceUri, prefixRemoved };
+          break;
+        }
+        case "renameNamespaceUri": {
+          const { DataFactory } = resolveN3();
+          if (!DataFactory) throw new Error("n3-datafactory-unavailable");
+          const store = getSharedStore();
+          const { oldUri, newUri, allNamespaceUris } =
+            payload as RenameNamespaceUriPayload;
+
+          if (!oldUri || !newUri || oldUri === newUri) {
+            result = { renamed: 0 };
+            break;
+          }
+
+          // Sort all namespace URIs longest-first for prefix disambiguation.
+          const sortedUris = [...allNamespaceUris].sort((a, b) => b.length - a.length);
+
+          // Find the longest namespace URI that an IRI starts with.
+          // Returns undefined if none match.
+          const longestMatch = (iri: string): string | undefined =>
+            sortedUris.find((u) => iri.startsWith(u));
+
+          // Replace the oldUri prefix with newUri in a named-node IRI, if it matches.
+          // Returns null if this IRI should not be renamed.
+          const maybeRename = (iri: string): string | null => {
+            if (!iri.startsWith(oldUri)) return null;
+            if (longestMatch(iri) !== oldUri) return null;
+            return newUri + iri.slice(oldUri.length);
+          };
+
+          const quads = store.getQuads(null, null, null, null) || [];
+          let renamed = 0;
+          const touchedSubjects = new Set<string>();
+
+          for (const q of quads) {
+            try {
+              const sVal = q.subject?.value ?? "";
+              const pVal = q.predicate?.value ?? "";
+              const oIsNamed = q.object?.termType === "NamedNode";
+              const oVal = oIsNamed ? (q.object?.value ?? "") : "";
+              const gVal = q.graph?.termType === "NamedNode" ? (q.graph?.value ?? "") : "";
+
+              const newS = maybeRename(sVal);
+              const newP = maybeRename(pVal);
+              const newO = oIsNamed ? maybeRename(oVal) : null;
+              const newG = gVal ? maybeRename(gVal) : null;
+
+              if (newS === null && newP === null && newO === null && newG === null) continue;
+
+              store.removeQuad(q);
+
+              const subj = DataFactory.namedNode(newS ?? sVal);
+              const pred = DataFactory.namedNode(newP ?? pVal);
+              let obj = q.object;
+              if (newO !== null) obj = DataFactory.namedNode(newO);
+              const graph =
+                newG !== null
+                  ? DataFactory.namedNode(newG)
+                  : q.graph?.termType === "NamedNode"
+                  ? DataFactory.namedNode(gVal)
+                  : DataFactory.defaultGraph();
+
+              store.addQuad(subj, pred, obj, graph);
+              renamed += 1;
+              touchedSubjects.add(newS ?? sVal);
+            } catch (err) {
+              console.debug("[rdfManager.worker] renameNamespaceUri failed for quad", err);
+            }
+          }
+
+          if (renamed > 0) {
+            emitChange({ reason: "renameNamespaceUri", oldUri, newUri, renamed });
+            const emission = prepareSubjectEmissionFromSet(touchedSubjects, store, DataFactory);
+            if (emission.subjects.length > 0) {
+              emitSubjects(
+                emission.subjects,
+                emission.quadsBySubject,
+                emission.snapshot,
+              );
+            }
+          }
+
+          result = { renamed };
           break;
         }
         case "emitAllSubjects": {
