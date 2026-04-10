@@ -585,7 +585,18 @@ export default function ReactodiaCanvas() {
     );
     if (groups.length === 0) return;
     setIsClustered(false);
-    await ctx.ungroupAll({ groups, canvas });
+    // Ungroup each group in parallel — same animateGraph stacking trick as grouping.
+    // Each group's members animate to positions around their group's last position,
+    // so no layout pass is needed.
+    await Promise.all(
+      groups.map(group =>
+        ctx.ungroupSome({
+          group,
+          entities: new Set(group.items.map(item => item.data.id as Reactodia.ElementIri)),
+          canvas,
+        })
+      )
+    );
   }, []);
 
   const handleClearData = React.useCallback(() => {
