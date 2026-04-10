@@ -261,7 +261,8 @@ async function performInitialClustering(
   model: Reactodia.DataDiagramModel,
   cfg: AppConfig,
   layoutFn: Reactodia.LayoutFunction,
-  silentLayoutPositions: React.MutableRefObject<Map<string, Reactodia.Vector> | null>
+  silentLayoutPositions: React.MutableRefObject<Map<string, Reactodia.Vector> | null>,
+  preClusterPositions: React.MutableRefObject<Map<string, Reactodia.Vector> | null>
 ): Promise<void> {
   const canvas = ctx.view.findAnyCanvas();
   if (!canvas) return;
@@ -281,6 +282,12 @@ async function performInitialClustering(
   }));
 
   await applyInitialGrouping(ctx, canvas, cfg.clusteringAlgorithm as 'louvain' | 'label-propagation' | 'kmeans', entityElements, relationLinks);
+
+  // Snapshot pre-cluster positions so handleExpandAll has a fallback
+  // if the silent background layout has not completed when user expands.
+  preClusterPositions.current = new Map(
+    entityElements.map(el => [el.data.id, { ...el.position }])
+  );
 
   const groups = model.elements.filter(
     (el): el is Reactodia.EntityGroup => el instanceof Reactodia.EntityGroup
@@ -530,7 +537,8 @@ export default function ReactodiaCanvas() {
               model,
               cfg,
               layoutFn,
-              silentLayoutPositions
+              silentLayoutPositions,
+              preClusterPositions
             );
           } else {
             await ctx.performLayout({

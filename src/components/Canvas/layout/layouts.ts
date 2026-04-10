@@ -103,7 +103,8 @@ export function createElkLayout(
   spacing: number
 ): LayoutFunction {
   return async (graph: LayoutGraph, state: LayoutState): Promise<LayoutState> => {
-    // Cancel any previous ELK layout still in progress.
+    // Cancel any previous Dagre and ELK layouts still in progress.
+    cancelActiveDagreLayout();
     cancelActiveElkLayout();
 
     const worker = new Worker(
