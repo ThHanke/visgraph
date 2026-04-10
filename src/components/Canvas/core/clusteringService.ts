@@ -2,11 +2,12 @@
  * clusteringService — bridges clustering algorithms to Reactodia's EntityGroup API.
  *
  * Public API:
- *   applyCanvasClustering(model, algorithm, threshold)
- *   clearCanvasClustering(model)
+ *   applyCanvasClustering(ctx, canvas, algorithm, threshold, layoutFunction, animate): Promise<void>
+ *   clearCanvasClustering(model): EntityElement[]
  */
 
 import * as Reactodia from '@reactodia/workspace';
+import type { LayoutFunction } from '@reactodia/workspace';
 import type { ClusterNode, ClusterEdge } from './clusterAlgorithms/types';
 import { computeClustersLabelPropagation } from './clusterAlgorithms/labelPropagation';
 import { computeClustersLouvainNgraph } from './clusterAlgorithms/louvainNgraph';
@@ -15,16 +16,24 @@ import { computeClustersKmeans } from './clusterAlgorithms/kmeans';
 type Algorithm = 'label-propagation' | 'louvain' | 'kmeans';
 
 /**
- * Run the chosen clustering algorithm over the current canvas elements and group
- * the results using Reactodia's native EntityGroup / RelationGroup API.
+ * Run the chosen clustering algorithm, group clusters using Reactodia's groupEntities
+ * API (handles animation, link state, and history correctly), then run a full layout
+ * pass so groups are compactly positioned with no empty gaps.
  *
- * Call this after a full-refresh load (emitAllSubjects) once layout is complete.
+ * All code paths (Cluster button, algo/threshold change) use this function via
+ * runClustering in ReactodiaCanvas. Initial clustering is intentionally disabled
+ * until animation performance for bulk operations is resolved.
  */
-export function applyCanvasClustering(
-  model: Reactodia.DataDiagramModel,
+export async function applyCanvasClustering(
+  ctx: Reactodia.WorkspaceContext,
+  canvas: Reactodia.CanvasApi,
   algorithm: Algorithm,
-  threshold: number
-): void {
+  threshold: number,
+  layoutFunction: LayoutFunction,
+  animate: boolean
+): Promise<void> {
+  const model = ctx.model;
+
   // Collect individual entities (skip any pre-existing groups)
   const entityElements = model.elements.filter(
     (el): el is Reactodia.EntityElement => el instanceof Reactodia.EntityElement
@@ -71,43 +80,57 @@ export function applyCanvasClustering(
     return;
   }
 
-  // Build IRI → EntityElement lookup
+  // Build element lookup upfront — all plans computed before any groupEntities call
+  // mutates the model, so references stay live throughout plan construction.
   const elementByIri = new Map<string, Reactodia.EntityElement>(
     entityElements.map(el => [el.data.id, el])
   );
 
-  // Create one EntityGroup per cluster.
-  // Track already-grouped IRIs to handle any overlapping community output (e.g. SLPA).
+  // Phase 1: build all member lists while model is still flat.
+  // elementByIri is captured before any groupEntities call removes elements.
+  const groupPlans: Reactodia.EntityElement[][] = [];
   const alreadyGrouped = new Set<string>();
   for (const [, clusterInfo] of clusters) {
     const members: Reactodia.EntityElement[] = [];
     for (const iri of clusterInfo.nodeIds) {
       if (alreadyGrouped.has(iri)) continue;
-      const el = elementByIri.get(iri);
+      const el = elementByIri.get(iri);  // reuse existing map
       if (el) members.push(el);
     }
     if (members.length < 2) continue;
-    model.group(members);
     for (const m of members) alreadyGrouped.add(m.data.id);
+    groupPlans.push(members);
   }
 
-  // Regroup links so that cross-group links become RelationGroups
-  model.regroupLinks(model.links);
+  // Phase 2: animate all clusters simultaneously.
+  // groupEntities calls canvas.animateGraph() internally; concurrent calls stack
+  // Reactodia's CSS animation counter so all clusters animate in one pass.
+  // Member sets are disjoint, so concurrent model.group() calls don't conflict.
+  await Promise.all(
+    groupPlans.map(members => Reactodia.groupEntities(ctx, { elements: members, canvas }))
+  );
+
+  // Layout the resulting graph (groups + remaining ungrouped nodes) so groups are
+  // compactly positioned — without this, groups sit at member centroids and leave
+  // large empty gaps where individual nodes used to be.
+  await ctx.performLayout({ layoutFunction, animate, canvas });
 
   console.log('[ClusteringService] Grouping complete');
 }
 
 /**
  * Remove all EntityGroups from the canvas, reverting to individual elements.
+ * Returns the ungrouped EntityElement instances so the caller can apply layout.
  * RelationGroups are reverted automatically by ungroupAll.
  */
-export function clearCanvasClustering(model: Reactodia.DataDiagramModel): void {
+export function clearCanvasClustering(model: Reactodia.DataDiagramModel): Reactodia.EntityElement[] {
   const groups = model.elements.filter(
     (el): el is Reactodia.EntityGroup => el instanceof Reactodia.EntityGroup
   );
-  if (groups.length === 0) return;
-  model.ungroupAll(groups);
-  console.log('[ClusteringService] Cleared', groups.length, 'groups');
+  if (groups.length === 0) return [];
+  const ungrouped = model.ungroupAll(groups);
+  console.log('[ClusteringService] Cleared', groups.length, 'groups, released', ungrouped.length, 'elements');
+  return ungrouped;
 }
 
 function selectClusteringAlgorithm(
