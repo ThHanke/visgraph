@@ -2,7 +2,7 @@
  * clusteringService — bridges clustering algorithms to Reactodia's EntityGroup API.
  *
  * Public API:
- *   applyCanvasClustering(ctx, canvas, algorithm, threshold, layoutFunction, animate): Promise<void>
+ *   applyCanvasClustering(ctx, canvas, algorithm, layoutFunction, animate): Promise<void>
  *   clearCanvasClustering(model): EntityElement[]
  */
 
@@ -27,7 +27,6 @@ export async function applyCanvasClustering(
   ctx: Reactodia.WorkspaceContext,
   canvas: Reactodia.CanvasApi,
   algorithm: Algorithm,
-  threshold: number,
   layoutFunction: LayoutFunction,
   animate: boolean
 ): Promise<void> {
@@ -66,7 +65,7 @@ export async function applyCanvasClustering(
     target: lk.data.targetId,
   }));
 
-  const { clusters } = selectClusteringAlgorithm(algorithm, clusterNodes, clusterEdges, { threshold });
+  const { clusters } = selectClusteringAlgorithm(algorithm, clusterNodes, clusterEdges, { threshold: 2 });
 
   console.log('[ClusteringService] Clusters computed:', {
     algorithm,

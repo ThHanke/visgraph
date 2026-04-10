@@ -596,7 +596,6 @@ export default function ReactodiaCanvas() {
     await applyCanvasClustering(
       ctx, canvas,
       cfg.clusteringAlgorithm,
-      cfg.collapseThreshold,
       getLayoutFunction(cfg.currentLayout, cfg, defaultLayout),
       cfg.layoutAnimations
     );
