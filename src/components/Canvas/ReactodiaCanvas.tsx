@@ -576,19 +576,17 @@ export default function ReactodiaCanvas() {
   }, [defaultLayout]);
 
   const handleExpandAll = React.useCallback(async () => {
-    const model = modelRef.current;
     const ctx = contextRef.current;
-    if (!model || !ctx) return;
-    const ungrouped = clearCanvasClustering(model);
-    if (ungrouped.length === 0) return;
+    if (!ctx) return;
+    const canvas = ctx.view.findAnyCanvas();
+    if (!canvas) return;
+    const groups = ctx.model.elements.filter(
+      (el): el is Reactodia.EntityGroup => el instanceof Reactodia.EntityGroup
+    );
+    if (groups.length === 0) return;
     setIsClustered(false);
-    const cfg = useAppConfigStore.getState().config;
-    await ctx.performLayout({
-      layoutFunction: getLayoutFunction(cfg.currentLayout, cfg, defaultLayout),
-      selectedElements: new Set(ungrouped),
-      animate: cfg.layoutAnimations,
-    });
-  }, [defaultLayout]);
+    await ctx.ungroupAll({ groups, canvas });
+  }, []);
 
   const handleClearData = React.useCallback(() => {
     knownSubjects.clear();
