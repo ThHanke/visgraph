@@ -849,6 +849,14 @@ export class RDFManagerImpl {
     });
   }
 
+  async renameNamespaceUri(
+    oldUri: string,
+    newUri: string,
+    allNamespaceUris: string[],
+  ): Promise<void> {
+    await this.worker.call("renameNamespaceUri", { oldUri, newUri, allNamespaceUris });
+  }
+
   async removeAllQuadsForIri(
     iri: string,
     graphName: string = DEFAULT_GRAPH,
