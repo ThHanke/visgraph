@@ -16,10 +16,11 @@ import {
 } from '@reactodia/workspace';
 import type { N3DataProvider } from './N3DataProvider';
 import { fetchLinkTypes, scoreLinkTypes } from '../utils/ontologyQueries';
+import type { NamespaceEntry } from '../constants/namespaces';
 
 interface RdfManagerLike {
   applyBatch(changes: { adds?: any[]; removes?: any[] }, graph?: string): Promise<void>;
-  getNamespaces(): Record<string, string>;
+  getNamespaces(): NamespaceEntry[];
 }
 
 export class RdfMetadataProvider implements MetadataProvider {

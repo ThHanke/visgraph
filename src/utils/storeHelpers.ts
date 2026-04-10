@@ -7,12 +7,13 @@
 
 import { useOntologyStore } from "../stores/ontologyStore";
 import type { RDFManager } from "./rdfManager";
+import type { NamespaceEntry } from "../constants/namespaces";
 
 /**
  * Get the namespace registry from the ontology store.
  * Returns an empty array if registry is not available.
  */
-export function getNamespaceRegistry(): Array<{ prefix: string; namespace: string; color?: string }> {
+export function getNamespaceRegistry(): NamespaceEntry[] {
   try {
     const state = useOntologyStore.getState();
     return Array.isArray(state.namespaceRegistry) ? state.namespaceRegistry : [];
