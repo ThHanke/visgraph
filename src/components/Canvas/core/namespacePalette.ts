@@ -281,32 +281,15 @@ export function buildPaletteMap(prefixes: string[] = [], options?: { avoidColors
 /**
  * Hook: usePaletteFromRdfManager
  *
- * Small helper hook that components can call to obtain a stable prefix -> color map
- * derived from the RDF manager's registered namespaces. It is memoized on rdfManager
- * identity and ontologiesVersion so callers can synchronously use the returned map
- * during render without triggering extra work.
+ * Small helper hook that components can call to obtain a stable prefix -> color map.
+ * Reads the registered namespaces from the ontology store and derives colors on demand
+ * via `buildPaletteMap`, so no stored `.color` field is required on each entry.
+ * Memoized on the `namespaceRegistry` array identity.
  */
 export function usePaletteFromRdfManager() {
-  // NOTE: this hook used to derive palette from the RDF manager's namespaces.
-  // Per recent refactor, namespace colors are now persisted into the ontology
-  // store as `namespaceRegistry`. This hook now returns a stable prefix->color
-  // mapping derived from that registry, making it the single source of truth.
   const registry = useOntologyStore((s) => (Array.isArray(s.namespaceRegistry) ? s.namespaceRegistry : []));
-  // Recompute palette when registry changes.
-  return useMemo(() => {
-    try {
-      const map: Record<string,string> = {};
-      (registry || []).forEach((entry: any) => {
-        try {
-          if (!entry || entry.prefix === undefined || entry.prefix === null) return;
-          const p = String(entry.prefix);
-          const colorValue = entry && entry.color !== undefined && entry.color !== null ? String(entry.color) : "";
-          map[p] = colorValue;
-        } catch (_) { void 0; }
-      });
-      return map;
-    } catch (_) {
-      return {};
-    }
-  }, [registry]);
+  return useMemo(
+    () => buildPaletteMap(registry.map((e) => e.prefix)),
+    [registry],
+  );
 }
