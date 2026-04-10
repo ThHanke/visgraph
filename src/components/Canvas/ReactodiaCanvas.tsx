@@ -892,6 +892,10 @@ export default function ReactodiaCanvas() {
                       isClustered={isClustered}
                       onCluster={handleCluster}
                       onExpandAll={handleExpandAll}
+                      onOpenReasoningReport={() => actions.toggleReasoningReport(true)}
+                      onRunReason={handleRunReasoning}
+                      currentReasoning={currentReasoning}
+                      isReasoning={isReasoning}
                     />
                   </div>
                 </div>
