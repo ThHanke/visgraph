@@ -168,7 +168,22 @@ let currentViewMode: ViewMode = 'abox';
 // Persisted layout per view mode, saved via model.exportLayout() before each switch
 const savedLayoutsByMode: Partial<Record<ViewMode, Reactodia.SerializedDiagram>> = {};
 
-
+/**
+ * Collect all entity IRIs currently represented on the canvas — both standalone
+ * EntityElements and members embedded inside EntityGroups. Used to avoid
+ * re-creating elements that are already present (possibly inside a group).
+ */
+function collectCanvasIris(elements: ReadonlyArray<Reactodia.Element>): Set<string> {
+  const iris = new Set<string>();
+  for (const el of elements) {
+    if (el instanceof Reactodia.EntityElement) {
+      iris.add(el.data.id);
+    } else if (el instanceof Reactodia.EntityGroup) {
+      for (const item of el.items) iris.add(item.data.id);
+    }
+  }
+  return iris;
+}
 
 export default function ReactodiaCanvas() {
   const { defaultLayout } = Reactodia.useWorker(Layouts);
@@ -176,6 +191,7 @@ export default function ReactodiaCanvas() {
   const [sidebarExpanded, setSidebarExpanded] = React.useState(false);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [isReasoning, setIsReasoning] = React.useState(false);
+  const [isClustered, setIsClustered] = React.useState(false);
   const [currentReasoning, setCurrentReasoning] = React.useState<ReasoningResult | null>(null);
   const [reasoningHistory, setReasoningHistory] = React.useState<ReasoningResult[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -272,13 +288,7 @@ export default function ReactodiaCanvas() {
       const ctx = contextRef.current;
 
       // Determine which subjects are new vs already on canvas
-      const existingIris = new Set(
-        model
-          ? model.elements
-              .filter((el): el is Reactodia.EntityElement => el instanceof Reactodia.EntityElement)
-              .map(el => el.data.id)
-          : []
-      );
+      const existingIris = collectCanvasIris(model ? model.elements : []);
       const added = subjects.filter(s => !existingIris.has(s));
       const changed = subjects.filter(s => existingIris.has(s));
 
@@ -367,9 +377,7 @@ export default function ReactodiaCanvas() {
         if (isFullRefresh) {
           // emitAllSubjects = full dataset reload: lay out the whole canvas
           await ctx.performLayout({ layoutFunction: layoutFn, animate: cfg.layoutAnimations, signal: controller.signal });
-          if (cfg.clusteringAlgorithm !== 'none') {
-            applyCanvasClustering(model, cfg.clusteringAlgorithm, cfg.collapseThreshold);
-          }
+          // Clustering is manual-only — triggered by the Cluster button in the top bar.
         } else {
           // Incremental add: only lay out the newly added elements so existing
           // positions are preserved.
@@ -393,21 +401,7 @@ export default function ReactodiaCanvas() {
     return () => rdfManager.offSubjectsChange(handler as any);
   }, []);
 
-  // Re-cluster when the user changes the algorithm or threshold in settings
-  const clusteringAlgorithm = useAppConfigStore(s => s.config.clusteringAlgorithm);
-  const collapseThreshold   = useAppConfigStore(s => s.config.collapseThreshold);
-  const isFirstRender = React.useRef(true);
-  React.useEffect(() => {
-    // Skip on mount — the emitAllSubjects handler takes care of the initial cluster
-    if (isFirstRender.current) { isFirstRender.current = false; return; }
-    const model = modelRef.current;
-    if (!model) return;
-    clearCanvasClustering(model);
-    const algo = clusteringAlgorithm;
-    if (algo !== 'none') {
-      applyCanvasClustering(model, algo, collapseThreshold);
-    }
-  }, [clusteringAlgorithm, collapseThreshold]);
+  // Clustering is manual-only (top bar Cluster button). No auto-trigger on algo/threshold change.
 
   // Handle view mode changes (ABox/TBox)
   React.useEffect(() => {
@@ -415,6 +409,10 @@ export default function ReactodiaCanvas() {
     if (mode === currentViewMode) return;
     const prevMode = currentViewMode;
     currentViewMode = mode;
+
+    // Clustering state belongs to a specific view mode — reset it on switch.
+    // model.importLayout below removes all EntityGroups from the model anyway.
+    setIsClustered(false);
 
     const model = modelRef.current;
     const ctx = contextRef.current;
@@ -448,11 +446,7 @@ export default function ReactodiaCanvas() {
         });
 
         // Add any elements that were added while we were in the other mode
-        const inModel = new Set(
-          model.elements
-            .filter((e): e is Reactodia.EntityElement => e instanceof Reactodia.EntityElement)
-            .map(e => e.data.id)
-        );
+        const inModel = collectCanvasIris(model.elements);
         const newIris = filtered.filter(iri => !inModel.has(iri));
         for (const iri of newIris) {
           model.createElement(iri as Reactodia.ElementIri);
@@ -566,22 +560,41 @@ export default function ReactodiaCanvas() {
     performLayoutRef.current?.();
   }, []);
 
-  const handleCluster = React.useCallback(() => {
-    const model = modelRef.current;
+  const handleCluster = React.useCallback(async () => {
+    const ctx = contextRef.current;
     const cfg = useAppConfigStore.getState().config;
-    if (!model || cfg.clusteringAlgorithm === 'none') return;
-    clearCanvasClustering(model);
-    applyCanvasClustering(model, cfg.clusteringAlgorithm, cfg.collapseThreshold);
-  }, []);
+    if (!ctx || cfg.clusteringAlgorithm === 'none') return;
+    const canvas = ctx.view.findAnyCanvas();
+    if (!canvas) return;
+    clearCanvasClustering(ctx.model);
+    await applyCanvasClustering(
+      ctx, canvas,
+      cfg.clusteringAlgorithm,
+      cfg.collapseThreshold,
+      getLayoutFunction(cfg.currentLayout, cfg, defaultLayout),
+      cfg.layoutAnimations
+    );
+    setIsClustered(true);
+  }, [defaultLayout]);
 
-  const handleExpandAll = React.useCallback(() => {
+  const handleExpandAll = React.useCallback(async () => {
     const model = modelRef.current;
-    if (!model) return;
-    clearCanvasClustering(model);
-  }, []);
+    const ctx = contextRef.current;
+    if (!model || !ctx) return;
+    const ungrouped = clearCanvasClustering(model);
+    if (ungrouped.length === 0) return;
+    setIsClustered(false);
+    const cfg = useAppConfigStore.getState().config;
+    await ctx.performLayout({
+      layoutFunction: getLayoutFunction(cfg.currentLayout, cfg, defaultLayout),
+      selectedElements: new Set(ungrouped),
+      animate: cfg.layoutAnimations,
+    });
+  }, [defaultLayout]);
 
   const handleClearData = React.useCallback(() => {
     knownSubjects.clear();
+    setIsClustered(false);
     const model = modelRef.current;
     if (!model) return;
     queueMicrotask(() => {
@@ -804,6 +817,7 @@ export default function ReactodiaCanvas() {
               visualAuthoring={{ propertyEditor }}
               halo={{
                 children: <>
+                  <Reactodia.SelectionActionGroup dock='nw' dockColumn={1} />
                   <Reactodia.SelectionActionRemove dock='nw' dockRow={1} />
                   <Reactodia.SelectionActionZoomToFit dock='nw' dockRow={3} />
                   <Reactodia.SelectionActionLayout dock='nw' dockRow={4} />
@@ -838,6 +852,8 @@ export default function ReactodiaCanvas() {
                   padding: '0 var(--reactodia-viewport-dock-margin, 10px)',
                   boxSizing: 'border-box',
                   pointerEvents: 'none',
+                  position: 'relative',
+                  zIndex: 'calc(var(--reactodia-z-index-base, 0) + 35)',
                 }}>
                   {/* Reactodia hamburger + search (no Toolbar wrapper to avoid nested ViewportDock) */}
                   <div className="reactodia-toolbar" role="toolbar" style={{ display: 'flex', alignItems: 'center', pointerEvents: 'auto' }}>
@@ -868,17 +884,14 @@ export default function ReactodiaCanvas() {
                   {/* Spacer */}
                   <div style={{ flex: 1 }} />
 
-                  {/* Custom items */}
-                  <div style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {/* Custom toolbar — same toolbar style, right-aligned */}
+                  <div className="reactodia-toolbar" role="toolbar" style={{ display: 'flex', alignItems: 'center', gap: 4, pointerEvents: 'auto' }}>
                     <LayoutPopover onApplyLayout={() => performLayoutRef.current?.()} />
                     <TopBar
                       viewMode={canvasState.viewMode as 'abox' | 'tbox'}
                       onViewModeChange={actions.setViewMode}
                       ontologyCount={ontologyCount}
-                      onOpenReasoningReport={() => actions.toggleReasoningReport(true)}
-                      onRunReason={handleRunReasoning}
-                      currentReasoning={currentReasoning}
-                      isReasoning={isReasoning}
+                      isClustered={isClustered}
                       onCluster={handleCluster}
                       onExpandAll={handleExpandAll}
                     />
