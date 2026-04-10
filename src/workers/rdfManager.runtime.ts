@@ -1403,7 +1403,10 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           }
 
           // Sort all namespace URIs longest-first for prefix disambiguation.
-          const sortedUris = [...allNamespaceUris].sort((a, b) => b.length - a.length);
+          const baseUris = allNamespaceUris.includes(oldUri)
+            ? allNamespaceUris
+            : [...allNamespaceUris, oldUri];
+          const sortedUris = [...baseUris].sort((a, b) => b.length - a.length);
 
           // Find the longest namespace URI that an IRI starts with.
           // Returns undefined if none match.
@@ -1452,7 +1455,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
 
               store.addQuad(subj, pred, obj, graph);
               renamed += 1;
-              touchedSubjects.add(newS ?? sVal);
+              touchedSubjects.add(newS !== null ? newS : subjectTermToString(q.subject));
             } catch (err) {
               console.debug("[rdfManager.worker] renameNamespaceUri failed for quad", err);
             }
