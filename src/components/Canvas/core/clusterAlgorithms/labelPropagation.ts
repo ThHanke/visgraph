@@ -28,11 +28,18 @@ export function computeClustersLabelPropagation(
 
   const graph = createGraph();
 
-  for (const node of nodes) {
+  // Sort nodes and edges by ID before insertion so ngraph.slpa's Object.keys()
+  // iteration is deterministic regardless of model.elements insertion order.
+  const sortedNodes = [...nodes].sort((a, b) => a.id.localeCompare(b.id));
+  const sortedEdges = [...edges].sort((a, b) =>
+    a.source < b.source ? -1 : a.source > b.source ? 1 : a.target.localeCompare(b.target)
+  );
+
+  for (const node of sortedNodes) {
     graph.addNode(node.id);
   }
 
-  for (const edge of edges) {
+  for (const edge of sortedEdges) {
     if (edge.source === edge.target) continue;
     try {
       graph.addLink(edge.source, edge.target);
