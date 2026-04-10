@@ -105,6 +105,8 @@
   body {
     /* @reference bg-background text-foreground; */
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    color: var(--foreground);
+    background-color: var(--background);
   }
 
   /* Utility: explicit dark foreground for use on bright buttons / surfaces where text-foreground

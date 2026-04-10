@@ -28,6 +28,11 @@ import { applyCanvasClustering, clearCanvasClustering } from './core/clusteringS
 import { LayoutPopover } from './LayoutPopover';
 import { RdfPropertyEditor } from './rdfPropertyEditor';
 import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
+import { Label } from '../ui/label';
+import { Input } from '../ui/input';
+import { Button } from '../ui/button';
+import { WELL_KNOWN_PREFIXES } from '@/utils/wellKnownOntologies';
 
 function extractNamespace(iri: string): string {
   const hash = iri.lastIndexOf('#');
@@ -188,6 +193,8 @@ export default function ReactodiaCanvas() {
   const { state: canvasState, actions } = useCanvasState();
   const [sidebarExpanded, setSidebarExpanded] = React.useState(false);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [loadOntologyOpen, setLoadOntologyOpen] = React.useState(false);
+  const [ontologyUrlInput, setOntologyUrlInput] = React.useState('');
   const [isReasoning, setIsReasoning] = React.useState(false);
   const [isClustered, setIsClustered] = React.useState(false);
   const [currentReasoning, setCurrentReasoning] = React.useState<ReasoningResult | null>(null);
@@ -688,7 +695,7 @@ export default function ReactodiaCanvas() {
   }, []);
 
   const handleLoadOntology = React.useCallback(() => {
-    setSettingsOpen(true);
+    setLoadOntologyOpen(true);
   }, []);
 
   const handleExportRdf = React.useCallback(async (format: 'turtle' | 'json-ld' | 'rdf-xml') => {
@@ -942,6 +949,75 @@ export default function ReactodiaCanvas() {
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
       />
+
+      <Dialog open={loadOntologyOpen} onOpenChange={setLoadOntologyOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Load Ontology</DialogTitle>
+            <DialogDescription>
+              Load an ontology from a URL or select from common vocabularies.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="ontologyUrl">Ontology URL</Label>
+              <Input
+                id="ontologyUrl"
+                placeholder="https://example.com/ontology.owl"
+                value={ontologyUrlInput}
+                onChange={(e) => setOntologyUrlInput(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Common Ontologies</Label>
+              <div className="grid gap-1 max-h-48 overflow-y-auto pr-1">
+                {WELL_KNOWN_PREFIXES.map((entry) => (
+                  <Button
+                    key={entry.url}
+                    variant={ontologyUrlInput === entry.url ? 'secondary' : 'outline'}
+                    size="sm"
+                    className="justify-start h-auto py-2 text-left"
+                    onClick={() => setOntologyUrlInput(entry.url)}
+                  >
+                    <div>
+                      <div className="font-medium">{entry.prefix} — {entry.name}</div>
+                      <div className="text-xs text-muted-foreground truncate">{entry.url}</div>
+                    </div>
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setLoadOntologyOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                disabled={!ontologyUrlInput.trim()}
+                onClick={async () => {
+                  const url = ontologyUrlInput.trim();
+                  if (!url) return;
+                  try {
+                    actions.setLoading(true, 10, 'Loading ontology...');
+                    await loadAdditionalOntologies([url], (progress, message) => {
+                      actions.setLoading(true, Math.max(progress, 30), message);
+                    });
+                    toast.success('Ontology loaded successfully');
+                    setOntologyUrlInput('');
+                    setLoadOntologyOpen(false);
+                  } catch (err) {
+                    console.error('Failed to load ontology:', err);
+                    toast.error('Failed to load ontology');
+                  } finally {
+                    actions.setLoading(false, 0, '');
+                  }
+                }}
+              >
+                Load Ontology
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <ReasoningReportModal
         open={canvasState.showReasoningReport}

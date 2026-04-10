@@ -98,6 +98,14 @@
   --reactodia-color-primary-dark:     oklch(60%   0.140 290.4);
   --reactodia-color-primary-darker:   oklch(52%   0.150 290.4);
   --reactodia-color-primary-darkest:  oklch(44%   0.150 290.4);
+  /* Secondary color scale — used by reactodia-btn-secondary (Cancel buttons in dialogs) */
+  --reactodia-color-secondary:         var(--muted);
+  --reactodia-color-secondary-light:   oklch(92%   0.008 252.0);
+  --reactodia-color-secondary-lighter: oklch(95%   0.004 250.0);
+  --reactodia-color-secondary-lightest:oklch(97%   0.002 248.0);
+  --reactodia-color-secondary-dark:    var(--border);
+  --reactodia-color-secondary-darker:  var(--border);
+  --reactodia-color-secondary-darkest: var(--input);
   /* Danger/destructive color scale */
   --reactodia-color-danger: var(--destructive);
   --reactodia-color-danger-contrast-background: oklch(100% 0 0);
@@ -198,6 +206,14 @@
   --reactodia-color-primary-dark:     oklch(54%   0.160 289.1);
   --reactodia-color-primary-darker:   oklch(46%   0.160 289.1);
   --reactodia-color-primary-darkest:  oklch(38%   0.150 289.1);
+  /* Secondary color scale — used by reactodia-btn-secondary (Cancel buttons in dialogs) */
+  --reactodia-color-secondary:         var(--muted);
+  --reactodia-color-secondary-light:   oklch(31%   0.025 256.8);
+  --reactodia-color-secondary-lighter: oklch(35%   0.022 256.8);
+  --reactodia-color-secondary-lightest:oklch(38%   0.020 256.8);
+  --reactodia-color-secondary-dark:    var(--border);
+  --reactodia-color-secondary-darker:  var(--border);
+  --reactodia-color-secondary-darkest: var(--input);
   /* Danger/destructive color scale */
   --reactodia-color-danger: var(--destructive);
   --reactodia-color-danger-contrast-background: oklch(100% 0 0);
@@ -452,6 +468,22 @@ select.glass-btn {
 .reactodia-dialog select option:hover {
   background-color: var(--muted);
   color: var(--foreground);
+}
+
+/* Dialog buttons — direct property overrides with higher specificity (020) than
+   Reactodia's single-class rules (010), so they win regardless of injection order */
+.reactodia-dialog .reactodia-btn-default,
+.reactodia-dialog .reactodia-btn-secondary {
+  background-color: var(--muted);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+.reactodia-dialog .reactodia-btn-default:hover,
+.reactodia-dialog .reactodia-btn-default:focus,
+.reactodia-dialog .reactodia-btn-secondary:hover,
+.reactodia-dialog .reactodia-btn-secondary:focus {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
 }
 
 /* Scrollbars inside Reactodia dialog panels */
