@@ -176,10 +176,8 @@ const savedLayoutsByMode: Partial<Record<ViewMode, Reactodia.SerializedDiagram>>
 function collectCanvasIris(elements: ReadonlyArray<Reactodia.Element>): Set<string> {
   const iris = new Set<string>();
   for (const el of elements) {
-    if (el instanceof Reactodia.EntityElement) {
-      iris.add(el.data.id);
-    } else if (el instanceof Reactodia.EntityGroup) {
-      for (const item of el.items) iris.add(item.data.id);
+    for (const entity of Reactodia.iterateEntitiesOf(el)) {
+      iris.add(entity.id);
     }
   }
   return iris;
