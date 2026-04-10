@@ -194,6 +194,7 @@ export default function ReactodiaCanvas() {
   const [reasoningHistory, setReasoningHistory] = React.useState<ReasoningResult[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const performLayoutRef = React.useRef<(() => Promise<void>) | null>(null);
+  const preClusterPositions = React.useRef<Map<string, Reactodia.Vector> | null>(null);
 
   const ontologyCount = useOntologyStore(s => s.loadedOntologies?.length ?? 0);
   const namespaces = useOntologyStore(s => Array.isArray(s.namespaceRegistry) ? s.namespaceRegistry : []);
@@ -565,6 +566,12 @@ export default function ReactodiaCanvas() {
     const canvas = ctx.view.findAnyCanvas();
     if (!canvas) return;
     clearCanvasClustering(ctx.model);
+    // Snapshot positions of all entities before clustering so expand-all can restore them.
+    preClusterPositions.current = new Map(
+      ctx.model.elements
+        .filter((el): el is Reactodia.EntityElement => el instanceof Reactodia.EntityElement)
+        .map(el => [el.data.id, { ...el.position }])
+    );
     await applyCanvasClustering(
       ctx, canvas,
       cfg.clusteringAlgorithm,
@@ -585,18 +592,19 @@ export default function ReactodiaCanvas() {
     );
     if (groups.length === 0) return;
     setIsClustered(false);
-    // Ungroup each group in parallel — same animateGraph stacking trick as grouping.
-    // Each group's members animate to positions around their group's last position,
-    // so no layout pass is needed.
-    await Promise.all(
-      groups.map(group =>
-        ctx.ungroupSome({
-          group,
-          entities: new Set(group.items.map(item => item.data.id as Reactodia.ElementIri)),
-          canvas,
-        })
-      )
-    );
+    const saved = preClusterPositions.current;
+    preClusterPositions.current = null;
+    // Ungroup all groups synchronously (no animation yet).
+    ctx.model.ungroupAll(groups);
+    canvas.renderingState.syncUpdate();
+    // Animate each element back to its pre-cluster position in one pass.
+    await canvas.animateGraph(() => {
+      for (const el of ctx.model.elements) {
+        if (!(el instanceof Reactodia.EntityElement)) continue;
+        const pos = saved?.get(el.data.id);
+        if (pos) el.setPosition(pos);
+      }
+    });
   }, []);
 
   const handleClearData = React.useCallback(() => {
