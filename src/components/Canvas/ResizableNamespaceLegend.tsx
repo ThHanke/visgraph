@@ -151,6 +151,12 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
   const [newUri, setNewUri] = useState("");
   const [error, setError] = useState("");
 
+  // Inline edit state: null means no row is being edited.
+  const [editingEntry, setEditingEntry] = useState<{ prefix: string; uri: string } | null>(null);
+  const [editPrefix, setEditPrefix] = useState("");
+  const [editUri, setEditUri] = useState("");
+  const [editError, setEditError] = useState("");
+
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -242,12 +248,91 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
     [commitRegistryUpdate, rdfManager],
   );
 
+  const handleEditStart = useCallback((prefix: string, uri: string) => {
+    setEditingEntry({ prefix, uri });
+    setEditPrefix(prefix);
+    setEditUri(uri);
+    setEditError("");
+  }, []);
+
+  const handleEditSave = useCallback(async () => {
+    try {
+      setEditError("");
+      if (!editingEntry) return;
+      const newPrefix = editPrefix.trim();
+      const newUri = editUri.trim();
+
+      const prefixValid = newPrefix === "" || /^[A-Za-z][\w-]*$/.test(newPrefix);
+      const uriValid = /^https?:\/\/\S+/.test(newUri);
+      if (!prefixValid) {
+        setEditError("Invalid prefix (letters, digits, underscore, hyphen; must start with letter)");
+        return;
+      }
+      if (!uriValid) {
+        setEditError("Namespace must be an absolute http(s) URI");
+        return;
+      }
+
+      // Check for duplicate prefix (only reject if it's a different entry)
+      const prefixConflict =
+        newPrefix !== editingEntry.prefix &&
+        registryEntries.some((e: any) => String(e.prefix) === newPrefix);
+      if (prefixConflict) {
+        setEditError(`Prefix "${newPrefix}" is already in use.`);
+        return;
+      }
+
+      const oldUri = editingEntry.uri;
+      const uriChanged = newUri !== oldUri;
+
+      // If URI changed, rename IRIs in all graphs before updating the registry.
+      if (uriChanged && rdfManager && typeof (rdfManager as any).renameNamespaceUri === "function") {
+        const allNamespaceUris = registryEntries.map((e: any) => String(e.namespace ?? "")).filter(Boolean);
+        try {
+          await (rdfManager as any).renameNamespaceUri(oldUri, newUri, allNamespaceUris);
+        } catch (err) {
+          setEditError("IRI rename failed. Check the console for details.");
+          console.error("[ResizableNamespaceLegend] renameNamespaceUri failed", err);
+          return;
+        }
+      }
+
+      const nsMap = commitRegistryUpdate((draft) => {
+        // Remove old prefix entry
+        draft.delete(editingEntry.prefix);
+        // Add updated entry (preserving color)
+        const existingColor = registryEntries.find((e: any) => String(e.prefix) === editingEntry.prefix)?.color ?? "";
+        draft.set(newPrefix, { namespace: newUri, color: existingColor });
+      });
+
+      try {
+        if (rdfManager && typeof rdfManager.setNamespaces === "function") {
+          rdfManager.setNamespaces(nsMap, { replace: true });
+        }
+      } catch (_) { /* ignore */ }
+
+      try {
+        if (rdfManager && typeof (rdfManager as any).emitAllSubjects === "function") {
+          const result = (rdfManager as any).emitAllSubjects();
+          if (result && typeof result.catch === "function") result.catch(() => {});
+        }
+      } catch (_) { /* ignore */ }
+
+      setEditingEntry(null);
+      setEditPrefix("");
+      setEditUri("");
+      setEditError("");
+    } catch (err) {
+      setEditError("Failed to save namespace edit");
+    }
+  }, [editingEntry, editPrefix, editUri, registryEntries, commitRegistryUpdate, rdfManager]);
+
   return (
     <div
       ref={containerRef}
       // Keep left/top inline so drag updates position, but let Tailwind control sizing.
       // When the add form is open increase min-height so the stacked inputs are visible.
-      className={`absolute bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border rounded-lg shadow-lg select-none min-w-[240px] max-w-[420px] w-[min(32vw,420px)] ${showAdd ? "min-h-[240px]" : "min-h-[140px]"} max-h-[60vh] z-50`}
+      className={`absolute bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border rounded-lg shadow-lg select-none min-w-[240px] max-w-[420px] w-[min(32vw,420px)] ${showAdd || !!editingEntry ? "min-h-[240px]" : "min-h-[140px]"} max-h-[60vh] z-50`}
       style={{ left: position.x, top: position.y }}
     >
       <div
@@ -397,11 +482,56 @@ export const ResizableNamespaceLegend = ({ namespaces, onClose }: ResizableNames
         // Use a slightly larger subtraction to account for header + add-form heights when open.
         style={{ maxHeight: "calc(60vh - 10rem)" }}
       >
+        {editingEntry ? (
+          <div className="mb-3 border rounded p-2 bg-muted/30">
+            <div className="flex flex-col gap-2">
+              <Input
+                aria-label="edit-prefix"
+                placeholder="prefix"
+                className="w-full text-sm min-w-0 bg-transparent text-foreground placeholder:text-muted-foreground"
+                value={editPrefix}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditPrefix(String(e.target.value))}
+              />
+              <Input
+                aria-label="edit-namespace-uri"
+                placeholder="https://example.org/"
+                className="w-full text-sm min-w-0 bg-transparent text-foreground placeholder:text-muted-foreground"
+                value={editUri}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditUri(String(e.target.value))}
+              />
+              {editError && (
+                <div className="text-sm text-red-600">{editError}</div>
+              )}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="text-sm px-3 py-1 rounded bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => { handleEditSave().catch(() => {}); }}
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  className="text-sm px-3 py-1 rounded border hover:bg-muted"
+                  onClick={() => {
+                    setEditingEntry(null);
+                    setEditPrefix("");
+                    setEditUri("");
+                    setEditError("");
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {entries.length > 0 ? (
           <NamespaceLegendCore
             entries={entries}
             palette={palette}
             onRemoveEntry={handleRemoveNamespace}
+            onEditEntry={handleEditStart}
           />
         ) : (
           <div className="text-xs text-muted-foreground">
