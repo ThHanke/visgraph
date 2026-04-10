@@ -26,6 +26,12 @@ import ResizableNamespaceLegend from './ResizableNamespaceLegend';
 import { useAppConfigStore } from '@/stores/appConfigStore';
 import { getLayoutFunction } from './layout/getLayoutFunction';
 import { applyCanvasClustering, clearCanvasClustering } from './core/clusteringService';
+import { runSilentLayout, type SilentLayoutEdge } from './layout/silentLayout';
+import type { ClusterNode, ClusterEdge } from './core/clusterAlgorithms/types';
+import { computeClustersLabelPropagation } from './core/clusterAlgorithms/labelPropagation';
+import { computeClustersLouvainNgraph } from './core/clusterAlgorithms/louvainNgraph';
+import { computeClustersKmeans } from './core/clusterAlgorithms/kmeans';
+import type { AppConfig } from '@/stores/appConfigStore';
 import { LayoutPopover } from './LayoutPopover';
 import { RdfPropertyEditor } from './rdfPropertyEditor';
 import { toast } from 'sonner';
@@ -189,6 +195,124 @@ function collectCanvasIris(elements: ReadonlyArray<Reactodia.Element>): Set<stri
   return iris;
 }
 
+async function applyInitialGrouping(
+  ctx: Reactodia.WorkspaceContext,
+  canvas: Reactodia.CanvasApi,
+  algorithm: 'louvain' | 'label-propagation' | 'kmeans',
+  entityElements: Reactodia.EntityElement[],
+  relationLinks: Reactodia.RelationLink[]
+): Promise<void> {
+  const connectivity = new Map<string, number>();
+  for (const el of entityElements) connectivity.set(el.data.id, 0);
+  for (const lk of relationLinks) {
+    connectivity.set(lk.data.sourceId, (connectivity.get(lk.data.sourceId) ?? 0) + 1);
+    connectivity.set(lk.data.targetId, (connectivity.get(lk.data.targetId) ?? 0) + 1);
+  }
+
+  const clusterNodes: ClusterNode[] = entityElements.map(el => ({
+    id: el.data.id,
+    connectivity: connectivity.get(el.data.id) ?? 0,
+    position: { x: el.position.x, y: el.position.y },
+  }));
+  const clusterEdges: ClusterEdge[] = relationLinks.map(lk => ({
+    id: lk.id,
+    source: lk.data.sourceId,
+    target: lk.data.targetId,
+  }));
+
+  let result: ReturnType<typeof computeClustersLabelPropagation>;
+  switch (algorithm) {
+    case 'louvain':           result = computeClustersLouvainNgraph(clusterNodes, clusterEdges, { threshold: 2 }); break;
+    case 'label-propagation': result = computeClustersLabelPropagation(clusterNodes, clusterEdges, { threshold: 2 }); break;
+    case 'kmeans':            result = computeClustersKmeans(clusterNodes, clusterEdges, { threshold: 2 }); break;
+    default: {
+      const _: never = algorithm;
+      throw new Error(`Unknown algorithm: ${_}`);
+    }
+  }
+
+  const { clusters } = result;
+  if (clusters.size === 0) return;
+
+  const elementByIri = new Map(entityElements.map(el => [el.data.id, el]));
+  const alreadyGrouped = new Set<string>();
+  const groupPlans: Reactodia.EntityElement[][] = [];
+
+  for (const [, clusterInfo] of clusters) {
+    const members: Reactodia.EntityElement[] = [];
+    for (const iri of clusterInfo.nodeIds) {
+      if (alreadyGrouped.has(iri)) continue;
+      const el = elementByIri.get(iri);
+      if (el) members.push(el);
+    }
+    if (members.length < 2) continue;
+    for (const m of members) alreadyGrouped.add(m.data.id);
+    groupPlans.push(members);
+  }
+
+  for (const members of groupPlans) {
+    ctx.model.group(members);
+  }
+  canvas.renderingState.syncUpdate();
+}
+
+async function performInitialClustering(
+  ctx: Reactodia.WorkspaceContext,
+  model: Reactodia.DataDiagramModel,
+  cfg: AppConfig,
+  layoutFn: Reactodia.LayoutFunction,
+  silentLayoutPositions: React.MutableRefObject<Map<string, Reactodia.Vector> | null>
+): Promise<void> {
+  const canvas = ctx.view.findAnyCanvas();
+  if (!canvas) return;
+
+  const entityElements = model.elements.filter(
+    (el): el is Reactodia.EntityElement => el instanceof Reactodia.EntityElement
+  );
+  const relationLinks = model.links.filter(
+    (lk): lk is Reactodia.RelationLink => lk instanceof Reactodia.RelationLink
+  );
+
+  if (entityElements.length < 2) return;
+
+  const clusterEdges: SilentLayoutEdge[] = relationLinks.map(lk => ({
+    source: lk.data.sourceId,
+    target: lk.data.targetId,
+  }));
+
+  await applyInitialGrouping(ctx, canvas, cfg.clusteringAlgorithm as 'louvain' | 'label-propagation' | 'kmeans', entityElements, relationLinks);
+
+  const groups = model.elements.filter(
+    (el): el is Reactodia.EntityGroup => el instanceof Reactodia.EntityGroup
+  );
+  const ungrouped = model.elements.filter(
+    (el): el is Reactodia.EntityElement => el instanceof Reactodia.EntityElement
+  );
+  const topLevelElements = new Set<Reactodia.Element>([...groups, ...ungrouped]);
+
+  await ctx.performLayout({
+    layoutFunction: layoutFn,
+    selectedElements: topLevelElements,
+    animate: false,
+  });
+
+  const allIris: string[] = [];
+  for (const el of model.elements) {
+    if (el instanceof Reactodia.EntityGroup) {
+      for (const item of el.items) allIris.push(item.data.id);
+    } else if (el instanceof Reactodia.EntityElement) {
+      allIris.push(el.data.id);
+    }
+  }
+
+  runSilentLayout(layoutFn, allIris, clusterEdges).then(positions => {
+    silentLayoutPositions.current = positions;
+    console.log('[Canvas] Silent background layout complete —', positions.size, 'positions stored');
+  }).catch(err => {
+    console.warn('[Canvas] Silent background layout failed:', err);
+  });
+}
+
 export default function ReactodiaCanvas() {
   const { defaultLayout } = Reactodia.useWorker(Layouts);
   const { state: canvasState, actions } = useCanvasState();
@@ -203,6 +327,7 @@ export default function ReactodiaCanvas() {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const performLayoutRef = React.useRef<(() => Promise<void>) | null>(null);
   const preClusterPositions = React.useRef<Map<string, Reactodia.Vector> | null>(null);
+  const silentLayoutPositions = React.useRef<Map<string, Reactodia.Vector> | null>(null);
 
   const ontologyCount = useOntologyStore(s => s.loadedOntologies?.length ?? 0);
   const namespaces = useOntologyStore(s => Array.isArray(s.namespaceRegistry) ? s.namespaceRegistry : []);
@@ -395,9 +520,25 @@ export default function ReactodiaCanvas() {
         const layoutFn = getLayoutFunction(cfg.currentLayout, cfg, defaultLayout);
 
         if (isFullRefresh) {
-          // emitAllSubjects = full dataset reload: lay out the whole canvas
-          await ctx.performLayout({ layoutFunction: layoutFn, animate: cfg.layoutAnimations, signal: controller.signal });
-          // Clustering is manual-only — triggered by the Cluster button in the top bar.
+          const shouldAutoCluster =
+            cfg.clusteringAlgorithm !== 'none' &&
+            addedFiltered.length > cfg.largeGraphThreshold;
+
+          if (shouldAutoCluster) {
+            await performInitialClustering(
+              ctx,
+              model,
+              cfg,
+              layoutFn,
+              silentLayoutPositions
+            );
+          } else {
+            await ctx.performLayout({
+              layoutFunction: layoutFn,
+              animate: cfg.layoutAnimations,
+              signal: controller.signal,
+            });
+          }
         } else {
           // Incremental add: only lay out the newly added elements so existing
           // positions are preserved.
@@ -613,7 +754,9 @@ export default function ReactodiaCanvas() {
     if (groups.length === 0) return;
     setIsClustered(false);
     const saved = preClusterPositions.current;
+    const silentPos = silentLayoutPositions.current;
     preClusterPositions.current = null;
+    silentLayoutPositions.current = null;
     // Ungroup all groups synchronously (no animation yet).
     ctx.model.ungroupAll(groups);
     canvas.renderingState.syncUpdate();
@@ -621,7 +764,8 @@ export default function ReactodiaCanvas() {
     await canvas.animateGraph(() => {
       for (const el of ctx.model.elements) {
         if (!(el instanceof Reactodia.EntityElement)) continue;
-        const pos = saved?.get(el.data.id);
+        // Prefer silent-layout positions (better than pre-cluster snapshot)
+        const pos = silentPos?.get(el.data.id) ?? saved?.get(el.data.id);
         if (pos) el.setPosition(pos);
       }
     });
