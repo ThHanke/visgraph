@@ -31,7 +31,7 @@ export interface AppConfig {
   canvasTheme: "light" | "dark" | "auto";
   tooltipEnabled: boolean;
   autoReasoning: boolean;
-  collapseThreshold: number;
+  largeGraphThreshold: number;
   clusteringAlgorithm: "none" | "louvain" | "label-propagation" | "kmeans";
   collapsedNodes: string[];
   reasoningRulesets: string[];
@@ -63,7 +63,7 @@ interface AppConfigStore {
   setPersistedAutoload: (enabled: boolean) => void;
   setAutoReasoning: (enabled: boolean) => void;
   setAutoDiscoverOntologies: (enabled: boolean) => void;
-  setCollapseThreshold: (threshold: number) => void;
+  setLargeGraphThreshold: (threshold: number) => void;
   setClusteringAlgorithm: (algorithm: "none" | "louvain" | "label-propagation" | "kmeans") => void;
   toggleNodeCollapsed: (iri: string) => void;
   setCollapsedNodes: (iris: string[]) => void;
@@ -89,8 +89,8 @@ interface AppConfigStore {
 const STORAGE_KEY = "ontology-painter-config";
 const MIN_LAYOUT_SPACING = 50;
 const MAX_LAYOUT_SPACING = 500;
-const MIN_COLLAPSE_THRESHOLD = 1;
-const MAX_COLLAPSE_THRESHOLD = 100;
+const MIN_LARGE_GRAPH_THRESHOLD = 10;
+const MAX_LARGE_GRAPH_THRESHOLD = 500;
 const MAX_RECENT_ONTOLOGIES = 10;
 const MAX_RECENT_LAYOUTS = 5;
 
@@ -114,7 +114,7 @@ const defaultConfig: AppConfig = {
   autoReasoning: false,
   debugRdfLogging: true,
   debugAll: false,
-  collapseThreshold: 10,
+  largeGraphThreshold: 100,
   clusteringAlgorithm: "label-propagation",
   collapsedNodes: [],
   reasoningRulesets: ["best-practice.n3", "owl-rl.n3"],
@@ -172,10 +172,10 @@ function normalizeAppConfigInput(value: unknown, context: string): AppConfig {
     `${context}.layoutSpacing`,
     { min: MIN_LAYOUT_SPACING, max: MAX_LAYOUT_SPACING },
   );
-  const collapseThreshold = normalizeNumber(
-    input.collapseThreshold ?? cfg.collapseThreshold,
-    `${context}.collapseThreshold`,
-    { min: MIN_COLLAPSE_THRESHOLD, max: MAX_COLLAPSE_THRESHOLD },
+  const largeGraphThreshold = normalizeNumber(
+    input.largeGraphThreshold ?? cfg.largeGraphThreshold,
+    `${context}.largeGraphThreshold`,
+    { min: MIN_LARGE_GRAPH_THRESHOLD, max: MAX_LARGE_GRAPH_THRESHOLD },
   );
 
   const viewMode = input.viewMode ?? cfg.viewMode;
@@ -224,7 +224,7 @@ function normalizeAppConfigInput(value: unknown, context: string): AppConfig {
       `${context}.autoDiscoverOntologies`,
       cfg.autoDiscoverOntologies,
     ),
-    collapseThreshold,
+    largeGraphThreshold,
     clusteringAlgorithm,
     collapsedNodes: normalizeStringArray(
       input.collapsedNodes ?? cfg.collapsedNodes,
@@ -393,12 +393,12 @@ export const useAppConfigStore = create<AppConfigStore>()(
         }));
       },
 
-      setCollapseThreshold: (threshold: number) => {
+      setLargeGraphThreshold: (threshold: number) => {
         updateConfig(set, (config) => ({
           ...config,
-          collapseThreshold: normalizeNumber(threshold, "setCollapseThreshold.threshold", {
-            min: MIN_COLLAPSE_THRESHOLD,
-            max: MAX_COLLAPSE_THRESHOLD,
+          largeGraphThreshold: normalizeNumber(threshold, "setLargeGraphThreshold.threshold", {
+            min: MIN_LARGE_GRAPH_THRESHOLD,
+            max: MAX_LARGE_GRAPH_THRESHOLD,
           }),
         }));
       },

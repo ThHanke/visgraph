@@ -3,9 +3,9 @@
  * Collapsible sidebar with file operations and workflow templates
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { rdfManager } from '../../utils/rdfManager';
 import * as TooltipPrimitive from '@radix-ui/react-tooltip';
-import { Button } from '../ui/button';
 import {
   ChevronLeft,
   ChevronRight,
@@ -22,10 +22,20 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '../ui/accordion';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu';
 import { WorkflowTemplateCard } from './WorkflowTemplateCard';
 import { getWorkflowTemplates, type WorkflowTemplate } from '../../utils/workflowInstantiator';
 import { useAppConfigStore } from '../../stores/appConfigStore';
 import { cn } from '../../lib/utils';
+
+export type RdfExportFormat = 'turtle' | 'json-ld' | 'rdf-xml';
 
 interface LeftSidebarProps {
   isExpanded: boolean;
@@ -33,7 +43,7 @@ interface LeftSidebarProps {
   onLoadOntology: () => void;
   onLoadFile: () => void;
   onClearData: () => void;
-  onExport: () => void;
+  onExportRdf: (format: RdfExportFormat) => void;
   onSettings: () => void;
 }
 
@@ -43,7 +53,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onLoadOntology,
   onLoadFile,
   onClearData,
-  onExport,
+  onExportRdf,
   onSettings,
 }) => {
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
@@ -57,7 +67,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     }
   }, [isExpanded, workflowCatalogEnabled]);
 
-  const loadTemplates = async () => {
+  const loadTemplates = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -72,7 +82,19 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Re-load when the workflows graph changes (e.g. catalog loaded from Settings)
+  useEffect(() => {
+    const handler = (_subjects: string[], _quads?: unknown, _snapshot?: unknown, meta?: Record<string, unknown> | null) => {
+      const graphName = meta && typeof meta.graphName === 'string' ? meta.graphName : null;
+      if (graphName === 'urn:vg:workflows' && workflowCatalogEnabled) {
+        loadTemplates();
+      }
+    };
+    rdfManager.onSubjectsChange(handler as any);
+    return () => rdfManager.offSubjectsChange(handler as any);
+  }, [workflowCatalogEnabled, loadTemplates]);
 
   const handleDragStart = (template: WorkflowTemplate) => {
     console.log('[LeftSidebar] Drag started:', template.label);
@@ -84,53 +106,133 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         className={cn(
           'absolute left-0 top-0 h-full z-20',
           'transition-all duration-300 ease-in-out',
-          isExpanded ? 'w-72' : 'w-4'
+          isExpanded ? 'w-72' : 'w-10'
         )}
       >
-        {/* Collapsed state - thin vertical bar with glassy effect */}
+        {/* Collapsed state - icon rail */}
         {!isExpanded && (
-          <div className="h-full w-full backdrop-blur-xl border-r border-border/40 shadow-lg flex flex-col items-center pt-2">
+          <div className="h-full w-full flex flex-col bg-background border-r border-border/40 shadow-lg overflow-visible">
+            {/* Top spacer — full-bleed, chevron centered, lip div grows on hover */}
             <TooltipPrimitive.Root>
               <TooltipPrimitive.Trigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
+                <div
+                  role="button"
                   onClick={onToggle}
-                  className="h-8 w-8 p-0 hover:bg-accent"
+                  aria-label="Expand sidebar"
+                  className="group flex-shrink-0 w-full h-12 border-b border-border/40 flex items-center justify-center relative overflow-visible cursor-pointer"
                 >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
+                  <div className="group relative flex items-center justify-center w-full h-8 overflow-visible text-muted-foreground group-hover:text-foreground group-hover:bg-accent transition-colors duration-150">
+                    <ChevronRight className="h-[18px] w-[18px] shrink-0" />
+                    <div className="absolute right-0 top-0 bottom-0 w-0 group-hover:w-3 translate-x-full bg-accent rounded-r-md transition-[width] duration-200" />
+                  </div>
+                </div>
               </TooltipPrimitive.Trigger>
               <TooltipPrimitive.Portal>
-                <TooltipPrimitive.Content
-                  className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
-                  sideOffset={5}
-                  side="right"
-                >
-                  Expand sidebar
-                  <TooltipPrimitive.Arrow className="fill-popover" />
+                <TooltipPrimitive.Content className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md" sideOffset={5} side="right">
+                  Expand sidebar<TooltipPrimitive.Arrow className="fill-popover" />
                 </TooltipPrimitive.Content>
               </TooltipPrimitive.Portal>
             </TooltipPrimitive.Root>
+            {/* Action icons */}
+            <div className="flex flex-col items-center gap-1 px-1 py-2 flex-1">
+            <TooltipPrimitive.Root>
+              <TooltipPrimitive.Trigger asChild>
+                <button className="rail-btn" onClick={onLoadOntology} aria-label="Load Ontology">
+                  <Database className="h-[18px] w-[18px]" />
+                  <span>Onto</span>
+                </button>
+              </TooltipPrimitive.Trigger>
+              <TooltipPrimitive.Portal>
+                <TooltipPrimitive.Content className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md" sideOffset={5} side="right">
+                  Load Ontology<TooltipPrimitive.Arrow className="fill-popover" />
+                </TooltipPrimitive.Content>
+              </TooltipPrimitive.Portal>
+            </TooltipPrimitive.Root>
+
+            <TooltipPrimitive.Root>
+              <TooltipPrimitive.Trigger asChild>
+                <button className="rail-btn" onClick={onLoadFile} aria-label="Load File">
+                  <Upload className="h-[18px] w-[18px]" />
+                  <span>File</span>
+                </button>
+              </TooltipPrimitive.Trigger>
+              <TooltipPrimitive.Portal>
+                <TooltipPrimitive.Content className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md" sideOffset={5} side="right">
+                  Load File<TooltipPrimitive.Arrow className="fill-popover" />
+                </TooltipPrimitive.Content>
+              </TooltipPrimitive.Portal>
+            </TooltipPrimitive.Root>
+
+            <TooltipPrimitive.Root>
+              <TooltipPrimitive.Trigger asChild>
+                <button className="rail-btn" onClick={onClearData} aria-label="Clear Data">
+                  <Trash2 className="h-[18px] w-[18px]" />
+                  <span>Clear</span>
+                </button>
+              </TooltipPrimitive.Trigger>
+              <TooltipPrimitive.Portal>
+                <TooltipPrimitive.Content className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md" sideOffset={5} side="right">
+                  Clear Data<TooltipPrimitive.Arrow className="fill-popover" />
+                </TooltipPrimitive.Content>
+              </TooltipPrimitive.Portal>
+            </TooltipPrimitive.Root>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="rail-btn" aria-label="Export">
+                  <Download className="h-[18px] w-[18px]" />
+                  <span>Export</span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="right" align="start" className="z-[99999] min-w-[10rem]">
+                <DropdownMenuLabel className="text-xs text-muted-foreground">Export RDF</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => onExportRdf('turtle')}>
+                  Turtle (.ttl)
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onExportRdf('json-ld')}>
+                  JSON-LD (.jsonld)
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onExportRdf('rdf-xml')}>
+                  RDF/XML (.rdf)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <div className="flex-1" />
+
+            <TooltipPrimitive.Root>
+              <TooltipPrimitive.Trigger asChild>
+                <button className="rail-btn" onClick={onSettings} aria-label="Settings">
+                  <Settings className="h-[18px] w-[18px]" />
+                  <span>Settings</span>
+                </button>
+              </TooltipPrimitive.Trigger>
+              <TooltipPrimitive.Portal>
+                <TooltipPrimitive.Content className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md" sideOffset={5} side="right">
+                  Settings<TooltipPrimitive.Arrow className="fill-popover" />
+                </TooltipPrimitive.Content>
+              </TooltipPrimitive.Portal>
+            </TooltipPrimitive.Root>
+            </div>{/* end icons div */}
           </div>
         )}
 
         {/* Expanded state - full sidebar */}
         {isExpanded && (
-          <div className="h-full w-full backdrop-blur-md border-r border-border/30 shadow-lg flex flex-col">
+          <div className="glass h-full w-full flex flex-col">
           {/* Toggle button at top */}
-          <div className="flex items-center bg-background  justify-between px-3 py-2 border-b border-border/40">
+          <div className="flex items-center bg-background justify-between px-3 py-2 border-b border-border/40">
             <span className="text-sm font-medium text-foreground">Menu</span>
             <TooltipPrimitive.Root>
               <TooltipPrimitive.Trigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
+                <button
                   onClick={onToggle}
-                  className="h-8 w-8 p-0 hover:bg-accent"
+                  aria-label="Collapse sidebar"
+                  className="h-8 w-8 flex items-center justify-center rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
                 >
                   <ChevronLeft className="h-4 w-4" />
-                </Button>
+                </button>
               </TooltipPrimitive.Trigger>
               <TooltipPrimitive.Portal>
                 <TooltipPrimitive.Content
@@ -150,15 +252,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             <div className="grid grid-cols-5 gap-1">
               <TooltipPrimitive.Root>
                 <TooltipPrimitive.Trigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 text-foreground hover:bg-accent hover:text-accent-foreground"
-                    onClick={onLoadOntology}
-                  >
+                  <button className="rail-btn h-14" onClick={onLoadOntology}>
                     <Database className="h-4 w-4" />
-                    <span className="text-xs">Onto</span>
-                  </Button>
+                    <span>Onto</span>
+                  </button>
                 </TooltipPrimitive.Trigger>
                 <TooltipPrimitive.Portal>
                   <TooltipPrimitive.Content
@@ -173,15 +270,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
               <TooltipPrimitive.Root>
                 <TooltipPrimitive.Trigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 text-foreground hover:bg-accent hover:text-accent-foreground"
-                    onClick={onLoadFile}
-                  >
+                  <button className="rail-btn h-14" onClick={onLoadFile}>
                     <Upload className="h-4 w-4" />
-                    <span className="text-xs">File</span>
-                  </Button>
+                    <span>File</span>
+                  </button>
                 </TooltipPrimitive.Trigger>
                 <TooltipPrimitive.Portal>
                   <TooltipPrimitive.Content
@@ -196,15 +288,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
               <TooltipPrimitive.Root>
                 <TooltipPrimitive.Trigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 text-foreground hover:bg-accent hover:text-accent-foreground"
-                    onClick={onClearData}
-                  >
+                  <button className="rail-btn h-14" onClick={onClearData}>
                     <Trash2 className="h-4 w-4" />
-                    <span className="text-xs">Clear</span>
-                  </Button>
+                    <span>Clear</span>
+                  </button>
                 </TooltipPrimitive.Trigger>
                 <TooltipPrimitive.Portal>
                   <TooltipPrimitive.Content
@@ -217,40 +304,34 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 </TooltipPrimitive.Portal>
               </TooltipPrimitive.Root>
 
-              <TooltipPrimitive.Root>
-                <TooltipPrimitive.Trigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 text-foreground hover:bg-accent hover:text-accent-foreground"
-                    onClick={onExport}
-                  >
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="rail-btn h-14" aria-label="Export">
                     <Download className="h-4 w-4" />
-                    <span className="text-xs">Export</span>
-                  </Button>
-                </TooltipPrimitive.Trigger>
-                <TooltipPrimitive.Portal>
-                  <TooltipPrimitive.Content
-                    className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
-                    sideOffset={5}
-                  >
-                    Export
-                    <TooltipPrimitive.Arrow className="fill-popover" />
-                  </TooltipPrimitive.Content>
-                </TooltipPrimitive.Portal>
-              </TooltipPrimitive.Root>
+                    <span>Export</span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="bottom" align="start" className="z-[99999] min-w-[10rem]">
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">Export RDF</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => onExportRdf('turtle')}>
+                    Turtle (.ttl)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => onExportRdf('json-ld')}>
+                    JSON-LD (.jsonld)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => onExportRdf('rdf-xml')}>
+                    RDF/XML (.rdf)
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               <TooltipPrimitive.Root>
                 <TooltipPrimitive.Trigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-14 flex flex-col items-center justify-center gap-1 p-1 text-foreground hover:bg-accent hover:text-accent-foreground"
-                    onClick={onSettings}
-                  >
+                  <button className="rail-btn h-14" onClick={onSettings}>
                     <Settings className="h-4 w-4" />
-                    <span className="text-xs">Settings</span>
-                  </Button>
+                    <span>Settings</span>
+                  </button>
                 </TooltipPrimitive.Trigger>
                 <TooltipPrimitive.Portal>
                   <TooltipPrimitive.Content

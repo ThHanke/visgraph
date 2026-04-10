@@ -17,6 +17,8 @@ import { DataFactory } from "n3";
 const { namedNode, blankNode, literal } = DataFactory;
 import { useCanvasState } from "../../hooks/useCanvasState";
 import { RDF_TYPE, OWL_NAMED_INDIVIDUAL } from "../../constants/vocabularies";
+import { rdfManager as directRdfManager } from "../../utils/rdfManager";
+import { dataProvider } from "./ReactodiaCanvas";
 
 // Module-scoped counter for generated blank-node identifiers used when creating new nodes
 let __vg_blank_counter = 1;
@@ -38,11 +40,9 @@ import {
   SelectValue,
 } from "../ui/select";
 import EntityAutoComplete from "../ui/EntityAutoComplete";
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import { useOntologyStore } from "../../stores/ontologyStore";
 import { toPrefixed, expandPrefixed } from "../../utils/termUtils";
 import { getNamespaceRegistry, getRdfManager } from "../../utils/storeHelpers";
-import { X, Plus, Info } from "lucide-react";
+import { X, Plus } from "lucide-react";
 // React Flow selection hook — allow editor to derive node when no explicit prop provided
 
 // Simple termForIri helper used for constructing N3 terms (handles blank nodes like "_:b0")
@@ -173,6 +173,18 @@ interface NodePropertyEditorProps {
 }
 
 /**
+ * Props for use inside an externally-managed dialog (Reactodia overlay).
+ * Same as NodePropertyEditorProps but without open/onOpenChange — the parent controls dialog lifecycle.
+ */
+export interface NodePropertyEditorContentProps {
+  nodeData: any;
+  onSave: (updatedData: any) => void;
+  onDelete?: (iriOrId: string) => void;
+  onClose: () => void;
+  addNamedIndividualOnSave?: boolean;
+}
+
+/**
  * Simplified NodePropertyEditor that relies on passed nodeData and fat-map suggestions.
  * Persistence to the RDF store is handled here only on save/delete (writes only).
  */
@@ -194,12 +206,6 @@ export const NodePropertyEditor = ({
   const initialPropertiesRef = useRef<LiteralProperty[]>([]);
   const initialRdfTypesRef = useRef<string[]>([]);
   const { actions: canvasActions } = useCanvasState();
-
-  // Minimal selector used only for UI affordances (popover) to detect whether a chosen
-  // rdf:type is present in the loaded fat-map. This is lightweight and avoids any
-  // snapshotting logic while keeping the dialog simple.
-  const availableClasses = useOntologyStore((s) => s.availableClasses || []);
-
 
   // Initialize local form state from the passed nodeData when dialog opens.
   useEffect(() => {
@@ -712,21 +718,8 @@ export const NodePropertyEditor = ({
                 placeholder="Type to search for classes..."
                 emptyMessage="No OWL classes found. Load an ontology first."
                 className="w-full"
+                dataProvider={dataProvider}
               />
-              {nodeType && !availableClasses.find(e => (String(e.iri || '') === String(nodeType))) && (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground">
-                      <Info className="h-4 w-4" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent side="top">
-                    <div className="text-xs">
-                      The selected rdf:type is not present in the loaded fat-map. It will be saved as the displayType but not resolved to a known class.
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              )}
             </div>
             <p className="text-xs text-muted-foreground">
               owl:NamedIndividual will be preserved by the mapping pipeline if applicable.
@@ -763,6 +756,7 @@ export const NodePropertyEditor = ({
                     placeholder="Type to search for classes..."
                     emptyMessage="No OWL classes found. Load an ontology first."
                     className="flex-1"
+                    dataProvider={dataProvider}
                   />
                   <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveType(index, e)} className="h-9 px-2">
                     <X className="h-4 w-4" />
@@ -802,6 +796,7 @@ export const NodePropertyEditor = ({
                       onChange={(ent) => handleUpdateProperty(index, "key", ent ? String(ent.iri || '') : "")}
                       placeholder="Select property..."
                       className={!property.key.trim() ? "border-destructive" : ""}
+                      dataProvider={dataProvider}
                     />
                     {!property.key.trim() && (
                       <p className="text-xs text-destructive mt-1">Property is required</p>
@@ -893,5 +888,355 @@ export const NodePropertyEditor = ({
         </form>
       </DialogContent>
     </Dialog>
+  );
+};
+
+/**
+ * Form-only version of NodePropertyEditor for use inside Reactodia's overlay dialog.
+ * No Dialog wrapper — the dialog chrome is provided by the caller.
+ * Shows IRI (read-only), RDF Types (editable), and Annotation Properties (editable).
+ * Writes directly to the N3 store on save.
+ */
+export const NodePropertyEditorContent = ({
+  nodeData,
+  onSave,
+  onClose,
+}: NodePropertyEditorContentProps) => {
+  const [nodeIri, setNodeIri] = useState<string>("");
+  const [rdfTypesState, setRdfTypesState] = useState<string[]>([]);
+  const [properties, setProperties] = useState<LiteralProperty[]>([]);
+  const initialPropertiesRef = useRef<LiteralProperty[]>([]);
+  const initialRdfTypesRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    const sourceNode =
+      nodeData && typeof nodeData === "object"
+        ? (nodeData as any).data ?? nodeData
+        : null;
+
+    if (!sourceNode) {
+      setNodeIri("");
+      setProperties([]);
+      initialPropertiesRef.current = [];
+      return;
+    }
+
+    const iri =
+      typeof sourceNode.iri === "string"
+        ? sourceNode.iri
+        : typeof sourceNode.id === "string"
+        ? sourceNode.id
+        : "";
+    setNodeIri(iri);
+
+    const rdfTypes: string[] = Array.isArray(sourceNode.rdfTypes)
+      ? sourceNode.rdfTypes.filter((t: unknown): t is string => typeof t === "string")
+      : [];
+    setRdfTypesState(rdfTypes);
+    initialRdfTypesRef.current = rdfTypes.slice();
+
+    const normalizedProps: LiteralProperty[] = [];
+    if (Array.isArray(sourceNode.annotationProperties)) {
+      for (const entry of sourceNode.annotationProperties) {
+        const normalized = coerceLiteralProperty(entry);
+        if (normalized) normalizedProps.push(normalized);
+      }
+    }
+    setProperties(normalizedProps);
+    initialPropertiesRef.current = normalizedProps.map(cloneLiteralProperty);
+  }, [nodeData]);
+
+  const handleAddType = (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setRdfTypesState((prev) => [...prev, ""]);
+  };
+
+  const handleRemoveType = (index: number, e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setRdfTypesState((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateType = (index: number, value: string) => {
+    setRdfTypesState((prev) => prev.map((t, i) => (i === index ? value : t)));
+  };
+
+  const handleAddProperty = (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setProperties((prev) => [...prev, { key: "", value: "", type: DISPLAY_DATATYPE }]);
+  };
+
+  const handleRemoveProperty = (index: number, e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setProperties((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateProperty = (index: number, field: keyof LiteralProperty, value: string) => {
+    setProperties((prev) =>
+      prev.map((p, i) => {
+        if (i !== index) return p;
+        const updated: LiteralProperty = { ...p, [field]: value };
+        if (field === "value" || field === "type") updated.objectTerm = undefined;
+        if (field === "key") updated.predicateTerm = undefined;
+        if (field === "type" && value !== DISPLAY_DATATYPE) updated.lang = undefined;
+        if (field === "lang" && value && value.trim()) updated.type = DISPLAY_DATATYPE;
+        return updated;
+      })
+    );
+  };
+
+  const getXSDTypes = () => [
+    DISPLAY_DATATYPE,
+    "xsd:boolean",
+    "xsd:integer",
+    "xsd:decimal",
+    "xsd:double",
+    "xsd:float",
+    "xsd:date",
+    "xsd:dateTime",
+    "xsd:time",
+    "xsd:anyURI",
+  ];
+
+  const handleSave = async (e?: React.MouseEvent) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+
+    if (properties.some(p => !p.key || !p.key.trim())) {
+      throw new Error("Please provide property names for all annotation properties.");
+    }
+
+    const subjIri = expandIriIfNeeded(String(nodeIri || "").trim());
+    if (!subjIri) return;
+
+    const mgr = directRdfManager;
+    if (!mgr || typeof (mgr as any).applyBatch !== "function") {
+      console.error("[NodePropertyEditorContent] rdfManager unavailable");
+      return;
+    }
+
+    // Use N3.js DataFactory — applyBatch runs terms through coerceWorkerTerm→serializeTerm
+    // which reads .termType/.value directly, so proper N3 Term objects work correctly.
+    const termForIri = (iri: string) =>
+      /^_:/i.test(iri) ? blankNode(iri.replace(/^_:/, "")) : namedNode(iri);
+
+    const valueToTerm = (val: any, type?: string) => {
+      const s = String(val ?? "");
+      if (/^_:/i.test(s)) return blankNode(s.replace(/^_:/, ""));
+      if (type && type.startsWith("@")) return literal(s, type.slice(1));
+      if (type && type.trim()) {
+        let dtIri = type.trim();
+        if (dtIri.startsWith("xsd:")) dtIri = dtIri.replace("xsd:", "http://www.w3.org/2001/XMLSchema#");
+        else if (!dtIri.includes("://")) dtIri = expandIriIfNeeded(dtIri);
+        return literal(s, namedNode(dtIri));
+      }
+      return literal(s);
+    };
+
+    const subjectTerm = termForIri(subjIri);
+    const propsToRemove = initialPropertiesRef.current;
+    const propsToAdd = properties;
+
+    const removesPrepared = propsToRemove.map((p: any) => {
+      try {
+        const key = String(p.key || "").trim();
+        if (!key) return null;
+        const predTerm = p.predicateTerm && typeof p.predicateTerm === 'object' && 'termType' in p.predicateTerm
+          ? p.predicateTerm
+          : namedNode(expandIriIfNeeded(key));
+        const objTerm = p.objectTerm && typeof p.objectTerm === 'object' && 'termType' in p.objectTerm
+          ? p.objectTerm
+          : valueToTerm(p.value, p.lang ? `@${p.lang}` : p.type);
+        return { subject: subjectTerm, predicate: predTerm, object: objTerm };
+      } catch (_) { return null; }
+    }).filter(Boolean) as any[];
+
+    const addsPrepared = propsToAdd.map((p: any) => {
+      try {
+        const key = String(p.key || "").trim();
+        if (!key) return null;
+        const predTerm = namedNode(expandIriIfNeeded(key));
+        const objTerm = valueToTerm(p.value, p.lang ? `@${p.lang}` : p.type);
+        return { subject: subjectTerm, predicate: predTerm, object: objTerm };
+      } catch (_) { return null; }
+    }).filter(Boolean) as any[];
+
+    // rdf:type diffs
+    const initialTypes = initialRdfTypesRef.current;
+    const typesToAdd = rdfTypesState.filter(t => t && !initialTypes.includes(t));
+    const typesToRemove = initialTypes.filter(t => t && !rdfTypesState.includes(t));
+    for (const t of typesToRemove) {
+      removesPrepared.push({ subject: subjectTerm, predicate: namedNode(RDF_TYPE), object: namedNode(expandIriIfNeeded(t)) });
+    }
+    for (const t of typesToAdd) {
+      addsPrepared.push({ subject: subjectTerm, predicate: namedNode(RDF_TYPE), object: namedNode(expandIriIfNeeded(t)) });
+    }
+
+    console.debug("[NodePropertyEditorContent] applyBatch", { subject: subjIri, removes: removesPrepared, adds: addsPrepared });
+    try {
+      await (mgr as any).applyBatch({ removes: removesPrepared, adds: addsPrepared }, "urn:vg:data");
+      console.debug("[NodePropertyEditorContent] applyBatch resolved ok");
+    } catch (err) {
+      console.error("[NodePropertyEditorContent] applyBatch failed", err);
+      return;
+    }
+
+    if (typeof onSave === "function") {
+      onSave(properties.filter(p => p.key?.trim()).map(p => ({
+        propertyUri: expandIriIfNeeded(p.key),
+        key: p.key,
+        value: p.value,
+        type: p.type || DISPLAY_DATATYPE,
+      })));
+    }
+
+    initialPropertiesRef.current = properties.map(cloneLiteralProperty);
+    initialRdfTypesRef.current = rdfTypesState.slice();
+    onClose();
+  };
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space-y-6 p-4">
+      <div className="space-y-2">
+        <Label htmlFor="nodeIri">IRI</Label>
+        <Input id="nodeIri" value={nodeIri} readOnly className="text-muted-foreground" />
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <Label>RDF Types</Label>
+          <Button type="button" variant="outline" size="sm" onClick={(e) => handleAddType(e)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Type
+          </Button>
+        </div>
+        <div className="space-y-2">
+          {rdfTypesState.map((type, index) => (
+            <div key={index} className="flex items-center gap-2">
+              <EntityAutoComplete
+                mode="classes"
+                optionsLimit={5}
+                value={type}
+                onChange={(ent: any) => handleUpdateType(index, ent ? String(ent.iri || "") : "")}
+                placeholder="Type to search for classes..."
+                emptyMessage="No OWL classes found. Load an ontology first."
+                className="flex-1"
+                dataProvider={dataProvider}
+              />
+              <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveType(index, e)} className="h-9 px-2">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+          {rdfTypesState.length === 0 && (
+            <p className="text-xs text-muted-foreground">No RDF types assigned</p>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <Label>Annotation Properties</Label>
+          <Button type="button" variant="outline" size="sm" onClick={(e) => handleAddProperty(e)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Property
+          </Button>
+        </div>
+
+        <div className="space-y-3">
+          {properties.map((property, index) => (
+            <div key={index} className="grid grid-cols-12 gap-2 items-end">
+              <div className="col-span-4">
+                <Label className="text-xs">Property *</Label>
+                <EntityAutoComplete
+                  mode="properties"
+                  value={property.key}
+                  onChange={(ent) => handleUpdateProperty(index, "key", ent ? String(ent.iri || "") : "")}
+                  placeholder="Select property..."
+                  className={!property.key.trim() ? "border-destructive" : ""}
+                  dataProvider={dataProvider}
+                />
+                {!property.key.trim() && (
+                  <p className="text-xs text-destructive mt-1">Property is required</p>
+                )}
+              </div>
+
+              <div className="col-span-5">
+                <Label className="text-xs">Value</Label>
+                <Input
+                  value={property.value}
+                  onChange={(e) => handleUpdateProperty(index, "value", e.target.value)}
+                  placeholder="Property value..."
+                />
+              </div>
+
+              <div className="col-span-1">
+                <Label className="text-xs">Type</Label>
+                <Select
+                  value={property.type || DISPLAY_DATATYPE}
+                  onValueChange={(value) => {
+                    handleUpdateProperty(index, "type", value);
+                    if (value !== DISPLAY_DATATYPE) handleUpdateProperty(index, "lang", "");
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {getXSDTypes().map((type) => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {property.type === DISPLAY_DATATYPE && (
+                <div className="col-span-1">
+                  <Label className="text-xs">Lang</Label>
+                  <Input
+                    value={property.lang || ""}
+                    onChange={(e) => {
+                      const v = e.target.value.trim();
+                      if (v) {
+                        handleUpdateProperty(index, "lang", v);
+                        handleUpdateProperty(index, "type", DISPLAY_DATATYPE);
+                      } else {
+                        handleUpdateProperty(index, "lang", "");
+                      }
+                    }}
+                    placeholder="en"
+                    className="w-full"
+                  />
+                </div>
+              )}
+
+              <div className="col-span-1">
+                <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveProperty(index, e)} className="h-9 px-2">
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
+
+          {properties.length === 0 && (
+            <div className="text-center py-4 text-muted-foreground border-2 border-dashed border-border/20 rounded-lg">
+              <p className="text-sm">No annotation properties</p>
+              <p className="text-xs">Click "Add Property" to add annotation properties</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2 pt-4 border-t">
+        <Button type="button" variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" onClick={(e) => handleSave(e)}>
+          Apply
+        </Button>
+      </div>
+    </form>
   );
 };

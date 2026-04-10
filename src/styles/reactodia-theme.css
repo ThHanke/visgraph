@@ -1,0 +1,498 @@
+/*
+ * reactodia-theme.css
+ *
+ * Bridges Reactodia's --reactodia-* CSS variables to the app's shadcn design tokens.
+ *
+ * CONSTRAINTS — never override these Reactodia layout/positioning variables:
+ *   --reactodia-z-index-base, --reactodia-dock-*, --reactodia-halo-*,
+ *   --reactodia-spacing-*, --reactodia-toolbar-height, --reactodia-viewport-dock-margin,
+ *   --reactodia-selection-single-box-margin, --reactodia-draggable-handle-*,
+ *   --reactodia-border-radius-*, --reactodia-border-width-base, --reactodia-font-size-base,
+ *   --reactodia-line-height-base, --reactodia-transition-duration,
+ *   --reactodia-paper-panning-overlay-z-index, --reactodia-dialog-viewport-breakpoint-s,
+ *   --reactodia-link-button-margin, --reactodia-link-button-size,
+ *   --reactodia-resizable-box-border-width, --reactodia-accordion-transition-duration
+ *
+ * Sections 2 and 3 (dialog overrides and form resets) must use CSS variable overrides only —
+ * never add backdrop-filter, filter, transform, opacity, isolation, will-change, position,
+ * or z-index to .reactodia-dialog, as these create new stacking contexts that break dialog
+ * positioning. Section 1 toolbar/dropdown overrides may use layout properties where needed
+ * for existing intentional behaviour.
+ *
+ * Three sections:
+ *   1. Color variable bridge  (.reactodia-workspace / .reactodia-workspace-dark)
+ *   2. Dialog solid surface   (.reactodia-dialog)
+ *   3. Form element resets    (.reactodia-dialog form elements)
+ */
+
+/* ============================================================
+   SECTION 1 — COLOR VARIABLE BRIDGE
+   ============================================================ */
+
+/* The .reactodia-toolbar wrapper is kept (required by Reactodia for dock positioning)
+   but its background is removed so it is transparent. */
+.reactodia-toolbar {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+/* Override Reactodia color tokens — light workspace */
+.reactodia-workspace {
+  /* Buttons */
+  --reactodia-button-default-background-color: var(--glass-surface);
+  --reactodia-button-default-background-color-focus: rgba(255, 255, 255, 0.80);
+  --reactodia-button-default-background-color-active: oklch(67.5% 0.123 290.4 / 0.18);
+  --reactodia-button-default-border-color: var(--glass-border-color);
+  --reactodia-button-default-color: var(--foreground);
+  --reactodia-button-default-color-focus: var(--foreground);
+  /* Surfaces */
+  --reactodia-background-color-surface: var(--glass-surface);
+  --reactodia-border-color-base: var(--glass-border-color);
+  /* Inputs */
+  --reactodia-input-background-color: rgba(255, 255, 255, 0.4);
+  --reactodia-input-color: var(--foreground);
+  --reactodia-input-color-placeholder: var(--muted-foreground);
+  --reactodia-input-border-color: var(--glass-border-color);
+  /* Navigator/minimap */
+  --reactodia-navigator-background-fill: var(--glass-surface);
+  --reactodia-navigator-viewport-stroke-color: oklch(67.5% 0.123 290.4 / 0.5);
+  /* Canvas background */
+  --reactodia-background-color: var(--canvas-bg);
+  /* Font */
+  --reactodia-font-color-base: var(--foreground);
+  --reactodia-font-color-base-inverse: var(--background);
+  /* Content */
+  --reactodia-color-content: var(--foreground);
+  --reactodia-color-content-contrast: var(--background);
+  --reactodia-color-content-inverse: var(--background);
+  /* Canvas */
+  --reactodia-canvas-box-shadow: var(--glass-shadow);
+  --reactodia-canvas-overlay-color: rgba(0, 0, 0, 0.60);
+  /* Input (extended) */
+  --reactodia-input-background-color-disabled: var(--muted);
+  --reactodia-input-border-color-focus: var(--ring);
+  /* Dialog border */
+  --reactodia-dialog-border-color: var(--border);
+  /* Inline entity / group */
+  --reactodia-inline-entity-color: var(--primary);
+  --reactodia-standard-group-color: var(--muted-foreground);
+  /* Inferred-knowledge accent — used for dashed links, type badges, property values from urn:vg:inferred */
+  --vg-inferred-color: oklch(72% 0.16 75);
+  --reactodia-element-background-color: var(--card);
+  --reactodia-link-stroke-color: var(--edge-default);
+  --reactodia-selection-link-color: var(--primary);
+  /* Tree */
+  --reactodia-tree-background-color-active: var(--muted);
+  --reactodia-tree-background-color-focus: oklch(67.5% 0.123 290.4 / 0.12);
+  --reactodia-tree-border-color-active: var(--border);
+  --reactodia-tree-border-color-focus: var(--ring);
+  /* Primary color scale */
+  --reactodia-color-primary: var(--primary);
+  --reactodia-color-primary-contrast-background: oklch(100% 0 0);
+  --reactodia-color-primary-contrast-foreground: oklch(100% 0 0);
+  --reactodia-color-primary-light:    oklch(77%   0.100 290.4);
+  --reactodia-color-primary-lighter:  oklch(85%   0.070 290.4);
+  --reactodia-color-primary-lightest: oklch(92%   0.040 290.4);
+  --reactodia-color-primary-dark:     oklch(60%   0.140 290.4);
+  --reactodia-color-primary-darker:   oklch(52%   0.150 290.4);
+  --reactodia-color-primary-darkest:  oklch(44%   0.150 290.4);
+  /* Secondary color scale — used by reactodia-btn-secondary (Cancel buttons in dialogs) */
+  --reactodia-color-secondary:         var(--muted);
+  --reactodia-color-secondary-light:   oklch(92%   0.008 252.0);
+  --reactodia-color-secondary-lighter: oklch(95%   0.004 250.0);
+  --reactodia-color-secondary-lightest:oklch(97%   0.002 248.0);
+  --reactodia-color-secondary-dark:    var(--border);
+  --reactodia-color-secondary-darker:  var(--border);
+  --reactodia-color-secondary-darkest: var(--input);
+  /* Danger/destructive color scale */
+  --reactodia-color-danger: var(--destructive);
+  --reactodia-color-danger-contrast-background: oklch(100% 0 0);
+  --reactodia-color-danger-contrast-foreground: oklch(100% 0 0);
+  --reactodia-color-danger-light:    oklch(83%   0.085  9.2);
+  --reactodia-color-danger-lighter:  oklch(90%   0.055  9.2);
+  --reactodia-color-danger-lightest: oklch(95%   0.030  9.2);
+  --reactodia-color-danger-dark:     oklch(65%   0.130  9.2);
+  --reactodia-color-danger-darker:   oklch(55%   0.140  9.2);
+  --reactodia-color-danger-darkest:  oklch(45%   0.140  9.2);
+  /* Gray scale (0=lightest/background → 1000=darkest/foreground) */
+  --reactodia-color-gray-0:    oklch(98.4% 0.002 247.8);
+  --reactodia-color-gray-100:  oklch(95%   0.004 250.0);
+  --reactodia-color-gray-200:  oklch(88%   0.008 252.0);
+  --reactodia-color-gray-300:  oklch(78%   0.015 254.0);
+  --reactodia-color-gray-400:  oklch(67%   0.022 255.0);
+  --reactodia-color-gray-500:  oklch(58%   0.028 256.0);
+  --reactodia-color-gray-600:  oklch(50%   0.033 256.5);
+  --reactodia-color-gray-700:  oklch(43%   0.038 257.0);
+  --reactodia-color-gray-800:  oklch(35%   0.041 257.0);
+  --reactodia-color-gray-900:  oklch(28%   0.043 257.0);
+  --reactodia-color-gray-1000: oklch(25%   0.045 256.8);
+  /* Emphasis scale — intentionally mirrors gray scale; Reactodia uses both semantically
+     (gray = neutral surfaces, emphasis = interactive states) but we unify them to one ramp */
+  --reactodia-color-emphasis-0:    oklch(98.4% 0.002 247.8);
+  --reactodia-color-emphasis-100:  oklch(95%   0.004 250.0);
+  --reactodia-color-emphasis-200:  oklch(88%   0.008 252.0);
+  --reactodia-color-emphasis-300:  oklch(78%   0.015 254.0);
+  --reactodia-color-emphasis-400:  oklch(67%   0.022 255.0);
+  --reactodia-color-emphasis-500:  oklch(58%   0.028 256.0);
+  --reactodia-color-emphasis-600:  oklch(50%   0.033 256.5);
+  --reactodia-color-emphasis-700:  oklch(43%   0.038 257.0);
+  --reactodia-color-emphasis-800:  oklch(35%   0.041 257.0);
+  --reactodia-color-emphasis-900:  oklch(28%   0.043 257.0);
+  --reactodia-color-emphasis-1000: oklch(25%   0.045 256.8);
+  /* Selection — dashed border only; no extra box-shadow ring to avoid visual overlap on small nodes */
+  --reactodia-selection-single-box-color: var(--primary);
+  --reactodia-selection-single-box-shadow: none;
+  --reactodia-selection-multiple-box-shadow: none;
+}
+
+/* Override Reactodia color tokens — dark workspace */
+.reactodia-workspace-dark {
+  /* Buttons */
+  --reactodia-button-default-background-color: var(--glass-surface);
+  --reactodia-button-default-background-color-focus: rgba(50, 60, 85, 0.80);
+  --reactodia-button-default-background-color-active: oklch(62% 0.145 289.1 / 0.25);
+  --reactodia-button-default-border-color: var(--glass-border-color);
+  --reactodia-button-default-color: var(--foreground);
+  --reactodia-button-default-color-focus: var(--foreground);
+  /* Surfaces */
+  --reactodia-background-color-surface: var(--glass-surface);
+  --reactodia-border-color-base: var(--glass-border-color);
+  /* Inputs */
+  --reactodia-input-background-color: rgba(30, 35, 50, 0.50);
+  --reactodia-input-color: var(--foreground);
+  --reactodia-input-color-placeholder: var(--muted-foreground);
+  --reactodia-input-border-color: var(--glass-border-color);
+  /* Navigator/minimap */
+  --reactodia-navigator-background-fill: rgba(30, 35, 50, 0.80);
+  --reactodia-navigator-viewport-stroke-color: oklch(62% 0.145 289.1 / 0.6);
+  /* Canvas background */
+  --reactodia-background-color: var(--canvas-bg);
+  /* Font */
+  --reactodia-font-color-base: var(--foreground);
+  --reactodia-font-color-base-inverse: var(--background);
+  /* Content */
+  --reactodia-color-content: var(--foreground);
+  --reactodia-color-content-contrast: var(--background);
+  --reactodia-color-content-inverse: var(--background);
+  /* Canvas */
+  --reactodia-canvas-box-shadow: var(--glass-shadow);
+  --reactodia-canvas-overlay-color: rgba(0, 0, 0, 0.75);
+  /* Input (extended) */
+  --reactodia-input-background-color-disabled: var(--muted);
+  --reactodia-input-border-color-focus: var(--ring);
+  /* Dialog border */
+  --reactodia-dialog-border-color: var(--border);
+  /* Inline entity / group */
+  --reactodia-inline-entity-color: var(--primary);
+  --reactodia-standard-group-color: var(--muted-foreground);
+  --vg-inferred-color: oklch(80% 0.18 75);
+  --reactodia-element-background-color: var(--card);
+  --reactodia-link-stroke-color: var(--edge-default);
+  --reactodia-selection-link-color: var(--primary);
+  /* Tree */
+  --reactodia-tree-background-color-active: var(--muted);
+  --reactodia-tree-background-color-focus: oklch(62% 0.145 289.1 / 0.15);
+  --reactodia-tree-border-color-active: var(--border);
+  --reactodia-tree-border-color-focus: var(--ring);
+  /* Primary color scale */
+  --reactodia-color-primary: var(--primary);
+  --reactodia-color-primary-contrast-background: oklch(100% 0 0);
+  --reactodia-color-primary-contrast-foreground: oklch(100% 0 0);
+  --reactodia-color-primary-light:    oklch(72%   0.120 289.1);
+  --reactodia-color-primary-lighter:  oklch(80%   0.090 289.1);
+  --reactodia-color-primary-lightest: oklch(88%   0.060 289.1);
+  --reactodia-color-primary-dark:     oklch(54%   0.160 289.1);
+  --reactodia-color-primary-darker:   oklch(46%   0.160 289.1);
+  --reactodia-color-primary-darkest:  oklch(38%   0.150 289.1);
+  /* Secondary color scale — used by reactodia-btn-secondary (Cancel buttons in dialogs) */
+  --reactodia-color-secondary:         var(--muted);
+  --reactodia-color-secondary-light:   oklch(31%   0.025 256.8);
+  --reactodia-color-secondary-lighter: oklch(35%   0.022 256.8);
+  --reactodia-color-secondary-lightest:oklch(38%   0.020 256.8);
+  --reactodia-color-secondary-dark:    var(--border);
+  --reactodia-color-secondary-darker:  var(--border);
+  --reactodia-color-secondary-darkest: var(--input);
+  /* Danger/destructive color scale */
+  --reactodia-color-danger: var(--destructive);
+  --reactodia-color-danger-contrast-background: oklch(100% 0 0);
+  --reactodia-color-danger-contrast-foreground: oklch(100% 0 0);
+  --reactodia-color-danger-light:    oklch(83%   0.085  9.2);
+  --reactodia-color-danger-lighter:  oklch(90%   0.055  9.2);
+  --reactodia-color-danger-lightest: oklch(95%   0.030  9.2);
+  --reactodia-color-danger-dark:     oklch(65%   0.130  9.2);
+  --reactodia-color-danger-darker:   oklch(55%   0.140  9.2);
+  --reactodia-color-danger-darkest:  oklch(45%   0.140  9.2);
+  /* Gray scale (0=darkest/background → 1000=lightest/foreground in dark mode) */
+  --reactodia-color-gray-0:    oklch(18.7% 0.017 256.8);
+  --reactodia-color-gray-100:  oklch(23.0% 0.020 256.8);
+  --reactodia-color-gray-200:  oklch(26.1% 0.022 256.8);
+  --reactodia-color-gray-300:  oklch(31.1% 0.025 256.8);
+  --reactodia-color-gray-400:  oklch(38.8% 0.028 256.8);
+  --reactodia-color-gray-500:  oklch(50.0% 0.025 256.0);
+  --reactodia-color-gray-600:  oklch(62.0% 0.020 252.0);
+  --reactodia-color-gray-700:  oklch(72.0% 0.014 250.0);
+  --reactodia-color-gray-800:  oklch(82.3% 0.016 256.7);
+  --reactodia-color-gray-900:  oklch(91.0% 0.008 248.0);
+  --reactodia-color-gray-1000: oklch(96.1% 0.004 247.9);
+  /* Emphasis scale — intentionally mirrors gray scale; Reactodia uses both semantically
+     (gray = neutral surfaces, emphasis = interactive states) but we unify them to one ramp */
+  --reactodia-color-emphasis-0:    oklch(18.7% 0.017 256.8);
+  --reactodia-color-emphasis-100:  oklch(23.0% 0.020 256.8);
+  --reactodia-color-emphasis-200:  oklch(26.1% 0.022 256.8);
+  --reactodia-color-emphasis-300:  oklch(31.1% 0.025 256.8);
+  --reactodia-color-emphasis-400:  oklch(38.8% 0.028 256.8);
+  --reactodia-color-emphasis-500:  oklch(50.0% 0.025 256.0);
+  --reactodia-color-emphasis-600:  oklch(62.0% 0.020 252.0);
+  --reactodia-color-emphasis-700:  oklch(72.0% 0.014 250.0);
+  --reactodia-color-emphasis-800:  oklch(82.3% 0.016 256.7);
+  --reactodia-color-emphasis-900:  oklch(91.0% 0.008 248.0);
+  --reactodia-color-emphasis-1000: oklch(96.1% 0.004 247.9);
+  /* Selection */
+  --reactodia-selection-single-box-color: var(--primary);
+  --reactodia-selection-single-box-shadow: none;
+  --reactodia-selection-multiple-box-shadow: none;
+}
+
+/* Cluster algorithm select chevron — theme-aware, since SVG data URLs can't use currentColor */
+select.glass-btn {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23475569'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 8px 5px;
+}
+.dark select.glass-btn {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23cbd5e1'/%3E%3C/svg%3E");
+}
+
+/* glass-btn inside our own groups (TopBar A-Box/T-Box, Reasoning) */
+.reactodia-btn-group .glass-btn.glass-btn--active {
+  background: rgba(124, 92, 228, 0.22) !important;
+  border-color: rgba(124, 92, 228, 0.35) !important;
+  color: var(--primary) !important;
+  box-shadow: none !important;
+}
+
+.dark .reactodia-btn-group .glass-btn.glass-btn--active {
+  background: rgba(140, 110, 240, 0.28) !important;
+}
+
+/* Hamburger dropdown panel — scope to toolbar menu only, NOT unified search panel */
+.reactodia-toolbar__menu .reactodia-dropdown__content {
+  background: var(--glass-surface) !important;
+  border: 1px solid var(--glass-border-color) !important;
+  border-radius: 10px !important;
+  backdrop-filter: var(--glass-blur) !important;
+  -webkit-backdrop-filter: var(--glass-blur) !important;
+  box-shadow: var(--glass-shadow) !important;
+  overflow: hidden !important;
+  padding: 4px !important;
+  z-index: 99999 !important;
+}
+
+.reactodia-toolbar__menu .reactodia-dropdown-menu__items {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+}
+
+/* Items inside the hamburger dropdown */
+.reactodia-toolbar__menu .reactodia-dropdown__content .reactodia-btn {
+  border: none !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  border-radius: 7px !important;
+  justify-content: flex-start !important;
+  width: 100% !important;
+  text-align: left !important;
+  transform: none !important;
+}
+
+.reactodia-toolbar__menu .reactodia-dropdown__content .reactodia-btn:hover {
+  background: rgba(124, 92, 228, 0.1) !important;
+  color: var(--primary) !important;
+  box-shadow: none !important;
+}
+
+.dark .reactodia-toolbar__menu .reactodia-dropdown__content .reactodia-btn:hover {
+  background: rgba(140, 110, 240, 0.15) !important;
+}
+
+/* Focus-visible ring — applies to all glass interactive elements */
+.glass-btn:focus-visible,
+.rail-btn:focus-visible,
+.reactodia-btn:focus-visible {
+  outline: 2px solid var(--ring) !important;
+  outline-offset: 2px !important;
+}
+
+/* ── Halo buttons (node + link) ──────────────────────────────────────────────
+   Both use SVG background-image icons. Transparent background lets the canvas
+   show through; invert(1) in dark mode flips black icons to white.
+   Use background-color (NOT background shorthand) to preserve the SVG icons. */
+
+/* Node halo */
+.reactodia-selection-action {
+  background-color: transparent !important;
+}
+.reactodia-selection-action:hover {
+  background-color: rgba(124, 92, 228, 0.12) !important;
+}
+.dark .reactodia-selection-action {
+  filter: invert(1) !important;
+}
+.dark .reactodia-selection-action:hover {
+  background-color: rgba(140, 110, 240, 0.18) !important;
+  filter: invert(1) hue-rotate(240deg) !important;
+}
+
+/* Link halo buttons — badge style so they're readable ON the link line.
+   Node halos float in canvas space (transparent works). Link buttons sit on a 2px
+   line and need a background to be visible as distinct interactive targets.
+   White-ish background keeps the black SVG icons readable in both light and dark mode. */
+.reactodia-link-action__button {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
+}
+.dark .reactodia-link-action__button {
+  background-color: rgba(255, 255, 255, 0.82) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45) !important;
+}
+/* Hover: primary-tinted badge; invert icon to white */
+.reactodia-link-action__button:hover {
+  background-color: oklch(67.5% 0.123 290.4 / 0.88) !important;
+  filter: invert(1) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3) !important;
+}
+.dark .reactodia-link-action__button:hover {
+  background-color: oklch(62% 0.145 289.1 / 0.88) !important;
+  filter: invert(1) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* ── Authoring state edit/delete buttons ─────────────────────────────────────
+   These are text+icon buttons (::before mask icon + text child) rendered near
+   a node when visual authoring mode is active. Use foreground color so the
+   mask icons are visible, full opacity always (the default 0.5 is too faint). */
+.reactodia-authoring-state__action {
+  color: var(--foreground) !important;
+  font-size: 11px !important;
+  opacity: 0.75 !important;
+}
+.reactodia-authoring-state__action:hover {
+  opacity: 1 !important;
+}
+.reactodia-authoring-state__action[disabled] {
+  opacity: 0.25 !important;
+}
+
+/* ============================================================
+   SECTION 2 — DIALOG SOLID SURFACE
+   ============================================================ */
+
+/*
+ * Override --reactodia-background-color-surface to solid only inside .reactodia-dialog.
+ * Toolbar, navigator, and canvas-level panels keep the glass surface (set in Section 1).
+ *
+ * IMPORTANT: Only variable overrides here.
+ * Do NOT add backdrop-filter, filter, transform, opacity, or any layout property
+ * to .reactodia-dialog — that would create a new stacking context and break
+ * child z-index / dialog positioning.
+ */
+.reactodia-dialog {
+  /* Primary purpose: override surface to solid (not glass) so dialogs are opaque.
+     The remaining variable re-declarations below are defensive — .reactodia-dialog
+     can be portalled outside the .reactodia-workspace scope in some Reactodia versions,
+     so we ensure all needed tokens resolve correctly regardless of mount point. */
+  --reactodia-background-color-surface: var(--card);
+  --reactodia-border-color-base: var(--border);
+  --reactodia-font-color-base: var(--foreground);
+  --reactodia-input-background-color: var(--input);
+  --reactodia-input-border-color: var(--border);
+  --reactodia-input-color: var(--foreground);
+  --reactodia-input-color-placeholder: var(--muted-foreground);
+}
+
+/*
+ * Dialog content fill + scroll.
+ * .reactodia-dialog is display:flex flex-direction:column with a JS-set fixed height.
+ * Any direct child that isn't the header must fill the remaining flex space and scroll.
+ * This applies to both our EntityEditor form and Reactodia's DefaultPropertyEditor.
+ */
+.reactodia-dialog > :not(.reactodia-dialog__header) {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* ============================================================
+   SECTION 3 — FORM ELEMENT RESETS
+   ============================================================ */
+
+/*
+ * Color-only resets for native form elements inside Reactodia dialogs.
+ * Only background-color, color, border-color are set. No sizing/layout properties.
+ */
+
+/* Inputs and textareas */
+.reactodia-dialog input,
+.reactodia-dialog textarea {
+  background-color: var(--input);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+.reactodia-dialog input::placeholder,
+.reactodia-dialog textarea::placeholder {
+  color: var(--muted-foreground);
+}
+.reactodia-dialog input:focus,
+.reactodia-dialog textarea:focus {
+  border-color: var(--ring);
+  outline-color: var(--ring);
+}
+
+/* Native select elements (used by DefaultPropertyEditor relation type picker) */
+.reactodia-dialog select {
+  background-color: var(--input);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+.reactodia-dialog select option {
+  background-color: var(--card);
+  color: var(--foreground);
+}
+.reactodia-dialog select option:checked,
+.reactodia-dialog select option:hover {
+  background-color: var(--muted);
+  color: var(--foreground);
+}
+
+/* Dialog buttons — direct property overrides with higher specificity (020) than
+   Reactodia's single-class rules (010), so they win regardless of injection order */
+.reactodia-dialog .reactodia-btn-default,
+.reactodia-dialog .reactodia-btn-secondary {
+  background-color: var(--muted);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+.reactodia-dialog .reactodia-btn-default:hover,
+.reactodia-dialog .reactodia-btn-default:focus,
+.reactodia-dialog .reactodia-btn-secondary:hover,
+.reactodia-dialog .reactodia-btn-secondary:focus {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+}
+
+/* Scrollbars inside Reactodia dialog panels */
+.reactodia-dialog ::-webkit-scrollbar-track {
+  background-color: var(--muted);
+}
+.reactodia-dialog ::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+}
+.reactodia-dialog ::-webkit-scrollbar-thumb:hover {
+  background-color: var(--muted-foreground);
+}

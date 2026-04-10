@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { DataFactory } from 'n3';
 const { namedNode } = DataFactory;
 import { useCanvasState } from '../../hooks/useCanvasState';
@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog';
-import { useOntologyStore } from '../../stores/ontologyStore';
+import { dataProvider } from './ReactodiaCanvas';
 import { toPrefixed, expandPrefixed } from '../../utils/termUtils';
 import { rdfManager as fallbackRdfManager } from '../../utils/rdfManager';
 import { getNamespaceRegistry, getRdfManager } from '../../utils/storeHelpers';
@@ -60,44 +60,12 @@ export const LinkPropertyEditor = ({
     '';
   const { actions: canvasActions } = useCanvasState();
 
-  // Read suggestions directly from the store each render (no snapshots).
-  const availableProperties = useOntologyStore((s) => s.availableProperties);
-  const getCompatibleProperties = useOntologyStore((s) => s.getCompatibleProperties);
-
   // Derive the class IRIs for source and target from the node data.
   // classType holds the primary domain class (owl:NamedIndividual excluded).
   // For TBox nodes (classes/properties) classType is the metaclass, which won't
   // match any domain declaration → falls through to properties with no domain restriction.
   const sourceClassIri: string = String(sourceNode?.classType ?? sourceNode?.rdfTypes?.[0] ?? '');
   const targetClassIri: string = String(targetNode?.classType ?? targetNode?.rdfTypes?.[0] ?? '');
-
-  // Use getCompatibleProperties when both endpoints are known so the autocomplete
-  // only surfaces properties whose domain/range match the actual node classes.
-  // Falls back to all available properties when class info is absent (sourceClassIri
-  // or targetClassIri empty) or when getCompatibleProperties returns nothing.
-  const computedAllObjectProperties = useMemo(() => {
-    let props: any[] = [];
-    if (sourceClassIri && targetClassIri && typeof getCompatibleProperties === 'function') {
-      const compatible = getCompatibleProperties(sourceClassIri, targetClassIri);
-      if (Array.isArray(compatible) && compatible.length > 0) {
-        props = compatible;
-      }
-    }
-    if (props.length === 0 && Array.isArray(availableProperties)) {
-      props = availableProperties;
-    }
-    return props.map((prop: any) => ({
-      iri: String(prop.iri || prop || ''),
-      label: prop.label || undefined,
-      description: prop.description || prop.namespace || undefined,
-      rdfType: prop.rdfType || prop.type,
-      prefixed: prop.prefixed,
-      __native: prop,
-    }));
-  }, [sourceClassIri, targetClassIri, getCompatibleProperties, availableProperties]);
-
-  // Use the memoized computedAllObjectProperties directly as the AutoComplete options.
-  // This avoids keeping a duplicate state copy; computedAllObjectProperties is memoized and stable.
 
   // No React Flow selection fallback in this streamlined editor; source/target must be provided via props.
 
@@ -114,23 +82,6 @@ export const LinkPropertyEditor = ({
     setSelectedProperty((prev) => (prev === resolvedStr ? prev : resolvedStr));
   }, [open, linkData]);
 
-  // If the editor opens and there is no selectedProperty yet, but available properties exist,
-  // prefill the selector with the first available property so UI tests and users immediately
-  // see a sensible default. Use the memoized computedAllObjectProperties directly.
-  const firstSuggestionIri =
-    computedAllObjectProperties.length > 0
-      ? String(computedAllObjectProperties[0]?.iri || "")
-      : "";
-
-  useEffect(() => {
-    if (!open) return;
-    if (!firstSuggestionIri) return;
-    const trimmed = String(selectedProperty || "").trim();
-    if (trimmed) return;
-    setSelectedProperty((prev) =>
-      String(prev || "").trim() ? prev : firstSuggestionIri,
-    );
-  }, [open, selectedProperty, firstSuggestionIri]);
 
   useEffect(() => {
     {
@@ -251,8 +202,7 @@ export const LinkPropertyEditor = ({
       }
     }
     try {
-      const property = (computedAllObjectProperties || []).find((p) => String(p.iri || '') === String(uriToSave));
-      await onSave(uriToSave, property?.label || uriToSave);
+      await onSave(uriToSave, uriToSave);
     } catch (err) {
       console.error("[LinkPropertyEditor] onSave handler rejected", err);
     } finally {
@@ -361,12 +311,14 @@ export const LinkPropertyEditor = ({
           <div className="space-y-2">
             <Label>Type</Label>
             <EntityAutoComplete
-              entities={computedAllObjectProperties}
-              value={selectedProperty}
-              onChange={(ent: any) => setSelectedProperty(ent ? String(ent.iri || '') : '')}
-              placeholder="Type to search for object properties..."
-              emptyMessage="No object properties found. Load an ontology first."
-              className="w-full"
+              mode="properties"
+              dataProvider={dataProvider}
+              sourceClassIri={sourceClassIri}
+              targetClassIri={targetClassIri}
+              value={displayValue}
+              onChange={(ent) => setSelectedProperty(ent?.iri ?? '')}
+              placeholder="Select property..."
+              optionsLimit={12}
             />
           </div>
 
@@ -384,6 +336,36 @@ export const LinkPropertyEditor = ({
         </div>
       </DialogContent>
     </Dialog>
+  );
+};
+
+export interface LinkPropertyEditorContentProps {
+  linkData: any;
+  sourceNode: any;
+  targetNode: any;
+  onSave: (propertyType: string, label: string) => Promise<void> | void;
+  onClose: () => void;
+}
+
+/**
+ * Form-only version of LinkPropertyEditor for use inside Reactodia's overlay dialog.
+ */
+export const LinkPropertyEditorContent = ({
+  linkData,
+  sourceNode,
+  targetNode,
+  onSave,
+  onClose,
+}: LinkPropertyEditorContentProps) => {
+  return (
+    <LinkPropertyEditor
+      open={true}
+      onOpenChange={(open) => { if (!open) onClose(); }}
+      linkData={linkData}
+      sourceNode={sourceNode}
+      targetNode={targetNode}
+      onSave={onSave}
+    />
   );
 };
 

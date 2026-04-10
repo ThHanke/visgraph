@@ -18,9 +18,8 @@ import {
   isWorkerQuad,
   serializeTerm,
 } from "./rdfSerialization";
-import { useOntologyStore } from "../stores/ontologyStore";
 import { useAppConfigStore } from "../stores/appConfigStore";
-import { ensureDefaultNamespaceMap } from "../constants/namespaces";
+import { ensureDefaultNamespaceMap, type NamespaceEntry, entriesToRecord, recordToEntries } from "../constants/namespaces";
 
 type ChangeSubscriber = (count: number, meta?: unknown) => void;
 type SubjectsSubscriber = (
@@ -436,45 +435,34 @@ const flattenSubjectQuadMap = (map: Record<string, WorkerQuad[]> | undefined): W
   return all;
 };
 
-const workerQuadToFatEntry = (quad: WorkerQuad) => {
-  return {
-    subject: {
-      termType: quad.subject.termType,
-      value: quad.subject.value,
-    },
-    predicate: {
-      termType: quad.predicate.termType,
-      value: quad.predicate.value,
-    },
-    object: (() => {
-      if (quad.object.termType === "Literal") {
-        return {
-          termType: "Literal",
-          value: quad.object.value,
-          datatype: quad.object.datatype,
-          language: quad.object.language,
-        };
-      }
-      return {
-        termType: quad.object.termType,
-        value: quad.object.value,
-      };
-    })(),
-    graph: quad.graph,
-  };
-};
 
 export class RDFManagerImpl {
   private worker: RdfManagerWorkerClient;
   private changeSubscribers = new Set<ChangeSubscriber>();
   private subjectsSubscribers = new Set<SubjectsSubscriber>();
   private changeCount = 0;
-  private reconcileInProgress: Promise<void> | null = null;
-  private namespaces: Record<string, string> = ensureDefaultNamespaceMap({});
+  private namespaces: NamespaceEntry[] = [];
+  private namespaceChangeSubscribers = new Set<(entries: NamespaceEntry[]) => void>();
   private blacklistPrefixes: Set<string> = new Set(DEFAULT_BLACKLIST_PREFIXES);
   private blacklistUris: string[] = [...DEFAULT_BLACKLIST_URIS];
   private workerChangeUnsub: (() => void) | null = null;
   private workerSubjectsUnsub: (() => void) | null = null;
+
+  private notifyNamespacesChanged(): void {
+    const snapshot = this.getNamespaces();
+    for (const cb of Array.from(this.namespaceChangeSubscribers)) {
+      try { cb(snapshot); } catch (err) {
+        console.error("[rdfManager] namespace subscriber failed", err);
+      }
+    }
+  }
+
+  private pushNamespacesToWorker(): void {
+    const record = entriesToRecord(this.namespaces);
+    void this.worker.call("setNamespaces", { namespaces: record, replace: true }).catch((err) => {
+      console.error("[rdfManager] worker setNamespaces failed", err);
+    });
+  }
 
   constructor(options?: { workerClient?: RdfManagerWorkerClient }) {
     this.worker = options?.workerClient ?? createRdfManagerWorkerClient();
@@ -492,7 +480,8 @@ export class RDFManagerImpl {
     try {
       const namespaces = await this.worker.call("getNamespaces");
       if (isStringRecord(namespaces)) {
-        this.namespaces = ensureDefaultNamespaceMap(namespaces as Record<string, string>);
+        this.namespaces = recordToEntries(ensureDefaultNamespaceMap(namespaces as Record<string, string>));
+        this.notifyNamespacesChanged();
       }
     } catch (err) {
       // Silently fail if worker not ready - this is expected during test initialization
@@ -604,64 +593,8 @@ export class RDFManagerImpl {
       })
       .filter(Boolean) as WorkerReconcileSubjectSnapshotPayload[];
 
-    let reconcilePromise: Promise<void> | undefined;
-    if (snapshot.length > 0) {
-      reconcilePromise = this.runReconcile(undefined, snapshot);
-    } else if (quads.length > 0) {
-      reconcilePromise = this.runReconcile(quads);
-    } else {
-      reconcilePromise = this.runReconcile();
-    }
-
-    const finalize = () =>
-      this.notifySubjectSubscribers(subjects, quads, snapshot, meta);
-    if (reconcilePromise) {
-      reconcilePromise.then(finalize, (err) => {
-        console.error("[rdfManager] reconcile during subjects event failed", err);
-        finalize();
-      });
-    } else {
-      finalize();
-    }
+    this.notifySubjectSubscribers(subjects, quads, snapshot, meta);
   };
-
-  private async runReconcile(
-    quads?: WorkerQuad[],
-    snapshot?: WorkerReconcileSubjectSnapshotPayload[],
-  ): Promise<void> {
-    const perform = async () => {
-      try {
-        const os = (useOntologyStore as any)?.getState?.();
-        if (!os) return;
-        if (snapshot && snapshot.length > 0 && typeof os.updateFatMapFromWorker === "function") {
-          await os.updateFatMapFromWorker(snapshot);
-          return;
-        }
-        if (Array.isArray(quads) && quads.length > 0) {
-          const converted = quads.map(workerQuadToFatEntry);
-          if (typeof os.updateFatMap === "function") {
-            await os.updateFatMap(converted);
-          }
-          return;
-        }
-        if (typeof os.updateFatMap === "function") {
-          await os.updateFatMap();
-        }
-      } catch (err) {
-        console.error("[rdfManager] runReconcile failed", err);
-      } finally {
-        this.reconcileInProgress = null;
-      }
-    };
-
-    if (this.reconcileInProgress) {
-      this.reconcileInProgress = this.reconcileInProgress.then(() => perform());
-      return this.reconcileInProgress;
-    }
-
-    this.reconcileInProgress = perform();
-    return this.reconcileInProgress;
-  }
 
   getBlacklist(): { prefixes: string[]; uris: string[] } {
     return {
@@ -710,6 +643,11 @@ export class RDFManagerImpl {
 
   offSubjectsChange(cb: SubjectsSubscriber): void {
     this.subjectsSubscribers.delete(cb);
+  }
+
+  onNamespacesChange(cb: (entries: NamespaceEntry[]) => void): () => void {
+    this.namespaceChangeSubscribers.add(cb);
+    return () => this.namespaceChangeSubscribers.delete(cb);
   }
 
   async triggerSubjectUpdate(subjectIris: string[]): Promise<void> {
@@ -787,23 +725,29 @@ export class RDFManagerImpl {
     let changed = false;
     for (const [prefix, uri] of Object.entries(input)) {
       if (typeof prefix !== "string" || typeof uri !== "string") continue;
-      if (!this.namespaces[prefix] || this.namespaces[prefix] !== uri) {
-        this.namespaces[prefix] = uri;
+      const idx = this.namespaces.findIndex(e => e.prefix === prefix);
+      if (idx >= 0) {
+        const existing = this.namespaces[idx];
+        if (existing.uri !== uri) {
+          this.namespaces[idx] = { prefix, uri };
+          changed = true;
+        }
+      } else {
+        this.namespaces.push({ prefix, uri });
         changed = true;
       }
     }
     if (changed) {
-      this.namespaces = ensureDefaultNamespaceMap(this.namespaces);
       const appConfig = (useAppConfigStore as any)?.getState?.();
       if (appConfig && typeof appConfig.setConfig === "function") {
         try {
-          appConfig.setConfig({
-            rdfNamespaces: { ...this.namespaces },
-          });
+          appConfig.setConfig({ rdfNamespaces: entriesToRecord(this.namespaces) });
         } catch (err) {
           console.debug("[rdfManager] persist namespaces failed", err);
         }
       }
+      this.pushNamespacesToWorker();
+      this.notifyNamespacesChanged();
     }
   }
 
@@ -831,12 +775,6 @@ export class RDFManagerImpl {
           result.prefixes as Record<string, string>,
           payload.graphName,
         );
-      }
-      if (Array.isArray((result as any).quads)) {
-        const quads = ((result as any).quads as WorkerQuad[]).filter(isWorkerQuad);
-        if (quads.length > 0) {
-          await this.runReconcile(quads);
-        }
       }
     }
   }
@@ -935,6 +873,16 @@ export class RDFManagerImpl {
     void this.worker.call("removeQuadsByNamespace", payload).catch((err) => {
       console.error("[rdfManager] removeQuadsByNamespace failed", err);
     });
+  }
+
+  async renameNamespaceUri(oldUri: string, newUri: string): Promise<void> {
+    const allNamespaceUris = this.namespaces.map(e => e.uri).filter(Boolean);
+    await this.worker.call("renameNamespaceUri", { oldUri, newUri, allNamespaceUris });
+    this.namespaces = this.namespaces.map(e =>
+      e.uri === oldUri ? { ...e, uri: newUri } : e,
+    );
+    this.notifyNamespacesChanged();
+    void this.emitAllSubjects().catch(() => {});
   }
 
   async removeAllQuadsForIri(
@@ -1099,34 +1047,49 @@ export class RDFManagerImpl {
     });
   }
 
-  getNamespaces(): Record<string, string> {
-    this.namespaces = ensureDefaultNamespaceMap(this.namespaces);
-    return { ...this.namespaces };
+  getNamespaces(): NamespaceEntry[] {
+    return [...this.namespaces];
   }
 
   setNamespaces(namespaces: Record<string, string>, options?: { replace?: boolean }): void {
     const replace = options?.replace === true;
     const normalized = ensureDefaultNamespaceMap(namespaces);
     if (replace) {
-      this.namespaces = { ...normalized };
+      this.namespaces = recordToEntries(normalized);
     } else {
-      this.namespaces = ensureDefaultNamespaceMap({ ...this.namespaces, ...normalized });
+      const record = { ...entriesToRecord(this.namespaces), ...normalized };
+      this.namespaces = recordToEntries(ensureDefaultNamespaceMap(record));
     }
-    const payloadNamespaces = replace ? this.namespaces : normalized;
+    const payloadNamespaces = replace ? entriesToRecord(this.namespaces) : normalized;
     void this.worker.call("setNamespaces", { namespaces: { ...payloadNamespaces }, replace }).catch((err) => {
       console.error("[rdfManager] setNamespaces failed", err);
     });
+    this.notifyNamespacesChanged();
   }
 
-  addNamespace(prefix: string, uri: any): void {
+  addNamespace(prefix: string, uri: string): void {
     if (prefix === null || typeof prefix === "undefined") return;
-    const term = toWorkerObjectTerm(uri);
-    if (!term || term.termType !== "NamedNode") return;
-    this.namespaces = ensureDefaultNamespaceMap({
-      ...this.namespaces,
-      [prefix]: term.value || "",
-    });
-    this.setNamespaces(this.namespaces, { replace: true });
+    if (typeof uri !== "string" || !uri) return;
+    const idx = this.namespaces.findIndex(e => e.prefix === prefix);
+    if (idx >= 0) {
+      this.namespaces[idx] = { prefix, uri };
+    } else {
+      this.namespaces.push({ prefix, uri });
+    }
+    this.pushNamespacesToWorker();
+    this.notifyNamespacesChanged();
+    void this.emitAllSubjects().catch(() => {});
+  }
+
+  removeNamespace(prefix: string): void {
+    if (prefix === null || typeof prefix === "undefined") return;
+    const before = this.namespaces.length;
+    this.namespaces = this.namespaces.filter(e => e.prefix !== prefix);
+    if (this.namespaces.length !== before) {
+      this.pushNamespacesToWorker();
+      this.notifyNamespacesChanged();
+      void this.emitAllSubjects().catch(() => {});
+    }
   }
 
   removeNamespaceAndQuads(prefixOrUri: string): void {

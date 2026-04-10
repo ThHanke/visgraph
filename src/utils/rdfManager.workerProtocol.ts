@@ -70,6 +70,12 @@ export interface PurgeNamespacePayload {
   prefixOrUri: string;
 }
 
+export interface RenameNamespaceUriPayload {
+  oldUri: string;
+  newUri: string;
+  allNamespaceUris: string[];
+}
+
 export interface FetchQuadsPagePayload {
   graphName: string;
   offset: number;
@@ -120,6 +126,7 @@ export type RDFWorkerCommandPayloads = {
   exportGraph: ExportGraphPayload;
   removeQuadsByNamespace: RemoveQuadsByNamespacePayload;
   purgeNamespace: PurgeNamespacePayload;
+  renameNamespaceUri: RenameNamespaceUriPayload;
 };
 
 export const RDF_WORKER_COMMANDS = [
@@ -143,6 +150,7 @@ export const RDF_WORKER_COMMANDS = [
   "exportGraph",
   "removeQuadsByNamespace",
   "purgeNamespace",
+  "renameNamespaceUri",
 ] as const;
 
 export type RDFWorkerCommandName = (typeof RDF_WORKER_COMMANDS)[number];
@@ -534,6 +542,16 @@ const COMMAND_VALIDATORS: Record<RDFWorkerCommandName, CommandValidator> = {
     assertPlainObject(payload, "purgeNamespace payload must be an object");
     const { prefixOrUri } = payload as PurgeNamespacePayload;
     assertString(prefixOrUri, "purgeNamespace.prefixOrUri must be a string");
+  },
+  renameNamespaceUri(payload) {
+    assertPlainObject(payload, "renameNamespaceUri payload must be an object");
+    const { oldUri, newUri, allNamespaceUris } = payload as RenameNamespaceUriPayload;
+    assertString(oldUri, "renameNamespaceUri.oldUri must be a string");
+    assertString(newUri, "renameNamespaceUri.newUri must be a string");
+    assertArray(allNamespaceUris, "renameNamespaceUri.allNamespaceUris must be an array");
+    for (const uri of allNamespaceUris as unknown[]) {
+      assertString(uri, "renameNamespaceUri.allNamespaceUris entries must be strings");
+    }
   },
 };
 

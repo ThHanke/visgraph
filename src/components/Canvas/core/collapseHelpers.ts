@@ -8,32 +8,32 @@
 
 /**
  * Find nodes to hide based on predicate frequency priority.
- * 
+ *
  * Strategy:
  * - Get outgoing edges from collapsed node
  * - Count predicate occurrences
  * - Sort edges by predicate frequency (ascending - rare predicates first)
- * - Hide target nodes from edges at index >= threshold
+ * - Hide target nodes from edges at index >= edgeThreshold
  * - BUT: Only hide LEAF nodes (nodes with no outgoing edges to other visible nodes)
- * 
+ *
  * This ensures that:
  * 1. Connections with rare predicates are preserved
  * 2. Common predicates are hidden first
  * 3. Intermediate nodes with connections to other visible nodes are kept visible
- * 
+ *
  * @param collapsedNodeIri - IRI of the node being collapsed
  * @param allEdges - All edges in the graph (with source, target, predicateUri)
- * @param threshold - Number of visible edges before hiding starts
+ * @param edgeThreshold - Number of visible edges before hiding starts
  * @returns Set of node IRIs that should be hidden
  */
 export function findNodesToHideByPredicate(
   collapsedNodeIri: string,
   allEdges: Array<{ source: string; target: string; predicateUri: string }>,
-  threshold: number
+  edgeThreshold: number
 ): Set<string> {
   // Get outgoing edges from collapsed node
   const outgoingEdges = allEdges.filter(e => e.source === collapsedNodeIri);
-  
+
   if (outgoingEdges.length === 0) {
     // No outgoing edges, nothing to hide
     return new Set<string>();
@@ -53,9 +53,9 @@ export function findNodesToHideByPredicate(
     return countA - countB; // Ascending: rare predicates first
   });
 
-  // Identify candidate nodes to hide (targets from index threshold onwards)
+  // Identify candidate nodes to hide (targets from index edgeThreshold onwards)
   const candidateTargets = new Set<string>();
-  for (let i = threshold; i < sortedEdges.length; i++) {
+  for (let i = edgeThreshold; i < sortedEdges.length; i++) {
     candidateTargets.add(sortedEdges[i].target);
   }
 
@@ -96,24 +96,24 @@ export function findNodesToHideByPredicate(
 
 /**
  * Apply collapse filtering to a set of nodes and edges.
- * 
+ *
  * This function:
  * 1. Computes which nodes should be hidden based on collapse state
  * 2. Generates React Flow node changes to update isCollapsed AND hidden flags efficiently
  * 3. Generates React Flow edge changes to hide edges connected to hidden nodes
  * 4. React Flow automatically handles rendering - hidden nodes and edges won't display
- * 
+ *
  * @param nodes - All nodes in the current view
  * @param edges - All edges in the current view (used to compute which nodes to hide)
  * @param collapsedNodes - Set of collapsed node IRIs
- * @param collapseThreshold - Threshold for collapse
+ * @param edgeThreshold - Threshold for edge hiding
  * @returns Object with nodeChanges and edgeChanges arrays to apply via applyNodeChanges/applyEdgeChanges
  */
 export function applyCollapseFilter<N extends { id: string | unknown; data?: any; hidden?: boolean }, E extends { id: string | unknown; source: string | unknown; target: string | unknown; data?: { propertyUri?: string }; hidden?: boolean }>(
   nodes: Array<N>,
   edges: Array<E>,
   collapsedNodes: Set<string>,
-  collapseThreshold: number
+  edgeThreshold: number
 ): { nodeChanges: Array<{ id: string; type: 'replace'; item: N }>; edgeChanges: Array<{ id: string; type: 'replace'; item: E }> } {
   // Build edge structure for predicate-priority computation
   const allEdges = edges.map(e => ({
@@ -126,9 +126,9 @@ export function applyCollapseFilter<N extends { id: string | unknown; data?: any
   const hiddenNodeSet = new Set<string>();
   for (const collapsedIri of collapsedNodes) {
     const toHide = findNodesToHideByPredicate(
-      collapsedIri, 
-      allEdges, 
-      collapseThreshold
+      collapsedIri,
+      allEdges,
+      edgeThreshold
     );
     toHide.forEach(n => hiddenNodeSet.add(n));
   }

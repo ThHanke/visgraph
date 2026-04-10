@@ -35,18 +35,16 @@ import { fallback } from '../../utils/startupDebug';
 import { toast } from 'sonner';
 import { getRdfManager } from '../../utils/storeHelpers';
 import { loadWorkflowCatalog, getWorkflowCatalogStats } from '../../utils/workflowCatalogLoader';
-import { LayoutManager } from './LayoutManager';
 
 
 
 export interface ConfigurationPanelProps {
   triggerVariant?: 'default' | 'none' | 'fixed-icon' | 'inline-icon';
-  // New: support controlled mode for external open state management
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
 
-export const ConfigurationPanel = ({ 
+export const ConfigurationPanel = ({
   triggerVariant = 'default',
   open: controlledOpen,
   onOpenChange,
@@ -113,6 +111,8 @@ export const ConfigurationPanel = ({
     // Debug master toggle
     setDebugAll,
     setTooltipEnabled,
+    // Large graph threshold control
+    setLargeGraphThreshold,
     // Workflow catalog controls
     setWorkflowCatalogEnabled,
     setWorkflowCatalogUrls,
@@ -124,13 +124,6 @@ export const ConfigurationPanel = ({
   useEffect(() => {
     if (isOpen) {
       getWorkflowCatalogStats().then(setWorkflowStats).catch(console.error);
-      
-      // Initialize collapse threshold if missing
-      const cfg = useAppConfigStore.getState().config;
-      if (cfg.collapseThreshold === undefined || cfg.collapseThreshold === null) {
-        const { setCollapseThreshold } = useAppConfigStore.getState();
-        setCollapseThreshold(10);
-      }
     }
   }, [isOpen]);
 
@@ -217,23 +210,6 @@ export const ConfigurationPanel = ({
     }
   }, [config.clusteringAlgorithm, handleOpenChange]);
 
-  // Watch for collapse threshold changes and trigger re-clustering (debounced).
-  const previousThreshold = useRef(config.collapseThreshold);
-  const thresholdReclusterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (previousThreshold.current === config.collapseThreshold) return;
-    previousThreshold.current = config.collapseThreshold;
-
-    // Debounce so dragging the slider doesn't fire on every tick
-    if (thresholdReclusterTimer.current) clearTimeout(thresholdReclusterTimer.current);
-    thresholdReclusterTimer.current = setTimeout(() => {
-      thresholdReclusterTimer.current = null;
-      clearClusterState();
-      triggerRecluster();
-      console.log('[ConfigPanel] Re-clustering after threshold change:', config.collapseThreshold);
-    }, 600);
-  }, [config.collapseThreshold]);
-
 
   const handleExportConfig = () => {
     const configJson = exportConfig();
@@ -301,66 +277,14 @@ export const ConfigurationPanel = ({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="layout" className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
-            <TabsTrigger value="layout">Layout</TabsTrigger>
+        <Tabs defaultValue="ui" className="w-full">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="ui">Interface</TabsTrigger>
             <TabsTrigger value="performance">Performance</TabsTrigger>
             <TabsTrigger value="reasoning">Reasoning</TabsTrigger>
             <TabsTrigger value="workflows">Workflows</TabsTrigger>
             <TabsTrigger value="advanced">Advanced</TabsTrigger>
           </TabsList>
-
-          {/* Layout Settings */}
-          <TabsContent value="layout" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Layout Preferences</CardTitle>
-                <CardDescription>Configure how graphs are displayed and animated</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Current Layout</Label>
-                  <Select value={config.currentLayout} onValueChange={setCurrentLayout}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {new LayoutManager().getAvailableLayouts().map((layout) => (
-                        <SelectItem key={layout.type} value={layout.type}>{layout.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="animations">Layout Animations</Label>
-                  <Switch
-                    id="animations"
-                    checked={config.layoutAnimations}
-                    onCheckedChange={setLayoutAnimations}
-                  />
-                </div>
-
-
-                <div className="space-y-2">
-                  <Label>Recent Layouts</Label>
-                  <div className="flex flex-wrap gap-1">
-                    {config.recentLayouts.map((layout, index) => (
-                      <Badge 
-                        key={index} 
-                        variant={layout === config.currentLayout ? "default" : "secondary"}
-                        className="text-xs cursor-pointer"
-                        onClick={() => setCurrentLayout(layout)}
-                      >
-                        {layout}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-              </Card>
-          </TabsContent>
 
           {/* UI Settings */}
           <TabsContent value="ui" className="space-y-4">
@@ -370,6 +294,15 @@ export const ConfigurationPanel = ({
                 <CardDescription>Customize the user interface appearance</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="animations">Layout Animations</Label>
+                  <Switch
+                    id="animations"
+                    checked={config.layoutAnimations}
+                    onCheckedChange={setLayoutAnimations}
+                  />
+                </div>
+
                 <div className="space-y-2">
                   <Label>Canvas Theme</Label>
                   <Select value={config.canvasTheme} onValueChange={setCanvasTheme}>
@@ -465,19 +398,18 @@ export const ConfigurationPanel = ({
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Collapse Threshold: {config.collapseThreshold ?? 10}</Label>
+                  <Label>Auto-cluster threshold: {config.largeGraphThreshold ?? 100} nodes</Label>
                   <div className="text-xs text-muted-foreground mb-2">
-                    Nodes with {config.collapseThreshold ?? 10}+ outgoing edges will show a collapse button
+                    Graphs with more than {config.largeGraphThreshold ?? 100} nodes will be automatically clustered on load. Set clustering algorithm to "None" to disable.
                   </div>
                   <Slider
-                    value={[config.collapseThreshold ?? 10]}
+                    value={[config.largeGraphThreshold ?? 100]}
                     onValueChange={([value]) => {
-                      const { setCollapseThreshold } = useAppConfigStore.getState();
-                      setCollapseThreshold(value);
+                      setLargeGraphThreshold(value);
                     }}
-                    min={1}
-                    max={100}
-                    step={1}
+                    min={10}
+                    max={500}
+                    step={10}
                     className="w-full"
                   />
                 </div>

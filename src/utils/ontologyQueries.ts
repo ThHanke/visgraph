@@ -1,0 +1,69 @@
+import type { N3DataProvider } from '../providers/N3DataProvider';
+import { toPrefixed } from './termUtils';
+
+export interface FatMapEntity {
+  iri: string;
+  label?: string;
+  prefixed?: string;
+  domainRangeScore?: 0 | 1 | 2 | 3;
+  [k: string]: any;
+}
+
+function getLabel(label: ReadonlyArray<{ value: string; language?: string }> | undefined): string | undefined {
+  if (!label || label.length === 0) return undefined;
+  const en = label.find(l => l.language === 'en');
+  if (en) return en.value;
+  return label[0].value;
+}
+
+function tryPrefixed(iri: string): string | undefined {
+  try {
+    const result = toPrefixed(iri);
+    return (result && result !== iri) ? result : undefined;
+  } catch { return undefined; }
+}
+
+export async function fetchClasses(dataProvider: N3DataProvider): Promise<FatMapEntity[]> {
+  const graph = await dataProvider.knownElementTypes({});
+  return graph.elementTypes.map(t => {
+    const iri = String(t.id);
+    return { iri, label: getLabel(t.label as any), prefixed: tryPrefixed(iri) };
+  });
+}
+
+export async function fetchLinkTypes(dataProvider: N3DataProvider): Promise<FatMapEntity[]> {
+  const types = await dataProvider.knownLinkTypes({});
+  return types.map(t => {
+    const iri = String(t.id);
+    return { iri, label: getLabel(t.label as any), prefixed: tryPrefixed(iri) };
+  });
+}
+
+function computeScore(
+  domains: string[], ranges: string[],
+  src: string | undefined, tgt: string | undefined,
+): 0 | 1 | 2 | 3 {
+  const hasDomain = domains.length > 0;
+  const hasRange  = ranges.length > 0;
+  if (!hasDomain && !hasRange) return 2;
+  const domainOk = !hasDomain || (!!src && domains.includes(src));
+  const rangeOk  = !hasRange  || (!!tgt && ranges.includes(tgt));
+  if (domainOk && rangeOk) return 0;
+  if (domainOk || rangeOk) return 1;
+  return 3;
+}
+
+export function scoreLinkTypes(
+  entities: FatMapEntity[],
+  sourceClassIri: string | undefined,
+  targetClassIri: string | undefined,
+  dataProvider: N3DataProvider,
+): FatMapEntity[] {
+  if (!sourceClassIri && !targetClassIri) return entities;
+  return [...entities]
+    .map(e => {
+      const { domains, ranges } = dataProvider.getDomainRange(e.iri);
+      return { ...e, domainRangeScore: computeScore(domains, ranges, sourceClassIri, targetClassIri) };
+    })
+    .sort((a, b) => (a.domainRangeScore ?? 2) - (b.domainRangeScore ?? 2));
+}

@@ -1,11 +1,9 @@
-import KnowledgeCanvas from '../components/Canvas/KnowledgeCanvas';
+import ReactodiaCanvas from '../components/Canvas/ReactodiaCanvas';
 
-const Index = () => {
-  return (
-    <main className="w-full h-screen overflow-hidden">
-      <KnowledgeCanvas />
-    </main>
-  );
-};
+const Index = () => (
+  <main className="w-full h-screen overflow-hidden">
+    <ReactodiaCanvas />
+  </main>
+);
 
 export default Index;

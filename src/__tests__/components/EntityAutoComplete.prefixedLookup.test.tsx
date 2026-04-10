@@ -1,6 +1,7 @@
 import React from "react";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import type { N3DataProvider } from "../../providers/N3DataProvider";
 import EntityAutoComplete from "../../components/ui/EntityAutoComplete";
 
 /**
@@ -79,6 +80,46 @@ describe("EntityAutoComplete - prefixed & IRI lookup", () => {
       // The component displays ent.prefixed || ent.iri in the list;
       // since prefixed is absent, it will show the full IRI.
       expect(screen.getByText("http://example.org/iof#OtherClass")).toBeTruthy();
+    });
+  });
+});
+
+function mockDataProvider(linkTypes: Array<{ id: string; label?: Record<string, string> }> = []): N3DataProvider {
+  return {
+    knownLinkTypes: vi.fn().mockResolvedValue(linkTypes),
+    knownElementTypes: vi.fn().mockResolvedValue({ elementTypes: [], subtypes: new Map() }),
+    getDomainRange: vi.fn().mockReturnValue({ domains: [], ranges: [] }),
+  } as unknown as N3DataProvider;
+}
+
+describe('EntityAutoComplete - dataProvider mode', () => {
+  it('loads link types from dataProvider when mode=properties', async () => {
+    const dp = mockDataProvider([{ id: 'http://ex.org/knows', label: { en: 'knows' } }]);
+    const { container } = render(
+      <EntityAutoComplete mode="properties" dataProvider={dp} onChange={() => {}} />
+    );
+    const input = container.querySelector('input')!;
+    fireEvent.focus(input);
+    await waitFor(() => {
+      expect(screen.getByText('knows')).toBeTruthy();
+    });
+  });
+
+  it('shows tier separator when sourceClassIri and targetClassIri provided', async () => {
+    const dp = mockDataProvider([{ id: 'http://ex.org/knows', label: { en: 'knows' } }]);
+    render(
+      <EntityAutoComplete
+        mode="properties"
+        dataProvider={dp}
+        sourceClassIri="http://ex.org/Person"
+        targetClassIri="http://ex.org/Person"
+        autoOpen
+        onChange={() => {}}
+      />
+    );
+    await waitFor(() => {
+      // Score 2 (unconstrained, no domain/range) → should show "General" tier label
+      expect(screen.getByText('General')).toBeTruthy();
     });
   });
 });

@@ -7,12 +7,13 @@
 
 import { useOntologyStore } from "../stores/ontologyStore";
 import type { RDFManager } from "./rdfManager";
+import type { NamespaceEntry } from "../constants/namespaces";
 
 /**
  * Get the namespace registry from the ontology store.
  * Returns an empty array if registry is not available.
  */
-export function getNamespaceRegistry(): Array<{ prefix: string; namespace: string; color?: string }> {
+export function getNamespaceRegistry(): NamespaceEntry[] {
   try {
     const state = useOntologyStore.getState();
     return Array.isArray(state.namespaceRegistry) ? state.namespaceRegistry : [];
@@ -51,33 +52,7 @@ export function getRdfManager(): RDFManager | null {
 }
 
 /**
- * Get available properties from the fat-map.
- * Returns an empty array if not available.
- */
-export function getAvailableProperties(): any[] {
-  try {
-    const state = useOntologyStore.getState();
-    return Array.isArray(state.availableProperties) ? state.availableProperties : [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Get available classes from the fat-map.
- * Returns an empty array if not available.
- */
-export function getAvailableClasses(): any[] {
-  try {
-    const state = useOntologyStore.getState();
-    return Array.isArray(state.availableClasses) ? state.availableClasses : [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Get ontology store state snapshot with fat-map data.
+ * Get ontology store state snapshot.
  * Useful for components that need multiple pieces of state atomically.
  */
 export function getOntologyStoreSnapshot() {
@@ -85,32 +60,14 @@ export function getOntologyStoreSnapshot() {
     const state = useOntologyStore.getState();
     return {
       namespaceRegistry: Array.isArray(state.namespaceRegistry) ? state.namespaceRegistry : [],
-      availableProperties: Array.isArray(state.availableProperties) ? state.availableProperties : [],
-      availableClasses: Array.isArray(state.availableClasses) ? state.availableClasses : [],
       ontologiesVersion: state.ontologiesVersion ?? 0,
       rdfManager: getRdfManager(),
     };
   } catch {
     return {
       namespaceRegistry: [],
-      availableProperties: [],
-      availableClasses: [],
       ontologiesVersion: 0,
       rdfManager: null,
     };
   }
-}
-
-/**
- * Convert fat-map entries to entity format for autocomplete components.
- * Handles both properties and classes with consistent shape.
- */
-export function fatMapToEntities(entries: any[]): Array<{ iri: string; label?: string; prefixed?: string }> {
-  if (!Array.isArray(entries)) return [];
-  
-  return entries.map((entry: any) => ({
-    iri: String(entry.iri || entry.key || entry || ''),
-    label: entry.label,
-    prefixed: entry.prefixed,
-  })).filter(e => e.iri.length > 0);
 }

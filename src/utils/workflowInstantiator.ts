@@ -223,13 +223,10 @@ function getDefaultNamespace(): string {
   try {
     const mgr = rdfManager;
     if (mgr && typeof (mgr as any).getNamespaces === 'function') {
-      const namespaces = (mgr as any).getNamespaces() || {};
-      // Look for the empty prefix ("")
-      if (namespaces[""] && typeof namespaces[""] === 'string') {
-        return namespaces[""];
-      }
+      const entries: Array<{ prefix: string; uri: string }> = (mgr as any).getNamespaces() || [];
+      const defaultEntry = entries.find((e: any) => e.prefix === "");
+      if (defaultEntry && defaultEntry.uri) return defaultEntry.uri;
     }
-    // Fallback to default
     return "http://example.com/";
   } catch (error) {
     console.warn('[WorkflowInstantiator] Failed to get default namespace, using fallback', error);
@@ -264,19 +261,19 @@ async function ensureTemplateNamespaces(template: WorkflowTemplate): Promise<voi
     // Register namespaces if not already present
     const mgr = rdfManager;
     if (mgr && typeof (mgr as any).getNamespaces === 'function') {
-      const existing = (mgr as any).getNamespaces() || {};
+      const existing: Array<{ prefix: string; uri: string }> = (mgr as any).getNamespaces() || [];
       const toAdd: Record<string, string> = {};
-      
+
       for (const ns of namespaces) {
         // Check if this namespace is already registered
-        const alreadyRegistered = Object.values(existing).some((v: any) => String(v) === ns);
+        const alreadyRegistered = existing.some((e: any) => e.uri === ns);
         if (!alreadyRegistered) {
           // Generate a prefix (use the last segment of the namespace)
           const prefix = generatePrefixForNamespace(ns);
           toAdd[prefix] = ns;
         }
       }
-      
+
       if (Object.keys(toAdd).length > 0 && typeof (mgr as any).setNamespaces === 'function') {
         (mgr as any).setNamespaces(toAdd, { replace: false });
         console.log('[WorkflowInstantiator] Registered namespaces:', toAdd);

@@ -1,16 +1,11 @@
 export const DEFAULT_NAMESPACE_PREFIX = "";
 export const DEFAULT_NAMESPACE_URI = "http://example.com/";
 
-export type NamespaceRegistryEntry = {
-  prefix: string;
-  namespace: string;
-  color?: string;
-};
+export type NamespaceEntry = { prefix: string; uri: string };
 
-export const DEFAULT_NAMESPACE_ENTRY: NamespaceRegistryEntry = {
+export const DEFAULT_NAMESPACE_ENTRY: NamespaceEntry = {
   prefix: DEFAULT_NAMESPACE_PREFIX,
-  namespace: DEFAULT_NAMESPACE_URI,
-  color: "",
+  uri: DEFAULT_NAMESPACE_URI,
 };
 
 export function ensureDefaultNamespaceMap(
@@ -25,13 +20,14 @@ export function ensureDefaultNamespaceMap(
   return result;
 }
 
-export function ensureDefaultRegistry(
-  registry?: NamespaceRegistryEntry[],
-): NamespaceRegistryEntry[] {
-  if (!Array.isArray(registry)) return [];
-  return registry.map((entry) => ({
-    prefix: String(entry?.prefix ?? ""),
-    namespace: String(entry?.namespace ?? ""),
-    color: entry?.color !== undefined && entry?.color !== null ? String(entry.color) : "",
-  }));
+/** Convert a NamespaceEntry[] to a Record<string,string> for worker protocol. */
+export function entriesToRecord(entries: NamespaceEntry[]): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const e of entries) result[e.prefix] = e.uri;
+  return result;
+}
+
+/** Convert a Record<string,string> to NamespaceEntry[] */
+export function recordToEntries(record: Record<string, string>): NamespaceEntry[] {
+  return Object.entries(record).map(([prefix, uri]) => ({ prefix, uri }));
 }

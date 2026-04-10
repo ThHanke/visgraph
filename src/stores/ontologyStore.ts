@@ -16,10 +16,10 @@ import { toast } from "sonner";
 import { buildPaletteMap } from "../components/Canvas/core/namespacePalette";
 import { RDF_TYPE, RDFS_LABEL, OWL_ONTOLOGY, OWL_IMPORTS } from "../constants/vocabularies";
 import {
-  ensureDefaultRegistry,
   DEFAULT_NAMESPACE_ENTRY,
   DEFAULT_NAMESPACE_PREFIX,
   DEFAULT_NAMESPACE_URI,
+  type NamespaceEntry,
 } from "../constants/namespaces";
 import { shortLocalName, toPrefixed } from "../utils/termUtils";
 import {
@@ -33,40 +33,7 @@ import {
   normalizeOptionalString,
   normalizeStringArray,
 } from "../utils/normalizers";
-import type { WorkerReconcileSubjectSnapshotPayload } from "../utils/rdfManager.workerProtocol";
-import { OWL_SCHEMA_AXIOMS } from "../constants/owlSchemaData";
-
-// Pre-seed availableProperties with OWL/RDFS structural predicate entries so
-// the mapper has correct domain/range data from the very first invocation —
-// before any full fat-map rebuild has had a chance to run.  These entries are
-// derived from the same OWL_SCHEMA_AXIOMS the worker loads into urn:vg:ontologies.
-const INITIAL_SCHEMA_PROPERTIES = (() => {
-  const byIri = new Map<string, { domain: string[]; range: string[] }>();
-  for (const { predicate, domain, range } of OWL_SCHEMA_AXIOMS) {
-    if (!byIri.has(predicate)) byIri.set(predicate, { domain: [], range: [] });
-    const entry = byIri.get(predicate)!;
-    if (domain) entry.domain.push(domain);
-    if (range)  entry.range.push(range);
-  }
-  return Array.from(byIri.entries()).map(([iri, { domain, range }]) => ({
-    iri,
-    label: iri.split(/[#/]/).pop() ?? iri,
-    domain,
-    range,
-    namespace: iri.replace(/[^#/]+$/, ""),
-  }));
-})();
 const { namedNode, quad, blankNode, literal } = DataFactory;
-
-/* NOTE: attachPrefixed removed in favor of computing prefixed values locally
-   inside the authoritative fat-map update/reconcile path so the freshly
-   computed namespace registry can be passed into toPrefixed. A minimal helper
-   remains for compatibility but it only returns the entries as-is; callers in
-   this file are updated to compute prefixed using the registry computed at
-   update time. */
-function attachPrefixed(entries: any[] | undefined): any[] {
-  return Array.isArray(entries) ? entries : [];
-}
 
 type SerializedQuad = {
   subject: string;
@@ -462,6 +429,7 @@ function extractNamespace(iri: string | unknown): string {
   return nsMatch && nsMatch[1] ? String(nsMatch[1]) : "";
 }
 
+
 type LoadResult =
   | { success: true; url: string; canonicalUrl?: string }
   | { success: false; url: string; error: string };
@@ -474,11 +442,9 @@ interface ValidationError {
 
 interface OntologyStore {
   loadedOntologies: LoadedOntology[];
-  availableClasses: OntologyClass[];
-  availableProperties: ObjectProperty[];
   validationErrors: ValidationError[];
   rdfManager: RDFManager;
-  // incremented whenever availableProperties/availableClasses are updated from the RDF store
+  // incremented whenever the ontology store is updated from the RDF store
   ontologiesVersion: number;
 
   // Minimal currentGraph snapshot used by tests/UI seeding
@@ -530,311 +496,24 @@ interface OntologyStore {
     candidates: string[];
     results?: { url: string; status: "ok" | "fail"; error?: string }[];
   }>;
-  getCompatibleProperties: (
-    sourceClass: string,
-    targetClass: string,
-  ) => ObjectProperty[];
   clearOntologies: () => void;
   exportGraph: (format: "turtle" | "json-ld" | "rdf-xml") => Promise<string>;
-  updateFatMap: (quads?: any[]) => Promise<void>;
-  updateFatMapFromWorker: (snapshot: WorkerReconcileSubjectSnapshotPayload[]) => Promise<void>;
   getRdfManager: () => RDFManager;
   removeLoadedOntology: (url: string) => void;
   // Namespace registry (joined prefix -> namespace -> color) persisted after reconcile
-  namespaceRegistry: { prefix: string; namespace: string; color: string }[];
-  setNamespaceRegistry: (registry: { prefix: string; namespace: string; color: string }[]) => void;
+  namespaceRegistry: NamespaceEntry[];
+  setNamespaceRegistry: (registry: NamespaceEntry[]) => void;
 }
-
-function filterNamespacesToCandidates(
-  nsMap: Record<string, string>,
-  iriCandidates?: Set<string>,
-  existingRegistry?: { prefix: string; namespace: string; color?: string }[],
-): Record<string, string> {
-  const seeded: Record<string, string> = {};
-  if (Array.isArray(existingRegistry)) {
-    for (const entry of existingRegistry) {
-      if (
-        entry &&
-        typeof entry.prefix === "string" &&
-        entry.prefix.length > 0 &&
-        typeof entry.namespace === "string" &&
-        entry.namespace.length > 0
-      ) {
-        seeded[entry.prefix] = entry.namespace;
-      }
-    }
-  }
-  if (!nsMap || typeof nsMap !== "object") {
-    return seeded;
-  }
-  if (!iriCandidates || iriCandidates.size === 0) {
-    return { ...seeded, ...nsMap };
-  }
-
-  const iriList = Array.from(iriCandidates).filter((iri) => typeof iri === "string" && iri.trim().length > 0);
-  if (iriList.length === 0) return { ...nsMap };
-
-  const matchesNamespace = (namespace: string): boolean => {
-    if (typeof namespace !== "string" || namespace.length === 0) return false;
-    return iriList.some((iri) => iri.startsWith(namespace));
-  };
-
-  const filtered: Record<string, string> = { ...seeded };
-  try {
-    for (const [prefix, namespace] of Object.entries(nsMap || {})) {
-      if (typeof namespace !== "string" || namespace.length === 0) continue;
-      if (matchesNamespace(namespace)) {
-        filtered[prefix] = namespace;
-      }
-    }
-  } catch (_) {
-    return { ...seeded, ...nsMap };
-  }
-
-  return filtered;
-}
-
-async function persistFatMapUpdates(
-  set: (updater: any, replace?: boolean) => void,
-  getState: () => OntologyStore,
-  classesMap: Record<string, any>,
-  propsMap: Record<string, any>,
-  iriCandidates?: Set<string>,
-): Promise<void> {
-  const state = getState();
-  const existingClasses = Array.isArray(state.availableClasses) ? state.availableClasses : [];
-  const classByIri: Record<string, any> = {};
-  for (const c of existingClasses) {
-    if (c && c.iri) classByIri[String(c.iri)] = c;
-  }
-  for (const c of Object.values(classesMap)) {
-    if (!c || !c.iri) continue;
-    const iri = String(c.iri);
-    classByIri[iri] = { ...(classByIri[iri] || {}), ...(c || {}) };
-  }
-
-  const existingProps = Array.isArray(state.availableProperties) ? state.availableProperties : [];
-  const propByIri: Record<string, any> = {};
-  for (const p of existingProps) {
-    if (p && p.iri) propByIri[String(p.iri)] = p;
-  }
-  for (const p of Object.values(propsMap)) {
-    if (!p || !p.iri) continue;
-    const iri = String(p.iri);
-    propByIri[iri] = { ...(propByIri[iri] || {}), ...(p || {}) };
-  }
-
-  try {
-    const mgr = state.rdfManager;
-    const nsMap =
-      mgr && typeof (mgr as any).getNamespaces === "function"
-        ? (mgr as any).getNamespaces()
-        : {};
-
-    const namespaceCandidates = new Set<string>();
-
-    if (iriCandidates && iriCandidates.size > 0) {
-      for (const candidate of iriCandidates) {
-        addIriCandidate(candidate, namespaceCandidates);
-      }
-    }
-
-    try {
-      if (mgr && typeof (mgr as any).fetchQuadsPage === "function") {
-        // Use imported constants from vocabularies.ts
-        const ontologyTypeQuads = await fetchSerializedQuads(
-          mgr,
-          "urn:vg:ontologies",
-          { predicate: RDF_TYPE },
-        );
-        for (const quadEntry of ontologyTypeQuads || []) {
-          const object = quadEntry && quadEntry.object ? String(quadEntry.object) : "";
-          if (object !== OWL_ONTOLOGY) continue;
-          const subject = quadEntry && quadEntry.subject ? String(quadEntry.subject) : "";
-          addIriCandidate(subject, namespaceCandidates);
-        }
-      }
-    } catch (_) {
-      /* ignore ontology candidate extraction failures */
-    }
-
-    if (namespaceCandidates.size === 0) {
-      try {
-        const loadedOntologies = Array.isArray(state.loadedOntologies)
-          ? state.loadedOntologies
-          : [];
-        for (const ontology of loadedOntologies || []) {
-          if (!ontology || typeof ontology !== "object") continue;
-          if (typeof (ontology as any).url === "string") {
-            addIriCandidate((ontology as any).url, namespaceCandidates);
-          }
-          const aliases = (ontology as any).aliases;
-          if (Array.isArray(aliases)) {
-            for (const alias of aliases) {
-              addIriCandidate(alias, namespaceCandidates);
-            }
-          }
-        }
-      } catch (_) {
-        /* ignore ontology metadata fallback errors */
-      }
-    }
-
-    const existingRegistry =
-      Array.isArray(getState().namespaceRegistry) ? getState().namespaceRegistry : [];
-
-    const filteredNsMap = filterNamespacesToCandidates(
-      nsMap || {},
-      namespaceCandidates.size > 0 ? namespaceCandidates : undefined,
-      existingRegistry,
-    );
-    const mergedRegistryMap = new Map<string, { prefix: string; namespace: string; color: string }>();
-    for (const entry of existingRegistry || []) {
-      if (!entry || typeof entry.prefix !== "string") continue;
-      mergedRegistryMap.set(entry.prefix, {
-        prefix: String(entry.prefix),
-        namespace: String(entry.namespace || ""),
-        color: String(entry.color || ""),
-      });
-    }
-
-    const prefixes = Object.keys(filteredNsMap || {}).sort();
-    for (const p of prefixes || []) {
-      const prefixKey = String(p);
-      const namespaceValue = String((filteredNsMap as any)[p] || "");
-      if (!mergedRegistryMap.has(prefixKey)) {
-        mergedRegistryMap.set(prefixKey, {
-          prefix: prefixKey,
-          namespace: namespaceValue,
-          color: "",
-        });
-      } else {
-        const existing = mergedRegistryMap.get(prefixKey)!;
-        mergedRegistryMap.set(prefixKey, {
-          prefix: prefixKey,
-          namespace: namespaceValue,
-          color: existing.color || "",
-        });
-      }
-    }
-
-    const paletteMap = buildPaletteMap(
-      Array.from(mergedRegistryMap.entries())
-        .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
-        .map(([prefix]) => prefix),
-    );
-    for (const [pref, entry] of mergedRegistryMap) {
-      if (!entry.color || entry.color.trim().length === 0) {
-        mergedRegistryMap.set(pref, {
-          ...entry,
-          color: String((paletteMap as any)[pref] || entry.color || ""),
-        });
-      }
-    }
-
-    const registry = Array.from(mergedRegistryMap.values()).sort((a, b) =>
-      String(a.prefix || "").localeCompare(String(b.prefix || "")),
-    );
-
-    const computePrefixed = (entry: any) => {
-      try {
-        const iri = String((entry && (entry.iri || entry.key)) || "");
-        const pref = iri ? toPrefixed(String(iri), registry as any) : "";
-        return { ...(entry || {}), prefixed: pref && String(pref) !== String(iri) ? String(pref) : "" };
-      } catch (_) {
-        return { ...(entry || {}), prefixed: "" };
-      }
-    };
-
-    const propsWithPref = Object.values(propByIri).map(computePrefixed);
-    const classesWithPref = Object.values(classByIri).map(computePrefixed);
-
-    set((s: any) => ({
-      availableClasses: classesWithPref,
-      availableProperties: propsWithPref,
-      ontologiesVersion: (s.ontologiesVersion || 0) + 1,
-      namespaceRegistry: registry,
-    }));
-  } catch (_) {
-    try {
-      const propsArr = Object.values(propByIri);
-      const classesArr = Object.values(classByIri);
-
-      const computePrefixed = (entry: any) => {
-        try {
-          const iri = String((entry && (entry.iri || entry.key)) || "");
-          const pref = iri ? toPrefixed(String(iri)) : "";
-          return { ...(entry || {}), prefixed: pref && String(pref) !== String(iri) ? String(pref) : "" };
-        } catch (_) {
-          return { ...(entry || {}), prefixed: "" };
-        }
-      };
-
-      const propsWithPref = propsArr.map(computePrefixed);
-      const classesWithPref = classesArr.map(computePrefixed);
-
-      set((s: any) => ({
-        availableClasses: classesWithPref,
-        availableProperties: propsWithPref,
-        ontologiesVersion: (s.ontologiesVersion || 0) + 1,
-      }));
-    } catch (_) {
-      set((s: any) => ({
-        availableClasses: Object.values(classByIri),
-        availableProperties: Object.values(propByIri),
-        ontologiesVersion: (s.ontologiesVersion || 0) + 1,
-      }));
-    }
-  }
-
-  try {
-    const allClasses = Object.values(classByIri);
-    const classesSample = (allClasses || []).slice(0, 10).map((c: any) => ({
-      iri: c.iri,
-      label: c.label,
-      namespace: c.namespace,
-    }));
-    console.debug("[VG_DEBUG] updateFatMap.availableClasses.sample", {
-      total: Array.isArray(allClasses) ? allClasses.length : 0,
-      sample: classesSample,
-    });
-  } catch (_) {
-    /* ignore logging failures */
-  }
-}
-
 export const useOntologyStore = create<OntologyStore>((set, get) => ({
   loadedOntologies: [],
-  availableClasses: [],
-  availableProperties: INITIAL_SCHEMA_PROPERTIES as any[],
   validationErrors: [],
   rdfManager: rdfManager,
-  // incremented whenever availableProperties/availableClasses are updated from the RDF store
+  // incremented whenever the ontology store is updated from the RDF store
   ontologiesVersion: 0,
   // persisted namespace registry (joined prefix, namespace, color) populated after reconcile
   namespaceRegistry: [{ ...DEFAULT_NAMESPACE_ENTRY }],
-  setNamespaceRegistry: (registry: { prefix: string; namespace: string; color: string }[]) => {
-    try {
-      const nextRegistry = ensureDefaultRegistry(
-        Array.isArray(registry) ? registry : [],
-      ).map((entry) => ({
-        prefix: entry.prefix,
-        namespace: entry.namespace,
-        color: entry.color ?? "",
-      }));
-      set(() => ({
-        namespaceRegistry: nextRegistry,
-      }));
-    } catch (_) {
-      try {
-        const fallbackRegistry = ensureDefaultRegistry([]).map((entry) => ({
-          prefix: entry.prefix,
-          namespace: entry.namespace,
-          color: entry.color ?? "",
-        }));
-        set({ namespaceRegistry: fallbackRegistry });
-      } catch (_) { void 0; }
-    }
+  setNamespaceRegistry: (registry: NamespaceEntry[]) => {
+    set({ namespaceRegistry: Array.isArray(registry) ? registry : [] });
   },
 
   // Minimal currentGraph state kept for compatibility with tests and UI seeding.
@@ -1139,18 +818,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     }
   },
 
-  getCompatibleProperties: (sourceClass: string, targetClass: string) => {
-    const { availableProperties } = get();
-
-    return availableProperties.filter((prop) => {
-      const domainMatch =
-        prop.domain.length === 0 || prop.domain.includes(sourceClass);
-      const rangeMatch =
-        prop.range.length === 0 || prop.range.includes(targetClass);
-      return domainMatch && rangeMatch;
-    });
-  },
-
   loadOntologyFromRDF: async (
     rdfContent: string,
     onProgress?: (progress: number, message: string) => void,
@@ -1302,9 +969,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         } catch (_) { /* ignore emit failures - mapping will still occur via other signals */ }
 
         // After manager insertion, perform the authoritative fat-map rebuild once.
-        // Use the store's updateFatMap (full rebuild) to preserve existing behavior.
-        // await get().updateFatMap();
-
         options?.onProgress?.(100, "RDF loaded");
         // Attempt to discover and synchronously load referenced ontologies for URL loads (startup/rdfUrl)
         try {
@@ -1488,11 +1152,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     }
     set({
       loadedOntologies: [],
-      availableClasses: [],
-      // Restore schema axiom entries so the mapper always has domain/range data
-      // for OWL/RDFS structural predicates (rdfs:subClassOf, owl:equivalentClass…)
-      // even immediately after a clear, before the next fat-map rebuild runs.
-      availableProperties: INITIAL_SCHEMA_PROPERTIES as any[],
       validationErrors: [],
       currentGraph: { nodes: [], edges: [] },
     });
@@ -1508,18 +1167,8 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       );
       const removed = (loadedOntologies || []).filter((o) => o.url === url);
 
-      const remainingClasses = (get().availableClasses || []).filter(
-        (c) => !removed.some((r) => r.classes.some((rc) => rc.iri === c.iri)),
-      );
-      const remainingProperties = (get().availableProperties || []).filter(
-        (p) =>
-          !removed.some((r) => r.properties.some((rp) => rp.iri === p.iri)),
-      );
-
       set({
         loadedOntologies: remainingOntologies,
-        availableClasses: remainingClasses,
-        availableProperties: remainingProperties,
       });
 
       removed.forEach((o) => {
@@ -1563,270 +1212,6 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       default:
         throw new Error(`Unsupported format: ${format}`);
     }
-  },
-
-  // Incremental-only updateFatMap: process supplied quads and upsert into the fat-map.
-  updateFatMap: async (quads?: any[]): Promise<void> => {
-    // If no quads supplied, perform a full authoritative rebuild (useful for batch loads).
-    if (!Array.isArray(quads) || quads.length === 0) {
-      try {
-        await buildFatMap(get().rdfManager);
-      } catch (e) {
-        try {
-          if (typeof fallback === "function") {
-            fallback("rdf.updateFatMap.full_rebuild_failed", { error: String(e) });
-          }
-        } catch (_) { /* ignore */ }
-      }
-      return;
-    }
-
-    const parsedQuads = quads.slice();
-
-    // Helpers
-    const normalizeTermIri = (term: any): string => {
-      if (term === null || typeof term === "undefined") return "";
-      if (typeof term === "object" && typeof (term as any).value === "string") return String((term as any).value).trim();
-      return String(term || "").trim();
-    };
-
-    const parsedTypesBySubject: Record<string, Set<any>> = {};
-    const parsedLabelBySubject: Record<string, string> = {};
-    const parsedDomainBySubject: Record<string, Set<string>> = {};
-    const parsedRangeBySubject: Record<string, Set<string>> = {};
-    const namespaceIriCandidates = new Set<string>();
-    const dataGraphSubjects = new Set<string>();
-    const addCandidate = (value: string) => {
-      if (!value) return;
-      const trimmed = String(value).trim();
-      if (!trimmed) return;
-      if (/^[a-z][a-z0-9+.\-]*:/i.test(trimmed)) {
-        namespaceIriCandidates.add(trimmed);
-      }
-    };
-    const normalizeGraphIri = (graphTerm: any): string => {
-      if (graphTerm === null || typeof graphTerm === "undefined") return "";
-      if (typeof graphTerm === "string") return graphTerm.trim();
-      if (typeof graphTerm === "object") {
-        const value =
-          typeof (graphTerm as any).value === "string"
-            ? (graphTerm as any).value
-            : typeof (graphTerm as any).id === "string"
-              ? (graphTerm as any).id
-              : "";
-        return String(value || "").trim();
-      }
-      return "";
-    };
-    const isDataGraphTerm = (graphTerm: any) => {
-      const value = normalizeGraphIri(graphTerm);
-      if (!value) return true;
-      const lowered = value.toLowerCase();
-      if (lowered === "default") return true;
-      return lowered === "urn:vg:data";
-    };
-
-    for (const q of parsedQuads) {
-      const s = q && q.subject && (q.subject.value || q.subject);
-      const p = q && q.predicate && (q.predicate.value || q.predicate);
-      const o = q && q.object ? q.object : undefined;
-      const graphTerm = q && (q.graph || (q as any).graph);
-      const isDataGraph = isDataGraphTerm(graphTerm);
-      if (!s || !p) continue;
-      const subj = String(s);
-      const pred = String(p);
-      const objTerm = typeof o !== "undefined" && o !== null ? o : undefined;
-      if (isDataGraph) {
-        addCandidate(normalizeTermIri(subj));
-        addCandidate(normalizeTermIri(pred));
-        dataGraphSubjects.add(subj);
-      }
-
-      if (pred === RDF_TYPE || /rdf:type$/i.test(pred)) {
-        parsedTypesBySubject[subj] = parsedTypesBySubject[subj] || new Set<any>();
-        parsedTypesBySubject[subj].add(objTerm);
-      }
-
-      if (pred === RDFS_LABEL || /rdfs:label$/i.test(pred)) {
-        if (objTerm && typeof (objTerm as any).value === "string") parsedLabelBySubject[subj] = String((objTerm as any).value);
-        else if (typeof objTerm === "string") parsedLabelBySubject[subj] = String(objTerm);
-      }
-
-      if (pred === "http://www.w3.org/2000/01/rdf-schema#domain") {
-        parsedDomainBySubject[subj] = parsedDomainBySubject[subj] || new Set<string>();
-        const objVal = normalizeTermIri(objTerm);
-        if (objVal) parsedDomainBySubject[subj].add(objVal);
-      }
-
-      if (pred === "http://www.w3.org/2000/01/rdf-schema#range") {
-        parsedRangeBySubject[subj] = parsedRangeBySubject[subj] || new Set<string>();
-        const objVal = normalizeTermIri(objTerm);
-        if (objVal) parsedRangeBySubject[subj].add(objVal);
-      }
-
-      if (isDataGraph && objTerm) {
-        if (typeof objTerm === "object" && typeof (objTerm as any).value === "string") {
-          addCandidate(normalizeTermIri((objTerm as any).value));
-        } else if (typeof objTerm === "string") {
-          addCandidate(normalizeTermIri(objTerm));
-        }
-      }
-    }
-
-    // Subjects are derived only from the supplied quads (strict quads-only policy).
-    const subjects = Array.from(new Set(parsedQuads.map((q:any) => (q && q.subject && (q.subject.value || q.subject)) || "").filter(Boolean)));
-
-    const classesMap: Record<string, any> = {};
-    const propsMap: Record<string, any> = {};
-
-    for (const s of subjects) {
-      const subjStr = String(s);
-      const parsedTypes = Array.from(parsedTypesBySubject[subjStr] || []);
-      let types: any[] = parsedTypes && parsedTypes.length > 0 ? parsedTypes.slice() : [];
-
-      // Do not fall back to the RDF manager when determining types; rely only on parsed quads.
-      if (types.length === 0) {
-        types = [];
-      }
-
-      const typesNormalized = Array.from(new Set((types || []).map((t) => normalizeTermIri(t)).filter(Boolean)));
-
-      let label = parsedLabelBySubject[subjStr];
-      // Do not query the RDF manager for labels; prefer parsed label or default to the short local name.
-      if (!label) label = shortLocalName(subjStr);
-
-      const namespace = extractNamespace(subjStr);
-      if (namespace && dataGraphSubjects.has(subjStr)) addCandidate(namespace);
-
-      const isClass = typesNormalized.some((iri: string) => {
-        if (!iri) return false;
-        if (iri === "http://www.w3.org/2002/07/owl#Class") return true;
-        const norm = iri.replace(/[#\/]+$/, "");
-        return /(^|\/|#)Class$/i.test(iri) || /Class$/i.test(norm);
-      });
-
-      const isProp = typesNormalized.some((iri: string) => {
-        if (!iri) return false;
-        if (iri === "http://www.w3.org/2002/07/owl#ObjectProperty" || iri === "http://www.w3.org/2002/07/owl#DatatypeProperty") return true;
-        const norm = iri.replace(/[#\/]+$/, "");
-        return /Property$/i.test(norm);
-      });
-
-      if (isClass) {
-        classesMap[subjStr] = {
-          iri: subjStr,
-          label,
-          namespace,
-          properties: [],
-          restrictions: {},
-          source: "parsed",
-        };
-      }
-      const domainValues = Array.from(parsedDomainBySubject[subjStr] || []);
-      const rangeValues  = Array.from(parsedRangeBySubject[subjStr]  || []);
-
-      if (isProp || domainValues.length > 0 || rangeValues.length > 0) {
-        propsMap[subjStr] = {
-          iri: subjStr,
-          label,
-          domain: domainValues,
-          range: rangeValues,
-          namespace,
-          source: "parsed",
-        };
-      }
-    }
-
-    await persistFatMapUpdates(set, get, classesMap, propsMap, namespaceIriCandidates);
-  },
-  updateFatMapFromWorker: async (
-    snapshot: WorkerReconcileSubjectSnapshotPayload[],
-  ): Promise<void> => {
-    if (!Array.isArray(snapshot) || snapshot.length === 0) return;
-
-    const classesMap: Record<string, any> = {};
-    const propsMap: Record<string, any> = {};
-    const namespaceIriCandidates = new Set<string>();
-    const addCandidate = (value: string) => {
-      if (!value) return;
-      const trimmed = String(value).trim();
-      if (!trimmed) return;
-      if (/^[a-z][a-z0-9+.\-]*:/i.test(trimmed)) {
-        namespaceIriCandidates.add(trimmed);
-      }
-    };
-
-    for (const entry of snapshot) {
-      if (!entry || typeof entry.iri !== "string") continue;
-      const iri = entry.iri.trim();
-      if (!iri) continue;
-      addCandidate(iri);
-
-      const typesNormalized = Array.from(
-        new Set(
-          (Array.isArray(entry.types) ? entry.types : [])
-            .map((t) => (typeof t === "string" ? t.trim() : ""))
-            .filter(Boolean),
-        ),
-      );
-      typesNormalized.forEach(addCandidate);
-
-      let label =
-        typeof entry.label === "string" && entry.label.trim().length > 0
-          ? entry.label.trim()
-          : "";
-      if (!label) label = shortLocalName(iri);
-
-      const namespace = extractNamespace(iri);
-      if (namespace) addCandidate(namespace);
-
-      const isClass = typesNormalized.some((typeIri) => {
-        if (!typeIri) return false;
-        if (typeIri === "http://www.w3.org/2002/07/owl#Class") return true;
-        const norm = typeIri.replace(/[#\/]+$/, "");
-        return /(^|\/|#)Class$/i.test(typeIri) || /Class$/i.test(norm);
-      });
-
-      const isProp = typesNormalized.some((typeIri) => {
-        if (!typeIri) return false;
-        if (
-          typeIri === "http://www.w3.org/2002/07/owl#ObjectProperty" ||
-          typeIri === "http://www.w3.org/2002/07/owl#DatatypeProperty"
-        ) {
-          return true;
-        }
-        const norm = typeIri.replace(/[#\/]+$/, "");
-        return /Property$/i.test(norm);
-      });
-
-      if (isClass) {
-        classesMap[iri] = {
-          iri,
-          label,
-          namespace,
-          properties: [],
-          restrictions: {},
-          source: "worker",
-        };
-      }
-
-      if (isProp) {
-        propsMap[iri] = {
-          iri,
-          label,
-          domain: [],
-          range: [],
-          namespace,
-          source: "worker",
-        };
-      }
-    }
-
-    if (Object.keys(classesMap).length === 0 && Object.keys(propsMap).length === 0) {
-      return;
-    }
-
-    await persistFatMapUpdates(set, get, classesMap, propsMap, namespaceIriCandidates);
   },
 
   discoverReferencedOntologies: async (options?: {
@@ -2063,245 +1448,24 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
   },
 }));
 
-// Module-level namespace initialization: attempt to register the default namespace
-// if not already present. This is best-effort only; if the worker is not initialized
-// (common in tests), silently skip this initialization. Tests and application code
-// will initialize the worker explicitly as needed.
+// Wire namespace subscription: impl is authoritative, Zustand is the React-reactive mirror.
 try {
-  // Check if the worker is initialized before attempting namespace operations
-  if (rdfManager && typeof (rdfManager as any).isInitialized === 'function') {
-    const initialized = (rdfManager as any).isInitialized();
-    if (initialized) {
-      const existingNamespaces =
-        typeof rdfManager.getNamespaces === "function" ? rdfManager.getNamespaces() : {};
-      if (
-        existingNamespaces === null ||
-        typeof existingNamespaces !== "object" ||
-        !Object.prototype.hasOwnProperty.call(existingNamespaces, DEFAULT_NAMESPACE_PREFIX)
-      ) {
-        rdfManager.setNamespaces(
-          { [DEFAULT_NAMESPACE_PREFIX]: DEFAULT_NAMESPACE_URI },
-          { replace: false },
-        );
-      }
-    }
+  rdfManager.onNamespacesChange((entries: NamespaceEntry[]) => {
+    useOntologyStore.getState().setNamespaceRegistry(entries);
+  });
+} catch (_) {
+  /* ignore - may not be available in test environments without full worker init */
+}
+
+// Seed default namespace if not already present.
+try {
+  const existing = typeof rdfManager.getNamespaces === "function" ? rdfManager.getNamespaces() : [];
+  if (!existing.some((e: NamespaceEntry) => e.prefix === DEFAULT_NAMESPACE_PREFIX)) {
+    rdfManager.addNamespace(DEFAULT_NAMESPACE_PREFIX, DEFAULT_NAMESPACE_URI);
   }
 } catch (_) {
   /* ignore initialization failures - worker may not be ready in test environments */
 }
-
-/**
- * Full rebuild helper: authoritative rebuild using the provided RDF manager (or module-level rdfManager).
- * This function replaces the old incrementalReconcileFromQuads full-rebuild path.
- */
-async function buildFatMap(rdfMgr?: any): Promise<void> {
-  const mgr = rdfMgr || (typeof rdfManager !== "undefined" ? rdfManager : undefined);
-  if (!mgr || typeof (mgr as any).fetchQuadsPage !== "function") return;
-
-  let allQuads: SerializedQuad[] = [];
-  try {
-    allQuads = await fetchSerializedQuadsAcrossGraphs(mgr, ["urn:vg:data", "urn:vg:ontologies"]);
-  } catch (err) {
-    console.debug("[ontologyStore] buildFatMap fetchSerializedQuadsAcrossGraphs failed", err);
-    return;
-  }
-
-  // Use imported constants from vocabularies.ts
-  const namespaceIriCandidates = new Set<string>();
-  const dataGraphSubjects = new Set<string>();
-  const addCandidate = (value: string) => {
-    if (!value) return;
-    const trimmed = String(value).trim();
-    if (!trimmed) return;
-    if (/^[a-z][a-z0-9+.\-]*:/i.test(trimmed)) {
-      namespaceIriCandidates.add(trimmed);
-    }
-  };
-
-  const subjectIndex = new Map<string, SerializedQuad[]>();
-  for (const quad of allQuads) {
-    const subj = quad && quad.subject ? String(quad.subject) : "";
-    if (!subj) continue;
-    if (!subjectIndex.has(subj)) subjectIndex.set(subj, []);
-    subjectIndex.get(subj)!.push(quad);
-
-    const graphId = quad && quad.graph ? String(quad.graph) : "";
-    if (graphId && graphId !== "urn:vg:data") {
-      if (graphId === "urn:vg:ontologies") {
-        const predicate = String(quad.predicate || "");
-        const object = typeof quad.object === "string" ? quad.object : String(quad.object || "");
-        if (predicate === RDF_TYPE && object === OWL_ONTOLOGY) {
-          const subjValue = String(quad.subject || "");
-          addCandidate(subjValue);
-        }
-      }
-      continue;
-    }
-    const subjValue = String(quad.subject || "");
-    addCandidate(subjValue);
-    addCandidate(String(quad.predicate || ""));
-    if (typeof quad.object === "string") addCandidate(String(quad.object));
-    if (subjValue) dataGraphSubjects.add(subjValue);
-  }
-
-  if (namespaceIriCandidates.size === 0) {
-    try {
-      const storeState =
-        useOntologyStore && typeof useOntologyStore.getState === "function"
-          ? useOntologyStore.getState()
-          : null;
-      const loadedOntologies = storeState && Array.isArray(storeState.loadedOntologies)
-        ? storeState.loadedOntologies
-        : [];
-      for (const ontology of loadedOntologies || []) {
-        if (!ontology || typeof ontology !== "object") continue;
-        if (typeof (ontology as any).url === "string") {
-          addCandidate((ontology as any).url);
-        }
-        const aliases = (ontology as any).aliases;
-        if (Array.isArray(aliases)) {
-          for (const alias of aliases) {
-            addCandidate(alias as string);
-          }
-        }
-      }
-    } catch (_) {
-      /* ignore ontology metadata fallback errors */
-    }
-  }
-
-  const propsMap: Record<string, any> = {};
-  const classesMap: Record<string, any> = {};
-
-  for (const [subject, quads] of subjectIndex.entries()) {
-    const types = Array.from(
-      new Set(
-        (quads || [])
-          .filter((q) => q && q.predicate === RDF_TYPE)
-          .map((q) => String(q.object || ""))
-          .filter(Boolean),
-      ),
-    );
-
-    const isProp = types.some((t) => /Property/i.test(String(t)));
-    const isClass = types.some((t) => /Class/i.test(String(t)));
-
-    const labelQuad = (quads || []).find((q) => q && q.predicate === RDFS_LABEL);
-    const label = labelQuad ? String(labelQuad.object || "") : "";
-    const namespace = extractNamespace(subject);
-    if (namespace && dataGraphSubjects.has(String(subject))) addCandidate(namespace);
-
-    // Extract rdfs:domain and rdfs:range values from the property's quads.
-    // This is essential for data-driven TBox structural predicate classification:
-    // when OWL/RDFS meta-ontologies are loaded into urn:vg:schema (which is now
-    // included in the graph query above), these domain/range declarations become
-    // available for the mapper to derive which predicates have TBox subjects/objects.
-    const RDFS_DOMAIN_IRI = "http://www.w3.org/2000/01/rdf-schema#domain";
-    const RDFS_RANGE_IRI  = "http://www.w3.org/2000/01/rdf-schema#range";
-    const domainValues = Array.from(new Set(
-      (quads || [])
-        .filter((q) => q && q.predicate === RDFS_DOMAIN_IRI)
-        .map((q) => String(q.object || ""))
-        .filter(Boolean),
-    ));
-    const rangeValues = Array.from(new Set(
-      (quads || [])
-        .filter((q) => q && q.predicate === RDFS_RANGE_IRI)
-        .map((q) => String(q.object || ""))
-        .filter(Boolean),
-    ));
-
-    // A subject with a declared rdfs:domain or rdfs:range is a property,
-    // even without an explicit rdf:type owl:*Property declaration.
-    if (isProp || domainValues.length > 0 || rangeValues.length > 0) {
-      propsMap[String(subject)] = {
-        iri: String(subject),
-        label,
-        domain: domainValues,
-        range: rangeValues,
-        namespace,
-        source: "store",
-      };
-    }
-
-    if (isClass) {
-      classesMap[String(subject)] = {
-        iri: String(subject),
-        label,
-        namespace,
-        properties: [],
-        restrictions: {},
-        source: "store",
-      };
-    }
-  }
-
-  const mergedProps = Object.values(propsMap) as ObjectProperty[];
-  const mergedClasses = Object.values(classesMap) as OntologyClass[];
-
-  // Compute and persist namespace registry in the same atomic update as the fat-map so consumers
-  // that rely on both availableClasses/availableProperties and namespaceRegistry see a consistent state.
-    try {
-      const nsMap = mgr && typeof (mgr as any).getNamespaces === "function" ? (mgr as any).getNamespaces() : {};
-      const existingRegistry =
-        Array.isArray(useOntologyStore.getState().namespaceRegistry)
-          ? useOntologyStore.getState().namespaceRegistry
-          : [];
-      const filteredNsMap = filterNamespacesToCandidates(nsMap || {}, namespaceIriCandidates, existingRegistry);
-      const prefixes = Object.keys(filteredNsMap || []).sort();
-      const paletteMap = buildPaletteMap(prefixes || []);
-      const registry = (prefixes || []).map((p) => {
-        try {
-          return { prefix: String(p), namespace: String((filteredNsMap as any)[p] || ""), color: String((paletteMap as any)[p] || "") };
-        } catch (_) {
-          return { prefix: String(p), namespace: String((filteredNsMap as any)[p] || ""), color: "" };
-        }
-      });
-
-      // Compute prefixed forms using the freshly computed registry before persisting so
-      // consumers see consistent prefixed values immediately.
-      const computePrefixed = (e: any) => {
-        try {
-          const iri = String((e && (e.iri || e.key)) || "");
-          const pref = iri ? toPrefixed(String(iri), registry as any) : "";
-          return { ...(e || {}), prefixed: pref && String(pref) !== String(iri) ? String(pref) : "" };
-        } catch (_) {
-          return { ...(e || {}), prefixed: "" };
-        }
-      };
-
-      const mergedPropsWithPref = (Array.isArray(mergedProps) ? mergedProps : []).map(computePrefixed);
-      const mergedClassesWithPref = (Array.isArray(mergedClasses) ? mergedClasses : []).map(computePrefixed);
-
-    useOntologyStore.setState((st: any) => ({
-      availableProperties: mergedPropsWithPref,
-      availableClasses: mergedClassesWithPref,
-      ontologiesVersion: (st.ontologiesVersion || 0) + 1,
-      namespaceRegistry: registry,
-    }));
-    } catch (_) {
-      try {
-        const mergedPropsWithPref = attachPrefixed(Array.isArray(mergedProps) ? mergedProps : []);
-        const mergedClassesWithPref = attachPrefixed(Array.isArray(mergedClasses) ? mergedClasses : []);
-        useOntologyStore.setState((st: any) => ({
-          availableProperties: mergedPropsWithPref,
-          availableClasses: mergedClassesWithPref,
-          ontologiesVersion: (st.ontologiesVersion || 0) + 1,
-        }));
-      } catch (_) {
-        useOntologyStore.setState((st: any) => ({
-          availableProperties: mergedProps,
-          availableClasses: mergedClasses,
-          ontologiesVersion: (st.ontologiesVersion || 0) + 1,
-        }));
-      }
-    }
-
-
-
-
-}
-
 /**
  * Derive a user-friendly ontology name.
  */

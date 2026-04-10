@@ -1,89 +1,40 @@
 import React from 'react';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
-import {
-  Plus,
-  Eye,
-  EyeOff,
-  ChevronDown,
-  ChevronUp,
-  Network,
-  Layout,
-} from 'lucide-react';
-import { ReasoningIndicator } from './ReasoningIndicator';
 import type { ReasoningResult } from '../../utils/rdfManager';
 import { Popover, PopoverTrigger, PopoverContent } from '../ui/popover';
-import { Slider } from '../ui/slider';
-import * as TooltipPrimitive from "@radix-ui/react-tooltip";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../ui/dropdown-menu';
 import { toast } from 'sonner';
 import { useAppConfigStore } from '../../stores/appConfigStore';
-import { useShallow } from 'zustand/react/shallow';
-import { LayoutManager } from './LayoutManager';
 import { useOntologyStore } from '../../stores/ontologyStore';
 
 interface TopBarProps {
-  onAddNode: () => void;
-  onToggleLegend: () => void;
-  showLegend: boolean;
   viewMode: 'abox' | 'tbox';
   onViewModeChange: (mode: 'abox' | 'tbox') => void;
   ontologyCount: number;
-  ontologyBadgeContent?: React.ReactNode;
-  onLayoutChange?: (layoutType: string, force?: boolean, options?: { nodeSpacing?: number }) => void;
-  currentLayout?: string;
-  layoutEnabled?: boolean;
-  onToggleLayoutEnabled?: (enabled: boolean) => void;
-  onExpandAll?: () => void;
-  onExpandLevel?: () => void;
-  onCollapseLevel?: () => void;
-  hasClusters?: boolean;
-  clusterDisplayLevel?: number;
-  maxClusterDisplayLevel?: number;
-  sidebarExpanded?: boolean;
-  // Reasoning indicator props
   onOpenReasoningReport?: () => void;
   onRunReason?: () => void;
+  onClearInferred?: () => void;
   currentReasoning?: ReasoningResult | null;
   isReasoning?: boolean;
+  isClustered?: boolean;
+  onCluster?: () => void;
+  onExpandAll?: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
-  onAddNode,
-  onToggleLegend,
-  showLegend,
   viewMode,
   onViewModeChange,
   ontologyCount,
-  ontologyBadgeContent,
-  onLayoutChange,
-  currentLayout = 'horizontal',
-  layoutEnabled = false,
-  onToggleLayoutEnabled,
   onOpenReasoningReport,
   onRunReason,
+  onClearInferred,
   currentReasoning = null,
   isReasoning = false,
+  isClustered = false,
+  onCluster,
   onExpandAll,
-  onExpandLevel,
-  onCollapseLevel,
-  hasClusters = false,
-  clusterDisplayLevel = 0,
-  maxClusterDisplayLevel = 0,
-  sidebarExpanded = false,
 }) => {
-  const { config, setLayoutSpacing } = useAppConfigStore(
-    useShallow((state) => ({
-      config: state.config,
-      setLayoutSpacing: state.setLayoutSpacing,
-    })),
-  );
-
+  const config = useAppConfigStore((s) => s.config);
+  const clusteringAlgorithm = useAppConfigStore(s => s.config.clusteringAlgorithm);
+  const setClusteringAlgorithm = useAppConfigStore(s => s.setClusteringAlgorithm);
   const loadedOntologies = useOntologyStore((s) => s.loadedOntologies ?? []);
   const removeLoadedOntology = useOntologyStore((s) => s.removeLoadedOntology);
   const addAdditionalOntology = useAppConfigStore((s) => s.addAdditionalOntology);
@@ -95,531 +46,220 @@ export const TopBar: React.FC<TopBarProps> = ({
     catch { return u.trim().replace(/[/#]+$/, '').replace(/^http:\/\//i, 'https://'); }
   };
 
-  const [tempLayoutSpacing, setTempLayoutSpacing] = React.useState<number>(
-    config.layoutSpacing ?? 120
-  );
-
-  React.useEffect(() => {
-    setTempLayoutSpacing(config.layoutSpacing ?? 120);
-  }, [config.layoutSpacing]);
-
-  const layoutManager = new LayoutManager();
-  const layoutOptions = layoutManager.getAvailableLayouts();
-
-  const getLayoutIcon = (iconName?: string) => {
-    const icons: Record<string, any> = {
-      GitBranch: Layout,
-      TreePine: Layout,
-      Circle: Layout,
-      Grid3X3: Layout,
-      Layers: Layout,
-      TreeDeciduous: Layout,
-    };
-    return icons[iconName || ''] || Layout;
-  };
-
   return (
-    <TooltipPrimitive.Provider delayDuration={0} skipDelayDuration={0}>
-      <div className={`absolute top-2 right-0 z-10 flex justify-center pointer-events-none transition-[left] duration-300 ease-in-out ${sidebarExpanded ? 'left-72' : 'left-4'}`}>
-        <div className="backdrop-blur-md shadow-sm p-1 flex flex-wrap items-center gap-2 pointer-events-auto">
-          {/* Primary Action Button - Add Node */}
-          <TooltipPrimitive.Root>
-            <TooltipPrimitive.Trigger asChild>
-              <Button variant="default" size="sm" onClick={onAddNode} className="rounded-md h-9 border border-border/20">
-                <Plus className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline text-sm">Add Node</span>
-              </Button>
-            </TooltipPrimitive.Trigger>
-            <TooltipPrimitive.Portal>
-              <TooltipPrimitive.Content
-                className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
-                sideOffset={5}
-              >
-                Add a new node to the canvas
-                <TooltipPrimitive.Arrow className="fill-popover" />
-              </TooltipPrimitive.Content>
-            </TooltipPrimitive.Portal>
-          </TooltipPrimitive.Root>
+    <div className="reactodia-toolbar" role="toolbar" style={{
+      display: 'flex',
+      whiteSpace: 'nowrap',
+      gap: '4px',
+    }}>
+      {/* Clustering controls */}
+      <div className="reactodia-btn-group reactodia-btn-group-sm">
+        <select
+          className="reactodia-btn reactodia-btn-default glass-btn"
+          style={{ appearance: 'none', WebkitAppearance: 'none', fontSize: 12, lineHeight: 1.5, padding: '5px 24px 5px 10px', cursor: 'pointer', boxSizing: 'border-box', borderRadius: 'unset', borderTopLeftRadius: 'var(--reactodia-button-border-radius)', borderBottomLeftRadius: 'var(--reactodia-button-border-radius)' }}
+          value={clusteringAlgorithm}
+          title="Clustering algorithm"
+          onChange={e => setClusteringAlgorithm(e.target.value as any)}
+        >
+          <option value="none">No clustering</option>
+          <option value="label-propagation">Label Propagation</option>
+          <option value="louvain">Louvain</option>
+          <option value="kmeans">K-Means</option>
+        </select>
+        <button
+          type="button"
+          className={`reactodia-btn reactodia-btn-default glass-btn${isClustered ? ' glass-btn--active' : ''}`}
+          style={{ borderRadius: 'unset' }}
+          title={isClustered ? 'Already clustered — expand first to re-cluster' : 'Cluster visible nodes'}
+          disabled={clusteringAlgorithm === 'none' || isClustered || !onCluster}
+          onClick={onCluster}
+        >
+          Cluster
+        </button>
+        <button
+          type="button"
+          className="reactodia-btn reactodia-btn-default glass-btn"
+          title={isClustered ? 'Expand all groups' : 'No groups to expand'}
+          disabled={!isClustered || !onExpandAll}
+          onClick={onExpandAll}
+        >
+          Expand All
+        </button>
+      </div>
 
-          {/* Toggle Buttons - A-Box/T-Box as Pill Group */}
-          <div className="flex border border-border/20 rounded-md overflow-hidden h-9">
-            <TooltipPrimitive.Root>
-              <TooltipPrimitive.Trigger asChild>
-                <Button
-                  variant={viewMode === 'abox' ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => onViewModeChange('abox')}
-                  className="rounded-none border-0 h-full"
-                >
-                  A-Box
-                </Button>
-              </TooltipPrimitive.Trigger>
-              <TooltipPrimitive.Portal>
-                <TooltipPrimitive.Content
-                  className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
-                  sideOffset={5}
-                >
-                  View instance data (individuals)
-                  <TooltipPrimitive.Arrow className="fill-popover" />
-                </TooltipPrimitive.Content>
-              </TooltipPrimitive.Portal>
-            </TooltipPrimitive.Root>
-            <TooltipPrimitive.Root>
-              <TooltipPrimitive.Trigger asChild>
-                <Button
-                  variant={viewMode === 'tbox' ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => onViewModeChange('tbox')}
-                  className="rounded-none border-0 h-full"
-                >
-                  T-Box
-                </Button>
-              </TooltipPrimitive.Trigger>
-              <TooltipPrimitive.Portal>
-                <TooltipPrimitive.Content
-                  className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
-                  sideOffset={5}
-                >
-                  View ontology schema (classes & properties)
-                  <TooltipPrimitive.Arrow className="fill-popover" />
-                </TooltipPrimitive.Content>
-              </TooltipPrimitive.Portal>
-            </TooltipPrimitive.Root>
-          </div>
+      {/* A-Box / T-Box group */}
+      <div className="reactodia-btn-group reactodia-btn-group-sm">
+        <button
+          type="button"
+          className={`reactodia-btn reactodia-btn-default glass-btn ${viewMode === 'abox' ? 'glass-btn--active' : ''}`}
+          onClick={() => onViewModeChange('abox')}
+          title="View instance data (A-Box)"
+        >
+          A-Box
+        </button>
+        <button
+          type="button"
+          className={`reactodia-btn reactodia-btn-default glass-btn ${viewMode === 'tbox' ? 'glass-btn--active' : ''}`}
+          onClick={() => onViewModeChange('tbox')}
+          title="View ontology schema (T-Box)"
+        >
+          T-Box
+        </button>
+      </div>
 
-          {/* Spacer */}
-          <div className="flex-1" />
-
-          {/* Secondary Buttons with Icons */}
-          <TooltipPrimitive.Root>
-            <TooltipPrimitive.Trigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onToggleLegend}
-                className="rounded-md h-9 border border-border/20"
-              >
-                {showLegend ? <EyeOff className="h-4 w-4 mr-1" /> : <Eye className="h-4 w-4 mr-1" />}
-                <span className="hidden md:inline text-sm">Legend</span>
-              </Button>
-            </TooltipPrimitive.Trigger>
-            <TooltipPrimitive.Portal>
-              <TooltipPrimitive.Content
-                className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
-                sideOffset={5}
-              >
-                {showLegend ? 'Hide' : 'Show'} namespace legend
-                <TooltipPrimitive.Arrow className="fill-popover" />
-              </TooltipPrimitive.Content>
-            </TooltipPrimitive.Portal>
-          </TooltipPrimitive.Root>
-
-          {/* Cluster level expand/collapse split button */}
-          {hasClusters && (
-            <div className="flex items-center rounded-md border border-border/20 overflow-hidden">
-              <TooltipPrimitive.Root>
-                <TooltipPrimitive.Trigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={onCollapseLevel}
-                    disabled={clusterDisplayLevel <= 0}
-                    className="rounded-none h-9 px-2 border-r border-border/20"
-                  >
-                    <ChevronDown className="h-4 w-4" />
-                  </Button>
-                </TooltipPrimitive.Trigger>
-                <TooltipPrimitive.Portal>
-                  <TooltipPrimitive.Content
-                    className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
-                    sideOffset={5}
-                  >
-                    Collapse one cluster level
-                    <TooltipPrimitive.Arrow className="fill-popover" />
-                  </TooltipPrimitive.Content>
-                </TooltipPrimitive.Portal>
-              </TooltipPrimitive.Root>
-
-              <span className="px-2 text-xs tabular-nums text-muted-foreground select-none">
-                {clusterDisplayLevel}/{maxClusterDisplayLevel}
-              </span>
-
-              <TooltipPrimitive.Root>
-                <TooltipPrimitive.Trigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={onExpandLevel}
-                    disabled={clusterDisplayLevel >= maxClusterDisplayLevel}
-                    className="rounded-none h-9 px-2 border-l border-border/20"
-                  >
-                    <ChevronUp className="h-4 w-4" />
-                  </Button>
-                </TooltipPrimitive.Trigger>
-                <TooltipPrimitive.Portal>
-                  <TooltipPrimitive.Content
-                    className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
-                    sideOffset={5}
-                  >
-                    Expand one cluster level
-                    <TooltipPrimitive.Arrow className="fill-popover" />
-                  </TooltipPrimitive.Content>
-                </TooltipPrimitive.Portal>
-              </TooltipPrimitive.Root>
-            </div>
-          )}
-
-          {/* Ontology Count Popover Button */}
-          {ontologyBadgeContent || (
-            <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="rounded-md h-9 border border-border/20 text-foreground"
-              >
-                <Network className="h-4 w-4 mr-1" />
-                <span className="text-sm text-foreground">
-                  {ontologyCount} {ontologyCount === 1 ? 'ontology' : 'ontologies'}
-                  {config?.persistedAutoload && ` (${loadedOntologies.length} configured)`}
-                </span>
-              </Button>
-            </PopoverTrigger>
-          <PopoverContent align="end" className="w-96 p-3">
-            <div className="space-y-2">
-              <h4 className="font-medium text-sm">Loaded ontologies and auto-load status</h4>
-              {loadedOntologies.length > 0 ? (
-                <div className="space-y-2">
-                  {loadedOntologies.map((ont: any, idx: number) => {
-                    const ontologyUrl = ont?.url || ont?.uri;
-                    const normUrl = ontologyUrl ? normalizeOntUrl(ontologyUrl) : '';
-                    // An ontology is in the autoload config if its URL matches additionalOntologies,
-                    // or if it was loaded via the autoload pipeline (source "fetched" / "auto").
-                    const inAutoloadConfig = normUrl && additionalOntologies.some(
-                      (u) => normalizeOntUrl(u) === normUrl
-                    );
-                    const isAutoSource = ont?.source === 'fetched' || ont?.source === 'auto';
-                    const isAutoloaded = !!(inAutoloadConfig || isAutoSource);
-                    const isCore = ont?.source === 'auto';
-                    return (
-                      <div key={idx} className="border-b pb-2 last:border-0">
-                        <div className="flex justify-between items-start gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm">{ont?.name || 'Unknown'}</div>
-                            <div className="text-xs text-muted-foreground truncate">
-                              {ontologyUrl || 'No URI'}
-                            </div>
-                            <div className="text-xs mt-1 flex items-center gap-1">
-                              <span className="text-green-600">Loaded</span>
-                              {isAutoloaded && <span className="text-muted-foreground">· autoload</span>}
-                              {isCore && <span className="text-muted-foreground">· core</span>}
-                            </div>
-                          </div>
-                          <div className="flex gap-1 shrink-0">
-                            {!isCore && ontologyUrl && (
-                              isAutoloaded ? (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 text-xs"
-                                  onClick={() => {
-                                    removeAdditionalOntology(ontologyUrl);
-                                    toast.success(`Removed ${ont?.name || 'ontology'} from autoload`);
-                                  }}
-                                >
-                                  Remove from autoload
-                                </Button>
-                              ) : (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 text-xs"
-                                  onClick={() => {
-                                    addAdditionalOntology(ontologyUrl);
-                                    toast.success(`Added ${ont?.name || 'ontology'} to autoload`);
-                                  }}
-                                >
-                                  Add to autoload
-                                </Button>
-                              )
-                            )}
-                            {config?.persistedAutoload && !isCore && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs text-destructive hover:text-destructive"
-                                onClick={() => {
-                                  if (ontologyUrl) {
-                                    removeLoadedOntology(ontologyUrl);
-                                    toast.success(`Unloaded ${ont?.name || 'ontology'}`);
-                                  } else {
-                                    toast.error('Could not unload ontology: URL not found');
-                                  }
-                                }}
-                              >
-                                Unload
-                              </Button>
-                            )}
+        {/* Ontology count */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="reactodia-btn reactodia-btn-default glass-btn"
+              title="Loaded ontologies"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="16"/>
+                <circle cx="5" cy="19" r="3"/><line x1="12" y1="16" x2="5" y2="16"/>
+                <circle cx="19" cy="19" r="3"/><line x1="12" y1="16" x2="19" y2="16"/>
+              </svg>
+              {ontologyCount}
+            </button>
+          </PopoverTrigger>
+        <PopoverContent align="end" className="w-96 p-3" style={{ zIndex: 100 }}>
+          <div className="space-y-2">
+            <h4 className="font-medium text-sm">Loaded ontologies</h4>
+            {loadedOntologies.length > 0 ? (
+              <div className="space-y-2">
+                {loadedOntologies.map((ont: any, idx: number) => {
+                  const ontologyUrl = ont?.url || ont?.uri;
+                  const normUrl = ontologyUrl ? normalizeOntUrl(ontologyUrl) : '';
+                  const inAutoloadConfig = normUrl && additionalOntologies.some(
+                    (u) => normalizeOntUrl(u) === normUrl
+                  );
+                  const isAutoSource = ont?.source === 'fetched' || ont?.source === 'auto';
+                  const isAutoloaded = !!(inAutoloadConfig || isAutoSource);
+                  const isCore = ont?.source === 'auto';
+                  return (
+                    <div key={idx} className="border-b pb-2 last:border-0">
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm">{ont?.name || 'Unknown'}</div>
+                          <div className="text-xs text-muted-foreground truncate">{ontologyUrl || 'No URI'}</div>
+                          <div className="text-xs mt-1 flex items-center gap-1">
+                            <span className="text-green-600">Loaded</span>
+                            {isAutoloaded && <span className="text-muted-foreground">· autoload</span>}
+                            {isCore && <span className="text-muted-foreground">· core</span>}
                           </div>
                         </div>
+                        <div className="flex gap-1 shrink-0">
+                          {!isCore && ontologyUrl && (
+                            isAutoloaded ? (
+                              <button
+                                className="glass-btn"
+                                style={{ fontSize: 12, padding: '3px 8px' }}
+                                onClick={() => {
+                                  removeAdditionalOntology(ontologyUrl);
+                                  toast.success(`Removed ${ont?.name || 'ontology'} from autoload`);
+                                }}
+                              >
+                                Remove from autoload
+                              </button>
+                            ) : (
+                              <button
+                                className="glass-btn"
+                                style={{ fontSize: 12, padding: '3px 8px' }}
+                                onClick={() => {
+                                  addAdditionalOntology(ontologyUrl);
+                                  toast.success(`Added ${ont?.name || 'ontology'} to autoload`);
+                                }}
+                              >
+                                Add to autoload
+                              </button>
+                            )
+                          )}
+                          {config?.persistedAutoload && !isCore && (
+                            <button
+                              className="glass-btn glass-btn--status-error"
+                              style={{ fontSize: 12, padding: '3px 8px' }}
+                              onClick={() => {
+                                if (ontologyUrl) {
+                                  removeLoadedOntology(ontologyUrl);
+                                  toast.success(`Unloaded ${ont?.name || 'ontology'}`);
+                                }
+                              }}
+                            >
+                              Unload
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No ontologies loaded</p>
-              )}
-            </div>
-            </PopoverContent>
-            </Popover>
-          )}
-
-          {/* Layout Popover Button */}
-          <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="rounded-md h-9 border border-border/20"
-            >
-              <Layout className="h-4 w-4 mr-1" />
-              <span className="hidden md:inline text-sm">Layout</span>
-            </Button>
-          </PopoverTrigger>
-
-        <PopoverContent
-          align="end"
-          sideOffset={8}
-          className="w-96 max-h-[80vh] overflow-y-auto rounded-lg border bg-popover p-3 shadow-lg"
-        >
-          <div className="flex items-center justify-between mb-1.5">
-            <div className="text-sm font-medium">Layouts</div>
-          </div>
-
-          <div className="space-y-0.5">
-            {layoutOptions.map((layout) => {
-              const IconComponent = getLayoutIcon(layout.icon as any);
-              return (
-                <button
-                  key={layout.type}
-                  onClick={() => {
-                    onLayoutChange?.(layout.type, true, {
-                      nodeSpacing: config.layoutSpacing,
-                    });
-                    toast.success(`Applied ${layout.label} layout`);
-                  }}
-                  className="w-full flex items-start gap-3 p-2 rounded hover:bg-accent/10 text-left"
-                >
-                  <IconComponent className="h-5 w-5 mt-0.5 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm">{layout.label}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {layout.description}
                     </div>
-                  </div>
-                  {currentLayout === layout.type && (
-                    <Badge variant="secondary" className="text-xs">
-                      Active
-                    </Badge>
-                  )}
-                </button>
-              );
-            })}
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No ontologies loaded</p>
+            )}
           </div>
+        </PopoverContent>
+      </Popover>
 
-          <div className="space-y-3 mb-2 pt-2">
-            <div className="text-sm font-medium">Spacing</div>
-            <div
-              className="flex items-center gap-2 px-2 py-1 bg-card/80 border border-border rounded-md"
-              onPointerUp={() => {
-                const v = tempLayoutSpacing;
-                setLayoutSpacing(v);
-                onLayoutChange?.(currentLayout || 'horizontal', true, {
-                  nodeSpacing: v,
-                });
-                toast.success(`Saved spacing: ${v}px`);
-              }}
+        {/* Reasoning group */}
+        {onOpenReasoningReport && onRunReason && (
+          <div className="reactodia-btn-group reactodia-btn-group-sm">
+            <button
+              type="button"
+              className={`reactodia-btn reactodia-btn-default glass-btn ${
+                isReasoning ? '' :
+                currentReasoning?.errors?.length ? 'glass-btn--status-error' :
+                currentReasoning?.warnings?.length ? 'glass-btn--status-warn' :
+                currentReasoning ? 'glass-btn--status-ok' : ''
+              }`}
+              onClick={onOpenReasoningReport}
+              title="View reasoning results"
             >
-              <div className="text-xs text-muted-foreground">Spacing</div>
-              <div className="w-56">
-                <Slider
-                  value={[tempLayoutSpacing]}
-                  onValueChange={([v]) => {
-                    setTempLayoutSpacing(v);
-                    useAppConfigStore.getState().setLayoutSpacing(v);
-                    onLayoutChange?.(currentLayout || 'horizontal', true, {
-                      nodeSpacing: v,
-                    });
-                  }}
-                  min={50}
-                  max={500}
-                  step={10}
-                  className="w-full"
-                />
-              </div>
-              <div className="text-xs font-medium">{tempLayoutSpacing}px</div>
-            </div>
-          </div>
-
-          <div className="mt-3 pt-2 border-t flex gap-2 items-center">
-            <div className="flex-1">
-              <div className="text-sm font-medium mb-1">Auto layout</div>
-              <div className="text-xs text-muted-foreground">
-                Enable programmatic layout application
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="px-3 py-1 rounded text-sm bg-muted hover:bg-muted/80"
-                onClick={() => {
-                  const v = tempLayoutSpacing;
-                  useAppConfigStore.getState().setLayoutSpacing(v);
-                  onLayoutChange?.(currentLayout || 'horizontal', true, {
-                    nodeSpacing: v,
-                  });
-                }}
-              >
-                Apply
-              </button>
-
-              <button
-                type="button"
-                className="px-3 py-1 rounded text-sm bg-muted hover:bg-muted/80"
-                onClick={() => {
-                  useAppConfigStore.getState().setLayoutSpacing(120);
-                  setTempLayoutSpacing(120);
-                  onLayoutChange?.(currentLayout || 'horizontal', true, {
-                    nodeSpacing: 120,
-                  });
-                  toast.success('Reset spacing to 120px');
-                }}
-              >
-                Reset
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  const enabled = !layoutEnabled;
-                  onToggleLayoutEnabled?.(enabled);
-                  toast.success(enabled ? 'Layout toggled ON' : 'Layout toggled OFF');
-                }}
-                className={
-                  layoutEnabled
-                    ? 'px-3 py-1 rounded text-sm border bg-primary text-white'
-                    : 'px-3 py-1 rounded text-sm border bg-card'
-                }
-                aria-pressed={layoutEnabled}
-              >
-                Auto
-              </button>
-            </div>
-          </div>
-          </PopoverContent>
-          </Popover>
-
-          {/* Reasoning Buttons - Status and Run as Pill Group */}
-          {onOpenReasoningReport && onRunReason && (
-            <div className="flex border border-border/20 rounded-md overflow-hidden h-9">
-              {/* Reasoning Status Button */}
-              <TooltipPrimitive.Root>
-                <TooltipPrimitive.Trigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={onOpenReasoningReport}
-                    className="rounded-none border-0 h-full"
-                  >
-            {isReasoning ? (
-              <>
-                <div className="w-4 h-4 border-2 border-t-2 border-t-primary rounded-full animate-spin mr-2" />
-                <span className="font-medium">Reasoning...</span>
-              </>
-            ) : currentReasoning ? (
-              currentReasoning.errors && currentReasoning.errors.length > 0 ? (
+              {isReasoning ? (
                 <>
-                  <svg className="w-4 h-4 mr-2 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  <svg width="12" height="12" viewBox="0 0 24 24" style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }}>
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="32" strokeLinecap="round" />
                   </svg>
-                  <span className="font-medium">{currentReasoning.errors.length} Error{currentReasoning.errors.length !== 1 ? 's' : ''}</span>
+                  Reasoning…
                 </>
-              ) : currentReasoning.warnings && currentReasoning.warnings.length > 0 ? (
-                <>
-                  <svg className="w-4 h-4 mr-2 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                  <span className="font-medium">{currentReasoning.warnings.length} Warning{currentReasoning.warnings.length !== 1 ? 's' : ''}</span>
-                </>
+              ) : currentReasoning ? (
+                currentReasoning.errors?.length ? (
+                  <span>
+                    ⚠ {currentReasoning.errors.length} Error{currentReasoning.errors.length !== 1 ? 's' : ''}
+                  </span>
+                ) : currentReasoning.warnings?.length ? (
+                  <span>
+                    ⚠ {currentReasoning.warnings.length} Warning{currentReasoning.warnings.length !== 1 ? 's' : ''}
+                  </span>
+                ) : (
+                  <span>✓ Valid</span>
+                )
               ) : (
-                <>
-                  <svg className="w-4 h-4 mr-2 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="font-medium">Valid</span>
-                  {currentReasoning.duration && (
-                    <span className="ml-2 text-xs text-muted-foreground">{currentReasoning.duration}ms</span>
-                  )}
-                </>
-              )
-              ) : (
-                <>
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
-                  <span className="font-medium">Ready</span>
-                    </>
-                  )}
-                </Button>
-              </TooltipPrimitive.Trigger>
-              <TooltipPrimitive.Portal>
-                <TooltipPrimitive.Content
-                  className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
-                  sideOffset={5}
-                >
-                  View reasoning results and validation report
-                  <TooltipPrimitive.Arrow className="fill-popover" />
-                </TooltipPrimitive.Content>
-              </TooltipPrimitive.Portal>
-            </TooltipPrimitive.Root>
-
-              {/* Run Reasoning Button - Icon Only */}
-              <TooltipPrimitive.Root>
-                <TooltipPrimitive.Trigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      try {
-                        if (typeof onRunReason === 'function') onRunReason();
-                      } catch (e) {
-                        console.warn('Failed to invoke run reasoning', e);
-                      }
-                    }}
-                    className="rounded-none border-0 h-full w-9 p-0"
-                    aria-label="Run reasoning"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </Button>
-                </TooltipPrimitive.Trigger>
-                <TooltipPrimitive.Portal>
-                  <TooltipPrimitive.Content
-                    className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
-                    sideOffset={5}
-                  >
-                    Run reasoning and validation
-                    <TooltipPrimitive.Arrow className="fill-popover" />
-                  </TooltipPrimitive.Content>
-                </TooltipPrimitive.Portal>
-              </TooltipPrimitive.Root>
-            </div>
-          )}
-        </div>
-      </div>
-    </TooltipPrimitive.Provider>
+                'Ready'
+              )}
+            </button>
+            <button
+              type="button"
+              className="reactodia-btn reactodia-btn-default"
+              onClick={onClearInferred}
+              disabled={!currentReasoning || isReasoning}
+              title="Clear inferred graph"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline', verticalAlign: 'middle' }}>
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="reactodia-btn reactodia-btn-default"
+              onClick={onRunReason}
+              title="Run reasoning"
+            >
+              ▶
+            </button>
+          </div>
+        )}
+    </div>
   );
 };

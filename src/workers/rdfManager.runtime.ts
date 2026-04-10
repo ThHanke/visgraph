@@ -12,6 +12,7 @@ import type {
   ExportGraphPayload,
   ImportSerializedPayload,
   PurgeNamespacePayload,
+  RenameNamespaceUriPayload,
   RemoveQuadsByNamespacePayload,
   WorkerReconcileSubjectSnapshotPayload,
 } from "../utils/rdfManager.workerProtocol.ts";
@@ -1091,27 +1092,170 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           const formatInfo = normalizeExportFormat(
             payload && typeof payload === "object" ? (payload as ExportGraphPayload).format : undefined,
           );
+
+          // Collect quads from the requested graph PLUS urn:vg:inferred.
+          // For inferred quads, apply "data-grounded" filtering: only keep inferred
+          // triples whose subject is a NamedNode present in the data graph.
+          // This eliminates OWL-vocabulary self-inferences, literal-as-subject noise,
+          // and reflexive owl:sameAs trivia that the reasoner produces as side-effects.
+          const OWL_SAME_AS = "http://www.w3.org/2002/07/owl#sameAs";
           const graphTerm = createGraphTerm(graphName, DataFactory);
-          const quads = store.getQuads(null, null, null, graphTerm) || [];
-          const writer = new (N3 as any).Writer({
-            prefixes: { ...workerNamespaces },
-            format: formatInfo.writerFormat,
+          const inferredTerm = DataFactory.namedNode("urn:vg:inferred");
+          const primaryQuads: Quad[] = store.getQuads(null, null, null, graphTerm) || [];
+
+          // Build the set of data-graph subjects for inferred-triple filtering
+          const dataSubjects = new Set<string>();
+          for (const q of primaryQuads) {
+            if (q.subject.termType === "NamedNode") dataSubjects.add(q.subject.value);
+          }
+
+          const rawInferred: Quad[] =
+            graphName !== "urn:vg:inferred"
+              ? (store.getQuads(null, null, null, inferredTerm) || [])
+              : [];
+
+          const filteredInferred = rawInferred.filter((q) => {
+            // Must be grounded in data (subject is a NamedNode known from the data graph)
+            if (q.subject.termType !== "NamedNode") return false;
+            if (!dataSubjects.has(q.subject.value)) return false;
+            // Drop reflexive owl:sameAs (X sameAs X)
+            if (
+              q.predicate.value === OWL_SAME_AS &&
+              q.object.termType === "NamedNode" &&
+              q.object.value === q.subject.value
+            ) return false;
+            return true;
           });
-          const toWrite = formatInfo.dropGraph
-            ? quads.map((q: Quad) =>
+
+          // Merge, deduplicating by quad key
+          const seenKeys = new Set<string>();
+          const mergedQuads: Quad[] = [];
+          for (const q of [...primaryQuads, ...filteredInferred]) {
+            const k = quadKeyFromTerms(q);
+            if (!seenKeys.has(k)) { seenKeys.add(k); mergedQuads.push(q); }
+          }
+
+          const toWrite: Quad[] = formatInfo.dropGraph
+            ? mergedQuads.map((q) =>
                 DataFactory.quad(q.subject, q.predicate, q.object, DataFactory.defaultGraph()),
               )
-            : quads;
-          writer.addQuads(toWrite);
-          const output: string = await new Promise((resolve, reject) => {
-            writer.end((err: unknown, res: unknown) => {
-              if (err) {
-                reject(err);
-                return;
+            : mergedQuads;
+
+          let output: string;
+
+          if (formatInfo.mediaType === "application/ld+json") {
+            // N3.js Writer does not support JSON-LD — build expanded JSON-LD manually.
+            const nodeMap = new Map<string, Record<string, any[]>>();
+            for (const q of toWrite) {
+              const subjId =
+                q.subject.termType === "BlankNode"
+                  ? `_:${q.subject.value}`
+                  : q.subject.value;
+              if (!nodeMap.has(subjId)) nodeMap.set(subjId, { "@id": subjId } as any);
+              const node = nodeMap.get(subjId)!;
+              const predId = q.predicate.value;
+              if (!node[predId]) node[predId] = [];
+              if (q.object.termType === "NamedNode") {
+                node[predId].push({ "@id": q.object.value });
+              } else if (q.object.termType === "BlankNode") {
+                node[predId].push({ "@id": `_:${q.object.value}` });
+              } else {
+                const lit: Record<string, string> = { "@value": q.object.value };
+                if ((q.object as any).language) {
+                  lit["@language"] = (q.object as any).language;
+                } else if (
+                  (q.object as any).datatype &&
+                  (q.object as any).datatype.value !== "http://www.w3.org/2001/XMLSchema#string"
+                ) {
+                  lit["@type"] = (q.object as any).datatype.value;
+                }
+                node[predId].push(lit);
               }
-              resolve(typeof res === "string" ? res : String(res ?? ""));
+            }
+            output = JSON.stringify(Array.from(nodeMap.values()), null, 2);
+          } else if (formatInfo.mediaType === "application/rdf+xml") {
+            // N3.js Writer does not support RDF/XML — build it manually.
+            const xe = (s: string) =>
+              s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+            // Build prefix → namespace map; auto-assign short prefixes for unknown namespaces.
+            const ns: Record<string, string> = { rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#", ...workerNamespaces };
+            const nsReverse = new Map<string, string>(Object.entries(ns).map(([p, u]) => [u, p]));
+            let autoIdx = 0;
+            const qname = (iri: string): string => {
+              const hash = iri.lastIndexOf("#");
+              const slash = iri.lastIndexOf("/");
+              const cut = Math.max(hash, slash);
+              if (cut <= 0) return null as any;
+              const nsUri = iri.slice(0, cut + 1);
+              const local = iri.slice(cut + 1);
+              if (!local || /\s/.test(local)) return null as any;
+              if (!nsReverse.has(nsUri)) {
+                const p = `ns${autoIdx++}`;
+                nsReverse.set(nsUri, p);
+                ns[p] = nsUri;
+              }
+              return `${nsReverse.get(nsUri)}:${local}`;
+            };
+            // Pre-scan predicates to populate ns map before building header
+            for (const q of toWrite) qname(q.predicate.value);
+            const nsAttrs = Object.entries(ns)
+              .map(([p, u]) => `xmlns:${p}="${xe(u)}"`)
+              .join("\n      ");
+            const lines: string[] = [
+              '<?xml version="1.0" encoding="UTF-8"?>',
+              `<rdf:RDF ${nsAttrs}>`,
+            ];
+            // Group by subject
+            const subjectMap = new Map<string, Quad[]>();
+            for (const q of toWrite) {
+              const k = q.subject.termType === "BlankNode" ? `_:${q.subject.value}` : q.subject.value;
+              if (!subjectMap.has(k)) subjectMap.set(k, []);
+              subjectMap.get(k)!.push(q);
+            }
+            for (const [subjId, qs] of subjectMap) {
+              const aboutAttr = subjId.startsWith("_:")
+                ? `rdf:nodeID="${xe(subjId.slice(2))}"`
+                : `rdf:about="${xe(subjId)}"`;
+              lines.push(`  <rdf:Description ${aboutAttr}>`);
+              for (const q of qs) {
+                const pq = qname(q.predicate.value);
+                const tag = pq || `rdf:predicate rdf:resource="${xe(q.predicate.value)}"`;
+                if (q.object.termType === "NamedNode") {
+                  lines.push(`    <${tag} rdf:resource="${xe(q.object.value)}"/>`);
+                } else if (q.object.termType === "BlankNode") {
+                  lines.push(`    <${tag} rdf:nodeID="${xe(q.object.value)}"/>`);
+                } else {
+                  let attrs = "";
+                  if ((q.object as any).language) {
+                    attrs = ` xml:lang="${xe((q.object as any).language)}"`;
+                  } else if (
+                    (q.object as any).datatype &&
+                    (q.object as any).datatype.value !== "http://www.w3.org/2001/XMLSchema#string"
+                  ) {
+                    attrs = ` rdf:datatype="${xe((q.object as any).datatype.value)}"`;
+                  }
+                  lines.push(`    <${tag}${attrs}>${xe(q.object.value)}</${tag}>`);
+                }
+              }
+              lines.push(`  </rdf:Description>`);
+            }
+            lines.push("</rdf:RDF>");
+            output = lines.join("\n");
+          } else {
+            // Turtle (and any other N3.js-supported format)
+            const writer = new (N3 as any).Writer({
+              prefixes: { ...workerNamespaces },
+              format: formatInfo.writerFormat,
             });
-          });
+            writer.addQuads(toWrite);
+            output = await new Promise((resolve, reject) => {
+              writer.end((err: unknown, res: unknown) => {
+                if (err) { reject(err); return; }
+                resolve(typeof res === "string" ? res : String(res ?? ""));
+              });
+            });
+          }
+
           result = {
             graphName,
             format: formatInfo.mediaType,
@@ -1244,6 +1388,92 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             }
           }
           result = { removed, namespaceUri, prefixRemoved };
+          break;
+        }
+        case "renameNamespaceUri": {
+          const { DataFactory } = resolveN3();
+          if (!DataFactory) throw new Error("n3-datafactory-unavailable");
+          const store = getSharedStore();
+          const { oldUri, newUri, allNamespaceUris } =
+            payload as RenameNamespaceUriPayload;
+
+          if (!oldUri || !newUri || oldUri === newUri) {
+            result = { renamed: 0 };
+            break;
+          }
+
+          // Sort all namespace URIs longest-first for prefix disambiguation.
+          const baseUris = allNamespaceUris.includes(oldUri)
+            ? allNamespaceUris
+            : [...allNamespaceUris, oldUri];
+          const sortedUris = [...baseUris].sort((a, b) => b.length - a.length);
+
+          // Find the longest namespace URI that an IRI starts with.
+          // Returns undefined if none match.
+          const longestMatch = (iri: string): string | undefined =>
+            sortedUris.find((u) => iri.startsWith(u));
+
+          // Replace the oldUri prefix with newUri in a named-node IRI, if it matches.
+          // Returns null if this IRI should not be renamed.
+          const maybeRename = (iri: string): string | null => {
+            if (!iri.startsWith(oldUri)) return null;
+            if (longestMatch(iri) !== oldUri) return null;
+            return newUri + iri.slice(oldUri.length);
+          };
+
+          const quads = store.getQuads(null, null, null, null) || [];
+          let renamed = 0;
+          const touchedSubjects = new Set<string>();
+
+          for (const q of quads) {
+            try {
+              const sVal = q.subject?.value ?? "";
+              const pVal = q.predicate?.value ?? "";
+              const oIsNamed = q.object?.termType === "NamedNode";
+              const oVal = oIsNamed ? (q.object?.value ?? "") : "";
+              const gVal = q.graph?.termType === "NamedNode" ? (q.graph?.value ?? "") : "";
+
+              const newS = maybeRename(sVal);
+              const newP = maybeRename(pVal);
+              const newO = oIsNamed ? maybeRename(oVal) : null;
+              const newG = gVal ? maybeRename(gVal) : null;
+
+              if (newS === null && newP === null && newO === null && newG === null) continue;
+
+              store.removeQuad(q);
+
+              const subj = DataFactory.namedNode(newS ?? sVal);
+              const pred = DataFactory.namedNode(newP ?? pVal);
+              let obj = q.object;
+              if (newO !== null) obj = DataFactory.namedNode(newO);
+              const graph =
+                newG !== null
+                  ? DataFactory.namedNode(newG)
+                  : q.graph?.termType === "NamedNode"
+                  ? DataFactory.namedNode(gVal)
+                  : DataFactory.defaultGraph();
+
+              store.addQuad(subj, pred, obj, graph);
+              renamed += 1;
+              touchedSubjects.add(newS !== null ? newS : subjectTermToString(q.subject));
+            } catch (err) {
+              console.debug("[rdfManager.worker] renameNamespaceUri failed for quad", err);
+            }
+          }
+
+          if (renamed > 0) {
+            emitChange({ reason: "renameNamespaceUri", oldUri, newUri, renamed });
+            const emission = prepareSubjectEmissionFromSet(touchedSubjects, store, DataFactory);
+            if (emission.subjects.length > 0) {
+              emitSubjects(
+                emission.subjects,
+                emission.quadsBySubject,
+                emission.snapshot,
+              );
+            }
+          }
+
+          result = { renamed };
           break;
         }
         case "emitAllSubjects": {
@@ -1941,7 +2171,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             emission.subjects,
             emission.quadsBySubject,
             emission.snapshot,
-            { reason: "reasoning" },
+            { reason: "reasoning", graphName: "urn:vg:inferred" },
           );
         }
       }
