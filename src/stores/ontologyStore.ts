@@ -16,10 +16,10 @@ import { toast } from "sonner";
 import { buildPaletteMap } from "../components/Canvas/core/namespacePalette";
 import { RDF_TYPE, RDFS_LABEL, OWL_ONTOLOGY, OWL_IMPORTS } from "../constants/vocabularies";
 import {
-  ensureDefaultRegistry,
   DEFAULT_NAMESPACE_ENTRY,
   DEFAULT_NAMESPACE_PREFIX,
   DEFAULT_NAMESPACE_URI,
+  type NamespaceEntry,
 } from "../constants/namespaces";
 import { shortLocalName, toPrefixed } from "../utils/termUtils";
 import {
@@ -429,61 +429,6 @@ function extractNamespace(iri: string | unknown): string {
   return nsMatch && nsMatch[1] ? String(nsMatch[1]) : "";
 }
 
-function filterNamespacesToCandidates(
-  nsMap: Record<string, string>,
-  iriCandidates?: Set<string>,
-  existingRegistry?: { prefix: string; namespace: string; color?: string }[],
-): Record<string, string> {
-  const seeded: Record<string, string> = {};
-  if (Array.isArray(existingRegistry)) {
-    for (const entry of existingRegistry) {
-      if (entry && typeof entry.prefix === "string" && entry.prefix.length > 0 &&
-          typeof entry.namespace === "string" && entry.namespace.length > 0) {
-        seeded[entry.prefix] = entry.namespace;
-      }
-    }
-  }
-  if (!nsMap || typeof nsMap !== "object") return seeded;
-  if (!iriCandidates || iriCandidates.size === 0) return { ...seeded, ...nsMap };
-  const iriList = Array.from(iriCandidates).filter(iri => typeof iri === "string" && iri.trim().length > 0);
-  if (iriList.length === 0) return { ...nsMap };
-  const filtered: Record<string, string> = { ...seeded };
-  for (const [prefix, namespace] of Object.entries(nsMap)) {
-    if (typeof namespace !== "string" || namespace.length === 0) continue;
-    if (iriList.some(iri => iri.startsWith(namespace))) filtered[prefix] = namespace;
-  }
-  return filtered;
-}
-
-/**
- * Sync the rdfManager namespace map into the ontology store's namespaceRegistry.
- * Called by rdfManager whenever its prefix map changes (file load, user setNamespaces).
- * Preserves existing colors; assigns palette colors for new prefixes.
- */
-export function syncNamespaceRegistryFromRdfManager(
-  nsMap: Record<string, string>,
-  iriCandidates?: Set<string>,
-): void {
-  try {
-    const state = useOntologyStore.getState() as any;
-    const existingRegistry: Array<{ prefix: string; namespace: string; color: string }> =
-      Array.isArray(state.namespaceRegistry) ? state.namespaceRegistry : [];
-    const filteredNsMap = filterNamespacesToCandidates(nsMap, iriCandidates, existingRegistry);
-    const prefixes = Object.keys(filteredNsMap).sort();
-    const paletteMap = buildPaletteMap(prefixes);
-    const colorMap = new Map(existingRegistry.map((e: any) => [e.prefix, e.color ?? '']));
-    const registry = prefixes.map(p => ({
-      prefix: p,
-      namespace: filteredNsMap[p],
-      color: colorMap.get(p) || String(paletteMap[p] ?? ''),
-    }));
-    if (typeof state.setNamespaceRegistry === "function") {
-      state.setNamespaceRegistry(registry);
-    }
-  } catch (err) {
-    // ignore
-  }
-}
 
 type LoadResult =
   | { success: true; url: string; canonicalUrl?: string }
@@ -556,8 +501,8 @@ interface OntologyStore {
   getRdfManager: () => RDFManager;
   removeLoadedOntology: (url: string) => void;
   // Namespace registry (joined prefix -> namespace -> color) persisted after reconcile
-  namespaceRegistry: { prefix: string; namespace: string; color: string }[];
-  setNamespaceRegistry: (registry: { prefix: string; namespace: string; color: string }[]) => void;
+  namespaceRegistry: NamespaceEntry[];
+  setNamespaceRegistry: (registry: NamespaceEntry[]) => void;
 }
 export const useOntologyStore = create<OntologyStore>((set, get) => ({
   loadedOntologies: [],
@@ -567,28 +512,8 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
   ontologiesVersion: 0,
   // persisted namespace registry (joined prefix, namespace, color) populated after reconcile
   namespaceRegistry: [{ ...DEFAULT_NAMESPACE_ENTRY }],
-  setNamespaceRegistry: (registry: { prefix: string; namespace: string; color: string }[]) => {
-    try {
-      const nextRegistry = ensureDefaultRegistry(
-        Array.isArray(registry) ? registry : [],
-      ).map((entry) => ({
-        prefix: entry.prefix,
-        namespace: entry.namespace,
-        color: entry.color ?? "",
-      }));
-      set(() => ({
-        namespaceRegistry: nextRegistry,
-      }));
-    } catch (_) {
-      try {
-        const fallbackRegistry = ensureDefaultRegistry([]).map((entry) => ({
-          prefix: entry.prefix,
-          namespace: entry.namespace,
-          color: entry.color ?? "",
-        }));
-        set({ namespaceRegistry: fallbackRegistry });
-      } catch (_) { void 0; }
-    }
+  setNamespaceRegistry: (registry: NamespaceEntry[]) => {
+    set({ namespaceRegistry: Array.isArray(registry) ? registry : [] });
   },
 
   // Minimal currentGraph state kept for compatibility with tests and UI seeding.
@@ -1523,28 +1448,20 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
   },
 }));
 
-// Module-level namespace initialization: attempt to register the default namespace
-// if not already present. This is best-effort only; if the worker is not initialized
-// (common in tests), silently skip this initialization. Tests and application code
-// will initialize the worker explicitly as needed.
+// Wire namespace subscription: impl is authoritative, Zustand is the React-reactive mirror.
 try {
-  // Check if the worker is initialized before attempting namespace operations
-  if (rdfManager && typeof (rdfManager as any).isInitialized === 'function') {
-    const initialized = (rdfManager as any).isInitialized();
-    if (initialized) {
-      const existingNamespaces =
-        typeof rdfManager.getNamespaces === "function" ? rdfManager.getNamespaces() : {};
-      if (
-        existingNamespaces === null ||
-        typeof existingNamespaces !== "object" ||
-        !Object.prototype.hasOwnProperty.call(existingNamespaces, DEFAULT_NAMESPACE_PREFIX)
-      ) {
-        rdfManager.setNamespaces(
-          { [DEFAULT_NAMESPACE_PREFIX]: DEFAULT_NAMESPACE_URI },
-          { replace: false },
-        );
-      }
-    }
+  rdfManager.onNamespacesChange((entries: NamespaceEntry[]) => {
+    useOntologyStore.getState().setNamespaceRegistry(entries);
+  });
+} catch (_) {
+  /* ignore - may not be available in test environments without full worker init */
+}
+
+// Seed default namespace if not already present.
+try {
+  const existing = typeof rdfManager.getNamespaces === "function" ? rdfManager.getNamespaces() : [];
+  if (!existing.some((e: NamespaceEntry) => e.prefix === DEFAULT_NAMESPACE_PREFIX)) {
+    rdfManager.addNamespace(DEFAULT_NAMESPACE_PREFIX, DEFAULT_NAMESPACE_URI);
   }
 } catch (_) {
   /* ignore initialization failures - worker may not be ready in test environments */
