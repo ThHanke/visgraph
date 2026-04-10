@@ -54,17 +54,16 @@ export const ResizableNamespaceLegend = ({ onClose: _onClose }: ResizableNamespa
   const [editError, setEditError] = useState("");
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const el = containerRef.current as any;
-    if (el && typeof el.setPointerCapture === "function") {
-      try { el.setPointerCapture((e as any).pointerId); } catch (_) {}
+    const el = containerRef.current;
+    if (el) {
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
     }
     setIsDragging(true);
-    setDragStart({ x: (e as any).clientX - position.x, y: (e as any).clientY - position.y });
+    setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
   };
 
   useEffect(() => {
@@ -74,11 +73,9 @@ export const ResizableNamespaceLegend = ({ onClose: _onClose }: ResizableNamespa
       if (isDragging) setPosition({ x: Math.max(0, e.clientX - dragStart.x), y: Math.max(0, e.clientY - dragStart.y) });
     };
     const handlePointerUp = (e: PointerEvent) => {
-      try {
-        if (el && typeof (el as any).releasePointerCapture === "function") {
-          try { (el as any).releasePointerCapture((e as any).pointerId); } catch (_) {}
-        }
-      } catch (_) {}
+      if (el) {
+        try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+      }
       setIsDragging(false);
     };
     if (isDragging) {
@@ -95,8 +92,8 @@ export const ResizableNamespaceLegend = ({ onClose: _onClose }: ResizableNamespa
 
   const handleRemoveNamespace = useCallback(
     (prefix: string) => {
-      if (rdfManager && typeof (rdfManager as any).removeNamespace === "function") {
-        (rdfManager as any).removeNamespace(prefix);
+      if (rdfManager) {
+        rdfManager.removeNamespace(prefix);
       }
     },
     [rdfManager],
@@ -138,9 +135,17 @@ export const ResizableNamespaceLegend = ({ onClose: _onClose }: ResizableNamespa
       const uriChanged = nextUri !== editingEntry.uri;
       const prefixChanged = nextPrefix !== editingEntry.prefix;
 
-      if (uriChanged && rdfManager && typeof (rdfManager as any).renameNamespaceUri === "function") {
+      if (!uriChanged && !prefixChanged) {
+        setEditingEntry(null);
+        setEditPrefix("");
+        setEditUri("");
+        setEditError("");
+        return;
+      }
+
+      if (uriChanged && rdfManager) {
         try {
-          await (rdfManager as any).renameNamespaceUri(editingEntry.uri, nextUri);
+          await rdfManager.renameNamespaceUri(editingEntry.uri, nextUri);
         } catch (err) {
           setEditError("IRI rename failed. Check the console for details.");
           console.error("[ResizableNamespaceLegend] renameNamespaceUri failed", err);
@@ -148,14 +153,12 @@ export const ResizableNamespaceLegend = ({ onClose: _onClose }: ResizableNamespa
         }
       }
 
-      if (prefixChanged) {
-        if (rdfManager && typeof (rdfManager as any).removeNamespace === "function") {
-          (rdfManager as any).removeNamespace(editingEntry.prefix);
-        }
+      if (prefixChanged && rdfManager) {
+        rdfManager.removeNamespace(editingEntry.prefix);
       }
 
-      if (rdfManager && typeof (rdfManager as any).addNamespace === "function") {
-        (rdfManager as any).addNamespace(nextPrefix, nextUri);
+      if (rdfManager) {
+        rdfManager.addNamespace(nextPrefix, nextUri);
       }
 
       setEditingEntry(null);
@@ -195,8 +198,8 @@ export const ResizableNamespaceLegend = ({ onClose: _onClose }: ResizableNamespa
         if (confirmFn && !confirmFn(msg)) return;
       }
 
-      if (rdfManager && typeof (rdfManager as any).addNamespace === "function") {
-        (rdfManager as any).addNamespace(p, u);
+      if (rdfManager) {
+        rdfManager.addNamespace(p, u);
       }
 
       setShowAdd(false);
@@ -272,7 +275,6 @@ export const ResizableNamespaceLegend = ({ onClose: _onClose }: ResizableNamespa
       {addError && <div className="px-3 py-2 text-sm text-red-600">{addError}</div>}
 
       <div
-        ref={contentRef}
         className="p-3 overflow-auto min-w-0"
         style={{ maxHeight: "calc(60vh - 10rem)" }}
       >
