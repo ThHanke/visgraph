@@ -1,7 +1,20 @@
-import dagre from 'dagre';
 import ELK from 'elkjs/lib/elk-api.js';
 import { toast } from 'sonner';
 import type { LayoutFunction, LayoutGraph, LayoutState } from '@reactodia/workspace';
+
+// ---------------------------------------------------------------------------
+// Active Dagre worker — module-level so any new layout call can cancel it
+// ---------------------------------------------------------------------------
+
+let activeDagreWorker: Worker | null = null;
+
+/** Kill the current Dagre worker if one is running. Silently no-ops otherwise. */
+function cancelActiveDagreLayout() {
+  if (activeDagreWorker) {
+    activeDagreWorker.terminate();
+    activeDagreWorker = null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Active ELK worker — module-level so any new layout call can cancel it
@@ -22,36 +35,29 @@ function cancelActiveElkLayout() {
 // ---------------------------------------------------------------------------
 
 export function createDagreLayout(direction: 'LR' | 'TB', spacing: number): LayoutFunction {
-  return async (graph: LayoutGraph, state: LayoutState): Promise<LayoutState> => {
-    // Cancel any in-flight ELK layout so Dagre result isn't stale-raced.
+  return (graph: LayoutGraph, state: LayoutState): Promise<LayoutState> => {
+    cancelActiveDagreLayout();
     cancelActiveElkLayout();
 
-    const g = new dagre.graphlib.Graph();
-    g.setDefaultEdgeLabel(() => ({}));
-    g.setGraph({ rankdir: direction, nodesep: spacing, ranksep: spacing });
+    const worker = new Worker(
+      new URL('./dagre.worker.ts', import.meta.url),
+      { type: 'module' }
+    );
+    activeDagreWorker = worker;
 
-    for (const id of Object.keys(graph.nodes)) {
-      const b = state.bounds[id];
-      g.setNode(id, { width: b?.width ?? 120, height: b?.height ?? 40 });
-    }
-
-    for (const link of graph.links) {
-      g.setEdge(link.source, link.target);
-    }
-
-    dagre.layout(g);
-
-    const bounds = { ...state.bounds };
-    for (const id of g.nodes()) {
-      const n = g.node(id);
-      if (!n) continue;
-      const existing = state.bounds[id];
-      const w = existing?.width ?? n.width;
-      const h = existing?.height ?? n.height;
-      bounds[id] = { x: n.x - w / 2, y: n.y - h / 2, width: w, height: h };
-    }
-
-    return { bounds };
+    return new Promise<LayoutState>((resolve, reject) => {
+      worker.onmessage = ({ data }: MessageEvent<{ bounds: LayoutState['bounds'] }>) => {
+        if (activeDagreWorker === worker) activeDagreWorker = null;
+        worker.terminate();
+        resolve({ bounds: data.bounds });
+      };
+      worker.onerror = (e) => {
+        if (activeDagreWorker === worker) activeDagreWorker = null;
+        worker.terminate();
+        reject(e);
+      };
+      worker.postMessage({ graph, state, direction, spacing });
+    });
   };
 }
 
