@@ -239,6 +239,17 @@
   --reactodia-selection-multiple-box-shadow: none;
 }
 
+/* Cluster algorithm select chevron — theme-aware, since SVG data URLs can't use currentColor */
+select.glass-btn {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23475569'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 8px 5px;
+}
+.dark select.glass-btn {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23cbd5e1'/%3E%3C/svg%3E");
+}
+
 /* glass-btn inside our own groups (TopBar A-Box/T-Box, Reasoning) */
 .reactodia-btn-group .glass-btn.glass-btn--active {
   background: rgba(124, 92, 228, 0.22) !important;

@@ -13,6 +13,7 @@ interface TopBarProps {
   onRunReason?: () => void;
   currentReasoning?: ReasoningResult | null;
   isReasoning?: boolean;
+  isClustered?: boolean;
   onCluster?: () => void;
   onExpandAll?: () => void;
 }
@@ -25,6 +26,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onRunReason,
   currentReasoning = null,
   isReasoning = false,
+  isClustered = false,
   onCluster,
   onExpandAll,
 }) => {
@@ -49,10 +51,10 @@ export const TopBar: React.FC<TopBarProps> = ({
       gap: '4px',
     }}>
       {/* Clustering controls */}
-      <div className="reactodia-btn-group reactodia-btn-group-sm" style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+      <div className="reactodia-btn-group reactodia-btn-group-sm">
         <select
           className="reactodia-btn reactodia-btn-default glass-btn"
-          style={{ fontSize: 11, padding: '2px 4px', cursor: 'pointer' }}
+          style={{ appearance: 'none', WebkitAppearance: 'none', fontSize: 12, lineHeight: 1.5, padding: '5px 24px 5px 10px', cursor: 'pointer', boxSizing: 'border-box', borderRadius: 'unset', borderTopLeftRadius: 'var(--reactodia-button-border-radius)', borderBottomLeftRadius: 'var(--reactodia-button-border-radius)' }}
           value={clusteringAlgorithm}
           title="Clustering algorithm"
           onChange={e => setClusteringAlgorithm(e.target.value as any)}
@@ -64,9 +66,10 @@ export const TopBar: React.FC<TopBarProps> = ({
         </select>
         <button
           type="button"
-          className="reactodia-btn reactodia-btn-default glass-btn"
-          title="Cluster visible nodes"
-          disabled={clusteringAlgorithm === 'none' || !onCluster}
+          className={`reactodia-btn reactodia-btn-default glass-btn${isClustered ? ' glass-btn--active' : ''}`}
+          style={{ borderRadius: 'unset' }}
+          title={isClustered ? 'Already clustered — expand first to re-cluster' : 'Cluster visible nodes'}
+          disabled={clusteringAlgorithm === 'none' || isClustered || !onCluster}
           onClick={onCluster}
         >
           Cluster
@@ -74,8 +77,8 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           type="button"
           className="reactodia-btn reactodia-btn-default glass-btn"
-          title="Expand all groups"
-          disabled={!onExpandAll}
+          title={isClustered ? 'Expand all groups' : 'No groups to expand'}
+          disabled={!isClustered || !onExpandAll}
           onClick={onExpandAll}
         >
           Expand All

@@ -1,6 +1,21 @@
 import dagre from 'dagre';
-import ELK from 'elkjs/lib/elk.bundled.js';
+import ELK from 'elkjs/lib/elk-api.js';
+import { toast } from 'sonner';
 import type { LayoutFunction, LayoutGraph, LayoutState } from '@reactodia/workspace';
+
+// ---------------------------------------------------------------------------
+// Active ELK worker — module-level so any new layout call can cancel it
+// ---------------------------------------------------------------------------
+
+let activeElkWorker: Worker | null = null;
+
+/** Kill the current ELK worker if one is running. Silently no-ops otherwise. */
+function cancelActiveElkLayout() {
+  if (activeElkWorker) {
+    activeElkWorker.terminate();
+    activeElkWorker = null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Dagre
@@ -8,6 +23,9 @@ import type { LayoutFunction, LayoutGraph, LayoutState } from '@reactodia/worksp
 
 export function createDagreLayout(direction: 'LR' | 'TB', spacing: number): LayoutFunction {
   return async (graph: LayoutGraph, state: LayoutState): Promise<LayoutState> => {
+    // Cancel any in-flight ELK layout so Dagre result isn't stale-raced.
+    cancelActiveElkLayout();
+
     const g = new dagre.graphlib.Graph();
     g.setDefaultEdgeLabel(() => ({}));
     g.setGraph({ rankdir: direction, nodesep: spacing, ranksep: spacing });
@@ -47,6 +65,8 @@ const ELK_ALGORITHM_IDS: Record<string, string> = {
   stress: 'org.eclipse.elk.stress',
 };
 
+const ELK_TIMEOUT_MS = 60_000;
+
 function elkAlgorithmOptions(algorithm: string, spacing: number): Record<string, string> {
   switch (algorithm) {
     case 'layered':
@@ -76,8 +96,19 @@ export function createElkLayout(
   algorithm: 'layered' | 'force' | 'stress',
   spacing: number
 ): LayoutFunction {
-  const elkInstance = new ELK();
   return async (graph: LayoutGraph, state: LayoutState): Promise<LayoutState> => {
+    // Cancel any previous ELK layout still in progress.
+    cancelActiveElkLayout();
+
+    const worker = new Worker(
+      new URL('./elk.worker.ts', import.meta.url),
+      { type: 'module' }
+    );
+    activeElkWorker = worker;
+
+    const elk = new ELK({ workerFactory: () => worker });
+    const nodeCount = Object.keys(graph.nodes).length;
+
     const elkGraph = {
       id: 'root',
       layoutOptions: {
@@ -96,7 +127,31 @@ export function createElkLayout(
       })),
     };
 
-    const result = await elkInstance.layout(elkGraph);
+    // Resolve null on timeout so we can fall back gracefully instead of throwing.
+    const timeout = new Promise<null>((resolve) =>
+      setTimeout(() => {
+        worker.terminate();
+        resolve(null);
+      }, ELK_TIMEOUT_MS)
+    );
+
+    let result: Awaited<ReturnType<typeof elk.layout>> | null;
+    try {
+      result = await Promise.race([elk.layout(elkGraph), timeout]);
+    } finally {
+      // Clear the module ref if this worker is still the active one.
+      if (activeElkWorker === worker) activeElkWorker = null;
+      worker.terminate();
+    }
+
+    if (result === null) {
+      toast.warning(
+        `ELK ${algorithm} timed out after ${ELK_TIMEOUT_MS / 1000}s` +
+        ` (${nodeCount} nodes) — fell back to Dagre`,
+        { duration: 6000 }
+      );
+      return createDagreLayout('TB', spacing)(graph, state);
+    }
 
     const bounds = { ...state.bounds };
     for (const child of result.children ?? []) {
