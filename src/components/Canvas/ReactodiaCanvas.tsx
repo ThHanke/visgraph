@@ -21,6 +21,7 @@ import { useCanvasState } from '@/hooks/useCanvasState';
 import { rdfElementTemplateResolver } from '@/templates/RdfElementTemplate';
 import { rdfLinkTemplateResolver } from '@/templates/RdfLinkTemplate';
 import { PrefixContext } from '@/providers/PrefixContext';
+import { generateEntityIri } from '@/utils/iriUtils';
 import ResizableNamespaceLegend from './ResizableNamespaceLegend';
 import { useAppConfigStore } from '@/stores/appConfigStore';
 import { getLayoutFunction } from './layout/getLayoutFunction';
@@ -765,7 +766,9 @@ export default function ReactodiaCanvas() {
           const model = modelRef.current;
           if (!model) return;
           try {
-            const iri = `urn:vg:entity:${Date.now()}` as Reactodia.ElementIri;
+            const namespaces = rdfManager.getNamespaces();
+            const defaultNs = namespaces.find(ns => ns.prefix === '')?.uri ?? 'http://example.com/';
+            const iri = generateEntityIri(defaultNs, typeIri) as Reactodia.ElementIri;
             const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 
             // Write triple to rdfManager (suppress canvas sync to avoid double-add)

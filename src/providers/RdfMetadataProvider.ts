@@ -17,6 +17,7 @@ import {
 import type { N3DataProvider } from './N3DataProvider';
 import { fetchLinkTypes, scoreLinkTypes } from '../utils/ontologyQueries';
 import type { NamespaceEntry } from '../constants/namespaces';
+import { generateEntityIri } from '../utils/iriUtils';
 
 interface RdfManagerLike {
   applyBatch(changes: { adds?: any[]; removes?: any[] }, graph?: string): Promise<void>;
@@ -40,7 +41,9 @@ export class RdfMetadataProvider implements MetadataProvider {
     type: ElementTypeIri,
     options: MetadataCreateOptions,
   ): Promise<MetadataCreatedEntity> {
-    const iri = `urn:vg:entity:${Date.now()}` as ElementIri;
+    const namespaces = this.rdfManager.getNamespaces();
+    const defaultNs = namespaces.find(ns => ns.prefix === '')?.uri ?? 'http://example.com/';
+    const iri = generateEntityIri(defaultNs, type) as ElementIri;
     const data: ElementModel = { id: iri, types: [type], properties: {} };
     return { data };
   }
