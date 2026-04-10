@@ -1,12 +1,13 @@
 import React, { memo } from "react";
 import { Badge } from "../ui/badge";
-import { Trash2 } from "lucide-react";
+import { Trash2, Pencil } from "lucide-react";
 
 interface NamespaceLegendCoreProps {
   entries: Array<[string, string]>;
   palette?: Record<string, string> | undefined;
   className?: string;
   onRemoveEntry?: (prefix: string, uri: string) => void;
+  onEditEntry?: (prefix: string, uri: string) => void;
 }
 
 /**
@@ -24,6 +25,7 @@ export const NamespaceLegendCore = memo(function NamespaceLegendCore({
   palette,
   className,
   onRemoveEntry,
+  onEditEntry,
 }: NamespaceLegendCoreProps) {
   if (!entries || entries.length === 0) return null;
 
@@ -49,6 +51,7 @@ export const NamespaceLegendCore = memo(function NamespaceLegendCore({
           const label = prefix.length === 0 ? ":" : prefix;
           const color = getColor(prefix);
           const showRemove = typeof onRemoveEntry === "function";
+          const showEdit = typeof onEditEntry === "function";
           return (
             <div key={String(prefix) + "-" + index} className="flex items-center gap-2 text-xs">
               <div className="flex items-center gap-1.5 shrink-0">
@@ -68,6 +71,17 @@ export const NamespaceLegendCore = memo(function NamespaceLegendCore({
               >
                 {uri}
               </span>
+              {showEdit ? (
+                <button
+                  type="button"
+                  className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
+                  onClick={() => onEditEntry(prefix, uri)}
+                  aria-label={`Edit namespace ${label}`}
+                  title="Edit namespace"
+                >
+                  <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              ) : null}
               {showRemove ? (
                 <button
                   type="button"
