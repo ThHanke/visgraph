@@ -173,7 +173,7 @@ function normalizeAppConfigInput(value: unknown, context: string): AppConfig {
     { min: MIN_LAYOUT_SPACING, max: MAX_LAYOUT_SPACING },
   );
   const largeGraphThreshold = normalizeNumber(
-    input.largeGraphThreshold ?? (input as any).collapseThreshold ?? cfg.largeGraphThreshold,
+    input.largeGraphThreshold ?? cfg.largeGraphThreshold,
     `${context}.largeGraphThreshold`,
     { min: MIN_LARGE_GRAPH_THRESHOLD, max: MAX_LARGE_GRAPH_THRESHOLD },
   );

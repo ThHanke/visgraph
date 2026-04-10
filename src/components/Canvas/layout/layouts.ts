@@ -3,56 +3,22 @@ import { toast } from 'sonner';
 import type { LayoutFunction, LayoutGraph, LayoutState } from '@reactodia/workspace';
 
 // ---------------------------------------------------------------------------
-// Active Dagre worker — module-level so any new layout call can cancel it
-// ---------------------------------------------------------------------------
-
-let activeDagreWorker: Worker | null = null;
-
-/** Kill the current Dagre worker if one is running. Silently no-ops otherwise. */
-function cancelActiveDagreLayout() {
-  if (activeDagreWorker) {
-    activeDagreWorker.terminate();
-    activeDagreWorker = null;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Active ELK worker — module-level so any new layout call can cancel it
-// ---------------------------------------------------------------------------
-
-let activeElkWorker: Worker | null = null;
-
-/** Kill the current ELK worker if one is running. Silently no-ops otherwise. */
-function cancelActiveElkLayout() {
-  if (activeElkWorker) {
-    activeElkWorker.terminate();
-    activeElkWorker = null;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Dagre
 // ---------------------------------------------------------------------------
 
 export function createDagreLayout(direction: 'LR' | 'TB', spacing: number): LayoutFunction {
   return (graph: LayoutGraph, state: LayoutState): Promise<LayoutState> => {
-    cancelActiveDagreLayout();
-    cancelActiveElkLayout();
-
     const worker = new Worker(
       new URL('./dagre.worker.ts', import.meta.url),
       { type: 'module' }
     );
-    activeDagreWorker = worker;
 
     return new Promise<LayoutState>((resolve, reject) => {
       worker.onmessage = ({ data }: MessageEvent<{ bounds: LayoutState['bounds'] }>) => {
-        if (activeDagreWorker === worker) activeDagreWorker = null;
         worker.terminate();
         resolve({ bounds: data.bounds });
       };
       worker.onerror = (e) => {
-        if (activeDagreWorker === worker) activeDagreWorker = null;
         worker.terminate();
         reject(e);
       };
@@ -103,15 +69,10 @@ export function createElkLayout(
   spacing: number
 ): LayoutFunction {
   return async (graph: LayoutGraph, state: LayoutState): Promise<LayoutState> => {
-    // Cancel any previous Dagre and ELK layouts still in progress.
-    cancelActiveDagreLayout();
-    cancelActiveElkLayout();
-
     const worker = new Worker(
       new URL('./elk.worker.ts', import.meta.url),
       { type: 'module' }
     );
-    activeElkWorker = worker;
 
     const elk = new ELK({ workerFactory: () => worker });
     const nodeCount = Object.keys(graph.nodes).length;
@@ -145,9 +106,15 @@ export function createElkLayout(
     let result: Awaited<ReturnType<typeof elk.layout>> | null;
     try {
       result = await Promise.race([elk.layout(elkGraph), timeout]);
+    } catch (err) {
+      worker.terminate();
+      console.warn(`[ELK] ${algorithm} failed (${nodeCount} nodes), falling back to Dagre:`, err);
+      toast.warning(
+        `ELK ${algorithm} failed — fell back to Dagre`,
+        { duration: 4000 }
+      );
+      return createDagreLayout('TB', spacing)(graph, state);
     } finally {
-      // Clear the module ref if this worker is still the active one.
-      if (activeElkWorker === worker) activeElkWorker = null;
       worker.terminate();
     }
 

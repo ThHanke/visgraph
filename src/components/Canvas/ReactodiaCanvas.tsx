@@ -333,6 +333,8 @@ export default function ReactodiaCanvas() {
   const [reasoningHistory, setReasoningHistory] = React.useState<ReasoningResult[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const performLayoutRef = React.useRef<(() => Promise<void>) | null>(null);
+  const pendingLayoutController = React.useRef<AbortController | null>(null);
+  const initialLayoutDone = React.useRef(false);
   const preClusterPositions = React.useRef<Map<string, Reactodia.Vector> | null>(null);
   const silentLayoutPositions = React.useRef<Map<string, Reactodia.Vector> | null>(null);
 
@@ -519,33 +521,72 @@ export default function ReactodiaCanvas() {
 
         await model.requestData();
 
-        if (!autoApplyLayout || addedFiltered.length === 0) return;
+        // For a full refresh the elements were already added by the prior importSerialized
+        // burst, so addedFiltered can be empty even though the canvas is fully populated.
+        // We still need to run layout/clustering in that case.
+        if (!autoApplyLayout || (addedFiltered.length === 0 && !isFullRefresh)) return;
+
+        // On initial load the canvas is empty when importSerialized fires. emitAllSubjects
+        // always follows immediately and handles the authoritative full layout + clustering.
+        // Skipping the incremental layout here prevents two concurrent layout tasks.
+        if (!isFullRefresh && existingIris.size === 0) return;
+
+        // discoverReferencedOntologies always fires a second emitAllSubjects after loading
+        // T-Box ontologies. If the initial layout is already done and no new elements were
+        // added, skip to avoid a redundant re-layout on an already-positioned canvas.
+        if (isFullRefresh && addedFiltered.length === 0 && initialLayoutDone.current) {
+          console.debug('[canvas layout] skipping redundant full-refresh (already laid out, no new elements)');
+          return;
+        }
 
         const controller = new AbortController();
+        pendingLayoutController.current = controller;
 
         const cfg = (useAppConfigStore as any).getState().config;
         const layoutFn = getLayoutFunction(cfg.currentLayout, cfg, defaultLayout);
 
         if (isFullRefresh) {
+          const entityCount = model.elements.filter(
+            (el): el is Reactodia.EntityElement => el instanceof Reactodia.EntityElement
+          ).length;
           const shouldAutoCluster =
             cfg.clusteringAlgorithm !== 'none' &&
-            addedFiltered.length > cfg.largeGraphThreshold;
+            entityCount > cfg.largeGraphThreshold;
 
-          if (shouldAutoCluster) {
-            await performInitialClustering(
-              ctx,
-              model,
-              cfg,
-              layoutFn,
-              silentLayoutPositions,
-              preClusterPositions
-            );
-          } else {
-            await ctx.performLayout({
-              layoutFunction: layoutFn,
-              animate: cfg.layoutAnimations,
-              signal: controller.signal,
-            });
+          console.debug('[canvas layout] full refresh —', entityCount, 'entities,',
+            'algorithm:', cfg.clusteringAlgorithm,
+            'threshold:', cfg.largeGraphThreshold,
+            '→', shouldAutoCluster ? 'AUTO-CLUSTER' : 'plain layout');
+
+          try {
+            if (shouldAutoCluster) {
+              await performInitialClustering(
+                ctx,
+                model,
+                cfg,
+                layoutFn,
+                silentLayoutPositions,
+                preClusterPositions
+              );
+              setIsClustered(true);
+            } else {
+              console.debug('[canvas layout] calling ctx.performLayout (full, non-cluster)');
+              try {
+                await ctx.performLayout({
+                  layoutFunction: layoutFn,
+                  animate: cfg.layoutAnimations,
+                  signal: controller.signal,
+                });
+              } catch (err) {
+                // Elements can be removed by a concurrent view-mode switch during layout
+                // application (applyLayout calls element.setPosition on now-gone elements).
+                console.warn('[canvas layout] performLayout failed (model changed during layout):', err);
+              }
+              console.debug('[canvas layout] ctx.performLayout (full, non-cluster) DONE');
+            }
+          } finally {
+            if (pendingLayoutController.current === controller) pendingLayoutController.current = null;
+            initialLayoutDone.current = true;
           }
         } else {
           // Incremental add: only lay out the newly added elements so existing
@@ -556,12 +597,17 @@ export default function ReactodiaCanvas() {
                 e instanceof Reactodia.EntityElement && addedFiltered.includes(e.data.id)
             )
           );
-          await ctx.performLayout({
-            layoutFunction: layoutFn,
-            selectedElements: newElements,
-            animate: cfg.layoutAnimations,
-            signal: controller.signal,
-          });
+          console.debug('[canvas layout] incremental —', newElements.size, 'new elements added');
+          try {
+            await ctx.performLayout({
+              layoutFunction: layoutFn,
+              selectedElements: newElements,
+              animate: cfg.layoutAnimations,
+              signal: controller.signal,
+            });
+          } finally {
+            if (pendingLayoutController.current === controller) pendingLayoutController.current = null;
+          }
         }
       });
     };
@@ -582,6 +628,10 @@ export default function ReactodiaCanvas() {
     // Clustering state belongs to a specific view mode — reset it on switch.
     // model.importLayout below removes all EntityGroups from the model anyway.
     setIsClustered(false);
+    // Allow the next full-refresh layout in this view mode to run (including clustering).
+    initialLayoutDone.current = false;
+    preClusterPositions.current = null;
+    silentLayoutPositions.current = null;
 
     const model = modelRef.current;
     const ctx = contextRef.current;
@@ -642,7 +692,21 @@ export default function ReactodiaCanvas() {
         if (filtered.length > 0) {
           await model.requestData();
           if (autoApplyLayout) {
-            await ctx.performLayout({ layoutFunction: layoutFn, animate: cfg.layoutAnimations, signal: controller.signal });
+            const entityCount = model.elements.filter(
+              (el): el is Reactodia.EntityElement => el instanceof Reactodia.EntityElement
+            ).length;
+            const shouldAutoCluster =
+              cfg.clusteringAlgorithm !== 'none' &&
+              entityCount > cfg.largeGraphThreshold;
+            console.debug('[canvas layout view-switch] first time in mode —', entityCount, 'entities →',
+              shouldAutoCluster ? 'AUTO-CLUSTER' : 'plain layout');
+            if (shouldAutoCluster) {
+              await performInitialClustering(ctx, model, cfg, layoutFn, silentLayoutPositions, preClusterPositions);
+              setIsClustered(true);
+            } else {
+              await ctx.performLayout({ layoutFunction: layoutFn, animate: cfg.layoutAnimations, signal: controller.signal });
+            }
+            initialLayoutDone.current = true;
           }
         }
         const canvas = ctx.view.findAnyCanvas();
