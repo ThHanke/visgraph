@@ -1,58 +1,110 @@
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import { useOntologyStore } from '@/stores/ontologyStore';
 
 /**
  * namespacePalette.ts
  *
- * Centralized, deterministic palette mapping for namespace prefixes.
- * - Exports a pleasant pastel palette (high contrast, visually friendly).
- * - Provides getPalette(prefixes) which returns a mapping prefix -> color
- *   using a stable sort order so different components can share identical mapping.
- * - Provides buildPaletteMap(prefixes, options) which can avoid a set of
- *   text colors (e.g. theme foreground variables) by nudging palette entries
- *   so they are not visually too close to those text colors.
- *
- * The avoidance strategy is conservative: if a palette color is "too close"
- * to any color in the avoid list (Euclidean RGB distance below threshold),
- * we shift its hue slightly (in HSL) and, if necessary, tweak lightness until
- * it is far enough. This preserves the overall pastel look while guaranteeing
- * the legend swatches won't match text colors in light/dark mode.
+ * Centralized, deterministic palette mapping for namespace prefixes/URIs.
+ * - Derives colors by hashing the namespace URI (same algorithm as Reactodia
+ *   uses internally for element type colors), producing perceptually uniform,
+ *   visually distinct colors via the HCL (CIELCh) color space.
+ * - Provides colorFromUri(uri) — the core hash-to-color function.
+ * - Provides getPalette(prefixes) and buildPaletteMap(prefixes, options) for
+ *   backwards-compatible palette maps.
  */
 
-export const DEFAULT_PALETTE = [
-  '#7DD3FC', // sky-300
-  '#A7F3D0', // emerald-200
-  '#FDE68A', // amber-200
-  '#FBCFE8', // pink-200
-  '#C7B2FE', // indigo/purple pastel
-  '#FBCFBF', // peach
-  '#C6F6D5', // mint
-  '#FDE2A8', // soft yellow
-  '#BFE3FF', // light blue
-  '#E2CFEA', // lavender
-  '#FFD6A5', // apricot
-  '#D6EAF8', // watery blue
-  '#E6E6FA', // very light lavender
-  '#C8FACD', // light green
-  '#FFE4E1', // mist rose
-  '#FCE7F3', // soft pink
-  '#E0FFF4', // pale mint
-  '#FFF7CD', // pale lemon
-  '#D9E8FF', // pale indigo
-  '#F0E6FF'  // pale violet
-];
+// ---------------------------------------------------------------------------
+// Hash helpers (mirrors @reactodia/hashmap internals)
+// ---------------------------------------------------------------------------
+
+const COLOR_SEED = 0x0BADBEEF;
+
+/** FNV-1a 32-bit hash */
+function hashFnv32a(str: string, seed = 0x811c9dc5): number {
+  let hval = seed & 0x7fffffff;
+  for (let i = 0; i < str.length; i++) {
+    hval ^= str.charCodeAt(i);
+    hval += (hval << 1) + (hval << 4) + (hval << 7) + (hval << 8) + (hval << 24);
+  }
+  return hval >>> 0;
+}
+
+function chainHash(hash: number, added: number): number {
+  return (Math.imul(hash, 31) + added) | 0;
+}
+
+function hashUri(uri: string): number {
+  const h = hashFnv32a(uri, COLOR_SEED);
+  return chainHash(COLOR_SEED | 0, h);
+}
+
+function uriToHue(uri: string): number {
+  const hash = hashUri(uri);
+  const MAX_INT32 = 0x7fffffff;
+  return 360 * (Math.abs(hash) / MAX_INT32);
+}
+
+// ---------------------------------------------------------------------------
+// HCL (CIELCh) → sRGB conversion
+// Matches what d3-color's hcl(hue, chroma, luminance) produces.
+// ---------------------------------------------------------------------------
+
+function hclToHex(hDeg: number, c: number, l: number): string {
+  // HCL → Lab
+  const hRad = (hDeg * Math.PI) / 180;
+  const a = Math.cos(hRad) * c;
+  const b = Math.sin(hRad) * c;
+
+  // Lab → XYZ (D65)
+  const fy = (l + 16) / 116;
+  const fx = a / 500 + fy;
+  const fz = fy - b / 200;
+  const delta = 6 / 29;
+  const labF = (t: number) => (t > delta ? t * t * t : 3 * delta * delta * (t - 4 / 29));
+  const x = 0.950489 * labF(fx);
+  const y = 1.0 * labF(fy);
+  const z = 1.08884 * labF(fz);
+
+  // XYZ → linear sRGB
+  const rl =  3.2406 * x - 1.5372 * y - 0.4986 * z;
+  const gl = -0.9689 * x + 1.8758 * y + 0.0415 * z;
+  const bl =  0.0557 * x - 0.2040 * y + 1.0570 * z;
+
+  // Linear sRGB → gamma-compressed sRGB
+  const gamma = (v: number) => {
+    const c = Math.max(0, Math.min(1, v));
+    return c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+  };
+
+  const r = Math.round(gamma(rl) * 255);
+  const g = Math.round(gamma(gl) * 255);
+  const b2 = Math.round(gamma(bl) * 255);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b2.toString(16).padStart(2, '0')}`;
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive a perceptually-uniform, hash-stable color from a namespace URI.
+ * Uses the same HCL parameters as Reactodia's internal type-color system:
+ * chroma=40, luminance=75.
+ */
+export function colorFromUri(uri: string): string {
+  const hue = uriToHue(uri);
+  return hclToHex(hue, 40, 75);
+}
 
 /**
  * getPalette(prefixes)
- * - Stable deterministic assignment of DEFAULT_PALETTE entries to prefixes.
- * - Order of prefixes does not matter (function sorts them).
+ * - Stable deterministic assignment of hash-derived colors to prefixes.
+ * - Each prefix is hashed independently — no cycling, no index dependency.
  */
 export function getPalette(prefixes: string[] = []): Record<string, string> {
-  const uniq = Array.from(new Set((prefixes || [])));
-  const sorted = uniq.slice().sort((a, b) => String(a).localeCompare(String(b)));
   const map: Record<string, string> = {};
-  for (let i = 0; i < sorted.length; i++) {
-    map[sorted[i]] = DEFAULT_PALETTE[i % DEFAULT_PALETTE.length];
+  for (const p of prefixes) {
+    map[p] = colorFromUri(p);
   }
   return map;
 }
