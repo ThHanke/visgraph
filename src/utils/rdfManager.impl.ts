@@ -882,6 +882,7 @@ export class RDFManagerImpl {
       e.uri === oldUri ? { ...e, uri: newUri } : e,
     );
     this.notifyNamespacesChanged();
+    void this.emitAllSubjects().catch(() => {});
   }
 
   async removeAllQuadsForIri(

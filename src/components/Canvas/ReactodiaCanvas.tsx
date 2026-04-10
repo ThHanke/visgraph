@@ -293,6 +293,19 @@ export default function ReactodiaCanvas() {
       const model = modelRef.current;
       const ctx = contextRef.current;
 
+      // When a namespace URI is renamed, remove stale canvas elements whose IRIs
+      // used the old URI prefix — they would otherwise remain as orphans alongside
+      // the newly-created elements under the renamed IRIs.
+      if (meta?.reason === 'renameNamespaceUri' && typeof meta.oldUri === 'string' && model) {
+        const oldUri = meta.oldUri as string;
+        for (const el of [...model.elements]) {
+          if (el instanceof Reactodia.EntityElement && el.data.id.startsWith(oldUri)) {
+            model.removeElement(el.id);
+            knownSubjects.delete(el.data.id);
+          }
+        }
+      }
+
       // Determine which subjects are new vs already on canvas
       const existingIris = collectCanvasIris(model ? model.elements : []);
       const added = subjects.filter(s => !existingIris.has(s));
