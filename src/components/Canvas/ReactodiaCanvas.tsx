@@ -1,6 +1,7 @@
 import React from 'react';
 import * as Reactodia from '@reactodia/workspace';
 import { UnifiedSearchTopic } from '@reactodia/workspace';
+import { SearchMatchCounter } from './search/SearchMatchCounter';
 // useOntologyStore must be imported before rdfManager to avoid a TDZ circular-dep error:
 // rdfManager.ts → rdfManager.impl.ts → ontologyStore.ts → rdfManager (TDZ if rdfManager starts first)
 import { useOntologyStore } from '@/stores/ontologyStore';
@@ -179,6 +180,16 @@ let currentViewMode: ViewMode = 'abox';
 
 // Persisted layout per view mode, saved via model.exportLayout() before each switch
 const savedLayoutsByMode: Partial<Record<ViewMode, Reactodia.SerializedDiagram>> = {};
+
+// Clustering state is per-view: isClustered flag + the position snapshots that
+// allow un-clustering. Saved alongside the layout so switching back fully restores
+// the previous clustering state instead of treating every return as a first visit.
+interface SavedClusterState {
+  isClustered: boolean;
+  preClusterPositions: Map<string, Reactodia.Vector> | null;
+  silentLayoutPositions: Map<string, Reactodia.Vector> | null;
+}
+const savedClusterStateByMode: Partial<Record<ViewMode, SavedClusterState>> = {};
 
 /**
  * Collect all entity IRIs currently represented on the canvas — both standalone
@@ -625,20 +636,23 @@ export default function ReactodiaCanvas() {
     const prevMode = currentViewMode;
     currentViewMode = mode;
 
-    // Clustering state belongs to a specific view mode — reset it on switch.
-    // model.importLayout below removes all EntityGroups from the model anyway.
-    setIsClustered(false);
-    // Allow the next full-refresh layout in this view mode to run (including clustering).
-    initialLayoutDone.current = false;
-    preClusterPositions.current = null;
-    silentLayoutPositions.current = null;
-
     const model = modelRef.current;
     const ctx = contextRef.current;
     if (!model || !ctx) return;
 
-    // Snapshot the current layout before switching so we can restore it on the way back
+    // Snapshot the current layout + clustering state before switching
     savedLayoutsByMode[prevMode] = model.exportLayout();
+    savedClusterStateByMode[prevMode] = {
+      isClustered,
+      preClusterPositions: preClusterPositions.current,
+      silentLayoutPositions: silentLayoutPositions.current,
+    };
+
+    // Reset clustering refs so they don't bleed into the new view
+    setIsClustered(false);
+    initialLayoutDone.current = false;
+    preClusterPositions.current = null;
+    silentLayoutPositions.current = null;
 
     dataProvider.setViewMode(mode);
     const filtered = dataProvider.filterByViewMode([...knownSubjects]);
@@ -663,6 +677,15 @@ export default function ReactodiaCanvas() {
           signal: controller.signal,
           validateLinks: dataProvider.hasInferredData(),
         });
+
+        // Restore clustering state for this view mode
+        const savedCluster = savedClusterStateByMode[mode];
+        if (savedCluster) {
+          preClusterPositions.current = savedCluster.preClusterPositions;
+          silentLayoutPositions.current = savedCluster.silentLayoutPositions;
+          setIsClustered(savedCluster.isClustered);
+          initialLayoutDone.current = true; // layout already exists — don't re-cluster
+        }
 
         // Add any elements that were added while we were in the other mode
         const inModel = collectCanvasIris(model.elements);
@@ -784,6 +807,20 @@ export default function ReactodiaCanvas() {
       }
     })();
   }, [loadKnowledgeGraph, loadAdditionalOntologies, actions]);
+
+  // Intercept Ctrl+F / Cmd+F (and browser equivalents) to open the unified search widget
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const modKey = /mac/i.test(navigator.userAgent) ? e.metaKey : e.ctrlKey;
+      if (modKey && e.key === 'f' && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        commandBusRef.current?.(UnifiedSearchTopic).trigger('focus', {});
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => document.removeEventListener('keydown', handleKeyDown, { capture: true });
+  }, []);
 
   const handleAddNode = React.useCallback(() => {
     commandBusRef.current?.(UnifiedSearchTopic).trigger('focus', {});
@@ -1115,7 +1152,7 @@ export default function ReactodiaCanvas() {
                   zIndex: 'calc(var(--reactodia-z-index-base, 0) + 35)',
                 }}>
                   {/* Reactodia hamburger + search (no Toolbar wrapper to avoid nested ViewportDock) */}
-                  <div className="reactodia-toolbar" role="toolbar" style={{ display: 'flex', alignItems: 'center', pointerEvents: 'auto' }}>
+                  <div className="reactodia-toolbar" role="toolbar" style={{ display: 'flex', alignItems: 'top', pointerEvents: 'auto' }}>
                     <Reactodia.DropdownMenu
                       className="reactodia-toolbar__menu"
                       direction="down"
@@ -1131,13 +1168,7 @@ export default function ReactodiaCanvas() {
                         {canvasState.showLegend ? 'Hide Legend' : 'Show Legend'}
                       </Reactodia.ToolbarAction>
                     </Reactodia.DropdownMenu>
-                    <Reactodia.UnifiedSearch
-                      sections={[
-                        { key: 'elementTypes', label: 'Classes', title: 'Search element types', component: <Reactodia.SearchSectionElementTypes /> },
-                        { key: 'entities', label: 'Entities', title: 'Search entities', component: <Reactodia.SearchSectionEntities /> },
-                        { key: 'linkTypes', label: 'Link types', title: 'Search link types', component: <Reactodia.SearchSectionLinkTypes /> },
-                      ]}
-                    />
+                    <SearchMatchCounter />
                   </div>
 
                   {/* Spacer */}

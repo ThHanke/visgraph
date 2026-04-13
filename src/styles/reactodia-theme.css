@@ -496,3 +496,133 @@ select.glass-btn {
 .reactodia-dialog ::-webkit-scrollbar-thumb:hover {
   background-color: var(--muted-foreground);
 }
+
+/* ─── Unified search panel: solid background (override glass transparency) ─── */
+.reactodia-unified-search__panel {
+  background-color: var(--popover) !important;
+}
+/* Outer container needs position:relative so the counter can be absolute inside it */
+.reactodia-unified-search {
+  position: relative !important;
+}
+/* Hide the magnifying glass icon — counter replaces it */
+.reactodia-unified-search__search-icon {
+  display: none !important;
+}
+/* __toggle is the positioned container for both the counter and the
+   clear/collapse button (both absolute). The input needs right padding
+   for counter (~70px) + close button (32px). */
+.reactodia-unified-search__toggle {
+  position: relative !important;
+}
+.reactodia-unified-search__search-input {
+  /* 32px = close/collapse button width, 68px = counter */
+  padding-right: calc(32px + 68px) !important;
+}
+
+/* ─── Search match counter (portaled into __toggle, absolute) ──────────────── */
+.vg-search-counter {
+  position: absolute;
+  right: 32px;   /* sits directly left of the 32px close/collapse button */
+  top: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--muted-foreground);
+  pointer-events: auto;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.vg-search-counter__label {
+  padding: 0 4px;
+  opacity: 0.85;
+}
+
+.vg-search-counter__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  transition: background 0.1s, color 0.1s;
+}
+.vg-search-counter__btn:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+/* Ensure __toggle is a flex row so the counter inserts naturally */
+.reactodia-unified-search__toggle {
+  display: flex !important;
+  align-items: center !important;
+}
+
+/* Hide the "Add group" / "Add selected" action buttons in the Entities section —
+   entities should only be navigated, not added from search */
+.reactodia-search-section-entities .reactodia-instances-search__actions {
+  display: none !important;
+}
+
+/* ── Search match: active item highlight ─────────────────────────────────── */
+.vg-search-match--active {
+  outline: 2px solid var(--primary) !important;
+  outline-offset: -2px !important;
+  background: color-mix(in srgb, var(--primary) 12%, transparent) !important;
+}
+
+/* ── Per-item canvas navigate button ─────────────────────────────────────── */
+.vg-search-nav-btn {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s, background 0.1s;
+  z-index: 5;
+}
+
+/* Show button on hover of the list item or when item is the active match */
+.reactodia-list-element-view:hover .vg-search-nav-btn,
+.reactodia-class-tree-item__body:hover .vg-search-nav-btn,
+.vg-search-match--active .vg-search-nav-btn {
+  opacity: 1;
+}
+
+.vg-search-nav-btn:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+/* Hide the search dropdown panel while keeping Reactodia's state open.
+   The toggle (input bar) stays visible; only the panel disappears. */
+.vg-search-panel-hidden .reactodia-dropdown__content {
+  display: none;
+}
+
+/* Ensure list items have relative positioning so button can be absolute */
+.reactodia-list-element-view,
+.reactodia-class-tree-item__body {
+  position: relative !important;
+}

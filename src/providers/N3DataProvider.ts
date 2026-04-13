@@ -200,24 +200,22 @@ export class N3DataProvider implements DataProvider {
 
       if (inferredTypeIris.length === 0 && inferredPropIris.length === 0) continue;
 
-      const enriched: ElementModel = {
-        ...model,
-        properties: { ...model.properties },
-      };
+      const props = { ...model.properties } as Record<string, (Rdf.NamedNode | Rdf.Literal)[]>;
       if (inferredTypeIris.length > 0) {
-        enriched.properties[INFERRED_TYPES_PROP] = inferredTypeIris.map(
+        props[INFERRED_TYPES_PROP] = inferredTypeIris.map(
           t => ({ termType: 'NamedNode', value: t }) as Rdf.NamedNode
         );
       }
       if (inferredPropIris.length > 0) {
-        enriched.properties[INFERRED_DATA_PROPS_PROP] = inferredPropIris.map(
+        props[INFERRED_DATA_PROPS_PROP] = inferredPropIris.map(
           p => ({ termType: 'NamedNode', value: p }) as Rdf.NamedNode
         );
       }
       // Graph-name marker: templates use this as the primary decoration signal.
-      enriched.properties[VG_GRAPH_NAME_PROP] = [
+      props[VG_GRAPH_NAME_PROP] = [
         { termType: 'NamedNode', value: 'urn:vg:inferred' } as Rdf.NamedNode,
       ];
+      const enriched: ElementModel = { ...model, properties: props };
       result.set(iri, enriched);
     }
     return result;
@@ -258,8 +256,16 @@ export class N3DataProvider implements DataProvider {
     if (!p.text) {
       return innerResults;
     }
+
+    // Filter inner results by view mode: the inner RDF provider is not aware of
+    // our ABox/TBox split, so owl:Class IRIs can bleed into entity search results.
+    // Punned resources (both ABox and TBox types) are kept in both views.
+    const filteredInner = innerResults.filter(item =>
+      this.matchesViewMode(item.element.types)
+    );
+
     const textLower = p.text.toLowerCase();
-    const innerIds = new Set(innerResults.map(r => r.element.id));
+    const innerIds = new Set(filteredInner.map(r => r.element.id));
     const candidateIris: ElementIri[] = [];
     for (const iri of this.allSubjects) {
       if (innerIds.has(iri as ElementIri)) continue;
@@ -269,12 +275,16 @@ export class N3DataProvider implements DataProvider {
         const types = this.typeMap.get(iri);
         if (!types?.has(p.elementTypeId)) continue;
       }
+      // Skip IRIs that don't belong to the current view mode
+      const types = this.typeMap.get(iri);
+      const typeList = types ? ([...types] as ElementTypeIri[]) : [];
+      if (!this.matchesViewMode(typeList)) continue;
       candidateIris.push(iri as ElementIri);
     }
-    if (candidateIris.length === 0) return innerResults;
+    if (candidateIris.length === 0) return filteredInner;
     const limit = typeof p.limit === 'number' ? p.limit : 100;
-    const toFetch = candidateIris.slice(0, Math.max(0, limit - innerResults.length));
-    if (toFetch.length === 0) return innerResults;
+    const toFetch = candidateIris.slice(0, Math.max(0, limit - filteredInner.length));
+    if (toFetch.length === 0) return filteredInner;
     const elementsMap = await this.elements({ elementIds: toFetch });
     const iriResults: DataProviderLookupItem[] = toFetch
       .filter(iri => elementsMap.has(iri))
@@ -283,7 +293,7 @@ export class N3DataProvider implements DataProvider {
         inLinks: EMPTY_LINKS,
         outLinks: EMPTY_LINKS,
       }));
-    return [...innerResults, ...iriResults];
+    return [...filteredInner, ...iriResults];
   }
 
   private matchesViewMode(types: readonly ElementTypeIri[]): boolean {
