@@ -28,7 +28,7 @@ import React, {
 } from 'react';
 import ReactDOM from 'react-dom';
 import * as Reactodia from '@reactodia/workspace';
-import { useSearchItemMap } from './useSearchItemMap';
+import { useSearchItemMap, type SearchItemKind } from './useSearchItemMap';
 import { useCanvasState } from '@/hooks/useCanvasState';
 
 // ─── counter badge ─────────────────────────────────────────────────────────────
@@ -147,9 +147,12 @@ export function SearchMatchCounter() {
   const activeItemRef = useRef<HTMLElement | null>(null);
   // The search string at the time of the last Enter-triggered navigation
   const lastNavigatedStringRef = useRef<string>('');
+  // The search string for which we already auto-navigated to the first match
+  const autoNavStringRef = useRef<string>('');
 
-  // Live list of matched results (non-empty when Reactodia's dropdown is open & has results)
-  const items = useSearchItemMap(wrapperRef);
+  // Live list of matched results — built directly from data provider queries,
+  // not from DOM scanning.
+  const items = useSearchItemMap(wrapperRef, searchString);
 
   // Cache the last non-empty items so navigation works while panel is hidden.
   // Updated in an effect to avoid mutating a ref during render.
@@ -168,6 +171,7 @@ export function SearchMatchCounter() {
     if (searchString.length === 0) {
       setCurrent(0);
       lastNavigatedStringRef.current = '';
+      autoNavStringRef.current = '';
       if (activeItemRef.current) {
         activeItemRef.current.classList.remove('vg-search-match--active');
         activeItemRef.current = null;
@@ -197,22 +201,8 @@ export function SearchMatchCounter() {
     return () => document.body.removeEventListener('pointerdown', onPointerDown);
   }, [searchString]);
 
-  // Reset current + active highlight on tab switch only (not on collapse/hide)
-  useEffect(() => {
-    const wrapper = wrapperRef.current;
-    if (!wrapper) return;
-    const onTabClick = (e: MouseEvent) => {
-      if ((e.target as Element | null)?.closest('.reactodia-unified-search__section-tab')) {
-        setCurrent(0);
-        if (activeItemRef.current) {
-          activeItemRef.current.classList.remove('vg-search-match--active');
-          activeItemRef.current = null;
-        }
-      }
-    };
-    wrapper.addEventListener('click', onTabClick);
-    return () => wrapper.removeEventListener('click', onTabClick);
-  }, []);
+  // On tab switch: clear highlight and jump to the first match in the new section.
+  // Placed after navigateTo definition — see below.
 
   // Find the __toggle div (input bar) for the counter portal
   useEffect(() => {
@@ -285,9 +275,9 @@ export function SearchMatchCounter() {
     const source = items.length > 0 ? items : itemsCacheRef.current;
     if (!source.length) return;
     const i = ((idx % source.length) + source.length) % source.length;
-    const { domEl, canvasEl, iri, viewMode } = source[i];
+    const { domEl, canvasEl, iri, viewMode, kind } = source[i];
 
-    if (panelVisible) {
+    if (panelVisible && domEl) {
       if (activeItemRef.current && activeItemRef.current !== domEl) {
         activeItemRef.current.classList.remove('vg-search-match--active');
       }
@@ -320,19 +310,28 @@ export function SearchMatchCounter() {
         // Wait for any ongoing layout animation to finish before reading positions.
         await awaitLayoutSettled(() => view.findAnyCanvas());
         const freshCanvas = view.findAnyCanvas();
-        const el = model.elements.find(e => {
-          if (e instanceof Reactodia.EntityElement) return e.iri === iri;
-          if (e instanceof Reactodia.EntityGroup) {
-            return e.items.some(item => item.data.id === iri);
+        if (kind === 'linkType') {
+          const canvasLink = model.links.find(l => l.typeId === iri);
+          if (canvasLink && freshCanvas) {
+            const srcEl = model.elements.find(e => e.id === canvasLink.sourceId);
+            if (srcEl) zoomToElement(srcEl, freshCanvas);
           }
-          return false;
-        });
-        if (el) {
-          if (el instanceof Reactodia.EntityGroup) paginateGroupTo(el, iri);
-          zoomToElement(el, freshCanvas);
-        } else if (freshCanvas) {
-          const newEl = model.createElement(iri as Reactodia.ElementIri);
-          setTimeout(() => zoomToElement(newEl, view.findAnyCanvas()), 300);
+        } else {
+          const el = model.elements.find(e => {
+            if (e instanceof Reactodia.EntityElement) return e.iri === iri;
+            if (e instanceof Reactodia.EntityGroup) {
+              return e.items.some(item => item.data.id === iri);
+            }
+            return false;
+          });
+          if (el) {
+            if (el instanceof Reactodia.EntityGroup) paginateGroupTo(el, iri);
+            zoomToElement(el, freshCanvas);
+          } else if (freshCanvas && kind !== 'entity') {
+            // Only add to canvas for classes/link-types — never for entity instances
+            const newEl = model.createElement(iri as Reactodia.ElementIri);
+            setTimeout(() => zoomToElement(newEl, view.findAnyCanvas()), 300);
+          }
         }
       };
 
@@ -351,13 +350,21 @@ export function SearchMatchCounter() {
     const currentCanvas = view.findAnyCanvas();
     if (!currentCanvas) return;
 
-    if (canvasEl) {
+    if (kind === 'linkType') {
+      // Link types have no standalone node — navigate to the source element of
+      // any canvas link of that type so the user can see a connected pair.
+      const canvasLink = model.links.find(l => l.typeId === iri);
+      if (canvasLink) {
+        const srcEl = model.elements.find(e => e.id === canvasLink.sourceId);
+        if (srcEl) zoomToElement(srcEl, currentCanvas);
+      }
+    } else if (canvasEl) {
       // If the target is inside a group, scroll the group's paginator to the
       // page that contains the member before centering on the group node.
       if (canvasEl instanceof Reactodia.EntityGroup) paginateGroupTo(canvasEl, iri);
       zoomToElement(canvasEl, currentCanvas);
-    } else {
-      // Element exists in data but is not placed on the current canvas yet — add it
+    } else if (kind !== 'entity') {
+      // Only add to canvas for classes — never create nodes for entity instances
       const newEl = model.createElement(iri as Reactodia.ElementIri);
       setTimeout(() => zoomToElement(newEl, view.findAnyCanvas()), 300);
     }
@@ -385,6 +392,45 @@ export function SearchMatchCounter() {
     return () => wrapper.removeEventListener('keydown', onKeyDown, { capture: true });
   }, [navigateTo, current]);
 
+  // Auto-navigate to the first match when results first appear for a new search.
+  // Uses a ref to avoid re-triggering on subsequent DOM rescans for the same query.
+  useEffect(() => {
+    if (items.length > 0 && searchString.length > 0 && autoNavStringRef.current !== searchString) {
+      autoNavStringRef.current = searchString;
+      navigateTo(0);
+    }
+  }, [items, searchString, navigateTo]);
+
+  // On tab switch: clear highlight and jump to the first match in the newly
+  // selected section. Tab title → kind mapping mirrors the SECTIONS definition.
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+    const TITLE_TO_KIND: Record<string, SearchItemKind> = {
+      'Search element types': 'elementType',
+      'Search entities':      'entity',
+      'Search link types':    'linkType',
+    };
+    const onTabClick = (e: MouseEvent) => {
+      const tab = (e.target as Element | null)?.closest('.reactodia-unified-search__section-tab');
+      if (!tab) return;
+      if (activeItemRef.current) {
+        activeItemRef.current.classList.remove('vg-search-match--active');
+        activeItemRef.current = null;
+      }
+      const kind = TITLE_TO_KIND[tab.getAttribute('title') ?? ''];
+      const source = items.length > 0 ? items : itemsCacheRef.current;
+      const firstIdx = kind ? source.findIndex(item => item.kind === kind) : -1;
+      if (firstIdx >= 0) {
+        navigateTo(firstIdx);
+      } else {
+        setCurrent(0);
+      }
+    };
+    wrapper.addEventListener('click', onTabClick);
+    return () => wrapper.removeEventListener('click', onTabClick);
+  }, [items, navigateTo]);
+
   // Inject per-item ⊙ nav buttons for all items in the dropdown.
   // For class tree items (domEl is an <a>), appending a <button> inside <a> is
   // invalid HTML and browsers silently move it out. Instead we inject into the
@@ -409,6 +455,7 @@ export function SearchMatchCounter() {
       // For class tree items domEl is <a> — nesting <button> inside <a> is
       // invalid HTML. Use the __row div instead (same level as the create button).
       // For entity items domEl is already <li>, which is fine.
+      if (!item.domEl) return;
       const container =
         item.domEl.closest('.reactodia-class-tree-item__row') ??
         item.domEl.closest('li') ??

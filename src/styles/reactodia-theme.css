@@ -39,7 +39,9 @@
 }
 
 /* Override Reactodia color tokens — light workspace */
-.reactodia-workspace {
+/* Use :root ancestor to raise specificity above Reactodia's own injected <style> tag,
+   which lands after our static CSS bundle in the cascade (same selector, later = wins). */
+:root .reactodia-workspace {
   /* Buttons */
   --reactodia-button-default-background-color: var(--glass-surface);
   --reactodia-button-default-background-color-focus: rgba(255, 255, 255, 0.80);
@@ -148,7 +150,7 @@
 }
 
 /* Override Reactodia color tokens — dark workspace */
-.reactodia-workspace-dark {
+:root .reactodia-workspace-dark {
   /* Buttons */
   --reactodia-button-default-background-color: var(--glass-surface);
   --reactodia-button-default-background-color-focus: rgba(50, 60, 85, 0.80);

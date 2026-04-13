@@ -62,8 +62,25 @@ interface InferredSubjectEntry {
   triples: Set<string>;
 }
 
+/** All OWL/RDF metatypes whose instances should appear as nodes in the class tree. */
+const TBOX_BASE_TYPES = [
+  'http://www.w3.org/2002/07/owl#Class',
+  'http://www.w3.org/2000/01/rdf-schema#Class',
+  'http://www.w3.org/2002/07/owl#ObjectProperty',
+  'http://www.w3.org/2002/07/owl#DatatypeProperty',
+  'http://www.w3.org/2002/07/owl#AnnotationProperty',
+  'http://www.w3.org/1999/02/22-rdf-syntax-ns#Property',
+];
+
+const RDFS_SUB_CLASS_OF   = 'http://www.w3.org/2000/01/rdf-schema#subClassOf';
+const RDFS_SUB_PROP_OF    = 'http://www.w3.org/2000/01/rdf-schema#subPropertyOf';
+
 export class N3DataProvider implements DataProvider {
-  private inner = new RdfDataProvider();
+  private inner = new RdfDataProvider({
+    elementTypeBaseTypes: TBOX_BASE_TYPES,
+    // subClassOf is used for class hierarchies; subPropertyOf is added manually below
+    elementSubtypePredicate: RDFS_SUB_CLASS_OF,
+  });
   private viewMode: ViewMode = 'abox';
   private typeMap = new Map<string, Set<string>>();
   private allSubjects = new Set<string>();
@@ -161,8 +178,29 @@ export class N3DataProvider implements DataProvider {
     });
   }
 
-  knownElementTypes(p: { signal?: AbortSignal }): Promise<ElementTypeGraph> {
-    return this.inner.knownElementTypes(p);
+  async knownElementTypes(p: { signal?: AbortSignal }): Promise<ElementTypeGraph> {
+    const graph = await this.inner.knownElementTypes(p);
+    // Also follow rdfs:subPropertyOf so property hierarchies appear in the tree
+    // alongside class hierarchies (inner only follows rdfs:subClassOf).
+    const dataset = (this.inner as any).dataset;
+    if (!dataset?.iterateMatches) return graph;
+    const subPropNode = this.inner.factory.namedNode(RDFS_SUB_PROP_OF);
+    const extraTypes: ElementTypeModel[] = [];
+    const knownIds = new Set(graph.elementTypes.map(et => et.id));
+    const extraEdges: Array<[string, string]> = [];
+    for (const t of dataset.iterateMatches(null, subPropNode, null)) {
+      if (t.subject.termType !== 'NamedNode' || t.object.termType !== 'NamedNode') continue;
+      const child = t.subject.value as ElementTypeIri;
+      const parent = t.object.value as ElementTypeIri;
+      if (!knownIds.has(child)) { extraTypes.push({ id: child, label: [], count: 0 }); knownIds.add(child); }
+      if (!knownIds.has(parent)) { extraTypes.push({ id: parent, label: [], count: 0 }); knownIds.add(parent); }
+      extraEdges.push([child, parent]);
+    }
+    if (extraEdges.length === 0 && extraTypes.length === 0) return graph;
+    return {
+      elementTypes: extraTypes.length > 0 ? [...graph.elementTypes, ...extraTypes] : graph.elementTypes,
+      subtypeOf: [...graph.subtypeOf, ...extraEdges],
+    };
   }
   knownLinkTypes(p: { signal?: AbortSignal }): Promise<LinkTypeModel[]> {
     return this.inner.knownLinkTypes(p);

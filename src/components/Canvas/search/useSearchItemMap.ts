@@ -1,56 +1,43 @@
 /**
  * useSearchItemMap
  *
- * Builds a live ordered list of SearchItem for every *matched* result item
- * currently visible in the active search dropdown section.
+ * Builds a combined SearchItem list by querying the same data sources that
+ * the three UnifiedSearch tabs use — without DOM scanning or MutationObserver.
  *
- * "Matched" means the item contains a highlighted-term span — parent nodes
- * shown only for tree context are excluded.
+ * Sources (matching each tab):
+ *   Classes    → dataProvider.knownElementTypes() filtered by label
+ *   Entities   → dataProvider.lookup({ text })  (already view-mode filtered)
+ *   Link types → dataProvider.knownLinkTypes() filtered by label (all dataset properties)
  *
- * canvasEl is optional — set when the IRI matches a canvas element in the
- * current view.  viewMode encodes which canvas the item belongs to:
- *   'tbox' → Classes / Link-types section
- *   'abox' → Entities section
+ * The list is rebuilt whenever searchString changes (debounced 120 ms so the
+ * provider isn't hammered on every keystroke).
  *
- * DOM side:
- *   Classes:  a.reactodia-class-tree-item__body[href]
- *             that contain .reactodia-class-tree-item__highlighted-term
- *   Entities: li.reactodia-list-element-view[title] (all are matches)
+ * domEl is best-effort: after the data list is stable we look for the
+ * corresponding DOM node in the rendered panel.  It is null when the tab
+ * for that section has never been opened (lazy render) — navigation still
+ * works; only the in-panel highlight is skipped.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Reactodia from '@reactodia/workspace';
+import { dataProvider } from '../ReactodiaCanvas';
+
+export type SearchItemKind = 'elementType' | 'entity' | 'linkType';
 
 export interface SearchItem {
-  /** The DOM element inside the search dropdown */
-  domEl: HTMLElement;
-  /** The matching canvas Element in the current view, if present */
+  /** DOM element inside the search panel (null if section not yet rendered) */
+  domEl: HTMLElement | null;
+  /** Matching canvas Element in the current view, if present */
   canvasEl: Reactodia.Element | null;
-  /** The entity/type IRI */
   iri: string;
-  /** Which canvas view this item lives in */
   viewMode: 'abox' | 'tbox';
+  kind: SearchItemKind;
 }
 
-/** Extract IRI from an entity <li> title attribute.
- *  Title format: "Label <iri>\nTypes: ..." */
-function extractIriFromTitle(title: string): string | null {
-  const firstLine = title.split('\n')[0];
-  const m = firstLine.match(/<([^>]+)>/);
-  return m ? m[1] : null;
-}
+// ─── canvas element resolution ────────────────────────────────────────────────
 
-/**
- * Build two lookup maps:
- *  iriMap:     IRI → Element  (exact match, covers EntityElement.iri and EntityGroup members)
- *  typeMap:    typeIRI → first EntityElement of that type  (A-Box fallback for class search)
- */
-function buildMaps(model: Reactodia.DataDiagramModel): {
-  iriMap: Map<string, Reactodia.Element>;
-  typeMap: Map<string, Reactodia.EntityElement>;
-} {
+function buildMaps(model: Reactodia.DataDiagramModel) {
   const iriMap = new Map<string, Reactodia.Element>();
   const typeMap = new Map<string, Reactodia.EntityElement>();
-
   for (const el of model.elements) {
     if (el instanceof Reactodia.EntityElement) {
       iriMap.set(el.iri, el);
@@ -78,118 +65,137 @@ function resolveCanvasEl(
   return iriMap.get(iri) ?? typeMap.get(iri) ?? null;
 }
 
-/** Scan the active section and return only matched items. */
-function buildItems(
-  panel: HTMLElement,
-  iriMap: Map<string, Reactodia.Element>,
-  typeMap: Map<string, Reactodia.EntityElement>
-): SearchItem[] {
-  const active = panel.querySelector('.reactodia-unified-search__section--active');
-  if (!active) return [];
+// ─── DOM lookup (best-effort, per section) ────────────────────────────────────
 
-  const items: SearchItem[] = [];
-
-  // Classes — only anchors that contain a highlighted-term span → T-Box
-  active.querySelectorAll<HTMLAnchorElement>(
-    'a.reactodia-class-tree-item__body[href]'
-  ).forEach(anchor => {
-    if (!anchor.querySelector('.reactodia-class-tree-item__highlighted-term')) return;
-    const iri = anchor.getAttribute('href');
-    if (!iri) return;
-    items.push({ domEl: anchor, canvasEl: resolveCanvasEl(iri, iriMap, typeMap), iri, viewMode: 'tbox' });
-  });
-
-  // Entities — all shown items are matches → A-Box
-  active.querySelectorAll<HTMLElement>(
-    'li.reactodia-list-element-view[title]'
-  ).forEach(li => {
-    const iri = extractIriFromTitle(li.title);
-    if (!iri) return;
-    items.push({ domEl: li, canvasEl: resolveCanvasEl(iri, iriMap, typeMap), iri, viewMode: 'abox' });
-  });
-
-  return items;
+/** Extract IRI from an entity <li> title attribute: "Label <iri>\nTypes: ..." */
+function extractIriFromTitle(title: string): string | null {
+  const m = title.split('\n')[0].match(/<([^>]+)>/);
+  return m ? m[1] : null;
 }
 
-/** True when every mutation only involves our injected vg-search-nav-btn nodes */
-function isOwnMutation(mutations: MutationRecord[]): boolean {
-  return mutations.every(m => {
-    const allAdded = Array.from(m.addedNodes).every(
-      n => (n as Element).classList?.contains('vg-search-nav-btn')
-    );
-    const allRemoved = Array.from(m.removedNodes).every(
-      n => (n as Element).classList?.contains('vg-search-nav-btn')
-    );
-    return allAdded && allRemoved || (m.addedNodes.length === 0 && m.removedNodes.length === 0);
-  });
+export function findDomEl(panel: HTMLElement, kind: SearchItemKind, iri: string): HTMLElement | null {
+  switch (kind) {
+    case 'elementType':
+      return panel.querySelector<HTMLElement>(
+        `.reactodia-search-section-element-types a.reactodia-class-tree-item__body[href="${CSS.escape(iri)}"]`
+      );
+    case 'entity': {
+      // Title format varies — scan all entity items and match by extracted IRI
+      const lis = panel.querySelectorAll<HTMLElement>(
+        '.reactodia-search-section-entities li.reactodia-list-element-view[title]'
+      );
+      for (const li of lis) {
+        if (extractIriFromTitle(li.title) === iri) return li;
+      }
+      return null;
+    }
+    case 'linkType':
+      return panel.querySelector<HTMLElement>(
+        `.reactodia-search-section-link-types li[data-linktypeid="${CSS.escape(iri)}"]`
+      );
+  }
 }
+
+// ─── hook ────────────────────────────────────────────────────────────────────
 
 export function useSearchItemMap(
-  panelRef: React.RefObject<HTMLElement | null>
+  panelRef: React.RefObject<HTMLElement | null>,
+  searchString: string
 ): SearchItem[] {
-  const { model } = Reactodia.useWorkspace();
-  const mapsRef = useRef<{
-    iriMap: Map<string, Reactodia.Element>;
-    typeMap: Map<string, Reactodia.EntityElement>;
-  }>({ iriMap: new Map(), typeMap: new Map() });
+  const { model, translation } = Reactodia.useWorkspace();
   const [items, setItems] = useState<SearchItem[]>([]);
+  const abortRef = useRef<AbortController | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Rebuild maps when canvas elements change
-  useEffect(() => {
-    mapsRef.current = buildMaps(model);
+  const buildItems = useCallback(async (text: string, signal: AbortSignal) => {
+    const textLower = text.toLowerCase();
+    const { iriMap, typeMap } = buildMaps(model);
+    const results: SearchItem[] = [];
 
-    const rebuild = () => {
-      mapsRef.current = buildMaps(model);
-      const panel = panelRef.current;
-      if (panel) {
-        const { iriMap, typeMap } = mapsRef.current;
-        setItems(buildItems(panel, iriMap, typeMap));
+    // ── 1. Classes (T-Box) ──────────────────────────────────────────────────
+    try {
+      const graph = await dataProvider.knownElementTypes({ signal });
+      if (signal.aborted) return;
+      for (const et of graph.elementTypes) {
+        const label = translation.formatLabel(et.label, et.id, model.language);
+        if (!label.toLowerCase().includes(textLower)) continue;
+        results.push({
+          domEl: null,
+          canvasEl: resolveCanvasEl(et.id, iriMap, typeMap),
+          iri: et.id,
+          viewMode: 'tbox',
+          kind: 'elementType',
+        });
       }
-    };
+    } catch { /* aborted or provider error — skip */ }
 
-    model.events.on('changeCells', rebuild);
-    return () => model.events.off('changeCells', rebuild);
-  }, [model, panelRef]);
+    // ── 2. Entities (A-Box) ─────────────────────────────────────────────────
+    try {
+      const lookupItems = await dataProvider.lookup({ text, signal });
+      if (signal.aborted) return;
+      for (const item of lookupItems) {
+        results.push({
+          domEl: null,
+          canvasEl: resolveCanvasEl(item.element.id, iriMap, typeMap),
+          iri: item.element.id,
+          viewMode: 'abox',
+          kind: 'entity',
+        });
+      }
+    } catch { /* aborted or provider error — skip */ }
 
-  // MutationObserver: rescan DOM when search results render/update,
-  // but ignore mutations caused by our own nav button injection.
-  useEffect(() => {
+    // ── 3. Link types (T-Box) ───────────────────────────────────────────────
+    // Use knownLinkTypes() so ALL properties in the dataset are found, not just
+    // those visible as links on the current canvas.
+    try {
+      const linkTypeModels = await dataProvider.knownLinkTypes({ signal });
+      if (signal.aborted) return;
+      for (const lt of linkTypeModels) {
+        const label = translation.formatLabel(lt.label, lt.id, model.language);
+        if (!label.toLowerCase().includes(textLower)) continue;
+        results.push({
+          domEl: null,
+          canvasEl: null,
+          iri: lt.id,
+          viewMode: 'tbox',
+          kind: 'linkType',
+        });
+      }
+    } catch { /* aborted or provider error — skip */ }
+
+    if (signal.aborted) return;
+
+    // Best-effort: resolve domEl for each item from currently rendered panel
     const panel = panelRef.current;
-    if (!panel) return;
-
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    const scan = () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        const { iriMap, typeMap } = mapsRef.current;
-        setItems(buildItems(panel, iriMap, typeMap));
-      }, 80);
-    };
-
-    const observer = new MutationObserver((mutations) => {
-      if (isOwnMutation(mutations)) return;
-      scan();
-    });
-    observer.observe(panel, { childList: true, subtree: true });
-
-    // Tab switches toggle a CSS class on sections — childList won't fire,
-    // so rescan when a section tab button is clicked.
-    const onTabClick = (e: MouseEvent) => {
-      if ((e.target as Element | null)?.closest('.reactodia-unified-search__section-tab')) {
-        scan();
+    if (panel) {
+      for (const item of results) {
+        item.domEl = findDomEl(panel, item.kind, item.iri);
       }
-    };
-    panel.addEventListener('click', onTabClick);
+    }
 
-    scan(); // initial scan
+    setItems(results);
+  }, [model, translation, panelRef]);
+
+  useEffect(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    abortRef.current?.abort();
+
+    if (!searchString) {
+      setItems([]);
+      return;
+    }
+
+    timerRef.current = setTimeout(() => {
+      const ac = new AbortController();
+      abortRef.current = ac;
+      buildItems(searchString, ac.signal);
+    }, 120);
 
     return () => {
-      observer.disconnect();
-      panel.removeEventListener('click', onTabClick);
-      if (timer) clearTimeout(timer);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      abortRef.current?.abort();
     };
-  }, [panelRef]);
+  }, [searchString, buildItems]);
 
   return items;
 }
