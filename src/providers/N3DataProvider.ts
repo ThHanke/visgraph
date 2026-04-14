@@ -11,17 +11,32 @@ const EMPTY_LINKS: ReadonlySet<LinkTypeIri> = new Set();
 
 export type ViewMode = 'abox' | 'tbox';
 
-const ABOX_TYPES = new Set([
+export const ABOX_TYPES = new Set([
   'http://www.w3.org/2002/07/owl#NamedIndividual',
   'http://www.w3.org/2004/02/skos/core#Concept',
 ]);
-const TBOX_TYPES = new Set([
-  'http://www.w3.org/2002/07/owl#Class',
-  'http://www.w3.org/2000/01/rdf-schema#Class',
+
+/** OWL/RDF metatypes that classify a node as a property (predicate) in the ontology. */
+export const TBOX_PROPERTY_TYPES = new Set([
   'http://www.w3.org/2002/07/owl#ObjectProperty',
   'http://www.w3.org/2002/07/owl#DatatypeProperty',
   'http://www.w3.org/2002/07/owl#AnnotationProperty',
+  'http://www.w3.org/1999/02/22-rdf-syntax-ns#Property',
 ]);
+
+/** All OWL/RDF metatypes that make a node a TBox concept (class or property). */
+export const TBOX_CLASS_TYPES = new Set([
+  'http://www.w3.org/2002/07/owl#Class',
+  'http://www.w3.org/2000/01/rdf-schema#Class',
+]);
+
+export const ALL_TBOX_TYPES = new Set([
+  ...TBOX_CLASS_TYPES,
+  ...TBOX_PROPERTY_TYPES,
+]);
+
+// Keep as a private alias so matchesViewMode still compiles:
+const TBOX_TYPES = ALL_TBOX_TYPES;
 
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 
@@ -202,6 +217,22 @@ export class N3DataProvider implements DataProvider {
       subtypeOf: [...graph.subtypeOf, ...extraEdges],
     };
   }
+  /**
+   * Returns ElementModel for every subject in the N3 store.
+   * Used by the unified search index to build a view-agnostic entity list.
+   */
+  async lookupAll(p: { signal?: AbortSignal } = {}): Promise<DataProviderLookupItem[]> {
+    const allIris = [...this.allSubjects] as ElementIri[];
+    if (allIris.length === 0) return [];
+    const elementsMap = await this.elements({ elementIds: allIris, signal: p.signal });
+    const results: DataProviderLookupItem[] = [];
+    for (const iri of allIris) {
+      const el = elementsMap.get(iri);
+      if (el) results.push({ element: el, inLinks: EMPTY_LINKS, outLinks: EMPTY_LINKS });
+    }
+    return results;
+  }
+
   knownLinkTypes(p: { signal?: AbortSignal }): Promise<LinkTypeModel[]> {
     return this.inner.knownLinkTypes(p);
   }
@@ -320,8 +351,10 @@ export class N3DataProvider implements DataProvider {
       candidateIris.push(iri as ElementIri);
     }
     if (candidateIris.length === 0) return filteredInner;
-    const limit = typeof p.limit === 'number' ? p.limit : 100;
-    const toFetch = candidateIris.slice(0, Math.max(0, limit - filteredInner.length));
+    const limit = p.limit === null ? null : (typeof p.limit === 'number' ? p.limit : 100);
+    const toFetch = limit === null
+      ? candidateIris
+      : candidateIris.slice(0, Math.max(0, limit - filteredInner.length));
     if (toFetch.length === 0) return filteredInner;
     const elementsMap = await this.elements({ elementIds: toFetch });
     const iriResults: DataProviderLookupItem[] = toFetch

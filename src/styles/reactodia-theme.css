@@ -499,9 +499,24 @@ select.glass-btn {
   background-color: var(--muted-foreground);
 }
 
-/* ─── Unified search panel: solid background (override glass transparency) ─── */
+/* ─── Unified search panel: solid background + constrained height so entity list scrolls ─── */
 .reactodia-unified-search__panel {
   background-color: var(--popover) !important;
+  max-height: 420px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* Section fills remaining panel height */
+.reactodia-unified-search__section {
+  min-height: 0;
+}
+/* Entity/class section inner scroll area */
+.reactodia-instances-search__rest,
+.reactodia-search-section-element-types {
+  flex: auto;
+  overflow-y: auto;
+  min-height: 0;
 }
 /* Outer container needs position:relative so the counter can be absolute inside it */
 .reactodia-unified-search {
@@ -582,6 +597,16 @@ select.glass-btn {
   outline: 2px solid var(--primary) !important;
   outline-offset: -2px !important;
   background: color-mix(in srgb, var(--primary) 12%, transparent) !important;
+}
+
+/* ── Current navigated entity in the entities tab ───────────────────────── */
+.reactodia-list-element-view--selected {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.reactodia-list-element-view--selected .reactodia-list-element-view__label {
+  background: transparent;
 }
 
 /* ── Per-item canvas navigate button ─────────────────────────────────────── */

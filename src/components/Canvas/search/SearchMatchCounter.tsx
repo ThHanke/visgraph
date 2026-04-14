@@ -1,37 +1,230 @@
-/**
- * SearchMatchCounter
- *
- * Wraps <Reactodia.UnifiedSearch> with the original built-in sections
- * (data retrieval unchanged).
- *
- * Counter badge is portaled into the __toggle input bar.
- * Uses useSearchItemMap to build a live SearchItem[] list.
- *
- * Collapse behaviour:
- *   Clicking outside hides the panel via CSS (.vg-search-panel-hidden) while
- *   keeping Reactodia's internal expanded state intact. This preserves the DOM
- *   so the item map and navigation (↑/↓) continue working while collapsed.
- *   Clicking the input or typing restores the panel.
- *
- * Navigation behaviour:
- *   - Same view, element on canvas → zoom to it
- *   - Different view → switch view, wait for model update, find by IRI, zoom
- *   - Same view, element not on canvas → createElement (add node), then zoom
- *
- * Current match position is reset only on a tab switch, not on collapse.
- */
-import React, {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
-import ReactDOM from 'react-dom';
+import * as React from 'react';
+import * as ReactDOM from 'react-dom';
 import * as Reactodia from '@reactodia/workspace';
-import { useSearchItemMap, type SearchItemKind } from './useSearchItemMap';
-import { useCanvasState } from '@/hooks/useCanvasState';
 
-// ─── counter badge ─────────────────────────────────────────────────────────────
+import {
+  SearchIndexProvider,
+  useSearchIndexContext,
+} from './SearchIndexContext';
+import { useCanvasState } from '../../../hooks/useCanvasState';
+import { useSearchIndex } from './useSearchIndex';
+import { VgClassesSection } from './VgClassesSection';
+import { VgEntitiesSection } from './VgEntitiesSection';
+
+// ─── Section definitions ────────────────────────────────────────────────────
+
+const SECTIONS: ReadonlyArray<Reactodia.UnifiedSearchSection> = [
+  {
+    key: 'elementTypes',
+    label: 'Classes',
+    title: 'Search element types',
+    component: <VgClassesSection />,
+  },
+  {
+    key: 'entities',
+    label: 'Entities',
+    title: 'Search entities',
+    component: <VgEntitiesSection />,
+  },
+];
+
+// ─── Public component ────────────────────────────────────────────────────────
+
+export function SearchMatchCounter() {
+  const indexState = useSearchIndex();
+  return (
+    <SearchIndexProvider value={indexState}>
+      <SearchMatchCounterInner />
+    </SearchIndexProvider>
+  );
+}
+
+// ─── IRI → canvas element lookup ─────────────────────────────────────────────
+
+/** Build a map from entity IRI to canvas element using the live diagram model. */
+function buildIriMap(
+  elements: ReadonlyArray<Reactodia.Element>
+): Map<string, Reactodia.EntityElement | Reactodia.EntityGroup> {
+  const map = new Map<string, Reactodia.EntityElement | Reactodia.EntityGroup>();
+  for (const el of elements) {
+    if (el instanceof Reactodia.EntityElement) {
+      map.set(el.iri, el);
+    } else if (el instanceof Reactodia.EntityGroup) {
+      for (const item of el.items) {
+        map.set(item.data.id as string, el);
+      }
+    }
+  }
+  return map;
+}
+
+/** Paginate an EntityGroup so the member with the given IRI is on the visible page. */
+function paginateGroupTo(group: Reactodia.EntityGroup, iri: string): void {
+  const memberIdx = group.items.findIndex(item => item.data.id === iri);
+  if (memberIdx < 0) return;
+  const pageSize =
+    (group.elementState.get(Reactodia.TemplateProperties.GroupPageSize) as number | undefined) ?? 10;
+  const targetPage = Math.floor(memberIdx / pageSize);
+  group.setElementState(
+    group.elementState.set(Reactodia.TemplateProperties.GroupPageIndex, targetPage)
+  );
+}
+
+// ─── Inner component (has access to context) ─────────────────────────────────
+
+function SearchMatchCounterInner() {
+  const { model, view } = Reactodia.useWorkspace();
+  const { state: canvasState, actions: canvasActions } = useCanvasState();
+
+  const { filteredEntities, activeFilter, setCurrentIndex } = useSearchIndexContext();
+
+  const [current, setCurrent] = React.useState(-1);
+  const wrapperRef = React.useRef<HTMLDivElement>(null);
+  const [toggleEl, setToggleEl] = React.useState<HTMLElement | null>(null);
+
+  // IRI to zoom to once the diagram model has loaded it (after a view switch).
+  const pendingIriRef = React.useRef<string | null>(null);
+
+  // Live IRI → canvas element map for the currently active view.
+  const iriMap = React.useMemo(() => buildIriMap(model.elements), [model.elements]);
+
+  // Always-current snapshot of viewMode, readable synchronously inside effects.
+  // Updated inline (not in an effect) so it reflects the view that was active
+  // when model.elements last changed — not an earlier or later render.
+  const viewModeRef = React.useRef(canvasState.viewMode);
+  viewModeRef.current = canvasState.viewMode;
+
+  // Accumulated IRI → view index across both views.
+  // Only fires when iriMap changes (model.elements reloaded), so viewModeRef
+  // is guaranteed to match the freshly loaded elements.
+  const iriViewRef = React.useRef<Map<string, 'abox' | 'tbox'>>(new Map());
+  React.useEffect(() => {
+    const view = viewModeRef.current as 'abox' | 'tbox';
+    for (const iri of iriMap.keys()) {
+      iriViewRef.current.set(iri, view);
+    }
+  }, [iriMap]);
+
+  // Re-query the toggle element after every render so the portal mounts as soon as
+  // UnifiedSearch adds the element to the DOM.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  React.useEffect(() => {
+    const el = wrapperRef.current?.querySelector<HTMLElement>(
+      '.reactodia-unified-search__toggle'
+    ) ?? null;
+    setToggleEl(prev => (prev === el ? prev : el));
+  });
+
+  // Auto-select first match whenever the result list changes.
+  React.useEffect(() => {
+    const first = filteredEntities.length > 0 ? 0 : -1;
+    setCurrent(first);
+    setCurrentIndex(first);
+  }, [filteredEntities, setCurrentIndex]);
+
+  // When iriMap updates (canvas reloaded after view switch), resolve any pending navigation.
+  // Zoom is deferred with a double-rAF so the canvas has completed layout and
+  // element sizes are available before zoomToFitRect runs.
+  React.useEffect(() => {
+    const iri = pendingIriRef.current;
+    if (!iri) return;
+    const el = iriMap.get(iri);
+    if (el) {
+      pendingIriRef.current = null;
+      if (el instanceof Reactodia.EntityGroup) paginateGroupTo(el, iri);
+      const canvas = view.findAnyCanvas();
+      let raf1: number;
+      let raf2: number;
+      raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => {
+          zoomToElement(canvas, el);
+        });
+      });
+      return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
+    } else {
+      console.debug('[SearchMatchCounter] pending IRI not yet in elements, waiting:', iri);
+    }
+  }, [iriMap, view]);
+
+  const predicateLinks = React.useMemo(() =>
+    activeFilter?.kind === 'predicate'
+      ? model.links.filter(
+          (l): l is Reactodia.RelationLink =>
+            l instanceof Reactodia.RelationLink && l.typeId === activeFilter.iri
+        )
+      : null,
+    [model.links, activeFilter]
+  );
+
+  const total = predicateLinks !== null
+    ? predicateLinks.length
+    : filteredEntities.length;
+
+  const navigateTo = React.useCallback((index: number) => {
+    if (predicateLinks !== null) {
+      const link = predicateLinks[index];
+      if (!link) return;
+      const canvas = view.findAnyCanvas();
+      if (!canvas) return;
+      const source = iriMap.get(link.data.sourceId);
+      const target = iriMap.get(link.data.targetId);
+      if (!source || !target) {
+        console.warn('[SearchMatchCounter] link traversal: source or target not on canvas', link);
+        return;
+      }
+      const x = Math.min(source.position.x, target.position.x) - 80;
+      const y = Math.min(source.position.y, target.position.y) - 80;
+      const x2 = Math.max(source.position.x, target.position.x) + 240;
+      const y2 = Math.max(source.position.y, target.position.y) + 240;
+      void canvas.zoomToFitRect({ x, y, width: x2 - x, height: y2 - y }, { animate: true, duration: 350 });
+      return;
+    }
+
+    const entity = filteredEntities[index];
+    if (!entity) return;
+    const iri = entity.id as string;
+
+    const canvasEl = iriMap.get(iri);
+
+    if (canvasEl) {
+      // Element is in the current view — paginate group if needed, then zoom.
+      if (canvasEl instanceof Reactodia.EntityGroup) paginateGroupTo(canvasEl, iri);
+      zoomToElement(view.findAnyCanvas(), canvasEl);
+    } else {
+      const targetView = iriViewRef.current.get(iri);
+      if (!targetView) {
+        console.debug('[SearchMatchCounter] IRI not in joint index (not seen in either view):', iri);
+        return;
+      }
+      console.debug('[SearchMatchCounter] IRI in', targetView, ', switching from', canvasState.viewMode, ':', iri);
+      pendingIriRef.current = iri;
+      canvasActions.setViewMode(targetView);
+    }
+  }, [iriMap, view, canvasState.viewMode, canvasActions, filteredEntities, predicateLinks]);
+
+  const navigate = (next: number) => {
+    setCurrent(next);
+    setCurrentIndex(next);
+    navigateTo(next);
+  };
+
+  const onPrev = () => navigate(current <= 0 ? total - 1 : current - 1);
+  const onNext = () => navigate(current < 0 || current >= total - 1 ? 0 : current + 1);
+
+  return (
+    <div ref={wrapperRef} className="vg-search-counter-wrapper">
+      <Reactodia.UnifiedSearch sections={SECTIONS} />
+      {toggleEl && total > 0 &&
+        ReactDOM.createPortal(
+          <Counter total={total} current={current} onPrev={onPrev} onNext={onNext} />,
+          toggleEl
+        )
+      }
+    </div>
+  );
+}
+
+// ─── Counter badge ───────────────────────────────────────────────────────────
 
 interface CounterProps {
   total: number;
@@ -40,454 +233,33 @@ interface CounterProps {
   onNext: () => void;
 }
 
-function CounterDisplay({ total, current, onPrev, onNext }: CounterProps) {
-  return (
-    <span className="vg-search-counter">
-      <span className="vg-search-counter__label">
-        {total > 0
-          ? (current > 0 ? `${current}/${total}` : String(total))
-          : '0'}
-      </span>
-      <button
-        className="vg-search-counter__btn"
-        title="Previous match"
-        onMouseDown={e => { e.preventDefault(); onPrev(); }}
-      >↑</button>
-      <button
-        className="vg-search-counter__btn"
-        title="Next match"
-        onMouseDown={e => { e.preventDefault(); onNext(); }}
-      >↓</button>
-    </span>
+// ─── Zoom helper ─────────────────────────────────────────────────────────────
+
+function zoomToElement(
+  canvas: Reactodia.CanvasApi | undefined,
+  el: Reactodia.EntityElement | Reactodia.EntityGroup
+): void {
+  if (!canvas) return;
+  const size = canvas.renderingState.getElementSize(el) ?? { width: 160, height: 80 };
+  const padding = 80;
+  void canvas.zoomToFitRect(
+    {
+      x: el.position.x - padding,
+      y: el.position.y - padding,
+      width: size.width + padding * 2,
+      height: size.height + padding * 2,
+    },
+    { animate: true, duration: 350 }
   );
 }
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
-
-function isDropdownOpen(wrapper: HTMLElement): boolean {
-  return !!wrapper.querySelector('.reactodia-unified-search__section--active');
-}
-
-/**
- * Waits for canvas layout to fully settle via rAF polling.
- *
- * Two-phase:
- *   1. Wait for isAnimatingGraph() to become true  (layout started)
- *   2. Wait for isAnimatingGraph() to become false (layout finished)
- *
- * If the canvas is not yet mounted, we keep polling until it appears.
- * If layout never starts within maxWaitMs, we resolve anyway — the canvas
- * was either empty or the layout completed synchronously before our first tick.
- */
-function awaitLayoutSettled(
-  getCanvas: () => Reactodia.CanvasApi | undefined,
-  maxWaitMs = 4000
-): Promise<void> {
-  return new Promise(resolve => {
-    const deadline = performance.now() + maxWaitMs;
-    let layoutStarted = false;
-
-    const tick = () => {
-      if (performance.now() >= deadline) { resolve(); return; }
-      const c = getCanvas();
-      if (!c) {
-        // Canvas not yet mounted — keep waiting
-        requestAnimationFrame(tick);
-        return;
-      }
-      const animating = c.isAnimatingGraph();
-      if (animating) {
-        layoutStarted = true;
-        requestAnimationFrame(tick);
-      } else if (!layoutStarted) {
-        // Layout hasn't started yet — keep waiting for it to begin
-        requestAnimationFrame(tick);
-      } else {
-        // Layout was running and has now stopped
-        resolve();
-      }
-    };
-    requestAnimationFrame(tick);
-  });
-}
-
-/** Paginate an EntityGroup so the member identified by iri is on the visible page. */
-function paginateGroupTo(group: Reactodia.EntityGroup, iri: string): void {
-  const memberIdx = group.items.findIndex(item => item.data.id === iri);
-  if (memberIdx < 0) return;
-  const pageSize =
-    group.elementState.get(Reactodia.TemplateProperties.GroupPageSize) ?? 10;
-  const targetPage = Math.floor(memberIdx / pageSize);
-  group.setElementState(
-    group.elementState.set(Reactodia.TemplateProperties.GroupPageIndex, targetPage)
-  );
-}
-
-// ─── public component ─────────────────────────────────────────────────────────
-
-const SECTIONS: ReadonlyArray<Reactodia.UnifiedSearchSection> = [
-  { key: 'elementTypes', label: 'Classes',    title: 'Search element types', component: <Reactodia.SearchSectionElementTypes /> },
-  { key: 'entities',     label: 'Entities',   title: 'Search entities',      component: <Reactodia.SearchSectionEntities /> },
-  { key: 'linkTypes',    label: 'Link types', title: 'Search link types',    component: <Reactodia.SearchSectionLinkTypes /> },
-];
-
-
-export function SearchMatchCounter() {
-  const { canvas, model, view } = Reactodia.useWorkspace();
-  const { state: canvasState, actions: canvasActions } = useCanvasState();
-
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const [toggleEl, setToggleEl] = useState<Element | null>(null);
-  const [searchString, setSearchString] = useState('');
-  const [current, setCurrent] = useState(0);
-  // Whether the dropdown panel is visually shown (CSS toggle, independent of Reactodia state)
-  const [panelVisible, setPanelVisible] = useState(true);
-
-  // Track DOM element that currently has the active highlight class
-  const activeItemRef = useRef<HTMLElement | null>(null);
-  // The search string at the time of the last Enter-triggered navigation
-  const lastNavigatedStringRef = useRef<string>('');
-  // The search string for which we already auto-navigated to the first match
-  const autoNavStringRef = useRef<string>('');
-
-  // Live list of matched results — built directly from data provider queries,
-  // not from DOM scanning.
-  const items = useSearchItemMap(wrapperRef, searchString);
-
-  // Cache the last non-empty items so navigation works while panel is hidden.
-  // Updated in an effect to avoid mutating a ref during render.
-  const itemsCacheRef = useRef<typeof items>([]);
-  useEffect(() => {
-    if (items.length > 0) {
-      itemsCacheRef.current = items;
-    }
-  }, [items]);
-
-  const effectiveItems = items.length > 0 ? items : itemsCacheRef.current;
-  const total = effectiveItems.length;
-
-  // Reset current + active highlight when search string is cleared
-  useEffect(() => {
-    if (searchString.length === 0) {
-      setCurrent(0);
-      lastNavigatedStringRef.current = '';
-      autoNavStringRef.current = '';
-      if (activeItemRef.current) {
-        activeItemRef.current.classList.remove('vg-search-match--active');
-        activeItemRef.current = null;
-      }
-      itemsCacheRef.current = [];
-      setPanelVisible(true);
-    }
-  }, [searchString]);
-
-  // Apply / remove the panel-hidden CSS class
-  useEffect(() => {
-    wrapperRef.current?.classList.toggle('vg-search-panel-hidden', !panelVisible);
-  }, [panelVisible]);
-
-  // Outside click → hide panel. Inside click or typing → show panel.
-  useEffect(() => {
-    const onPointerDown = (e: PointerEvent) => {
-      const wrapper = wrapperRef.current;
-      if (!wrapper) return;
-      if (wrapper.contains(e.target as Node)) {
-        setPanelVisible(true);
-      } else if (searchString.length > 0) {
-        setPanelVisible(false);
-      }
-    };
-    document.body.addEventListener('pointerdown', onPointerDown);
-    return () => document.body.removeEventListener('pointerdown', onPointerDown);
-  }, [searchString]);
-
-  // On tab switch: clear highlight and jump to the first match in the new section.
-  // Placed after navigateTo definition — see below.
-
-  // Find the __toggle div (input bar) for the counter portal
-  useEffect(() => {
-    const el = wrapperRef.current?.querySelector('.reactodia-unified-search__toggle') ?? null;
-    setToggleEl(el);
-  }, []);
-
-  // Track search string from native input events; also show panel when typing
-  useEffect(() => {
-    const wrapper = wrapperRef.current;
-    if (!wrapper) return;
-    const onInput = (e: Event) => {
-      const input = e.target as HTMLInputElement;
-      if (input.classList?.contains('reactodia-unified-search__search-input')) {
-        setSearchString(input.value);
-        setPanelVisible(true);
-      }
-    };
-    wrapper.addEventListener('input', onInput);
-    return () => wrapper.removeEventListener('input', onInput);
-  }, []);
-
-  // Reactodia's clear button (×) updates its controlled input via React state,
-  // not a native input event — so we detect the click separately and reset.
-  useEffect(() => {
-    const wrapper = wrapperRef.current;
-    if (!wrapper) return;
-    const onClearClick = (e: MouseEvent) => {
-      if ((e.target as Element | null)?.closest('.reactodia-unified-search__clear-button')) {
-        setSearchString('');
-        setCurrent(0);
-        if (activeItemRef.current) {
-          activeItemRef.current.classList.remove('vg-search-match--active');
-          activeItemRef.current = null;
-        }
-        itemsCacheRef.current = [];
-        setPanelVisible(true);
-      }
-    };
-    wrapper.addEventListener('click', onClearClick);
-    return () => wrapper.removeEventListener('click', onClearClick);
-  }, []);
-
-  // Center the canvas on a canvas element using Reactodia's native centerTo API.
-  // We read the rendered size if available; otherwise fall back to a typical node
-  // size so position is still correct even before first render.
-  const zoomToElement = useCallback((el: Reactodia.Element, targetCanvas?: Reactodia.CanvasApi) => {
-    const c = targetCanvas ?? canvas;
-    if (!c) return;
-    const pos = el.position;
-    const size = c.renderingState.getElementSize(el);
-    const cx = pos.x + (size ? size.width  / 2 : 100);
-    const cy = pos.y + (size ? size.height / 2 : 50);
-    c.centerTo(
-      { x: cx, y: cy },
-      { scale: 1, animate: true, duration: 350 }
-    ).catch(() => {/* ignore */});
-  }, [canvas]);
-
-  // Navigate to a match.
-  //
-  // Priority order:
-  //   1. Item's viewMode differs from current canvas view
-  //      → switch view, wait for model to repopulate, find element by IRI, zoom
-  //   2. Same view and canvasEl present → zoom directly
-  //   3. Same view, no canvasEl → createElement (add to canvas), then zoom
-  //
-  // DOM highlight/scroll is skipped when the panel is hidden.
-  const navigateTo = useCallback((idx: number) => {
-    const source = items.length > 0 ? items : itemsCacheRef.current;
-    if (!source.length) return;
-    const i = ((idx % source.length) + source.length) % source.length;
-    const { domEl, canvasEl, iri, viewMode, kind } = source[i];
-
-    if (panelVisible && domEl) {
-      if (activeItemRef.current && activeItemRef.current !== domEl) {
-        activeItemRef.current.classList.remove('vg-search-match--active');
-      }
-      domEl.classList.add('vg-search-match--active');
-      activeItemRef.current = domEl;
-      domEl.scrollIntoView({ block: 'nearest' });
-    }
-
-    setCurrent(i + 1);
-
-    const currentMode = canvasState.viewMode as 'abox' | 'tbox';
-
-    if (viewMode !== currentMode) {
-      // Switch to the correct view first — this must happen before any canvas
-      // check because the canvas may be undefined while re-rendering.
-      canvasActions.setViewMode(viewMode);
-      // Wait for the canvas to settle after the view switch.
-      // changeCells may NOT fire if the target view already has its elements loaded,
-      // so we also arm a fallback timer that fires unconditionally after SWITCH_MS.
-      const SETTLE_MS = 150;
-      const SWITCH_MS = 400;
-      let done = false;
-      let settleTimer: ReturnType<typeof setTimeout> | null = null;
-
-      const zoomAfterSwitch = async () => {
-        if (done) return;
-        done = true;
-        model.events.off('changeCells', onCellsChanged);
-        if (settleTimer) clearTimeout(settleTimer);
-        // Wait for any ongoing layout animation to finish before reading positions.
-        await awaitLayoutSettled(() => view.findAnyCanvas());
-        const freshCanvas = view.findAnyCanvas();
-        if (kind === 'linkType') {
-          const canvasLink = model.links.find(l => l.typeId === iri);
-          if (canvasLink && freshCanvas) {
-            const srcEl = model.elements.find(e => e.id === canvasLink.sourceId);
-            if (srcEl) zoomToElement(srcEl, freshCanvas);
-          }
-        } else {
-          const el = model.elements.find(e => {
-            if (e instanceof Reactodia.EntityElement) return e.iri === iri;
-            if (e instanceof Reactodia.EntityGroup) {
-              return e.items.some(item => item.data.id === iri);
-            }
-            return false;
-          });
-          if (el) {
-            if (el instanceof Reactodia.EntityGroup) paginateGroupTo(el, iri);
-            zoomToElement(el, freshCanvas);
-          } else if (freshCanvas && kind !== 'entity') {
-            // Only add to canvas for classes/link-types — never for entity instances
-            const newEl = model.createElement(iri as Reactodia.ElementIri);
-            setTimeout(() => zoomToElement(newEl, view.findAnyCanvas()), 300);
-          }
-        }
-      };
-
-      const onCellsChanged = () => {
-        if (settleTimer) clearTimeout(settleTimer);
-        settleTimer = setTimeout(zoomAfterSwitch, SETTLE_MS);
-      };
-      model.events.on('changeCells', onCellsChanged);
-      // Unconditional fallback in case changeCells never fires
-      setTimeout(zoomAfterSwitch, SWITCH_MS);
-      return;
-    }
-
-    // Always resolve canvas fresh — the closed-over `canvas` may be stale
-    // or transiently undefined after a Reactodia re-render.
-    const currentCanvas = view.findAnyCanvas();
-    if (!currentCanvas) return;
-
-    if (kind === 'linkType') {
-      // Link types have no standalone node — navigate to the source element of
-      // any canvas link of that type so the user can see a connected pair.
-      const canvasLink = model.links.find(l => l.typeId === iri);
-      if (canvasLink) {
-        const srcEl = model.elements.find(e => e.id === canvasLink.sourceId);
-        if (srcEl) zoomToElement(srcEl, currentCanvas);
-      }
-    } else if (canvasEl) {
-      // If the target is inside a group, scroll the group's paginator to the
-      // page that contains the member before centering on the group node.
-      if (canvasEl instanceof Reactodia.EntityGroup) paginateGroupTo(canvasEl, iri);
-      zoomToElement(canvasEl, currentCanvas);
-    } else if (kind !== 'entity') {
-      // Only add to canvas for classes — never create nodes for entity instances
-      const newEl = model.createElement(iri as Reactodia.ElementIri);
-      setTimeout(() => zoomToElement(newEl, view.findAnyCanvas()), 300);
-    }
-  }, [items, panelVisible, canvasState.viewMode, canvasActions, model, view, zoomToElement]);
-
-  // Enter on the search input: if the query hasn't changed since the last
-  // navigation, step one match forward instead of re-triggering the search.
-  useEffect(() => {
-    const wrapper = wrapperRef.current;
-    if (!wrapper) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Enter') return;
-      const input = e.target as HTMLInputElement;
-      if (!input.classList?.contains('reactodia-unified-search__search-input')) return;
-      if (input.value.length === 0) return;
-      if (input.value === lastNavigatedStringRef.current) {
-        e.preventDefault();
-        e.stopPropagation();
-        navigateTo(current);
-      } else {
-        lastNavigatedStringRef.current = input.value;
-      }
-    };
-    wrapper.addEventListener('keydown', onKeyDown, { capture: true });
-    return () => wrapper.removeEventListener('keydown', onKeyDown, { capture: true });
-  }, [navigateTo, current]);
-
-  // Auto-navigate to the first match when results first appear for a new search.
-  // Uses a ref to avoid re-triggering on subsequent DOM rescans for the same query.
-  useEffect(() => {
-    if (items.length > 0 && searchString.length > 0 && autoNavStringRef.current !== searchString) {
-      autoNavStringRef.current = searchString;
-      navigateTo(0);
-    }
-  }, [items, searchString, navigateTo]);
-
-  // On tab switch: clear highlight and jump to the first match in the newly
-  // selected section. Tab title → kind mapping mirrors the SECTIONS definition.
-  useEffect(() => {
-    const wrapper = wrapperRef.current;
-    if (!wrapper) return;
-    const TITLE_TO_KIND: Record<string, SearchItemKind> = {
-      'Search element types': 'elementType',
-      'Search entities':      'entity',
-      'Search link types':    'linkType',
-    };
-    const onTabClick = (e: MouseEvent) => {
-      const tab = (e.target as Element | null)?.closest('.reactodia-unified-search__section-tab');
-      if (!tab) return;
-      if (activeItemRef.current) {
-        activeItemRef.current.classList.remove('vg-search-match--active');
-        activeItemRef.current = null;
-      }
-      const kind = TITLE_TO_KIND[tab.getAttribute('title') ?? ''];
-      const source = items.length > 0 ? items : itemsCacheRef.current;
-      const firstIdx = kind ? source.findIndex(item => item.kind === kind) : -1;
-      if (firstIdx >= 0) {
-        navigateTo(firstIdx);
-      } else {
-        setCurrent(0);
-      }
-    };
-    wrapper.addEventListener('click', onTabClick);
-    return () => wrapper.removeEventListener('click', onTabClick);
-  }, [items, navigateTo]);
-
-  // Inject per-item ⊙ nav buttons for all items in the dropdown.
-  // For class tree items (domEl is an <a>), appending a <button> inside <a> is
-  // invalid HTML and browsers silently move it out. Instead we inject into the
-  // nearest <li> ancestor so the button is a sibling of the anchor.
-  useEffect(() => {
-    if (!items.length) return;
-    const cleanups: (() => void)[] = [];
-
-    items.forEach((item) => {
-      const idx = items.indexOf(item);
-      const btn = document.createElement('button');
-      btn.className = 'vg-search-nav-btn';
-      btn.title = 'Navigate to element on canvas';
-      btn.textContent = '⊙';
-      const handler = (e: MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        navigateTo(idx);
-      };
-      btn.addEventListener('mousedown', handler);
-
-      // For class tree items domEl is <a> — nesting <button> inside <a> is
-      // invalid HTML. Use the __row div instead (same level as the create button).
-      // For entity items domEl is already <li>, which is fine.
-      if (!item.domEl) return;
-      const container =
-        item.domEl.closest('.reactodia-class-tree-item__row') ??
-        item.domEl.closest('li') ??
-        item.domEl;
-      container.appendChild(btn);
-
-      cleanups.push(() => {
-        btn.removeEventListener('mousedown', handler);
-        btn.remove();
-      });
-    });
-
-    return () => cleanups.forEach(fn => fn());
-  }, [items, navigateTo]);
-
-  const handleNext = useCallback(() => navigateTo(current),     [navigateTo, current]);
-  const handlePrev = useCallback(() => navigateTo(current - 2), [navigateTo, current]);
-
-  const showCounter = searchString.length > 0;
-
+function Counter({ total, current, onPrev, onNext }: CounterProps) {
+  const label = current < 0 ? `${total}` : `${current + 1}/${total}`;
   return (
-    <div ref={wrapperRef} style={{ display: 'contents' }}>
-      <Reactodia.UnifiedSearch sections={SECTIONS} />
-      {toggleEl && showCounter && ReactDOM.createPortal(
-        <CounterDisplay
-          total={total}
-          current={current}
-          onPrev={handlePrev}
-          onNext={handleNext}
-        />,
-        toggleEl
-      )}
+    <div className="vg-search-counter">
+      <button className="vg-search-counter__btn" onMouseDown={e => { e.preventDefault(); onPrev(); }}>↑</button>
+      <span className="vg-search-counter__label">{label}</span>
+      <button className="vg-search-counter__btn" onMouseDown={e => { e.preventDefault(); onNext(); }}>↓</button>
     </div>
   );
 }
