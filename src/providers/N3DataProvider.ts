@@ -11,12 +11,32 @@ const EMPTY_LINKS: ReadonlySet<LinkTypeIri> = new Set();
 
 export type ViewMode = 'abox' | 'tbox';
 
+/**
+ * RDF types that mark a node as an ABox instance (individual data).
+ *
+ * A subject with one of these types is shown in the A-Box canvas view and
+ * appears in the Entities search tab.
+ *
+ * Examples:
+ *   <https://w3id.org/pmd/co/PMD_0050151> a owl:NamedIndividual  → ABox (material instance)
+ *   <https://orcid.org/0000-0003-1649-6832> a owl:NamedIndividual → ABox (person)
+ *   <http://example.org/copper-alloy-42> a skos:Concept           → ABox (SKOS concept)
+ */
 export const ABOX_TYPES = new Set([
   'http://www.w3.org/2002/07/owl#NamedIndividual',
   'http://www.w3.org/2004/02/skos/core#Concept',
 ]);
 
-/** OWL/RDF metatypes that classify a node as a property (predicate) in the ontology. */
+/**
+ * RDF metatypes that mark a node as a property definition in the ontology (TBox).
+ *
+ * A subject with one of these types is shown in the T-Box canvas view as a
+ * relation/predicate node.
+ *
+ * Examples:
+ *   <https://w3id.org/pmd/co/PMD_0001032> a owl:ObjectProperty    → TBox (relation)
+ *   <http://www.w3.org/2000/01/rdf-schema#label> a owl:AnnotationProperty → TBox (annotation)
+ */
 export const TBOX_PROPERTY_TYPES = new Set([
   'http://www.w3.org/2002/07/owl#ObjectProperty',
   'http://www.w3.org/2002/07/owl#DatatypeProperty',
@@ -24,24 +44,41 @@ export const TBOX_PROPERTY_TYPES = new Set([
   'http://www.w3.org/1999/02/22-rdf-syntax-ns#Property',
 ]);
 
-/** All OWL/RDF metatypes that make a node a TBox concept (class or property). */
+/**
+ * RDF metatypes that mark a node as a class definition in the ontology (TBox).
+ *
+ * A subject with one of these types is shown in the T-Box canvas view as a
+ * class node and drives the class hierarchy tree in the Classes search tab.
+ *
+ * Examples:
+ *   <http://purl.obolibrary.org/obo/CHEBI_28694> a owl:Class → TBox (copper class)
+ *   <https://w3id.org/pmd/co/PMD_0020054> a owl:Class        → TBox (PMD material class)
+ */
 export const TBOX_CLASS_TYPES = new Set([
   'http://www.w3.org/2002/07/owl#Class',
   'http://www.w3.org/2000/01/rdf-schema#Class',
 ]);
 
+/** Union of all TBox metatypes — a node with any of these is an ontology concept. */
 export const ALL_TBOX_TYPES = new Set([
   ...TBOX_CLASS_TYPES,
   ...TBOX_PROPERTY_TYPES,
 ]);
 
 /**
- * Returns which canvas view(s) an entity with the given RDF types belongs to.
- * Mirrors the private `matchesViewMode` logic in N3DataProvider exactly.
+ * Classifies a subject by which canvas view(s) it belongs to, based on its RDF types.
+ * This is the single authoritative rule — used by both the data provider's
+ * `matchesViewMode` filter and the search index's `iriViewMap` so they always agree.
  *
- *   'abox'  — instance data (has ABox type, or no recognized type at all)
- *   'tbox'  — ontology concept (has only TBox type)
- *   'both'  — has both ABox and TBox types; appears in both views
+ *   'abox'  — has an ABox type (owl:NamedIndividual, skos:Concept), OR has no
+ *             recognised type at all (unknown individuals default to ABox).
+ *             Example: <https://orcid.org/0000-0003-1649-6832> (person)
+ *
+ *   'tbox'  — has only TBox types (owl:Class, owl:ObjectProperty, …).
+ *             Example: <http://purl.obolibrary.org/obo/CHEBI_28694> (copper class)
+ *
+ *   'both'  — has both ABox and TBox types ("punned" resource); appears in both views.
+ *             Example: a class that is also declared owl:NamedIndividual for punning.
  */
 export function classifyEntityView(
   types: readonly string[]
@@ -50,8 +87,31 @@ export function classifyEntityView(
   const isT = types.some(t => ALL_TBOX_TYPES.has(t));
   if (isA && isT) return 'both';
   if (isT) return 'tbox';
-  return 'abox'; // isA, or neither (unknown → ABox default)
+  return 'abox'; // has ABox type, or no recognised type → default to ABox
 }
+
+/**
+ * Only subjects from these graphs are added to the search index (`allSubjects`).
+ *
+ * Triples from ALL graphs are still stored in the RDF dataset so that
+ * `knownElementTypes` can build the full Classes hierarchy tree from ontology
+ * and workflow graphs. But only entities that live on the ABox/TBox canvas
+ * (i.e. user data and reasoner-inferred assertions) should appear as Entities
+ * search hits.
+ *
+ * Allowlisted graphs:
+ *   urn:vg:data     — user-loaded material data (owl:NamedIndividual instances,
+ *                     skos:Concept terms, custom entities, …)
+ *   urn:vg:inferred — type/property assertions inferred by the reasoner for
+ *                     subjects that already live in urn:vg:data
+ *
+ * Everything else (urn:vg:ontologies, urn:vg:workflows, any future schema graph)
+ * is automatically excluded — no blocklist maintenance required.
+ */
+const SEARCH_ALLOWED_GRAPHS = new Set([
+  'urn:vg:data',
+  'urn:vg:inferred',
+]);
 
 // Keep as a private alias so matchesViewMode still compiles:
 const TBOX_TYPES = ALL_TBOX_TYPES;
@@ -116,6 +176,23 @@ export class N3DataProvider implements DataProvider {
   });
   private viewMode: ViewMode = 'abox';
   private typeMap = new Map<string, Set<string>>();
+  /**
+   * All subject IRIs eligible for the search index.
+   *
+   * Populated by `addGraph` for every named-node subject whose graph is NOT in
+   * `SEARCH_EXCLUDED_GRAPHS`. Used by `lookupAll` to build the unified search
+   * entity list (Entities tab + match counter).
+   *
+   * Graphs and what they contribute here:
+   *   urn:vg:data       — user-loaded material data (owl:NamedIndividual instances,
+   *                       e.g. specific copper alloy samples) → ABox entities
+   *   urn:vg:ontologies — material ontology (owl:Class, owl:ObjectProperty, …)
+   *                       → TBox concepts; class IRIs drive the Classes hierarchy
+   *   urn:vg:inferred   — type/property assertions inferred by the reasoner
+   *                       → enriches existing subjects already in the set
+   *   urn:vg:workflows  — excluded (see SEARCH_EXCLUDED_GRAPHS); workflow instances
+   *                       must not appear in material search results
+   */
   private allSubjects = new Set<string>();
   /** Per-subject tracking of which triples originated from urn:vg:inferred. */
   private inferredBySubject = new Map<string, InferredSubjectEntry>();
@@ -125,9 +202,14 @@ export class N3DataProvider implements DataProvider {
   addGraph(quads: Iterable<Rdf.Quad>, graphName?: string): void {
     const arr = Array.isArray(quads) ? quads : [...quads];
     const trackInferred = graphName === 'urn:vg:inferred';
+    // Only subjects from allowed graphs enter allSubjects (and therefore Entities search).
+    // Quads from all other graphs (ontologies, workflows, …) are still stored in
+    // this.inner so knownElementTypes sees their owl:Class declarations for the tree.
+    // When graphName is undefined the caller did not specify a graph — treat as data.
+    const addToIndex = graphName === undefined || SEARCH_ALLOWED_GRAPHS.has(graphName);
 
     for (const q of arr) {
-      if (q.subject.termType === 'NamedNode') {
+      if (q.subject.termType === 'NamedNode' && addToIndex) {
         this.allSubjects.add(q.subject.value);
       }
       if (

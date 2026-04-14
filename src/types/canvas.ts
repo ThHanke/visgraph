@@ -225,6 +225,12 @@ export interface CanvasState {
   loadingMessage: string;
   /** Whether reasoning report is open */
   showReasoningReport: boolean;
+  /**
+   * Monotonically increasing counter bumped each time a canvas layout/clustering
+   * cycle completes (initial layout, view-mode switch, restore). Subscribers can
+   * watch this to know when the canvas is fully settled and elements are on screen.
+   */
+  layoutVersion: number;
 }
 
 /**
@@ -239,6 +245,8 @@ export interface CanvasActions {
   setLoading: (loading: boolean, progress?: number, message?: string) => void;
   /** Toggle reasoning report */
   toggleReasoningReport: (show: boolean) => void;
+  /** Increment layoutVersion — call after every canvas layout/clustering cycle completes. */
+  bumpLayoutVersion: () => void;
 }
 
 /**

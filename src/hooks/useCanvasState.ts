@@ -26,6 +26,7 @@ let internalState: CanvasState = {
   loadingProgress: 0,
   loadingMessage: "",
   showReasoningReport: false,
+  layoutVersion: 0,
 };
 
 /* Track current loading toast ID for updates */
@@ -125,6 +126,10 @@ const actionsImpl: CanvasActions = {
   },
   toggleReasoningReport: (show: boolean) => {
     internalState = { ...internalState, showReasoningReport: Boolean(show) };
+    notifySubscribers();
+  },
+  bumpLayoutVersion: () => {
+    internalState = { ...internalState, layoutVersion: internalState.layoutVersion + 1 };
     notifySubscribers();
   },
 };

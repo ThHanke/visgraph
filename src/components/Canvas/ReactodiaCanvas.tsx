@@ -461,7 +461,9 @@ export default function ReactodiaCanvas() {
         const rdfQuads = workerQuadsToRdf(quads as unknown as ConverterQuad[]);
         if (!isDataGraph) {
           // Ontology/schema graph: load for schema awareness only, no canvas elements.
-          dataProvider.addGraph(rdfQuads);
+          // Pass the graph name so N3DataProvider can exclude these subjects from
+          // allSubjects (and therefore from Entities search results).
+          dataProvider.addGraph(rdfQuads, incomingGraphName ?? undefined);
         } else if (isInferredGraph) {
           // Inferred graph: load quads for known data subjects WITHOUT the inferred
           // graphName tag. Inferred-triple tracking is done separately in
@@ -598,6 +600,7 @@ export default function ReactodiaCanvas() {
           } finally {
             if (pendingLayoutController.current === controller) pendingLayoutController.current = null;
             initialLayoutDone.current = true;
+            actions.bumpLayoutVersion();
           }
         } else {
           // Incremental add: only lay out the newly added elements so existing
@@ -685,6 +688,7 @@ export default function ReactodiaCanvas() {
           silentLayoutPositions.current = savedCluster.silentLayoutPositions;
           setIsClustered(savedCluster.isClustered);
           initialLayoutDone.current = true; // layout already exists — don't re-cluster
+          actions.bumpLayoutVersion();
         }
 
         // Add any elements that were added while we were in the other mode
@@ -730,6 +734,7 @@ export default function ReactodiaCanvas() {
               await ctx.performLayout({ layoutFunction: layoutFn, animate: cfg.layoutAnimations, signal: controller.signal });
             }
             initialLayoutDone.current = true;
+            actions.bumpLayoutVersion();
           }
         }
         const canvas = ctx.view.findAnyCanvas();

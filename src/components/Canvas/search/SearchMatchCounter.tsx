@@ -74,7 +74,7 @@ function paginateGroupTo(group: Reactodia.EntityGroup, iri: string): void {
 
 function SearchMatchCounterInner() {
   const { model, view } = Reactodia.useWorkspace();
-  const { actions: canvasActions } = useCanvasState();
+  const { state: canvasState, actions: canvasActions } = useCanvasState();
 
   const { filteredEntities, activeFilter, setCurrentIndex, iriViewMap } = useSearchIndexContext();
 
@@ -86,7 +86,14 @@ function SearchMatchCounterInner() {
   const pendingIriRef = React.useRef<string | null>(null);
 
   // Live IRI → canvas element map for the currently active view.
-  const iriMap = React.useMemo(() => buildIriMap(model.elements), [model.elements]);
+  // Rebuilt whenever layoutVersion bumps (canvas layout/clustering cycle complete) or
+  // model.elements changes (element add/remove between layout cycles).
+  // layoutVersion is bumped by ReactodiaCanvas after initialLayoutDone is set, which is
+  // after groups are fully populated — so we don't need the changeItems subscription.
+  const [iriMap, setIriMap] = React.useState(() => buildIriMap(model.elements));
+  React.useEffect(() => {
+    setIriMap(buildIriMap(model.elements));
+  }, [model.elements, canvasState.layoutVersion]);
 
 
   // Re-query the toggle element after every render so the portal mounts as soon as
@@ -117,18 +124,28 @@ function SearchMatchCounterInner() {
       pendingIriRef.current = null;
       if (el instanceof Reactodia.EntityGroup) paginateGroupTo(el, iri);
       const canvas = view.findAnyCanvas();
-      let raf1: number;
-      let raf2: number;
-      raf1 = requestAnimationFrame(() => {
-        raf2 = requestAnimationFrame(() => {
+      const raf1 = requestAnimationFrame(() => {
+        const raf2 = requestAnimationFrame(() => {
           zoomToElement(canvas, el);
         });
+        return () => cancelAnimationFrame(raf2);
       });
-      return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
+      return () => cancelAnimationFrame(raf1);
     } else {
-      console.debug('[SearchMatchCounter] pending IRI not yet in elements, waiting:', iri);
+      // View switched but element still not in iriMap. If iriViewMap points to a
+      // different view than the current one, switch now (view may have changed
+      // underneath us). Otherwise give up — changeItems subscription will rebuild
+      // iriMap if the element appears later.
+      const targetView = iriViewMap.get(iri);
+      if (targetView && targetView !== canvasState.viewMode) {
+        console.debug('[SearchMatchCounter] iriMap missing element, switching to', targetView, 'for:', iri);
+        canvasActions.setViewMode(targetView);
+      } else {
+        console.debug('[SearchMatchCounter] giving up on pending IRI (not on canvas):', iri);
+        pendingIriRef.current = null;
+      }
     }
-  }, [iriMap, view]);
+  }, [iriMap, iriViewMap, canvasState.viewMode, canvasActions, view]);
 
   const predicateLinks = React.useMemo(() =>
     activeFilter?.kind === 'predicate'
@@ -180,20 +197,32 @@ function SearchMatchCounterInner() {
         console.debug('[SearchMatchCounter] IRI not in view map (unknown entity):', iri);
         return;
       }
-      console.debug('[SearchMatchCounter] switching to', targetView, 'for:', iri);
+      if (targetView === canvasState.viewMode) {
+        // Correct view is already active but the element isn't in iriMap yet.
+        // The changeItems subscription on EntityGroups will rebuild iriMap once
+        // clustering finishes — no view switch needed.
+        console.debug('[SearchMatchCounter] waiting for iriMap to populate for:', iri);
+        return;
+      }
       pendingIriRef.current = iri;
+      console.debug('[SearchMatchCounter] switching to', targetView, 'for:', iri);
       canvasActions.setViewMode(targetView);
     }
-  }, [iriMap, iriViewMap, view, canvasActions, filteredEntities, predicateLinks]);
+  }, [iriMap, iriViewMap, view, canvasState.viewMode, canvasActions, filteredEntities, predicateLinks]);
 
-  const navigate = (next: number) => {
+  const navigate = React.useCallback((next: number) => {
     setCurrent(next);
     setCurrentIndex(next);
     navigateTo(next);
-  };
+  }, [navigateTo, setCurrentIndex]);
 
-  const onPrev = () => navigate(current <= 0 ? total - 1 : current - 1);
-  const onNext = () => navigate(current < 0 || current >= total - 1 ? 0 : current + 1);
+  const onPrev = React.useCallback(() =>
+    navigate(current <= 0 ? total - 1 : current - 1),
+  [navigate, current, total]);
+
+  const onNext = React.useCallback(() =>
+    navigate(current < 0 || current >= total - 1 ? 0 : current + 1),
+  [navigate, current, total]);
 
   const onKeyDown = React.useCallback((e: React.KeyboardEvent) => {
     if (e.key !== 'Enter') return;
