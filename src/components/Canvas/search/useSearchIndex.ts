@@ -3,6 +3,7 @@ import * as Reactodia from '@reactodia/workspace';
 import type { ElementModel, ElementTypeGraph, ElementTypeIri } from '@reactodia/workspace';
 import { dataProvider } from '../ReactodiaCanvas';
 import { rdfManager } from '@/utils/rdfManager';
+import { classifyEntityView } from '@/providers/N3DataProvider';
 import type { SearchFilter, SearchIndexContext } from './SearchIndexContext';
 
 const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
@@ -145,6 +146,18 @@ export function useSearchIndex(): SearchIndexContext {
     [textFilteredEntities]
   );
 
+  // Classify every known IRI as abox or tbox from its RDF types — no view rendering needed.
+  const iriViewMap = useMemo((): ReadonlyMap<string, 'abox' | 'tbox'> => {
+    const map = new Map<string, 'abox' | 'tbox'>();
+    for (const entity of allEntities) {
+      const classification = classifyEntityView(entity.types);
+      // 'both' → prefer abox (entity is in both views, abox is a safe default)
+      const view: 'abox' | 'tbox' = classification === 'tbox' ? 'tbox' : 'abox';
+      map.set(entity.id as string, view);
+    }
+    return map;
+  }, [allEntities]);
+
   const clearFilter = useCallback(() => setActiveFilter(null), []);
 
   return {
@@ -152,6 +165,7 @@ export function useSearchIndex(): SearchIndexContext {
     allEntities,
     filteredEntities,
     classHitCounts,
+    iriViewMap,
     loading,
     searchText,
     setSearchText,

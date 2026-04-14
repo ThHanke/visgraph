@@ -23,6 +23,11 @@ export interface SearchIndexState {
    * NOT further filtered by activeFilter. Drives the count badge in the class tree.
    */
   readonly classHitCounts: ReadonlyMap<ElementTypeIri, number>;
+  /**
+   * Static view classification for every known IRI, derived from RDF types.
+   * Maps entity IRI → 'abox' | 'tbox' without requiring either view to be rendered.
+   */
+  readonly iriViewMap: ReadonlyMap<string, 'abox' | 'tbox'>;
   /** Whether the initial data fetch is in progress. */
   readonly loading: boolean;
 }

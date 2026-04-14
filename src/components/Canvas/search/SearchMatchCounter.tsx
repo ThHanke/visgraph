@@ -74,9 +74,9 @@ function paginateGroupTo(group: Reactodia.EntityGroup, iri: string): void {
 
 function SearchMatchCounterInner() {
   const { model, view } = Reactodia.useWorkspace();
-  const { state: canvasState, actions: canvasActions } = useCanvasState();
+  const { actions: canvasActions } = useCanvasState();
 
-  const { filteredEntities, activeFilter, setCurrentIndex } = useSearchIndexContext();
+  const { filteredEntities, activeFilter, setCurrentIndex, iriViewMap } = useSearchIndexContext();
 
   const [current, setCurrent] = React.useState(-1);
   const wrapperRef = React.useRef<HTMLDivElement>(null);
@@ -88,22 +88,6 @@ function SearchMatchCounterInner() {
   // Live IRI → canvas element map for the currently active view.
   const iriMap = React.useMemo(() => buildIriMap(model.elements), [model.elements]);
 
-  // Always-current snapshot of viewMode, readable synchronously inside effects.
-  // Updated inline (not in an effect) so it reflects the view that was active
-  // when model.elements last changed — not an earlier or later render.
-  const viewModeRef = React.useRef(canvasState.viewMode);
-  viewModeRef.current = canvasState.viewMode;
-
-  // Accumulated IRI → view index across both views.
-  // Only fires when iriMap changes (model.elements reloaded), so viewModeRef
-  // is guaranteed to match the freshly loaded elements.
-  const iriViewRef = React.useRef<Map<string, 'abox' | 'tbox'>>(new Map());
-  React.useEffect(() => {
-    const view = viewModeRef.current as 'abox' | 'tbox';
-    for (const iri of iriMap.keys()) {
-      iriViewRef.current.set(iri, view);
-    }
-  }, [iriMap]);
 
   // Re-query the toggle element after every render so the portal mounts as soon as
   // UnifiedSearch adds the element to the DOM.
@@ -191,16 +175,16 @@ function SearchMatchCounterInner() {
       if (canvasEl instanceof Reactodia.EntityGroup) paginateGroupTo(canvasEl, iri);
       zoomToElement(view.findAnyCanvas(), canvasEl);
     } else {
-      const targetView = iriViewRef.current.get(iri);
+      const targetView = iriViewMap.get(iri);
       if (!targetView) {
-        console.debug('[SearchMatchCounter] IRI not in joint index (not seen in either view):', iri);
+        console.debug('[SearchMatchCounter] IRI not in view map (unknown entity):', iri);
         return;
       }
-      console.debug('[SearchMatchCounter] IRI in', targetView, ', switching from', canvasState.viewMode, ':', iri);
+      console.debug('[SearchMatchCounter] switching to', targetView, 'for:', iri);
       pendingIriRef.current = iri;
       canvasActions.setViewMode(targetView);
     }
-  }, [iriMap, view, canvasState.viewMode, canvasActions, filteredEntities, predicateLinks]);
+  }, [iriMap, iriViewMap, view, canvasActions, filteredEntities, predicateLinks]);
 
   const navigate = (next: number) => {
     setCurrent(next);

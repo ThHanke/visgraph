@@ -35,6 +35,24 @@ export const ALL_TBOX_TYPES = new Set([
   ...TBOX_PROPERTY_TYPES,
 ]);
 
+/**
+ * Returns which canvas view(s) an entity with the given RDF types belongs to.
+ * Mirrors the private `matchesViewMode` logic in N3DataProvider exactly.
+ *
+ *   'abox'  — instance data (has ABox type, or no recognized type at all)
+ *   'tbox'  — ontology concept (has only TBox type)
+ *   'both'  — has both ABox and TBox types; appears in both views
+ */
+export function classifyEntityView(
+  types: readonly string[]
+): 'abox' | 'tbox' | 'both' {
+  const isA = types.some(t => ABOX_TYPES.has(t));
+  const isT = types.some(t => ALL_TBOX_TYPES.has(t));
+  if (isA && isT) return 'both';
+  if (isT) return 'tbox';
+  return 'abox'; // isA, or neither (unknown → ABox default)
+}
+
 // Keep as a private alias so matchesViewMode still compiles:
 const TBOX_TYPES = ALL_TBOX_TYPES;
 
