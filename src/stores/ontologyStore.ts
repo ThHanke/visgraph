@@ -10,7 +10,7 @@ import { create } from "zustand";
 import { RDFManager, rdfManager } from "../utils/rdfManager";
 import { useAppConfigStore } from "./appConfigStore";
 import { debug, info, warn, error, fallback } from "../utils/startupDebug";
-import { WELL_KNOWN } from "../utils/wellKnownOntologies";
+import { WELL_KNOWN, WELL_KNOWN_PREFIXES } from "../utils/wellKnownOntologies";
 import { DataFactory, Quad } from "n3";
 import { toast } from "sonner";
 import { buildPaletteMap } from "../components/Canvas/core/namespacePalette";
@@ -616,11 +616,14 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       const normRequestedUrl = normalizeOntologyUri(url);
       let canonicalNorm: string | undefined = undefined;
 
-      // If well-known, register a lightweight entry so UI shows it immediately
+      // If well-known, register a lightweight entry so UI shows it immediately.
+      // Check both the normalized (https://) and original (http://) forms because
+      // WELL_KNOWN keys use http:// but normalizeOntologyUri upgrades to https://.
+      const httpForm = normRequestedUrl.replace(/^https:\/\//i, "http://");
       const wkEntry =
-        WELL_KNOWN.ontologies[
-          normRequestedUrl as keyof typeof WELL_KNOWN.ontologies
-        ] || WELL_KNOWN.ontologies[url as keyof typeof WELL_KNOWN.ontologies];
+        WELL_KNOWN.ontologies[normRequestedUrl as keyof typeof WELL_KNOWN.ontologies] ||
+        WELL_KNOWN.ontologies[httpForm as keyof typeof WELL_KNOWN.ontologies] ||
+        WELL_KNOWN.ontologies[url as keyof typeof WELL_KNOWN.ontologies];
 
       if (wkEntry) {
         try {
@@ -1472,7 +1475,10 @@ try {
 function deriveOntologyName(url: string): string {
   {
     const wkOnt = (WELL_KNOWN && (WELL_KNOWN as any).ontologies) || {};
-    if (wkOnt[url] && wkOnt[url].name) return wkOnt[url].name;
+    const httpForm = String(url).replace(/^https:\/\//i, "http://");
+    const httpsForm = String(url).replace(/^http:\/\//i, "https://");
+    const entry = wkOnt[url] || wkOnt[httpForm] || wkOnt[httpsForm];
+    if (entry && entry.name) return entry.name;
     for (const [ontUrl, meta] of Object.entries(wkOnt)) {
       try {
         const m = meta as any;

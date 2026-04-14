@@ -41,6 +41,7 @@ import { Label } from '../ui/label';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import { WELL_KNOWN_PREFIXES } from '@/utils/wellKnownOntologies';
+import { instantiateWorkflowOnCanvas } from '@/utils/workflowInstantiator';
 
 function extractNamespace(iri: string): string {
   const hash = iri.lastIndexOf('#');
@@ -355,11 +356,12 @@ export default function ReactodiaCanvas() {
   const loadAdditionalOntologies = useOntologyStore(s => s.loadAdditionalOntologies);
 
   // prefixes: prefix -> namespace URI (for PrefixContext consumers)
+  // NamespaceEntry uses the field name `uri`, not `namespace`
   const prefixes = React.useMemo(
     () => Object.fromEntries(
       namespaces
-        .filter((n) => !!n.namespace)
-        .map((n) => [n.prefix, n.namespace])
+        .filter((n) => !!(n as any).uri || !!(n as any).namespace)
+        .map((n) => [n.prefix, (n as any).uri ?? (n as any).namespace])
     ),
     [namespaces]
   );
@@ -1016,6 +1018,8 @@ export default function ReactodiaCanvas() {
         return Reactodia.defaultGetDroppedOnCanvasItems(e);
       }
 
+      // Workflow template drag from sidebar → handled by native onDrop on the container div
+
       // Type URI drag from class tree → create a new instance of that type
       const uriListRaw = e.sourceEvent.dataTransfer?.getData('text/uri-list');
       if (uriListRaw) {
@@ -1078,8 +1082,45 @@ export default function ReactodiaCanvas() {
     [],
   );
 
+  // Native document-level drag listeners for workflow template drops.
+  // React synthetic drag events don't fire reliably when Reactodia owns the canvas.
+  React.useEffect(() => {
+    const onDragOver = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes('application/vg-workflow-template')) {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      }
+    };
+    const onDrop = (e: DragEvent) => {
+      const iri = e.dataTransfer?.getData('application/vg-workflow-template');
+      if (!iri) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const model = modelRef.current;
+      const ctx = contextRef.current;
+      if (!model || !ctx) return;
+      const canvas = ctx.view.findAnyCanvas();
+      const pane = canvas?.metrics.clientToScrollablePaneCoords(e.clientX, e.clientY);
+      const canvasPos = (canvas && pane)
+        ? canvas.metrics.scrollablePaneToPaperCoords(pane.x, pane.y)
+        : { x: e.clientX, y: e.clientY };
+      instantiateWorkflowOnCanvas(iri, canvasPos, model, ctx.editor, ctx).catch(err => {
+        console.error('[ReactodiaCanvas] Workflow instantiation failed', err);
+        toast.error('Failed to instantiate workflow');
+      });
+    };
+    document.addEventListener('dragover', onDragOver);
+    document.addEventListener('drop', onDrop);
+    return () => {
+      document.removeEventListener('dragover', onDragOver);
+      document.removeEventListener('drop', onDrop);
+    };
+  }, []);
+
   return (
-    <div style={{ width: '100vw', height: '100vh', position: 'relative', background: 'var(--canvas-bg)' }}>
+    <div
+      style={{ width: '100vw', height: '100vh', position: 'relative', background: 'var(--canvas-bg)' }}
+    >
       {/* Hidden file input for RDF file loading */}
       <input
         ref={fileInputRef}

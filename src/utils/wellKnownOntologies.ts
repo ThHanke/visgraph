@@ -29,6 +29,26 @@ export const WELL_KNOWN_PREFIXES = [
   { prefix: "xsd", url: "http://www.w3.org/2001/XMLSchema#", name: "XSD", isCore: true },
   { prefix: "skos", url: "http://www.w3.org/2004/02/skos/core#", name: "SKOS" },
   {
+    prefix: "prov",
+    url: "http://www.w3.org/ns/prov#",
+    name: "PROV-O - The PROV Ontology",
+  },
+  {
+    prefix: "p-plan",
+    url: "http://purl.org/net/p-plan#",
+    name: "P-Plan - The P-Plan Ontology",
+  },
+  {
+    prefix: "qudt",
+    url: "http://qudt.org/schema/qudt/",
+    name: "QUDT - Quantities, Units, Dimensions and Types",
+  },
+  {
+    prefix: "unit",
+    url: "http://qudt.org/vocab/unit/",
+    name: "QUDT Units Vocabulary",
+  },
+  {
     prefix: "dcterms",
     url: "http://purl.org/dc/terms/",
     name: "Dublin Core Terms",

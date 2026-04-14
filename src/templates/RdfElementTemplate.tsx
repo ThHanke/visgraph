@@ -1,5 +1,6 @@
 import React from 'react';
 import * as Reactodia from '@reactodia/workspace';
+import { ProvActivityTemplate } from './ProvActivityTemplate';
 import { useOntologyStore } from '@/stores/ontologyStore';
 import { PrefixContext } from '@/providers/PrefixContext';
 import { prefixShorten } from '@/providers/prefixShorten';
@@ -93,11 +94,14 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
   const label = getLabel(data, prefixes, registry);
   const nsColor = getNamespaceColor(data.id, registry);
 
-  // Type labels — prefer model-loaded label, fall back to prefix-shortened IRI
+  // Type labels — prefer prefix-shortened IRI (e.g. owl:NamedIndividual), fall back to
+  // model-loaded label, then bare local name
   const typeLabels = data.types.map(typeIri => {
+    const shortened = prefixShorten(typeIri, prefixes);
+    // prefixShorten returns the full IRI unchanged when no prefix matches
+    if (shortened !== typeIri) return shortened;
     const typeEl = model.getElementType(typeIri);
-    const fromModel = typeEl?.data?.label?.[0]?.value;
-    return fromModel ?? prefixShorten(typeIri, prefixes);
+    return typeEl?.data?.label?.[0]?.value ?? shortened;
   });
 
   // Icon letter from label
@@ -327,12 +331,18 @@ export const RdfElementTemplate: Reactodia.ElementTemplate = {
   },
 };
 
+const PROV_ACTIVITY_IRI = 'http://www.w3.org/ns/prov#Activity';
+
 export function rdfElementTemplateResolver(
   _types: readonly string[],
   element: Reactodia.Element
 ): Reactodia.ElementTemplate {
   if (element instanceof Reactodia.EntityGroup) {
     return Reactodia.StandardTemplate;
+  }
+  if (element instanceof Reactodia.EntityElement &&
+      element.data.types.includes(PROV_ACTIVITY_IRI as Reactodia.ElementTypeIri)) {
+    return ProvActivityTemplate;
   }
   return RdfElementTemplate;
 }

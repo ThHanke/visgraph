@@ -3,10 +3,9 @@
  * Creates workflow run instances from templates in the catalog
  */
 
+import * as Reactodia from '@reactodia/workspace';
 import { rdfManager } from "./rdfManager";
-import type { NodeData, LinkData } from "../types/canvas";
 import { DataFactory } from "n3";
-import { useOntologyStore } from "../stores/ontologyStore";
 
 const { namedNode, literal } = DataFactory;
 
@@ -39,12 +38,6 @@ export interface TemplateStep {
   label: string;
 }
 
-export interface WorkflowInstance {
-  planNode: NodeData;
-  variableNodes: NodeData[];
-  stepNodes: NodeData[];
-  edges: LinkData[];
-}
 
 /**
  * Query available workflow templates from the catalog
@@ -235,79 +228,7 @@ function getDefaultNamespace(): string {
 }
 
 /**
- * Ensure namespaces from the template IRIs are registered
- */
-async function ensureTemplateNamespaces(template: WorkflowTemplate): Promise<void> {
-  try {
-    // Extract namespaces from template IRIs
-    const namespaces = new Set<string>();
-    
-    // Add template plan namespace
-    const planNs = extractNamespace(template.iri);
-    if (planNs) namespaces.add(planNs);
-    
-    // Add step namespaces
-    for (const step of template.steps) {
-      const stepNs = extractNamespace(step.iri);
-      if (stepNs) namespaces.add(stepNs);
-    }
-    
-    // Add variable namespaces
-    for (const v of [...template.inputVars, ...template.outputVars]) {
-      const varNs = extractNamespace(v.iri);
-      if (varNs) namespaces.add(varNs);
-    }
-    
-    // Register namespaces if not already present
-    const mgr = rdfManager;
-    if (mgr && typeof (mgr as any).getNamespaces === 'function') {
-      const existing: Array<{ prefix: string; uri: string }> = (mgr as any).getNamespaces() || [];
-      const toAdd: Record<string, string> = {};
-
-      for (const ns of namespaces) {
-        // Check if this namespace is already registered
-        const alreadyRegistered = existing.some((e: any) => e.uri === ns);
-        if (!alreadyRegistered) {
-          // Generate a prefix (use the last segment of the namespace)
-          const prefix = generatePrefixForNamespace(ns);
-          toAdd[prefix] = ns;
-        }
-      }
-
-      if (Object.keys(toAdd).length > 0 && typeof (mgr as any).setNamespaces === 'function') {
-        (mgr as any).setNamespaces(toAdd, { replace: false });
-        console.log('[WorkflowInstantiator] Registered namespaces:', toAdd);
-      }
-    }
-  } catch (error) {
-    console.warn('[WorkflowInstantiator] Failed to ensure namespaces:', error);
-  }
-}
-
-/**
- * Extract namespace from an IRI
- */
-function extractNamespace(iri: string): string {
-  const hashIndex = iri.lastIndexOf('#');
-  const slashIndex = iri.lastIndexOf('/');
-  const splitIndex = Math.max(hashIndex, slashIndex);
-  return splitIndex >= 0 ? iri.substring(0, splitIndex + 1) : "";
-}
-
-/**
- * Generate a prefix for a namespace
- */
-function generatePrefixForNamespace(namespace: string): string {
-  // Try to extract a meaningful prefix from the namespace
-  const withoutProtocol = namespace.replace(/^https?:\/\//, '');
-  const parts = withoutProtocol.split(/[\/\#]/);
-  const lastPart = parts[parts.length - 2] || parts[parts.length - 1] || 'ns';
-  return lastPart.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 8);
-}
-
-/**
  * Query resources and agents that a Step declares via prov:used and prov:wasAssociatedWith
- * These will be inherited by the Activity during instantiation
  */
 async function queryStepResources(stepIri: string): Promise<{
   usedResources: string[];
@@ -317,42 +238,24 @@ async function queryStepResources(stepIri: string): Promise<{
   let associatedAgent: string | null = null;
 
   try {
-    // Query prov:used resources from the Step
     const usedQuads = await rdfManager.fetchQuadsPage({
       graphName: WORKFLOWS_GRAPH,
-      filter: {
-        subject: stepIri,
-        predicate: `${PROV_NS}used`,
-      },
+      filter: { subject: stepIri, predicate: `${PROV_NS}used` },
       limit: 50,
     });
-
     for (const quad of usedQuads.items || []) {
       const resourceIri = (quad as any).object;
-      if (resourceIri && typeof resourceIri === 'string') {
-        usedResources.push(resourceIri);
-      }
+      if (resourceIri && typeof resourceIri === 'string') usedResources.push(resourceIri);
     }
 
-    // Query prov:wasAssociatedWith agent from the Step
     const agentQuads = await rdfManager.fetchQuadsPage({
       graphName: WORKFLOWS_GRAPH,
-      filter: {
-        subject: stepIri,
-        predicate: `${PROV_NS}wasAssociatedWith`,
-      },
+      filter: { subject: stepIri, predicate: `${PROV_NS}wasAssociatedWith` },
       limit: 1,
     });
-
     if (agentQuads.items && agentQuads.items.length > 0) {
       associatedAgent = (agentQuads.items[0] as any).object;
     }
-
-    console.log('[WorkflowInstantiator] Queried Step resources', {
-      stepIri,
-      usedResources,
-      associatedAgent,
-    });
 
     return { usedResources, associatedAgent };
   } catch (error) {
@@ -361,380 +264,344 @@ async function queryStepResources(stepIri: string): Promise<{
   }
 }
 
-/**
- * Query variable data to create input/output entities
- */
-async function queryVariableDetails(varIri: string): Promise<{
-  label: string;
-  expectedType?: string;
-}> {
-  const labelQuads = await rdfManager.fetchQuadsPage({
-    graphName: WORKFLOWS_GRAPH,
-    filter: {
-      subject: varIri,
-      predicate: `${RDFS_NS}label`,
-    },
-  });
-  const label = (labelQuads.items?.[0] as any)?.object || extractLocalName(varIri);
-
-  const typeQuads = await rdfManager.fetchQuadsPage({
-    graphName: WORKFLOWS_GRAPH,
-    filter: {
-      subject: varIri,
-      predicate: `${SPW_NS}expectedType`,
-    },
-  });
-  const expectedType = (typeQuads.items?.[0] as any)?.object;
-
-  return { label, expectedType };
-}
 
 /**
- * Instantiate a workflow template at the given position
- * Creates a workflow RUN (prov:Activity) with inherited resources following Activity Generation Rules
- * 
- * Activity Generation Rules (from PyodideSemanticWorkflow README):
- * ================================================================
- * 
- * Rule 1: Link to Plan/Step
- *   ?activity prov:hadPlan ?plan ;
- *             p-plan:correspondsToStep ?step .
- * 
- * Rule 2: Inherit Step Resources (KEY PATTERN!)
- *   Template declares:  ?step prov:used ?code, ?requirements .
- *   Activity inherits:  ?activity prov:used ?code, ?requirements .
- *   This is why we put prov:used on the Step - it declares what gets inherited!
- * 
- * Rule 3: Add Concrete Data (User-Driven)
- *   User manually creates QuantityValue nodes and connects them to Activity.
- *   ActivityNode.tsx queries prov:used connections during execution.
- *   NOT handled during instantiation - handled by user via canvas + execution.
- * 
- * Rule 4: Associate with Agent
- *   Inherit agent from Step: ?activity prov:wasAssociatedWith ?agent .
- * 
- * Rule 5: Generate Output (Execution-Time)
- *   Output entities are created DURING execution, not at instantiation.
- *   ActivityNode.tsx generates output with prov:wasGeneratedBy.
- * 
- * What this function creates:
- * - Activity nodes (prov:Activity) 
- * - Resource nodes (Code, Requirements from Step.prov:used)
- * - Agent nodes (prov:Agent from Step.prov:wasAssociatedWith)
- * - Plan node (prov:Plan for visualization)
- * - Edges connecting these nodes
- * 
- * What this function does NOT create:
- * - Input entity nodes (user creates QuantityValues manually)
- * - Output entity nodes (generated during execution)
- * - prov:used edges to input entities (created when user draws connections)
- * 
- * @param templateIri - IRI of the workflow template (p-plan:Plan) from catalog
- * @param dropPosition - Canvas position where workflow should be instantiated
- * @returns WorkflowInstance containing nodes and edges to add to canvas
+ * Instantiate a workflow template onto the Reactodia canvas.
+ *
+ * Template entities (Plan, Steps, Resources, Agent) keep their original IRIs and are
+ * copied from urn:vg:workflows into urn:vg:data.
+ *
+ * Run instances (Activity, input variable instances, output variable instances) receive
+ * new IRIs in the default (empty-prefix) namespace.
  */
-export async function instantiateWorkflow(
+export async function instantiateWorkflowOnCanvas(
   templateIri: string,
-  dropPosition: { x: number; y: number },
-): Promise<WorkflowInstance> {
-  // Get template data
-  const templates = await getWorkflowTemplates();
-  const template = templates.find((t) => t.iri === templateIri);
-  
-  if (!template) {
-    throw new Error(`Template not found: ${templateIri}`);
-  }
-
-  // Create a readable run ID based on template name
-  const baseNamespace = getDefaultNamespace();
-  const templateName = template.label.replace(/\s+/g, ''); // Remove spaces: "Sum QUDT Quantities" -> "SumQUDTQuantities"
-  const timestamp = Date.now();
-  const runId = `${templateName}Run_${timestamp}`;
-  const runIri = `${baseNamespace}${runId}`;
-
-  console.log('[WorkflowInstantiator] Creating workflow run', {
-    template: template.label,
-    runIri,
-    baseNamespace,
-    runId,
-  });
-
+  position: { x: number; y: number },
+  model: Reactodia.DataDiagramModel,
+  editor: Reactodia.EditorController,
+  ctx: Reactodia.WorkspaceContext,
+): Promise<void> {
   const triplesToAdd: Array<{ subject: any; predicate: any; object: any }> = [];
 
-  // Create execution plan node
-  const planIri = `${runIri}/plan`;
-  const planLabel = `${template.label} Plan`;
-  
-  triplesToAdd.push(
-    { subject: namedNode(planIri), predicate: namedNode(`${RDF_NS}type`), object: namedNode(`${PPLAN_NS}Plan`) },
-    { subject: namedNode(planIri), predicate: namedNode(`${RDF_NS}type`), object: namedNode(`${PROV_NS}Plan`) },
-    { subject: namedNode(planIri), predicate: namedNode(`${RDFS_NS}label`), object: literal(planLabel) },
-  );
-
-  // Create run activities (prov:Activity) for each step in the template
-  const stepNodes: NodeData[] = [];
-  const resourceNodes: NodeData[] = [];
-  const entityNodes: NodeData[] = [];
-  const stepSpacing = 120;
-  const stepStartY = dropPosition.y - ((template.steps.length - 1) * stepSpacing) / 2;
-  
-  // Track resource IRIs to avoid duplicate nodes
-  const resourceIriSet = new Set<string>();
-  const resourceNodeMap = new Map<string, NodeData>();
-
-  for (let i = 0; i < template.steps.length; i++) {
-    const stepTemplate = template.steps[i];
-    const stepRunIri = template.steps.length === 1 ? runIri : `${runIri}/step-${i}`;
-    const runLabel = `${template.label} Run`;
-
-    // Create prov:Activity for the run (Rule 1: Link to Plan/Step)
-    triplesToAdd.push(
-      { subject: namedNode(stepRunIri), predicate: namedNode(`${RDF_NS}type`), object: namedNode(`${PROV_NS}Activity`) },
-      { subject: namedNode(stepRunIri), predicate: namedNode(`${RDFS_NS}label`), object: literal(runLabel) },
-      { subject: namedNode(stepRunIri), predicate: namedNode(`${PPLAN_NS}correspondsToStep`), object: namedNode(stepTemplate.iri) },
-      { subject: namedNode(stepRunIri), predicate: namedNode(`${PROV_NS}hadPlan`), object: namedNode(planIri) },
-    );
-
-    // Query and inherit resources from the template Step
-    const { usedResources, associatedAgent } = await queryStepResources(stepTemplate.iri);
-
-    // Inherit prov:used resources (Rule 2: Code, Requirements, etc.)
-    for (const resourceIri of usedResources) {
-      triplesToAdd.push({
-        subject: namedNode(stepRunIri),
-        predicate: namedNode(`${PROV_NS}used`),
-        object: namedNode(resourceIri),
-      });
-
-      // Create node for this resource if not already created
-      if (!resourceIriSet.has(resourceIri)) {
-        resourceIriSet.add(resourceIri);
-        
-        // Query label from the template graph
-        const labelQuads = await rdfManager.fetchQuadsPage({
-          graphName: WORKFLOWS_GRAPH,
-          filter: {
-            subject: resourceIri,
-            predicate: `${RDFS_NS}label`,
-          },
-        });
-        const resourceLabel = (labelQuads.items?.[0] as any)?.object || extractLocalName(resourceIri);
-
-        // Query rdf:type from the template graph
-        const typeQuads = await rdfManager.fetchQuadsPage({
-          graphName: WORKFLOWS_GRAPH,
-          filter: {
-            subject: resourceIri,
-            predicate: `${RDF_NS}type`,
-          },
-          limit: 10,
-        });
-        const types = (typeQuads.items || []).map((q: any) => q.object).filter(Boolean);
-
-        const resourceNode: NodeData = {
-          key: resourceIri,
-          iri: resourceIri,
-          label: resourceLabel,
-          displayPrefixed: resourceLabel,
-          rdfTypes: types.length > 0 ? types : ['Resource'],
-          literalProperties: [],
-          annotationProperties: [],
-          visible: true,
-          position: {
-            x: dropPosition.x - 250,  // Position resources to the left of activity
-            y: dropPosition.y - 100 + resourceNodes.length * 80,
-          },
-        };
-        
-        resourceNodes.push(resourceNode);
-        resourceNodeMap.set(resourceIri, resourceNode);
-      }
-    }
-
-    // Rule 4: Associate with Agent (inherit from Step)
-    if (associatedAgent) {
-      triplesToAdd.push({
-        subject: namedNode(stepRunIri),
-        predicate: namedNode(`${PROV_NS}wasAssociatedWith`),
-        object: namedNode(associatedAgent),
-      });
-
-      // Create node for the agent if not already created
-      if (!resourceIriSet.has(associatedAgent)) {
-        resourceIriSet.add(associatedAgent);
-        
-        // Query label from the template graph
-        const labelQuads = await rdfManager.fetchQuadsPage({
-          graphName: WORKFLOWS_GRAPH,
-          filter: {
-            subject: associatedAgent,
-            predicate: `${RDFS_NS}label`,
-          },
-        });
-        const agentLabel = (labelQuads.items?.[0] as any)?.object || extractLocalName(associatedAgent);
-
-        // Query rdf:type
-        const typeQuads = await rdfManager.fetchQuadsPage({
-          graphName: WORKFLOWS_GRAPH,
-          filter: {
-            subject: associatedAgent,
-            predicate: `${RDF_NS}type`,
-          },
-          limit: 10,
-        });
-        const types = (typeQuads.items || []).map((q: any) => q.object).filter(Boolean);
-
-        const agentNode: NodeData = {
-          key: associatedAgent,
-          iri: associatedAgent,
-          label: agentLabel,
-          displayPrefixed: agentLabel,
-          rdfTypes: types.length > 0 ? types : [`${PROV_NS}Agent`],
-          literalProperties: [],
-          annotationProperties: [],
-          visible: true,
-          position: {
-            x: dropPosition.x - 250,
-            y: dropPosition.y + 150,
-          },
-        };
-        
-        resourceNodes.push(agentNode);
-        resourceNodeMap.set(associatedAgent, agentNode);
-      }
-    }
-
-    // NOTE: Input/Output entities are NOT created during instantiation.
-    // Following Activity Generation Rules from PyodideSemanticWorkflow:
-    // - Users manually create QuantityValue nodes and connect them to Activities
-    // - ActivityNode.tsx handles reading connected inputs during execution (Rule 3)
-    // - Output entities are generated during execution, not at instantiation (Rule 5)
-
-    stepNodes.push({
-      key: stepRunIri,
-      iri: stepRunIri,
-      label: runLabel,
-      displayPrefixed: runLabel,
-      rdfTypes: [`${PROV_NS}Activity`],
-      literalProperties: [],
-      annotationProperties: [],
-      visible: true,
-      position: {
-        x: dropPosition.x,
-        y: stepStartY + i * stepSpacing,
-      },
+  /** Copy ALL subject-quads for an IRI from workflows graph into data graph triples buffer. */
+  async function copyEntityToData(iri: string): Promise<void> {
+    const quads = await rdfManager.fetchQuadsPage({
+      graphName: WORKFLOWS_GRAPH,
+      filter: { subject: iri },
+      limit: 100,
     });
+    for (const q of quads.items ?? []) {
+      const quad = q as any;
+      if (!quad.predicate || !quad.object) continue;
+      const obj = typeof quad.object === 'string' ? namedNode(quad.object) : quad.object;
+      triplesToAdd.push({ subject: namedNode(iri), predicate: namedNode(quad.predicate), object: obj });
+    }
   }
 
-  // Ensure namespaces from the template are registered
-  await ensureTemplateNamespaces(template);
-
-  // Write triples to data graph
-  console.log('[WorkflowInstantiator] Writing triples to data graph', {
-    tripleCount: triplesToAdd.length,
-    graph: DATA_GRAPH,
+  // 1. Template label
+  const planLabelQuads = await rdfManager.fetchQuadsPage({
+    graphName: WORKFLOWS_GRAPH,
+    filter: { subject: templateIri, predicate: `${RDFS_NS}label` },
   });
-  
-  await rdfManager.applyBatch({ adds: triplesToAdd, removes: [] }, DATA_GRAPH);
+  const templateLabel = (planLabelQuads.items?.[0] as any)?.object || extractLocalName(templateIri);
 
-  // Create the plan node for visualization
-  const planNode: NodeData = {
-    key: planIri,
-    iri: planIri,
-    label: planLabel,
-    displayPrefixed: planLabel,
-    rdfTypes: [`${PPLAN_NS}Plan`, `${PROV_NS}Plan`],
-    literalProperties: [],
-    annotationProperties: [],
-    visible: true,
-    position: {
-      x: dropPosition.x + 250,  // Position plan to the right of activity
-      y: dropPosition.y,
-    },
-  };
+  // 2. Enumerate steps
+  const stepQuads = await rdfManager.fetchQuadsPage({
+    graphName: WORKFLOWS_GRAPH,
+    filter: { predicate: `${PPLAN_NS}isStepOfPlan`, object: templateIri },
+    limit: 100,
+  });
+  const stepIris: string[] = (stepQuads.items || []).map((q: any) => q.subject).filter(Boolean);
+  if (stepIris.length === 0) throw new Error(`No steps found for template ${templateIri}`);
 
-  // Create edges for all relationships
-  const edges: LinkData[] = [];
-  
-  // Edges for prov:hadPlan connections (Activity -> Plan)
-  for (const stepNode of stepNodes) {
-    edges.push({
-      from: stepNode.iri,
-      to: planIri,
-      propertyType: `${PROV_NS}hadPlan`,
-      propertyUri: `${PROV_NS}hadPlan`,
-      label: "hadPlan",
-    });
-  }
+  // 3. Build step→inputVars / step→outputVars maps
+  const stepInputVars = new Map<string, string[]>();
+  const stepOutputVars = new Map<string, string[]>();
+  const allOutputVarIris = new Set<string>();
+  const allInputVarIris = new Set<string>();
 
-  // Edges for prov:used connections (Activity -> Resource/Entity)
-  for (const stepNode of stepNodes) {
-    // Get all prov:used objects for this activity
-    const usedQuads = await rdfManager.fetchQuadsPage({
-      graphName: DATA_GRAPH,
-      filter: {
-        subject: stepNode.iri,
-        predicate: `${PROV_NS}used`,
-      },
+  for (const stepIri of stepIris) {
+    const inVarQuads = await rdfManager.fetchQuadsPage({
+      graphName: WORKFLOWS_GRAPH,
+      filter: { predicate: `${PPLAN_NS}isInputVarOf`, object: stepIri },
       limit: 50,
     });
+    const inVars = (inVarQuads.items || []).map((q: any) => q.subject).filter(Boolean);
+    stepInputVars.set(stepIri, inVars);
+    inVars.forEach((v: string) => allInputVarIris.add(v));
 
-    for (const quad of usedQuads.items || []) {
-      const usedIri = (quad as any).object;
-      if (usedIri) {
-        edges.push({
-          from: stepNode.iri,
-          to: usedIri,
-          propertyType: `${PROV_NS}used`,
-          propertyUri: `${PROV_NS}used`,
-          label: "used",
-        });
-      }
-    }
+    const outVarQuads = await rdfManager.fetchQuadsPage({
+      graphName: WORKFLOWS_GRAPH,
+      filter: { predicate: `${PPLAN_NS}isOutputVarOf`, object: stepIri },
+      limit: 50,
+    });
+    const outVars = (outVarQuads.items || []).map((q: any) => q.subject).filter(Boolean);
+    stepOutputVars.set(stepIri, outVars);
+    outVars.forEach((v: string) => allOutputVarIris.add(v));
   }
 
-  // Edges for prov:wasAssociatedWith connections (Activity -> Agent)
-  for (const stepNode of stepNodes) {
-    const agentQuads = await rdfManager.fetchQuadsPage({
-      graphName: DATA_GRAPH,
-      filter: {
-        subject: stepNode.iri,
-        predicate: `${PROV_NS}wasAssociatedWith`,
-      },
+  // 4. Find entry step and last step
+  const entryStepIri = stepIris.find(s =>
+    (stepInputVars.get(s) ?? []).every(v => !allOutputVarIris.has(v))
+  ) ?? stepIris[0];
+  const lastStepIri = stepIris.find(s =>
+    (stepOutputVars.get(s) ?? []).every(v => !allInputVarIris.has(v))
+  ) ?? stepIris[stepIris.length - 1];
+
+  // 5. Entry step resources and agent
+  const { usedResources, associatedAgent } = await queryStepResources(entryStepIri);
+
+  // 6. External input vars and last-step output vars
+  const externalInputVarIris = (stepInputVars.get(entryStepIri) ?? []).filter(v => !allOutputVarIris.has(v));
+  const lastStepOutputVarIris = stepOutputVars.get(lastStepIri) ?? [];
+
+  // 7. Generate run IRIs with default namespace (Activity + var instances)
+  const defaultNs = getDefaultNamespace();
+  const templateName = templateLabel.replace(/\s+/g, '');
+  const timestamp = Date.now();
+  const activityIri = `${defaultNs}${templateName}Run_${timestamp}`;
+  const activityLabel = `${templateLabel} Run`;
+
+  const inputVarInstanceIris = externalInputVarIris.map(
+    varIri => `${defaultNs}${extractLocalName(varIri)}_${timestamp}`
+  );
+  const outputVarInstanceIris = lastStepOutputVarIris.map(
+    varIri => `${defaultNs}${extractLocalName(varIri)}_${timestamp}`
+  );
+
+  // 8. Copy ALL template entities to data graph (keep original IRIs)
+  await copyEntityToData(templateIri); // Plan
+  for (const stepIri of stepIris) await copyEntityToData(stepIri);
+  for (const resourceIri of usedResources) await copyEntityToData(resourceIri);
+  if (associatedAgent) await copyEntityToData(associatedAgent);
+  // Template variable schemas (original IRIs)
+  for (const varIri of [...allInputVarIris, ...allOutputVarIris]) {
+    await copyEntityToData(varIri);
+  }
+
+  // Predicates that are template-structural — must NOT be copied to run instances
+  const TEMPLATE_ONLY_PREDICATES = new Set([
+    `${PPLAN_NS}isInputVarOf`,
+    `${PPLAN_NS}isOutputVarOf`,
+    `${PPLAN_NS}isVariableOfPlan`,
+    `${PPLAN_NS}correspondsToVariable`,
+    `${PPLAN_NS}isStepOfPlan`,
+  ]);
+
+  // rdf:type values that belong only at the template level — skip when copying to run instances
+  const TEMPLATE_ONLY_TYPES = new Set([
+    `${PPLAN_NS}Variable`,
+    `${PPLAN_NS}Step`,
+    `${PPLAN_NS}Plan`,
+  ]);
+
+  /**
+   * Copy only metadata from a template variable to a run-level p-plan:Entity instance.
+   *
+   * Skips:
+   *   - Template-structural predicates (isInputVarOf, isVariableOfPlan, …)
+   *   - Template-level rdf:type values (p-plan:Variable, p-plan:Step, p-plan:Plan)
+   *
+   * Keeps:
+   *   - rdfs:label, domain-specific types (e.g. qudt:QuantityValue if present),
+   *     schema/constraint properties (spw:expectedType, spw:required, …)
+   *
+   * Adds:
+   *   - rdf:type p-plan:Entity  (run-level marker)
+   *   - rdf:type prov:Entity
+   *   - p-plan:correspondsToVariable → templateVarIri  (run ↔ template bridge)
+   */
+  async function copyVarMetaToInstance(templateVarIri: string, instanceIri: string): Promise<void> {
+    const varQuads = await rdfManager.fetchQuadsPage({
+      graphName: WORKFLOWS_GRAPH, filter: { subject: templateVarIri }, limit: 50,
+    });
+    for (const q of varQuads.items ?? []) {
+      const quad = q as any;
+      if (!quad.predicate || !quad.object) continue;
+      if (TEMPLATE_ONLY_PREDICATES.has(quad.predicate)) continue;
+      // For rdf:type, skip template-level types but keep domain types
+      if (quad.predicate === `${RDF_NS}type` && TEMPLATE_ONLY_TYPES.has(quad.object)) continue;
+      const obj = typeof quad.object === 'string' ? namedNode(quad.object) : quad.object;
+      triplesToAdd.push({ subject: namedNode(instanceIri), predicate: namedNode(quad.predicate), object: obj });
+    }
+    // Promote spw:expectedType → rdf:type on the instance so it carries the domain type
+    // specified in the plan (e.g. qudt:QuantityValue, prov:Collection, …)
+    const expectedTypeQuads = await rdfManager.fetchQuadsPage({
+      graphName: WORKFLOWS_GRAPH,
+      filter: { subject: templateVarIri, predicate: `${SPW_NS}expectedType` },
       limit: 10,
     });
-
-    for (const quad of agentQuads.items || []) {
-      const agentIri = (quad as any).object;
-      if (agentIri) {
-        edges.push({
-          from: stepNode.iri,
-          to: agentIri,
-          propertyType: `${PROV_NS}wasAssociatedWith`,
-          propertyUri: `${PROV_NS}wasAssociatedWith`,
-          label: "wasAssociatedWith",
+    for (const q of expectedTypeQuads.items ?? []) {
+      const typeIri = (q as any).object;
+      if (typeIri && typeof typeIri === 'string') {
+        triplesToAdd.push({
+          subject: namedNode(instanceIri),
+          predicate: namedNode(`${RDF_NS}type`),
+          object: namedNode(typeIri),
         });
       }
     }
+
+    // Run-level typing — p-plan:Entity subclasses prov:Entity so one triple suffices
+    triplesToAdd.push(
+      { subject: namedNode(instanceIri), predicate: namedNode(`${RDF_NS}type`), object: namedNode(`${PPLAN_NS}Entity`) },
+    );
+    // Run ↔ template bridge
+    triplesToAdd.push({
+      subject: namedNode(instanceIri),
+      predicate: namedNode(`${PPLAN_NS}correspondsToVariable`),
+      object: namedNode(templateVarIri),
+    });
   }
 
-  // NOTE: Entity edges are NOT created during instantiation.
-  // Input entities: User manually connects QuantityValues to Activity via canvas
-  // Output entities: Created during Activity execution, not at instantiation
+  // 9. Activity triples
+  triplesToAdd.push(
+    { subject: namedNode(activityIri), predicate: namedNode(`${RDF_NS}type`),                object: namedNode(`${PROV_NS}Activity`) },
+    // p-plan:Activity subclass marks this as a run-level activity
+    { subject: namedNode(activityIri), predicate: namedNode(`${RDF_NS}type`),                object: namedNode(`${PPLAN_NS}Activity`) },
+    { subject: namedNode(activityIri), predicate: namedNode(`${RDFS_NS}label`),              object: literal(activityLabel) },
+    { subject: namedNode(activityIri), predicate: namedNode(`${PPLAN_NS}correspondsToStep`), object: namedNode(entryStepIri) },
+    { subject: namedNode(activityIri), predicate: namedNode(`${PROV_NS}hadPlan`),            object: namedNode(templateIri) },
+  );
+  // Code/requirements resources (template IRIs are fine here — same as prov:used spw:SumCode)
+  for (const resourceIri of usedResources) {
+    triplesToAdd.push({ subject: namedNode(activityIri), predicate: namedNode(`${PROV_NS}used`), object: namedNode(resourceIri) });
+  }
+  if (associatedAgent) {
+    triplesToAdd.push({ subject: namedNode(activityIri), predicate: namedNode(`${PROV_NS}wasAssociatedWith`), object: namedNode(associatedAgent) });
+  }
 
-  console.log('[WorkflowInstantiator] Created workflow instance', {
-    planNode: 1,
-    activityNodes: stepNodes.length,
-    resourceNodes: resourceNodes.length,
-    edges: edges.length,
+  // Helper: get var label from workflows graph
+  async function getVarLabel(varIri: string): Promise<string> {
+    const lq = await rdfManager.fetchQuadsPage({
+      graphName: WORKFLOWS_GRAPH,
+      filter: { subject: varIri, predicate: `${RDFS_NS}label` },
+    });
+    return (lq.items?.[0] as any)?.object ?? extractLocalName(varIri);
+  }
+
+  // 10. Input var instances: metadata from template var + p-plan:Entity + correspondsToVariable
+  //     Activity prov:used each instance (not the template variable)
+  for (let i = 0; i < externalInputVarIris.length; i++) {
+    const templateVarIri = externalInputVarIris[i];
+    const instanceIri = inputVarInstanceIris[i];
+    await copyVarMetaToInstance(templateVarIri, instanceIri);
+    triplesToAdd.push({
+      subject: namedNode(activityIri),
+      predicate: namedNode(`${PROV_NS}used`),
+      object: namedNode(instanceIri),
+    });
+  }
+
+  // 11. Output var instances: metadata from template var + p-plan:Entity + correspondsToVariable
+  //     Instance prov:wasGeneratedBy activity
+  for (let i = 0; i < lastStepOutputVarIris.length; i++) {
+    const templateVarIri = lastStepOutputVarIris[i];
+    const instanceIri = outputVarInstanceIris[i];
+    await copyVarMetaToInstance(templateVarIri, instanceIri);
+    triplesToAdd.push({
+      subject: namedNode(instanceIri),
+      predicate: namedNode(`${PROV_NS}wasGeneratedBy`),
+      object: namedNode(activityIri),
+    });
+  }
+
+  // 12. Helper: get label + types for a node from workflows graph
+  async function getNodeMeta(iri: string): Promise<{ label: string; types: string[] }> {
+    const lq = await rdfManager.fetchQuadsPage({
+      graphName: WORKFLOWS_GRAPH, filter: { subject: iri, predicate: `${RDFS_NS}label` },
+    });
+    const label = (lq.items?.[0] as any)?.object ?? extractLocalName(iri);
+    const tq = await rdfManager.fetchQuadsPage({
+      graphName: WORKFLOWS_GRAPH, filter: { subject: iri, predicate: `${RDF_NS}type` }, limit: 10,
+    });
+    const types = (tq.items || []).map((q: any) => q.object).filter(Boolean);
+    return { label, types };
+  }
+
+  // Place all elements at the drop position initially — layout will reposition them
+  const allNewElements = new Set<Reactodia.Element>();
+
+  function placeEl(id: string, types: string[], label: string): Reactodia.EntityElement {
+    const el = model.createElement({
+      id: id as Reactodia.ElementIri,
+      types: types as Reactodia.ElementTypeIri[],
+      properties: { [`${RDFS_NS}label`]: [{ termType: 'Literal', value: label, language: '' } as any] },
+    });
+    el.setPosition(position);
+    allNewElements.add(el);
+    return el;
+  }
+
+  // Activity
+  placeEl(activityIri, [`${PROV_NS}Activity`, `${PPLAN_NS}Activity`], activityLabel);
+
+  // Group members: Plan + Steps + Resources + Agent + template Variables
+  const groupEls: Reactodia.EntityElement[] = [];
+
+  const planMeta = await getNodeMeta(templateIri);
+  groupEls.push(placeEl(
+    templateIri,
+    planMeta.types.length > 0 ? planMeta.types : [`${PPLAN_NS}Plan`],
+    planMeta.label,
+  ));
+
+  for (const stepIri of stepIris) {
+    const meta = await getNodeMeta(stepIri);
+    groupEls.push(placeEl(stepIri, meta.types.length > 0 ? meta.types : [`${PPLAN_NS}Step`], meta.label));
+  }
+
+  for (const resourceIri of usedResources) {
+    const meta = await getNodeMeta(resourceIri);
+    groupEls.push(placeEl(resourceIri, meta.types.length > 0 ? meta.types : [`${PROV_NS}Entity`], meta.label));
+  }
+
+  if (associatedAgent) {
+    const meta = await getNodeMeta(associatedAgent);
+    groupEls.push(placeEl(associatedAgent, meta.types.length > 0 ? meta.types : [`${PROV_NS}Agent`], meta.label));
+  }
+
+  const allTemplateVarIris = [...allInputVarIris, ...allOutputVarIris];
+  for (const varIri of allTemplateVarIris) {
+    const meta = await getNodeMeta(varIri);
+    groupEls.push(placeEl(varIri, meta.types.length > 0 ? meta.types : [`${PPLAN_NS}Variable`], meta.label));
+  }
+
+  // Input var instances (run-scoped)
+  for (let i = 0; i < inputVarInstanceIris.length; i++) {
+    const varLabel = await getVarLabel(externalInputVarIris[i]);
+    placeEl(inputVarInstanceIris[i], [`${PPLAN_NS}Entity`], varLabel);
+  }
+
+  // Output var instances (run-scoped)
+  for (let i = 0; i < outputVarInstanceIris.length; i++) {
+    const varLabel = await getVarLabel(lastStepOutputVarIris[i]);
+    placeEl(outputVarInstanceIris[i], [`${PPLAN_NS}Entity`], varLabel);
+  }
+
+  // Group template entities together
+  if (groupEls.length >= 2) {
+    model.group(groupEls);
+  }
+
+  // Write all triples to data graph
+  await rdfManager.applyBatch({ adds: triplesToAdd }, DATA_GRAPH);
+
+  // Refresh canvas data so links are resolved
+  await model.requestData();
+
+  // Apply the canvas layout algorithm to the newly added elements
+  await ctx.performLayout({ selectedElements: allNewElements, animate: true, zoomToFit: false });
+
+  console.log('[WorkflowInstantiator] instantiateWorkflowOnCanvas complete', {
+    activityIri,
+    planIri: templateIri,
+    steps: stepIris.length,
+    resources: usedResources.length,
+    agent: associatedAgent,
+    inputVarInstances: inputVarInstanceIris.length,
+    outputVarInstances: outputVarInstanceIris.length,
   });
-
-  return {
-    planNode,
-    variableNodes: resourceNodes,  // Only resources (Code, Requirements, Agent), not entities
-    stepNodes,
-    edges,
-  };
 }
 
 /**
