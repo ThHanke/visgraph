@@ -15,6 +15,7 @@ import { rdfManager } from './utils/rdfManager';
 import { useAppConfigStore } from './stores/appConfigStore';
 import { ErrorBoundary } from './components/ErrorBoundary';
 // import { useOntologyStore } from './stores/ontologyStore';
+import { registerMcp } from '@/mcp/register';
 
 initTheme();
 
@@ -102,6 +103,8 @@ try {
    console.error('[Startup] Failed to initialize debug wrappers:', error);
    // Non-critical - continue with app startup
  }
+
+registerMcp();
 
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>

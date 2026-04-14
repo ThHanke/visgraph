@@ -2,6 +2,7 @@ import { defineConfig, Plugin } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import tailwind from "@tailwindcss/vite";
 import path from "path";
+import { mcpManifestPlugin } from './vite-plugin-mcp-manifest';
 
 /**
  * Proxy plugin: exposes GET /rdf-proxy?url=<encoded-url> on the Vite dev server.
@@ -51,6 +52,7 @@ export default defineConfig({
     react(),
     tailwind(),
     rdfCorsProxyPlugin(),
+    mcpManifestPlugin(),
   ],
 
   // Ensure worker bundles use ES modules output so Rollup can code-split worker chunks.

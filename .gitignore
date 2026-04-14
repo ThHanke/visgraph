@@ -25,3 +25,6 @@ dist-ssr
 
 scripts
 playwright-reports
+
+# Generated at build time
+public/.well-known/mcp.json

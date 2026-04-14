@@ -14,6 +14,7 @@ import { RdfMetadataProvider } from '@/providers/RdfMetadataProvider';
 import { RdfValidationProvider } from '@/providers/RdfValidationProvider';
 import { workerQuadsToRdf, type WorkerQuad as ConverterQuad } from '@/providers/quadConverter';
 import type { WorkerQuad } from '@/utils/rdfSerialization';
+import { setWorkspaceContext } from '@/mcp/workspaceContext';
 import { TopBar } from './TopBar';
 import { LeftSidebar } from './LeftSidebar';
 import { ConfigurationPanel } from './ConfigurationPanel';
@@ -397,6 +398,7 @@ export default function ReactodiaCanvas() {
     modelRef.current = model;
     commandBusRef.current = getCommandBus;
     contextRef.current = context;
+    setWorkspaceContext(context, dataProvider);
 
     // Enable authoring mode so link/element halo buttons (edit, delete, move) are visible
     editor.setAuthoringMode(true);
@@ -1109,11 +1111,29 @@ export default function ReactodiaCanvas() {
         toast.error('Failed to instantiate workflow');
       });
     };
+    const onTouchDrop = (e: Event) => {
+      const { iri, clientX, clientY } = (e as CustomEvent).detail as { iri: string; clientX: number; clientY: number };
+      if (!iri) return;
+      const model = modelRef.current;
+      const ctx = contextRef.current;
+      if (!model || !ctx) return;
+      const canvas = ctx.view.findAnyCanvas();
+      const pane = canvas?.metrics.clientToScrollablePaneCoords(clientX, clientY);
+      const canvasPos = (canvas && pane)
+        ? canvas.metrics.scrollablePaneToPaperCoords(pane.x, pane.y)
+        : { x: clientX, y: clientY };
+      instantiateWorkflowOnCanvas(iri, canvasPos, model, ctx.editor, ctx).catch(err => {
+        console.error('[ReactodiaCanvas] Workflow touch-drop instantiation failed', err);
+        toast.error('Failed to instantiate workflow');
+      });
+    };
     document.addEventListener('dragover', onDragOver);
     document.addEventListener('drop', onDrop);
+    document.addEventListener('vg-workflow-touch-drop', onTouchDrop);
     return () => {
       document.removeEventListener('dragover', onDragOver);
       document.removeEventListener('drop', onDrop);
+      document.removeEventListener('vg-workflow-touch-drop', onTouchDrop);
     };
   }, []);
 
