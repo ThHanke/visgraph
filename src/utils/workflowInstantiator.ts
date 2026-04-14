@@ -363,10 +363,10 @@ export async function instantiateWorkflowOnCanvas(
   const activityLabel = `${templateLabel} Run`;
 
   const inputVarInstanceIris = externalInputVarIris.map(
-    varIri => `${defaultNs}${extractLocalName(varIri)}_${timestamp}`
+    varIri => `${defaultNs}${extractLocalName(varIri).replace(/\s+/g, '_')}_${timestamp}`
   );
   const outputVarInstanceIris = lastStepOutputVarIris.map(
-    varIri => `${defaultNs}${extractLocalName(varIri)}_${timestamp}`
+    varIri => `${defaultNs}${extractLocalName(varIri).replace(/\s+/g, '_')}_${timestamp}`
   );
 
   // 8. Copy ALL template entities to data graph (keep original IRIs)
