@@ -26,7 +26,8 @@ let internalState: CanvasState = {
   loadingProgress: 0,
   loadingMessage: "",
   showReasoningReport: false,
-  layoutVersion: 0,
+  isClustered: false,
+  canvasReady: false,
 };
 
 /* Track current loading toast ID for updates */
@@ -128,8 +129,12 @@ const actionsImpl: CanvasActions = {
     internalState = { ...internalState, showReasoningReport: Boolean(show) };
     notifySubscribers();
   },
-  bumpLayoutVersion: () => {
-    internalState = { ...internalState, layoutVersion: internalState.layoutVersion + 1 };
+  setIsClustered: (clustered: boolean) => {
+    internalState = { ...internalState, isClustered: Boolean(clustered) };
+    notifySubscribers();
+  },
+  setCanvasReady: (ready: boolean) => {
+    internalState = { ...internalState, canvasReady: Boolean(ready) };
     notifySubscribers();
   },
 };

@@ -581,7 +581,7 @@ export default function ReactodiaCanvas() {
                 silentLayoutPositions,
                 preClusterPositions
               );
-              setIsClustered(true);
+              setIsClustered(true); actions.setIsClustered(true);
             } else {
               console.debug('[canvas layout] calling ctx.performLayout (full, non-cluster)');
               try {
@@ -600,7 +600,7 @@ export default function ReactodiaCanvas() {
           } finally {
             if (pendingLayoutController.current === controller) pendingLayoutController.current = null;
             initialLayoutDone.current = true;
-            actions.bumpLayoutVersion();
+            actions.setCanvasReady(true);
           }
         } else {
           // Incremental add: only lay out the newly added elements so existing
@@ -651,8 +651,9 @@ export default function ReactodiaCanvas() {
       silentLayoutPositions: silentLayoutPositions.current,
     };
 
-    // Reset clustering refs so they don't bleed into the new view
-    setIsClustered(false);
+    // Reset clustering/ready state so they don't bleed into the new view
+    setIsClustered(false); actions.setIsClustered(false);
+    actions.setCanvasReady(false);
     initialLayoutDone.current = false;
     preClusterPositions.current = null;
     silentLayoutPositions.current = null;
@@ -686,9 +687,9 @@ export default function ReactodiaCanvas() {
         if (savedCluster) {
           preClusterPositions.current = savedCluster.preClusterPositions;
           silentLayoutPositions.current = savedCluster.silentLayoutPositions;
-          setIsClustered(savedCluster.isClustered);
+          setIsClustered(savedCluster.isClustered); actions.setIsClustered(savedCluster.isClustered);
           initialLayoutDone.current = true; // layout already exists — don't re-cluster
-          actions.bumpLayoutVersion();
+          actions.setCanvasReady(true);
         }
 
         // Add any elements that were added while we were in the other mode
@@ -729,12 +730,12 @@ export default function ReactodiaCanvas() {
               shouldAutoCluster ? 'AUTO-CLUSTER' : 'plain layout');
             if (shouldAutoCluster) {
               await performInitialClustering(ctx, model, cfg, layoutFn, silentLayoutPositions, preClusterPositions);
-              setIsClustered(true);
+              setIsClustered(true); actions.setIsClustered(true);
             } else {
               await ctx.performLayout({ layoutFunction: layoutFn, animate: cfg.layoutAnimations, signal: controller.signal });
             }
             initialLayoutDone.current = true;
-            actions.bumpLayoutVersion();
+            actions.setCanvasReady(true);
           }
         }
         const canvas = ctx.view.findAnyCanvas();
@@ -854,7 +855,7 @@ export default function ReactodiaCanvas() {
       getLayoutFunction(cfg.currentLayout, cfg, defaultLayout),
       cfg.layoutAnimations
     );
-    setIsClustered(true);
+    setIsClustered(true); actions.setIsClustered(true);
   }, [defaultLayout]);
 
   const handleExpandAll = React.useCallback(async () => {
@@ -866,7 +867,7 @@ export default function ReactodiaCanvas() {
       (el): el is Reactodia.EntityGroup => el instanceof Reactodia.EntityGroup
     );
     if (groups.length === 0) return;
-    setIsClustered(false);
+    setIsClustered(false); actions.setIsClustered(false);
     const saved = preClusterPositions.current;
     const silentPos = silentLayoutPositions.current;
     preClusterPositions.current = null;
@@ -883,11 +884,12 @@ export default function ReactodiaCanvas() {
         if (pos) el.setPosition(pos);
       }
     });
-  }, []);
+    actions.setCanvasReady(true);
+  }, [actions]);
 
   const handleClearData = React.useCallback(() => {
     knownSubjects.clear();
-    setIsClustered(false);
+    setIsClustered(false); actions.setIsClustered(false);
     const model = modelRef.current;
     if (!model) return;
     queueMicrotask(() => {

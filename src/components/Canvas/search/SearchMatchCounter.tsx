@@ -85,15 +85,11 @@ function SearchMatchCounterInner() {
   // IRI to zoom to once the diagram model has loaded it (after a view switch).
   const pendingIriRef = React.useRef<string | null>(null);
 
-  // Live IRI → canvas element map for the currently active view.
-  // Rebuilt whenever layoutVersion bumps (canvas layout/clustering cycle complete) or
-  // model.elements changes (element add/remove between layout cycles).
-  // layoutVersion is bumped by ReactodiaCanvas after initialLayoutDone is set, which is
-  // after groups are fully populated — so we don't need the changeItems subscription.
-  const [iriMap, setIriMap] = React.useState(() => buildIriMap(model.elements));
-  React.useEffect(() => {
-    setIriMap(buildIriMap(model.elements));
-  }, [model.elements, canvasState.layoutVersion]);
+  // Look up the canvas element for an IRI directly from the live model — no
+  // memoized map needed. Positions on element objects are always current.
+  const lookupIri = React.useCallback((iri: string) =>
+    buildIriMap(model.elements).get(iri),
+  [model.elements]);
 
 
   // Re-query the toggle element after every render so the portal mounts as soon as
@@ -113,13 +109,14 @@ function SearchMatchCounterInner() {
     setCurrentIndex(first);
   }, [filteredEntities, setCurrentIndex]);
 
-  // When iriMap updates (canvas reloaded after view switch), resolve any pending navigation.
-  // Zoom is deferred with a double-rAF so the canvas has completed layout and
-  // element sizes are available before zoomToFitRect runs.
+  // After a view switch, resolve any pending navigation once the canvas is ready
+  // (layout/clustering complete). Guards on canvasReady so we don't fire while the
+  // new view is still loading elements — that's the race we want to avoid.
   React.useEffect(() => {
     const iri = pendingIriRef.current;
     if (!iri) return;
-    const el = iriMap.get(iri);
+    if (!canvasState.canvasReady) return;
+    const el = lookupIri(iri);
     if (el) {
       pendingIriRef.current = null;
       if (el instanceof Reactodia.EntityGroup) paginateGroupTo(el, iri);
@@ -132,20 +129,16 @@ function SearchMatchCounterInner() {
       });
       return () => cancelAnimationFrame(raf1);
     } else {
-      // View switched but element still not in iriMap. If iriViewMap points to a
-      // different view than the current one, switch now (view may have changed
-      // underneath us). Otherwise give up — changeItems subscription will rebuild
-      // iriMap if the element appears later.
       const targetView = iriViewMap.get(iri);
       if (targetView && targetView !== canvasState.viewMode) {
-        console.debug('[SearchMatchCounter] iriMap missing element, switching to', targetView, 'for:', iri);
+        console.debug('[SearchMatchCounter] element not on canvas yet, switching to', targetView, 'for:', iri);
         canvasActions.setViewMode(targetView);
       } else {
         console.debug('[SearchMatchCounter] giving up on pending IRI (not on canvas):', iri);
         pendingIriRef.current = null;
       }
     }
-  }, [iriMap, iriViewMap, canvasState.viewMode, canvasActions, view]);
+  }, [canvasState.canvasReady, canvasState.viewMode, iriViewMap, lookupIri, canvasActions, view]);
 
   const predicateLinks = React.useMemo(() =>
     activeFilter?.kind === 'predicate'
@@ -167,8 +160,8 @@ function SearchMatchCounterInner() {
       if (!link) return;
       const canvas = view.findAnyCanvas();
       if (!canvas) return;
-      const source = iriMap.get(link.data.sourceId);
-      const target = iriMap.get(link.data.targetId);
+      const source = lookupIri(link.data.sourceId);
+      const target = lookupIri(link.data.targetId);
       if (!source || !target) {
         console.warn('[SearchMatchCounter] link traversal: source or target not on canvas', link);
         return;
@@ -185,7 +178,7 @@ function SearchMatchCounterInner() {
     if (!entity) return;
     const iri = entity.id as string;
 
-    const canvasEl = iriMap.get(iri);
+    const canvasEl = lookupIri(iri);
 
     if (canvasEl) {
       // Element is in the current view — paginate group if needed, then zoom.
@@ -198,17 +191,20 @@ function SearchMatchCounterInner() {
         return;
       }
       if (targetView === canvasState.viewMode) {
-        // Correct view is already active but the element isn't in iriMap yet.
-        // The changeItems subscription on EntityGroups will rebuild iriMap once
-        // clustering finishes — no view switch needed.
-        console.debug('[SearchMatchCounter] waiting for iriMap to populate for:', iri);
+        // Correct view is already active but canvas not ready yet (initial load /
+        // clustering still running). Set pending so the effect resolves once ready.
+        console.debug('[SearchMatchCounter] canvas not ready yet, deferring navigation for:', iri);
+        pendingIriRef.current = iri;
         return;
       }
       pendingIriRef.current = iri;
+      // Reset canvasReady now so the pending effect won't fire with stale
+      // canvasReady=true before ReactodiaCanvas has a chance to reset it itself.
+      canvasActions.setCanvasReady(false);
       console.debug('[SearchMatchCounter] switching to', targetView, 'for:', iri);
       canvasActions.setViewMode(targetView);
     }
-  }, [iriMap, iriViewMap, view, canvasState.viewMode, canvasActions, filteredEntities, predicateLinks]);
+  }, [lookupIri, iriViewMap, view, canvasState.viewMode, canvasActions, filteredEntities, predicateLinks]);
 
   const navigate = React.useCallback((next: number) => {
     setCurrent(next);

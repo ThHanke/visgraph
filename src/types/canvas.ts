@@ -226,11 +226,17 @@ export interface CanvasState {
   /** Whether reasoning report is open */
   showReasoningReport: boolean;
   /**
-   * Monotonically increasing counter bumped each time a canvas layout/clustering
-   * cycle completes (initial layout, view-mode switch, restore). Subscribers can
-   * watch this to know when the canvas is fully settled and elements are on screen.
+   * True once the current view's initial clustering/layout cycle has completed.
+   * Reset to false on every view-mode switch. Used by search navigation to know
+   * when EntityGroups are fully populated and safe to look up.
    */
-  layoutVersion: number;
+  isClustered: boolean;
+  /**
+   * True once the canvas for the current view mode is fully ready — initial
+   * layout or clustering has finished and elements are positioned. Reset to
+   * false on every view-mode switch. Safe to navigate/zoom once this is true.
+   */
+  canvasReady: boolean;
 }
 
 /**
@@ -245,8 +251,10 @@ export interface CanvasActions {
   setLoading: (loading: boolean, progress?: number, message?: string) => void;
   /** Toggle reasoning report */
   toggleReasoningReport: (show: boolean) => void;
-  /** Increment layoutVersion — call after every canvas layout/clustering cycle completes. */
-  bumpLayoutVersion: () => void;
+  /** Set the clustered state for the current view. */
+  setIsClustered: (clustered: boolean) => void;
+  /** Mark the current view's canvas as ready (layout/clustering complete). */
+  setCanvasReady: (ready: boolean) => void;
 }
 
 /**
