@@ -211,8 +211,16 @@ function SearchMatchCounterInner() {
   const onPrev = () => navigate(current <= 0 ? total - 1 : current - 1);
   const onNext = () => navigate(current < 0 || current >= total - 1 ? 0 : current + 1);
 
+  const onKeyDown = React.useCallback((e: React.KeyboardEvent) => {
+    if (e.key !== 'Enter') return;
+    const target = e.target as HTMLElement;
+    if (!target.classList.contains('reactodia-unified-search__search-input')) return;
+    e.preventDefault();
+    onNext();
+  }, [onNext]);
+
   return (
-    <div ref={wrapperRef} className="vg-search-counter-wrapper">
+    <div ref={wrapperRef} className="vg-search-counter-wrapper" onKeyDown={onKeyDown}>
       <Reactodia.UnifiedSearch sections={SECTIONS} />
       {toggleEl && total > 0 &&
         ReactDOM.createPortal(
