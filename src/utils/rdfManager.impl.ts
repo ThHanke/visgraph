@@ -779,33 +779,39 @@ export class RDFManagerImpl {
     }
   }
 
-  /** Fetches a URL, falling back to the local /rdf-proxy endpoint on network/CORS errors. */
+  /** Fetches a URL, falling back to a user-configured CORS proxy on network/CORS errors. */
   private async fetchWithCorsFallback(
     url: string,
     headers: Record<string, string>,
     signal: AbortSignal,
     authHeader?: { name: string; value: string },
+    corsProxyUrl?: string,
   ): Promise<Response> {
     const reqHeaders = authHeader
       ? { ...headers, [authHeader.name]: authHeader.value }
       : headers;
     try {
-      return await fetch(url, { signal, headers: reqHeaders });
-    } catch {
-      // Network error — may be CORS (duplicate Access-Control-Allow-Origin, blocked origin, etc.)
-      // Retry via the local proxy server which fetches server-side, bypassing browser CORS.
-      const proxyUrl = `/rdf-proxy?url=${encodeURIComponent(url)}`;
-      return await fetch(proxyUrl, { signal, headers: { Accept: headers["Accept"] ?? "*/*" } });
+      return await fetch(url, { signal, redirect: "follow", headers: reqHeaders });
+    } catch (err) {
+      // Network/CORS error — retry via the user-configured CORS proxy if set.
+      // Ontology URLs often redirect through purl.org/w3id.org where the final
+      // destination lacks CORS headers; a proxy fetches server-side without that restriction.
+      if (corsProxyUrl) {
+        const proxied = corsProxyUrl + encodeURIComponent(url);
+        return await fetch(proxied, { signal, headers: { Accept: headers["Accept"] ?? "*/*" } });
+      }
+      throw err;
     }
   }
 
   async loadRDFFromUrl(
     url: string,
     graphName?: string,
-    options?: { timeoutMs?: number; apiKey?: string; apiKeyHeader?: string },
+    options?: { timeoutMs?: number; apiKey?: string; apiKeyHeader?: string; corsProxyUrl?: string },
   ): Promise<void> {
     if (!url) throw new Error("loadRDFFromUrl requires a url");
     const timeoutMs = options?.timeoutMs ?? 120000;
+    const corsProxyUrl = options?.corsProxyUrl;
     const controller = new AbortController();
     const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
     const authHeader = options?.apiKey
@@ -820,6 +826,7 @@ export class RDFManagerImpl {
           { Accept: "text/turtle, application/n-triples" },
           controller.signal,
           authHeader,
+          corsProxyUrl,
         );
         if (!sparqlResponse.ok) {
           throw new Error(`SPARQL CONSTRUCT query failed: ${sparqlResponse.status}`);
@@ -832,7 +839,7 @@ export class RDFManagerImpl {
       }
 
       const rdfAccept = "text/turtle, application/n-triples, text/n3, application/rdf+xml, */*;q=0.1";
-      const response = await this.fetchWithCorsFallback(url, { Accept: rdfAccept }, controller.signal, authHeader);
+      const response = await this.fetchWithCorsFallback(url, { Accept: rdfAccept }, controller.signal, authHeader, corsProxyUrl);
       if (!response.ok) {
         throw new Error(`Failed to fetch RDF: ${response.status}`);
       }
@@ -846,6 +853,7 @@ export class RDFManagerImpl {
           { Accept: "text/turtle, application/n-triples" },
           controller.signal,
           authHeader,
+          corsProxyUrl,
         );
         if (!sparqlResponse.ok) {
           throw new Error(`SPARQL CONSTRUCT query failed: ${sparqlResponse.status}`);

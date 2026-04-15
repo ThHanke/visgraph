@@ -26,6 +26,8 @@ export interface Settings {
   layoutAlgorithm: "horizontal" | "vertical";
   enableValidation: boolean;
   startupFileUrl: string;
+  /** Optional CORS proxy base URL for ontology fetches, e.g. https://corsproxy.io/?url= */
+  corsProxyUrl: string;
 }
 
 interface SettingsStore {
@@ -52,6 +54,7 @@ const defaultSettings: Settings = {
   layoutAlgorithm: "horizontal",
   enableValidation: true,
   startupFileUrl: "",
+  corsProxyUrl: "https://corsproxy.io/?url=",
 };
 
 function normalizeLayoutAlgorithm(value: unknown, context: string): Settings["layoutAlgorithm"] {
@@ -120,6 +123,12 @@ function normalizeSettingsInput(value: unknown, context: string): Settings {
         `${context}.startupFileUrl`,
         { allowEmpty: true },
       ) ?? "",
+    corsProxyUrl:
+      normalizeOptionalString(
+        input.corsProxyUrl ?? defaultSettings.corsProxyUrl,
+        `${context}.corsProxyUrl`,
+        { allowEmpty: true },
+      ) ?? "",
   };
 }
 
@@ -163,6 +172,14 @@ function applySettingsPatch(current: Settings, patch: Partial<Settings>, context
       normalizeOptionalString(
         patch.startupFileUrl,
         `${context}.startupFileUrl`,
+        { allowEmpty: true },
+      ) ?? "";
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "corsProxyUrl")) {
+    updated.corsProxyUrl =
+      normalizeOptionalString(
+        patch.corsProxyUrl,
+        `${context}.corsProxyUrl`,
         { allowEmpty: true },
       ) ?? "";
   }

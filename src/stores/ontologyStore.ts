@@ -9,6 +9,7 @@
 import { create } from "zustand";
 import { RDFManager, rdfManager } from "../utils/rdfManager";
 import { useAppConfigStore } from "./appConfigStore";
+import { useSettingsStore } from "./settingsStore";
 import { debug, info, warn, error, fallback } from "../utils/startupDebug";
 import { WELL_KNOWN, WELL_KNOWN_PREFIXES } from "../utils/wellKnownOntologies";
 import { DataFactory, Quad } from "n3";
@@ -655,11 +656,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
       // Delegate fetching/parsing/loading to rdfManager.loadRDFFromUrl
       try {
+        const corsProxyUrl = useSettingsStore.getState().settings.corsProxyUrl;
+        const loadOpts = { timeoutMs: 15000, corsProxyUrl: corsProxyUrl || undefined };
         if (mgr && typeof (mgr as any).loadRDFFromUrl === "function") {
-          await (mgr as any).loadRDFFromUrl(normRequestedUrl, "urn:vg:ontologies", { timeoutMs: 15000 });
+          await (mgr as any).loadRDFFromUrl(normRequestedUrl, "urn:vg:ontologies", loadOpts);
         } else {
           // fallback to module-level manager
-          await (rdfManager as any).loadRDFFromUrl(normRequestedUrl, "urn:vg:ontologies", { timeoutMs: 15000 });
+          await (rdfManager as any).loadRDFFromUrl(normRequestedUrl, "urn:vg:ontologies", loadOpts);
         }
       } catch (err) {
         warn(
@@ -667,6 +670,37 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
           { url: normRequestedUrl, error: String(err) },
           { caller: true },
         );
+        // Show a user-facing toast with a CORS hint when applicable.
+        try {
+          const errMsg = String(err && (err as any).message ? (err as any).message : err);
+          const isCors =
+            errMsg.toLowerCase().includes("cors") ||
+            errMsg.toLowerCase().includes("failed to fetch") ||
+            errMsg.toLowerCase().includes("networkerror") ||
+            errMsg.toLowerCase().includes("load failed");
+          const corsProxyConfigured = !!useSettingsStore.getState().settings.corsProxyUrl;
+          const shortUrl = normRequestedUrl.length > 60
+            ? normRequestedUrl.slice(0, 57) + "…"
+            : normRequestedUrl;
+          if (isCors && !corsProxyConfigured) {
+            toast.error(`Ontology could not be loaded: ${shortUrl}`, {
+              description:
+                "The server blocked the request (CORS). Set a CORS proxy URL in Settings → Advanced to load ontologies from servers that don't allow browser access.",
+              duration: 10000,
+            });
+          } else if (isCors && corsProxyConfigured) {
+            toast.error(`Ontology could not be loaded: ${shortUrl}`, {
+              description:
+                "The request failed even via the configured CORS proxy. The proxy may not support requests from this origin. Try a different proxy in Settings → Advanced.",
+              duration: 10000,
+            });
+          } else {
+            toast.error(`Ontology could not be loaded: ${shortUrl}`, {
+              description: errMsg,
+              duration: 8000,
+            });
+          }
+        } catch (_) { /* ignore toast failures */ }
         // Mark any placeholder entry as failed so UI shows the failed import rather than silently keeping a pending placeholder.
         try {
           set((s: any) => {

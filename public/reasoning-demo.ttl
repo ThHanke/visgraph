@@ -55,10 +55,11 @@ ex:isManagedBy a owl:ObjectProperty ;
 
 # isColleagueOf: symmetric
 # Asserting A isColleagueOf B will infer B isColleagueOf A
+# Domain/range is Employee — colleagues share an employment context, not just personhood
 ex:isColleagueOf a owl:ObjectProperty, owl:SymmetricProperty ;
     rdfs:label "isColleagueOf" ;
-    rdfs:domain ex:Person ;
-    rdfs:range ex:Person .
+    rdfs:domain ex:Employee ;
+    rdfs:range ex:Employee .
 
 # hasSupervisor: transitive
 # Asserting A→B and B→C will infer A→C (inferred object property via transitivity)
@@ -71,8 +72,10 @@ ex:hasSupervisor a owl:ObjectProperty, owl:TransitiveProperty ;
 
 # jobTitle is a sub-property of rdfs:comment
 # Asserting jobTitle will infer rdfs:comment (inferred annotation via subPropertyOf)
+# Domain is Employee — job titles belong to employment, not personhood in general
 ex:jobTitle a owl:AnnotationProperty ;
     rdfs:subPropertyOf rdfs:comment ;
+    rdfs:domain ex:Employee ;
     rdfs:label "jobTitle" .
 
 # ── ABox: Individuals with explicit types ─────────────────────────────────────
@@ -113,9 +116,11 @@ ex:bob ex:isColleagueOf ex:carol .
 
 # 4. INFERRED OBJECT PROPERTY via owl:TransitiveProperty
 #    A→B and B→C → reasoner infers A→C
+#    Chain follows the org hierarchy: carol(Employee) → bob(Employee) → alice(Executive)
+#    dave is inferred Manager (from manages domain), not alice's supervisor
+ex:carol ex:hasSupervisor ex:bob .
 ex:bob ex:hasSupervisor ex:alice .
-ex:alice ex:hasSupervisor ex:dave .
-# Inferred: ex:bob ex:hasSupervisor ex:dave
+# Inferred: ex:carol ex:hasSupervisor ex:alice
 
 # 5. INFERRED ANNOTATION via rdfs:subPropertyOf
 #    jobTitle subPropertyOf rdfs:comment → reasoner infers rdfs:comment

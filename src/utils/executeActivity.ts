@@ -19,6 +19,11 @@ const WORKFLOWS_GRAPH = 'urn:vg:workflows';
 
 const { namedNode, literal } = DataFactory;
 
+function extractLocalName(iri: string): string {
+  const i = Math.max(iri.lastIndexOf('#'), iri.lastIndexOf('/'));
+  return i >= 0 ? iri.substring(i + 1) : iri;
+}
+
 /**
  * Query the workflows graph to find the step that follows `currentStepIri`
  * within `planIri`. Returns the next step IRI or null if there is none.
@@ -135,7 +140,70 @@ export async function executeActivity(
 
   if (!codeUrl) throw new Error(`No Python code URL found for activity ${activityIri}`);
 
-  // 2. Export data graph as Turtle, execute Python via Pyodide
+  // 2. Remove stale output from any previous run of this activity.
+  //    Find all entities with prov:wasGeneratedBy activityIri, remove their data
+  //    AND their canvas elements so reruns start visually clean.
+  const prevGeneratedIris = new Set<string>();
+  {
+    const prevQuads: any[] = await worker.call('getQuads', {
+      predicate: `${PROV_NS}wasGeneratedBy`,
+      object: { termType: 'NamedNode', value: activityIri },
+      graphName: DATA_GRAPH,
+    }) ?? [];
+    console.debug('[executeActivity] prev generated quads:', prevQuads.length, prevQuads.map((q: any) => q.subject?.value));
+    for (const q of prevQuads) prevGeneratedIris.add(q.subject.value);
+  }
+
+  if (prevGeneratedIris.size > 0) {
+    // Also collect prov:hadMember children (collection value entities)
+    for (const entityIri of [...prevGeneratedIris]) {
+      const memberQuads: any[] = await worker.call('getQuads', {
+        subject: entityIri,
+        predicate: `${PROV_NS}hadMember`,
+        graphName: DATA_GRAPH,
+      }) ?? [];
+      for (const mq of memberQuads) prevGeneratedIris.add(mq.object.value);
+    }
+
+    // Remove canvas elements for stale entities
+    for (const entityIri of prevGeneratedIris) {
+      const el = model.elements.find(
+        e => e instanceof Reactodia.EntityElement && e.data.id === entityIri
+      ) as Reactodia.EntityElement | undefined;
+      if (el) model.removeElement(el.id);
+    }
+
+    // Remove data from store — send syncBatch directly to worker with proper
+    // WorkerTerm objects so deserializeTerm handles Literal datatypes correctly.
+    // (rdfManager.removeTriple / applyBatch go through coerceWorkerTerm which
+    //  drops datatype info from non-string Literals when passed as plain objects.)
+    const removeUpdates: any[] = [];
+    for (const entityIri of prevGeneratedIris) {
+      const entityQuads: any[] = await worker.call('getQuads', {
+        subject: entityIri,
+        graphName: DATA_GRAPH,
+      }) ?? [];
+      for (const eq of entityQuads) {
+        removeUpdates.push({
+          subject:   eq.subject,
+          predicate: eq.predicate,
+          object:    eq.object,
+          graph:     eq.graph ?? { termType: 'NamedNode', value: DATA_GRAPH },
+        });
+      }
+    }
+    console.debug('[executeActivity] removing', removeUpdates.length, 'quads for', prevGeneratedIris.size, 'entities');
+    if (removeUpdates.length > 0) {
+      await worker.call('syncBatch', {
+        graphName: DATA_GRAPH,
+        adds: [],
+        removes: removeUpdates,
+      });
+    }
+  }
+  console.debug('[executeActivity] cleanup done, prevGeneratedIris:', [...prevGeneratedIris]);
+
+  // 3. Export data graph as Turtle, execute Python via Pyodide
   // The Python script receives the full data graph Turtle and derives its own
   // inputs from prov:used links — no need to pre-filter entity IRIs here.
   const exportResult = await worker.call('exportGraph', {
@@ -152,7 +220,7 @@ export async function executeActivity(
     inputTurtle,
   });
 
-  // 4. Parse output Turtle and write back to data graph
+  // 5. Parse output Turtle and write back to data graph
   const parser = new N3Parser();
   const quads = parser.parse(result.outputTurtle);
 
@@ -167,7 +235,40 @@ export async function executeActivity(
 
   await rdfManager.applyBatch({ adds, options: { suppressSubjects: false } }, DATA_GRAPH);
 
-  // 5. Resolve next step and create next Activity on canvas if one exists
+  // Place newly generated entities on canvas (result or error annotation)
+  // and refresh all existing element data.
+  const newGeneratedIris: string[] = [];
+  for (const quad of quads) {
+    if (quad.predicate.value === `${PROV_NS}wasGeneratedBy` &&
+        quad.object.value === activityIri &&
+        quad.subject.termType === 'NamedNode') {
+      newGeneratedIris.push(quad.subject.value);
+    }
+  }
+  console.debug('[executeActivity] new generated IRIs:', newGeneratedIris);
+  const actEl = model.elements.find(
+    el => el instanceof Reactodia.EntityElement && el.data.id === activityIri
+  ) as Reactodia.EntityElement | undefined;
+  for (let i = 0; i < newGeneratedIris.length; i++) {
+
+    const iri = newGeneratedIris[i];
+    const existing = model.elements.find(
+      el => el instanceof Reactodia.EntityElement && el.data.id === iri
+    );
+    if (!existing) {
+      const el = model.createElement({
+        id: iri as Reactodia.ElementIri,
+        types: [],
+        properties: {},
+      });
+      el.setPosition(actEl
+        ? { x: actEl.position.x + (i + 1) * 220, y: actEl.position.y }
+        : { x: 400, y: 300 });
+    }
+  }
+  await model.requestData();
+
+  // 6. Resolve next step and create next Activity on canvas if one exists
   const stepQuads: any[] = await worker.call('getQuads', {
     subject: activityIri,
     predicate: `${PPLAN_NS}correspondsToStep`,
@@ -214,9 +315,46 @@ export async function executeActivity(
     graphName: WORKFLOWS_GRAPH,
   }) ?? [];
 
+  // Find variables that are output of currentStep AND input of nextStep (the "wire")
+  const currentStepOutVarQuads: any[] = await worker.call('getQuads', {
+    predicate: `${PPLAN_NS}isOutputVarOf`,
+    object: { termType: 'NamedNode', value: currentStepIri },
+    graphName: WORKFLOWS_GRAPH,
+  }) ?? [];
+  const nextStepInVarQuads: any[] = await worker.call('getQuads', {
+    predicate: `${PPLAN_NS}isInputVarOf`,
+    object: { termType: 'NamedNode', value: nextStepIri },
+    graphName: WORKFLOWS_GRAPH,
+  }) ?? [];
+  const nextStepInVarSet = new Set(nextStepInVarQuads.map((q: any) => q.subject.value));
+  const sharedVarIris = currentStepOutVarQuads
+    .map((q: any) => q.subject.value)
+    .filter((v: string) => nextStepInVarSet.has(v));
+
+  // For each shared var, find the run-level entity already in the data graph
+  // (written by the Python script via pplan:correspondsToVariable)
+  const intermediateEntityIris: string[] = [];
+  for (const varIri of sharedVarIris) {
+    const entityQuads: any[] = await worker.call('getQuads', {
+      predicate: `${PPLAN_NS}correspondsToVariable`,
+      object: { termType: 'NamedNode', value: varIri },
+      graphName: DATA_GRAPH,
+    }) ?? [];
+    for (const eq of entityQuads) intermediateEntityIris.push(eq.subject.value);
+  }
+
+  // Find output vars of the next step so we can create placeholders
+  const nextStepOutVarQuads: any[] = await worker.call('getQuads', {
+    predicate: `${PPLAN_NS}isOutputVarOf`,
+    object: { termType: 'NamedNode', value: nextStepIri },
+    graphName: WORKFLOWS_GRAPH,
+  }) ?? [];
+  const nextOutputVarIris: string[] = nextStepOutVarQuads.map((q: any) => q.subject.value);
+
   // Write next Activity triples to data graph
   const nextAdds: any[] = [
     { subject: namedNode(nextActivityIri), predicate: namedNode(`${RDF_NS}type`),                object: namedNode(`${PROV_NS}Activity`) },
+    { subject: namedNode(nextActivityIri), predicate: namedNode(`${RDF_NS}type`),                object: namedNode(`${PPLAN_NS}Activity`) },
     { subject: namedNode(nextActivityIri), predicate: namedNode(`${RDFS_NS}label`),              object: literal(nextLabel) },
     { subject: namedNode(nextActivityIri), predicate: namedNode(`${PPLAN_NS}correspondsToStep`), object: namedNode(nextStepIri) },
     { subject: namedNode(nextActivityIri), predicate: namedNode(`${PROV_NS}hadPlan`),            object: namedNode(planIri) },
@@ -226,15 +364,26 @@ export async function executeActivity(
     ...(nextStepAgentQuads[0] ? [{
       subject: namedNode(nextActivityIri), predicate: namedNode(`${PROV_NS}wasAssociatedWith`), object: namedNode(nextStepAgentQuads[0].object.value),
     }] : []),
+    // Wire intermediate data entities as prov:used inputs of nextActivity
+    ...intermediateEntityIris.map(entityIri => ({
+      subject: namedNode(nextActivityIri), predicate: namedNode(`${PROV_NS}used`), object: namedNode(entityIri),
+    })),
   ];
+
+  // Create output var instance placeholders for the next step's outputs
+  for (const varIri of nextOutputVarIris) {
+    const instanceIri = `${nextActivityIri}_${extractLocalName(varIri)}`;
+    nextAdds.push(
+      { subject: namedNode(instanceIri), predicate: namedNode(`${RDF_NS}type`),                   object: namedNode(`${PPLAN_NS}Entity`) },
+      { subject: namedNode(instanceIri), predicate: namedNode(`${RDF_NS}type`),                   object: namedNode(`${PROV_NS}Entity`) },
+      { subject: namedNode(instanceIri), predicate: namedNode(`${PPLAN_NS}correspondsToVariable`), object: namedNode(varIri) },
+      { subject: namedNode(instanceIri), predicate: namedNode(`${PROV_NS}wasGeneratedBy`),         object: namedNode(nextActivityIri) },
+    );
+  }
 
   await rdfManager.applyBatch({ adds: nextAdds }, DATA_GRAPH);
 
   // Place next Activity on canvas as free-standing node below current
-  const actEl = model.elements.find(
-    el => el instanceof Reactodia.EntityElement && el.data.id === activityIri
-  ) as Reactodia.EntityElement | undefined;
-
   const nextPos = actEl
     ? { x: actEl.position.x, y: actEl.position.y + 160 }
     : { x: 200, y: 200 };
@@ -247,6 +396,20 @@ export async function executeActivity(
     },
   });
   nextElement.setPosition(nextPos);
+
+  // Place output var instance placeholders on canvas
+  for (let i = 0; i < nextOutputVarIris.length; i++) {
+    const varIri = nextOutputVarIris[i];
+    const instanceIri = `${nextActivityIri}_${extractLocalName(varIri)}`;
+    const outEl = model.createElement({
+      id: instanceIri as Reactodia.ElementIri,
+      types: [`${PPLAN_NS}Entity` as Reactodia.ElementTypeIri],
+      properties: {
+        [`${RDFS_NS}label`]: [{ termType: 'Literal', value: extractLocalName(varIri) } as Reactodia.Rdf.Literal],
+      },
+    });
+    outEl.setPosition({ x: nextPos.x + (i + 1) * 200, y: nextPos.y });
+  }
 
   return nextActivityIri;
 }

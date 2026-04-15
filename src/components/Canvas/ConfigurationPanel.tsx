@@ -30,6 +30,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Settings, Download, Upload, RotateCcw, RefreshCw } from 'lucide-react';
 import { useAppConfigStore } from '../../stores/appConfigStore';
 import { useOntologyStore } from '../../stores/ontologyStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { WELL_KNOWN } from '../../utils/wellKnownOntologies';
 import { fallback } from '../../utils/startupDebug';
 import { toast } from 'sonner';
@@ -119,6 +120,32 @@ export const ConfigurationPanel = ({
     setLoadWorkflowCatalogOnStartup,
     resetWorkflowCatalogUrls,
   } = useAppConfigStore();
+
+  const { settings: appSettings, updateSettings } = useSettingsStore();
+
+  const KNOWN_PROXIES = [
+    { label: "corsproxy.io — works on public HTTPS deployments", value: "https://corsproxy.io/?url=" },
+    { label: "None (disabled)", value: "__none__" },
+    { label: "Custom (self-hosted or other)…", value: "__custom__" },
+  ];
+
+  const resolveProxySelection = (url: string) => {
+    if (!url) return "__none__";
+    const known = KNOWN_PROXIES.find(p => p.value === url && p.value !== "__custom__" && p.value !== "__none__");
+    return known ? url : "__custom__";
+  };
+
+  const [corsProxyUrlLocal, setCorsProxyUrlLocal] = useState(appSettings.corsProxyUrl);
+  const [corsProxySelection, setCorsProxySelection] = useState(() => resolveProxySelection(appSettings.corsProxyUrl));
+
+  const saveCorsProxy = (url: string) => {
+    try {
+      updateSettings({ corsProxyUrl: url });
+      toast.success('CORS proxy saved');
+    } catch {
+      toast.error('Failed to save CORS proxy');
+    }
+  };
 
   // Load workflow stats when dialog opens
   useEffect(() => {
@@ -734,6 +761,74 @@ export const ConfigurationPanel = ({
                     }}
                   />
                 </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">CORS Proxy for Ontology Loading</CardTitle>
+                <CardDescription>
+                  Some ontology servers (e.g. purl.org, w3id.org) redirect to destinations that block
+                  browser access (missing CORS headers). A proxy fetches them on your behalf as a fallback.
+                  Only used for ontology loading — never for other data.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Proxy</Label>
+                  <Select
+                    value={corsProxySelection}
+                    onValueChange={(val) => {
+                      setCorsProxySelection(val);
+                      if (val === "__none__") {
+                        setCorsProxyUrlLocal("");
+                        saveCorsProxy("");
+                      } else if (val !== "__custom__") {
+                        setCorsProxyUrlLocal(val);
+                        saveCorsProxy(val);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="text-xs">
+                      <SelectValue placeholder="Select a proxy…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {KNOWN_PROXIES.map(p => (
+                        <SelectItem key={p.value} value={p.value} className="text-xs">
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {corsProxySelection === "__custom__" && (
+                  <div className="space-y-1">
+                    <Label htmlFor="corsProxyUrlCustom">Custom proxy prefix URL</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="corsProxyUrlCustom"
+                        value={corsProxyUrlLocal}
+                        onChange={(e) => setCorsProxyUrlLocal((e.target as HTMLInputElement).value)}
+                        placeholder="https://my-proxy.example.com/?url="
+                        className="font-mono text-xs"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => saveCorsProxy(corsProxyUrlLocal)}
+                      >
+                        Save
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      The ontology URL will be appended URL-encoded to this prefix.
+                    </p>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Public proxies only work from public HTTPS origins. For internal or private network
+                  deployments, use a self-hosted proxy (e.g.{' '}
+                  <code>corsproxy</code> on npm or a simple nginx <code>proxy_pass</code>).
+                </p>
               </CardContent>
             </Card>
             <Card>

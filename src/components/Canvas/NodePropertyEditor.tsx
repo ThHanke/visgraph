@@ -12,7 +12,8 @@
  * This rebuild removes any heavy synchronous store reads and any fallback discovery logic.
  */
 
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { useOntologyStore } from "../../stores/ontologyStore";
 import { DataFactory } from "n3";
 const { namedNode, blankNode, literal } = DataFactory;
 import { useCanvasState } from "../../hooks/useCanvasState";
@@ -206,6 +207,7 @@ export const NodePropertyEditor = ({
   const initialPropertiesRef = useRef<LiteralProperty[]>([]);
   const initialRdfTypesRef = useRef<string[]>([]);
   const { actions: canvasActions } = useCanvasState();
+  const ontologiesVersion = useOntologyStore(s => s.ontologiesVersion);
 
   // Initialize local form state from the passed nodeData when dialog opens.
   useEffect(() => {
@@ -797,6 +799,7 @@ export const NodePropertyEditor = ({
                       placeholder="Select property..."
                       className={!property.key.trim() ? "border-destructive" : ""}
                       dataProvider={dataProvider}
+                      refreshToken={ontologiesVersion}
                     />
                     {!property.key.trim() && (
                       <p className="text-xs text-destructive mt-1">Property is required</p>
@@ -907,6 +910,7 @@ export const NodePropertyEditorContent = ({
   const [properties, setProperties] = useState<LiteralProperty[]>([]);
   const initialPropertiesRef = useRef<LiteralProperty[]>([]);
   const initialRdfTypesRef = useRef<string[]>([]);
+  const ontologiesVersion = useOntologyStore(s => s.ontologiesVersion);
 
   useEffect(() => {
     const sourceNode =
@@ -1157,6 +1161,7 @@ export const NodePropertyEditorContent = ({
                   placeholder="Select property..."
                   className={!property.key.trim() ? "border-destructive" : ""}
                   dataProvider={dataProvider}
+                  refreshToken={ontologiesVersion}
                 />
                 {!property.key.trim() && (
                   <p className="text-xs text-destructive mt-1">Property is required</p>

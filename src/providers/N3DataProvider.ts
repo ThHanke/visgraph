@@ -171,6 +171,13 @@ const RDFS_SUB_PROP_OF    = 'http://www.w3.org/2000/01/rdf-schema#subPropertyOf'
 export class N3DataProvider implements DataProvider {
   private inner = new RdfDataProvider({
     elementTypeBaseTypes: TBOX_BASE_TYPES,
+    // Include all property metatypes so DatatypeProperty/AnnotationProperty show in autocomplete
+    linkTypeBaseTypes: [
+      'http://www.w3.org/2002/07/owl#ObjectProperty',
+      'http://www.w3.org/2002/07/owl#DatatypeProperty',
+      'http://www.w3.org/2002/07/owl#AnnotationProperty',
+      'http://www.w3.org/1999/02/22-rdf-syntax-ns#Property',
+    ],
     // subClassOf is used for class hierarchies; subPropertyOf is added manually below
     elementSubtypePredicate: RDFS_SUB_CLASS_OF,
   });

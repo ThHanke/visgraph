@@ -7,7 +7,19 @@ import * as Reactodia from '@reactodia/workspace';
 import { rdfManager } from "./rdfManager";
 import { DataFactory } from "n3";
 
-const { namedNode, literal } = DataFactory;
+const { namedNode, literal, blankNode } = DataFactory;
+
+/**
+ * Reconstruct an N3 Term from the plain-string representation returned by
+ * rdfManager.fetchQuadsPage (which strips literal quotes/language/datatype).
+ * Heuristic: strings that look like absolute IRIs → NamedNode,
+ *            _: prefix → BlankNode, everything else → plain Literal.
+ */
+function objectTerm(value: string) {
+  if (value.startsWith('_:')) return blankNode(value.slice(2));
+  if (/^[a-zA-Z][a-zA-Z0-9+\-.]*:/.test(value)) return namedNode(value);
+  return literal(value);
+}
 
 const WORKFLOWS_GRAPH = "urn:vg:workflows";
 const DATA_GRAPH = "urn:vg:data";
@@ -218,7 +230,9 @@ function getDefaultNamespace(): string {
     if (mgr && typeof (mgr as any).getNamespaces === 'function') {
       const entries: Array<{ prefix: string; uri: string }> = (mgr as any).getNamespaces() || [];
       const defaultEntry = entries.find((e: any) => e.prefix === "");
-      if (defaultEntry && defaultEntry.uri) return defaultEntry.uri;
+      if (defaultEntry?.uri && /^https?:\/\//i.test(defaultEntry.uri)) {
+        return defaultEntry.uri;
+      }
     }
     return "http://example.com/";
   } catch (error) {
@@ -293,7 +307,7 @@ export async function instantiateWorkflowOnCanvas(
     for (const q of quads.items ?? []) {
       const quad = q as any;
       if (!quad.predicate || !quad.object) continue;
-      const obj = typeof quad.object === 'string' ? namedNode(quad.object) : quad.object;
+      const obj = typeof quad.object === 'string' ? objectTerm(quad.object) : quad.object;
       triplesToAdd.push({ subject: namedNode(iri), predicate: namedNode(quad.predicate), object: obj });
     }
   }
@@ -362,11 +376,13 @@ export async function instantiateWorkflowOnCanvas(
   const activityIri = `${defaultNs}${templateName}Run_${timestamp}`;
   const activityLabel = `${templateLabel} Run`;
 
+  // IRIs are anchored to the activity so both the app and Python scripts can
+  // derive the same IRI from P-Plan semantics: activityIri + '_' + variable local name.
   const inputVarInstanceIris = externalInputVarIris.map(
-    varIri => `${defaultNs}${extractLocalName(varIri).replace(/\s+/g, '_')}_${timestamp}`
+    varIri => `${activityIri}_${extractLocalName(varIri)}`
   );
   const outputVarInstanceIris = lastStepOutputVarIris.map(
-    varIri => `${defaultNs}${extractLocalName(varIri).replace(/\s+/g, '_')}_${timestamp}`
+    varIri => `${activityIri}_${extractLocalName(varIri)}`
   );
 
   // 8. Copy ALL template entities to data graph (keep original IRIs)
@@ -421,7 +437,7 @@ export async function instantiateWorkflowOnCanvas(
       if (TEMPLATE_ONLY_PREDICATES.has(quad.predicate)) continue;
       // For rdf:type, skip template-level types but keep domain types
       if (quad.predicate === `${RDF_NS}type` && TEMPLATE_ONLY_TYPES.has(quad.object)) continue;
-      const obj = typeof quad.object === 'string' ? namedNode(quad.object) : quad.object;
+      const obj = typeof quad.object === 'string' ? objectTerm(quad.object) : quad.object;
       triplesToAdd.push({ subject: namedNode(instanceIri), predicate: namedNode(quad.predicate), object: obj });
     }
     // Promote spw:expectedType → rdf:type on the instance so it carries the domain type
@@ -493,17 +509,20 @@ export async function instantiateWorkflowOnCanvas(
     });
   }
 
-  // 11. Output var instances: metadata from template var + p-plan:Entity + correspondsToVariable
-  //     Instance prov:wasGeneratedBy activity
-  for (let i = 0; i < lastStepOutputVarIris.length; i++) {
-    const templateVarIri = lastStepOutputVarIris[i];
-    const instanceIri = outputVarInstanceIris[i];
-    await copyVarMetaToInstance(templateVarIri, instanceIri);
-    triplesToAdd.push({
-      subject: namedNode(instanceIri),
-      predicate: namedNode(`${PROV_NS}wasGeneratedBy`),
-      object: namedNode(activityIri),
-    });
+  // 11. Output var instances: only for single-step workflows (entryStep === lastStep).
+  //     For multi-step workflows the output placeholder IRI depends on the next activity's IRI
+  //     which is dynamically assigned in executeActivity; it will create the placeholder there.
+  if (entryStepIri === lastStepIri) {
+    for (let i = 0; i < lastStepOutputVarIris.length; i++) {
+      const templateVarIri = lastStepOutputVarIris[i];
+      const instanceIri = outputVarInstanceIris[i];
+      await copyVarMetaToInstance(templateVarIri, instanceIri);
+      triplesToAdd.push({
+        subject: namedNode(instanceIri),
+        predicate: namedNode(`${PROV_NS}wasGeneratedBy`),
+        object: namedNode(activityIri),
+      });
+    }
   }
 
   // 12. Helper: get label + types for a node from workflows graph
@@ -573,10 +592,12 @@ export async function instantiateWorkflowOnCanvas(
     placeEl(inputVarInstanceIris[i], [`${PPLAN_NS}Entity`], varLabel);
   }
 
-  // Output var instances (run-scoped)
-  for (let i = 0; i < outputVarInstanceIris.length; i++) {
-    const varLabel = await getVarLabel(lastStepOutputVarIris[i]);
-    placeEl(outputVarInstanceIris[i], [`${PPLAN_NS}Entity`], varLabel);
+  // Output var instances (run-scoped) — only placed on canvas for single-step workflows
+  if (entryStepIri === lastStepIri) {
+    for (let i = 0; i < outputVarInstanceIris.length; i++) {
+      const varLabel = await getVarLabel(lastStepOutputVarIris[i]);
+      placeEl(outputVarInstanceIris[i], [`${PPLAN_NS}Entity`], varLabel);
+    }
   }
 
   // Group template entities together

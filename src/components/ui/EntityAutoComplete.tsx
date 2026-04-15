@@ -22,6 +22,8 @@ interface Props {
   className?: string;
   autoOpen?: boolean;
   disabled?: boolean;
+  /** Increment to force re-fetch from dataProvider (e.g. after loading new ontologies) */
+  refreshToken?: number;
 }
 
 const TIER_LABELS: Record<number, string> = { 0: 'Best match', 1: 'Compatible', 2: 'General', 3: 'Other' };
@@ -44,6 +46,7 @@ export default function EntityAutoComplete({
   className,
   autoOpen = false,
   disabled = false,
+  refreshToken,
 }: Props) {
   const [loadedItems, setLoadedItems] = useState<FatMapEntity[]>([]);
   const prefixes = useContext(PrefixContext);
@@ -62,7 +65,7 @@ export default function EntityAutoComplete({
     };
     load();
     return () => { cancelled = true; };
-  }, [dataProvider, mode]);
+  }, [dataProvider, mode, refreshToken]);
 
   // Decide source: explicit entities prop overrides everything
   const baseSource = useMemo<FatMapEntity[]>(() => {
@@ -128,6 +131,13 @@ export default function EntityAutoComplete({
         setOpen(false);
         setQuery('');
         try { setInitialDisplay(prefixedIri(String(ent?.iri || ''))); } catch { setInitialDisplay(''); }
+      } else if (query.trim()) {
+        // Freetext fallback: treat typed value as IRI directly
+        const iri = query.trim();
+        onChange?.({ iri } as FatMapEntity);
+        setOpen(false);
+        setQuery('');
+        setInitialDisplay(iri);
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
@@ -207,7 +217,16 @@ export default function EntityAutoComplete({
             }
             setOpen(true);
           }}
-          onBlur={() => { isFocusedRef.current = false; }}
+          onBlur={() => {
+            isFocusedRef.current = false;
+            // Commit freetext IRI if user typed a value but never selected from dropdown
+            if (query.trim() && /^[a-z][a-z0-9+.-]*:/i.test(query.trim())) {
+              const iri = query.trim();
+              onChange?.({ iri } as FatMapEntity);
+              setQuery('');
+              setInitialDisplay(iri);
+            }
+          }}
           onKeyDown={onKeyDown}
           disabled={disabled}
           aria-controls="entity-autocomplete-list"
