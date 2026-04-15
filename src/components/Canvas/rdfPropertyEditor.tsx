@@ -182,101 +182,99 @@ const EntityEditor = ({ options }: EntityEditorProps) => {
     // flex-1 + min-h-0: fills remaining height inside .reactodia-dialog (flex column)
     // overflow-hidden: clips content, inner div handles scroll
     <form onSubmit={handleApply} className="flex flex-col flex-1 min-h-0 overflow-hidden">
-      {/* Scrollable content area */}
-      <div className="flex-1 overflow-y-auto min-h-0 space-y-5 p-3">
+      <div className="flex-1 overflow-y-auto min-h-0 p-3 space-y-3">
+
         {/* IRI */}
         <div className="space-y-1">
-          <Label>IRI</Label>
-          <Input value={nodeIri} onChange={e => setNodeIri(e.target.value)} />
+          <Label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">IRI</Label>
+          <Input value={nodeIri} onChange={e => setNodeIri(e.target.value)} className="h-7 text-xs font-mono" />
         </div>
 
         {/* RDF Types */}
-        <div className="space-y-2">
+        <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <Label>RDF Types</Label>
-            <Button type="button" variant="outline" size="sm" onClick={addType}>
-              <Plus className="h-4 w-4 mr-1" />Add
-            </Button>
+            <Label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">RDF Types</Label>
+            <button type="button" onClick={addType} className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-accent transition-colors">
+              <Plus className="h-3 w-3" />Add
+            </button>
           </div>
-          {types.length === 0 && (
-            <p className="text-xs text-muted-foreground">No types assigned</p>
-          )}
-          {types.map((t, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <EntityAutoComplete
-                mode="classes"
-                optionsLimit={5}
-                value={t}
-                onChange={(ent: any) => updateType(i, ent ? String(ent.iri || '') : '')}
-                placeholder="Search for class..."
-                emptyMessage="No classes found"
-                className="flex-1"
-                dataProvider={dataProvider}
-              />
-              <Button type="button" variant="ghost" size="sm" className="h-8 px-2" onClick={() => removeType(i)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
+          <div className="space-y-1">
+            {types.length === 0 && <p className="text-xs text-muted-foreground">—</p>}
+            {types.map((t, i) => (
+              <div key={i} className="flex items-center gap-1">
+                <EntityAutoComplete
+                  mode="classes"
+                  optionsLimit={5}
+                  value={t}
+                  onChange={(ent: any) => updateType(i, ent ? String(ent.iri || '') : '')}
+                  placeholder="Search class…"
+                  emptyMessage="No classes found"
+                  className="flex-1"
+                  dataProvider={dataProvider}
+                />
+                <button type="button" onClick={() => removeType(i)} className="h-7 w-7 flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors shrink-0">
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Annotation Properties */}
-        <div className="space-y-2">
+        <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <Label>Annotation Properties</Label>
-            <Button type="button" variant="outline" size="sm" onClick={addRow}>
-              <Plus className="h-4 w-4 mr-1" />Add
-            </Button>
+            <Label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Annotation Properties</Label>
+            <button type="button" onClick={addRow} className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-accent transition-colors">
+              <Plus className="h-3 w-3" />Add
+            </button>
           </div>
-          {rows.length === 0 && (
-            <p className="text-xs text-muted-foreground">No annotation properties</p>
+          {rows.length > 0 && (
+            <div className="grid grid-cols-[1fr_1fr_4.5rem_2.5rem_1.75rem] gap-1 px-0.5 pb-0.5">
+              <span className="text-[10px] text-muted-foreground">Property</span>
+              <span className="text-[10px] text-muted-foreground">Value</span>
+              <span className="text-[10px] text-muted-foreground">Type</span>
+              <span className="text-[10px] text-muted-foreground">Lang</span>
+              <span />
+            </div>
           )}
-          {rows.map((row, i) => (
-            <div key={i} className="grid grid-cols-12 gap-2 items-end">
-              <div className="col-span-4">
-                <Label className="text-xs">Property</Label>
+          <div className="space-y-1">
+            {rows.length === 0 && <p className="text-xs text-muted-foreground">—</p>}
+            {rows.map((row, i) => (
+              <div key={i} className="grid grid-cols-[1fr_1fr_4.5rem_2.5rem_1.75rem] gap-1 items-center">
                 <EntityAutoComplete
                   mode="properties"
                   value={row.key}
                   onChange={(ent) => updateRow(i, 'key', ent ? String(ent.iri || '') : '')}
-                  placeholder="Select property..."
-                  className={!row.key.trim() ? 'border-destructive' : ''}
+                  placeholder="Property…"
+                  className={!row.key.trim() ? 'ring-1 ring-destructive' : ''}
                   dataProvider={dataProvider}
                 />
-              </div>
-              <div className="col-span-4">
-                <Label className="text-xs">Value</Label>
-                <Input value={row.value} onChange={e => updateRow(i, 'value', e.target.value)} placeholder="Value..." />
-              </div>
-              <div className="col-span-2">
-                <Label className="text-xs">Type</Label>
+                <Input value={row.value} onChange={e => updateRow(i, 'value', e.target.value)} placeholder="Value…" className="h-7 text-xs" />
                 <Select value={row.type || DISPLAY_DATATYPE} onValueChange={v => updateRow(i, 'type', v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-7 text-xs px-1.5"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {XSD_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    {XSD_TYPES.map(t => <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                <Input
+                  value={row.lang}
+                  onChange={e => updateRow(i, 'lang', e.target.value)}
+                  placeholder="en"
+                  disabled={row.type !== DISPLAY_DATATYPE}
+                  className="h-7 text-xs"
+                />
+                <button type="button" onClick={() => removeRow(i)} className="h-7 w-7 flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors">
+                  <X className="h-3 w-3" />
+                </button>
               </div>
-              {row.type === DISPLAY_DATATYPE && (
-                <div className="col-span-1">
-                  <Label className="text-xs">Lang</Label>
-                  <Input value={row.lang} onChange={e => updateRow(i, 'lang', e.target.value)} placeholder="en" />
-                </div>
-              )}
-              <div className="col-span-1">
-                <Button type="button" variant="ghost" size="sm" className="h-8 px-2" onClick={() => removeRow(i)}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Pinned footer — always visible at bottom of dialog */}
-      <div className="shrink-0 flex justify-end gap-2 px-3 py-2 border-t">
-        <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-        <Button type="submit">Apply</Button>
+      <div className="shrink-0 flex justify-end gap-1.5 px-3 py-2 border-t">
+        <Button type="button" variant="ghost" size="sm" className="h-7 px-3 text-xs" onClick={onClose}>Cancel</Button>
+        <Button type="submit" size="sm" className="h-7 px-3 text-xs">Apply</Button>
       </div>
     </form>
   );

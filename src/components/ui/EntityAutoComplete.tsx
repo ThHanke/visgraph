@@ -1,11 +1,11 @@
-import React, { useMemo, useState, useEffect, useRef, useContext } from 'react';
-import { cn } from '../../lib/utils';
+import React, { useMemo, useState, useEffect, useLayoutEffect, useContext, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { PrefixContext } from '../../providers/PrefixContext';
 import { prefixShorten } from '../../providers/prefixShorten';
 import { fetchClasses, fetchLinkTypes, scoreLinkTypes, type FatMapEntity } from '../../utils/ontologyQueries';
 import type { N3DataProvider } from '../../providers/N3DataProvider';
+import { cn } from '../../lib/utils';
 
-// Re-export so existing importers of FatMapEntity from this file keep working
 export type { FatMapEntity };
 
 interface Props {
@@ -22,15 +22,10 @@ interface Props {
   className?: string;
   autoOpen?: boolean;
   disabled?: boolean;
-  /** Increment to force re-fetch from dataProvider (e.g. after loading new ontologies) */
   refreshToken?: number;
 }
 
 const TIER_LABELS: Record<number, string> = { 0: 'Best match', 1: 'Compatible', 2: 'General', 3: 'Other' };
-
-function escapeRegExp(s: string) {
-  return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 export default function EntityAutoComplete({
   mode,
@@ -41,7 +36,7 @@ export default function EntityAutoComplete({
   optionsLimit = 8,
   value,
   onChange,
-  placeholder = 'Select option...',
+  placeholder = 'Select…',
   emptyMessage = 'No options found.',
   className,
   autoOpen = false,
@@ -50,10 +45,8 @@ export default function EntityAutoComplete({
 }: Props) {
   const [loadedItems, setLoadedItems] = useState<FatMapEntity[]>([]);
   const prefixes = useContext(PrefixContext);
+  const prefixedIri = (iri: string) => prefixShorten(iri, prefixes);
 
-  const prefixedIri = (iri: string): string => prefixShorten(iri, prefixes);
-
-  // Async load from DataProvider when mode is set
   useEffect(() => {
     if (!dataProvider || !mode) return;
     let cancelled = false;
@@ -67,14 +60,12 @@ export default function EntityAutoComplete({
     return () => { cancelled = true; };
   }, [dataProvider, mode, refreshToken]);
 
-  // Decide source: explicit entities prop overrides everything
   const baseSource = useMemo<FatMapEntity[]>(() => {
     if (Array.isArray(entities) && entities.length > 0) return entities as FatMapEntity[];
     if (dataProvider && mode) return loadedItems;
     return Array.isArray(entities) ? (entities as FatMapEntity[]) : [];
   }, [entities, dataProvider, mode, loadedItems]);
 
-  // Apply domain/range scoring when context is available
   const source = useMemo<FatMapEntity[]>(() => {
     if (mode === 'properties' && dataProvider && (sourceClassIri || targetClassIri)) {
       return scoreLinkTypes(baseSource, sourceClassIri, targetClassIri, dataProvider);
@@ -82,171 +73,149 @@ export default function EntityAutoComplete({
     return baseSource;
   }, [baseSource, mode, dataProvider, sourceClassIri, targetClassIri]);
 
-  const [open, setOpen] = useState<boolean>(Boolean(autoOpen));
-  const [query, setQuery] = useState<string>('');
-  const [highlight, setHighlight] = useState<number>(-1);
-  const [initialDisplay, setInitialDisplay] = useState<string>('');
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const listRef = useRef<HTMLUListElement | null>(null);
-  const isFocusedRef = useRef<boolean>(false);
+  const [open, setOpen] = useState(Boolean(autoOpen));
+  const [query, setQuery] = useState('');
+  const [dropPos, setDropPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { setOpen(Boolean(autoOpen)); }, [autoOpen]);
 
+  const measurePos = () => {
+    if (!inputRef.current) return;
+    const r = inputRef.current.getBoundingClientRect();
+    setDropPos({ top: r.bottom + 2, left: r.left, width: r.width });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    measurePos();
+  }, [open]);
+
   useEffect(() => {
-    if (isFocusedRef.current) return;
-    if (!value) { setInitialDisplay(''); return; }
+    if (!open) return;
+    window.addEventListener('scroll', measurePos, true);
+    window.addEventListener('resize', measurePos);
+    return () => {
+      window.removeEventListener('scroll', measurePos, true);
+      window.removeEventListener('resize', measurePos);
+    };
+  }, [open]);
+
+  const displayValue = useMemo(() => {
+    if (!value) return '';
     const found = source.find(e => String(e.iri || '') === String(value));
-    setInitialDisplay(found ? prefixedIri(String(found.iri)) : value);
+    return found ? prefixedIri(String(found.iri)) : value;
   }, [value, source]);
 
   const filtered = useMemo<FatMapEntity[]>(() => {
-    if (!query || String(query).trim() === '') {
-      return optionsLimit > 0 ? source.slice(0, optionsLimit) : source;
-    }
-    const rx = new RegExp(escapeRegExp(String(query).trim()), 'i');
-    const matched = source.filter(e => {
-      if (rx.test(String(e?.label || ''))) return true;
-      if (rx.test(prefixedIri(String(e?.iri || '')))) return true;
-      if (rx.test(String(e?.iri || ''))) return true;
-      return false;
-    });
+    const q = query.trim();
+    if (!q) return optionsLimit > 0 ? source.slice(0, optionsLimit) : source;
+    const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const matched = source.filter(e =>
+      rx.test(String(e?.label || '')) ||
+      rx.test(prefixedIri(String(e?.iri || ''))) ||
+      rx.test(String(e?.iri || ''))
+    );
     return optionsLimit > 0 ? matched.slice(0, optionsLimit) : matched;
   }, [source, query, optionsLimit]);
 
   const hasTiers = filtered.some(e => typeof e.domainRangeScore === 'number');
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      if (!open) setOpen(true);
-      setHighlight(h => Math.min(h + 1, filtered.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setHighlight(h => Math.max(h - 1, 0));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (open && highlight >= 0 && highlight < filtered.length) {
-        const ent = filtered[highlight];
-        onChange?.(ent || null);
-        setOpen(false);
-        setQuery('');
-        try { setInitialDisplay(prefixedIri(String(ent?.iri || ''))); } catch { setInitialDisplay(''); }
-      } else if (query.trim()) {
-        // Freetext fallback: treat typed value as IRI directly
-        const iri = query.trim();
-        onChange?.({ iri } as FatMapEntity);
-        setOpen(false);
-        setQuery('');
-        setInitialDisplay(iri);
-      }
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      setOpen(false);
-      setHighlight(-1);
-      setQuery('');
-      onChange?.(null);
-      setInitialDisplay('');
-    }
-  };
-
   const handleSelect = (ent: FatMapEntity) => {
     onChange?.(ent || null);
     setOpen(false);
     setQuery('');
-    try { setInitialDisplay(prefixedIri(String(ent?.iri || ''))); } catch { setInitialDisplay(''); }
-    inputRef.current?.focus();
   };
 
-  const inputValue = query !== '' ? query : initialDisplay;
-
-  // Build list items with tier separators
-  const listItems: React.ReactNode[] = [];
-  let lastScore: number | undefined = undefined;
-  let flatIdx = 0;
-  for (const ent of filtered) {
-    const score = typeof ent.domainRangeScore === 'number' ? ent.domainRangeScore : undefined;
-    if (hasTiers && score !== undefined && score !== lastScore) {
-      listItems.push(
-        <li key={`sep-${score}`} className="px-3 py-1 text-xs font-semibold text-muted-foreground border-t first:border-t-0 bg-muted/40 select-none">
-          {TIER_LABELS[score]}
-        </li>
-      );
-      lastScore = score;
+  const tierGroups = useMemo(() => {
+    if (!hasTiers) return [{ label: null, items: filtered }];
+    const groups: { label: string | null; items: FatMapEntity[] }[] = [];
+    let cur: { label: string | null; items: FatMapEntity[] } | null = null;
+    for (const ent of filtered) {
+      const score = typeof ent.domainRangeScore === 'number' ? ent.domainRangeScore : -1;
+      const label = score >= 0 ? (TIER_LABELS[score] ?? 'Other') : null;
+      if (!cur || cur.label !== label) { cur = { label, items: [] }; groups.push(cur); }
+      cur.items.push(ent);
     }
-    const idx = flatIdx++;
-    const isHighlighted = idx === highlight;
-    listItems.push(
-      <li
-        key={String(ent.iri || idx)}
-        role="option"
-        aria-selected={isHighlighted}
-        onMouseEnter={() => setHighlight(idx)}
-        onMouseDown={ev => { ev.preventDefault(); handleSelect(ent); }}
-        className={cn(
-          'cursor-pointer px-3 py-2',
-          isHighlighted ? 'bg-accent text-accent-foreground' : 'bg-transparent text-foreground',
-        )}
-      >
-        <div className="text-sm font-medium">{prefixedIri(String(ent.iri))}</div>
-        <div className="text-xs text-muted-foreground">{ent.label || ''}</div>
-      </li>
-    );
-  }
+    return groups;
+  }, [filtered, hasTiers]);
+
+  const dropdown = open && dropPos && ReactDOM.createPortal(
+    <ul
+      role="listbox"
+      style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width, zIndex: 9999 }}
+      className="max-h-52 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md py-1"
+    >
+      {filtered.length === 0
+        ? <li className="px-2 py-2 text-xs text-muted-foreground text-center">{emptyMessage}</li>
+        : tierGroups.map((group, gi) => (
+          <React.Fragment key={gi}>
+            {group.label && (
+              <li className="px-2 py-0.5 text-[10px] font-medium text-muted-foreground bg-muted/40 select-none">
+                {group.label}
+              </li>
+            )}
+            {group.items.map(ent => (
+              <li
+                key={String(ent.iri || ent.label)}
+                role="option"
+                onMouseDown={e => { e.preventDefault(); handleSelect(ent); }}
+                className="px-2 py-1 text-xs cursor-pointer hover:bg-accent hover:text-accent-foreground"
+              >
+                <div className="font-medium leading-tight">{prefixedIri(String(ent.iri))}</div>
+                {ent.label && <div className="text-[10px] text-muted-foreground leading-tight">{ent.label}</div>}
+              </li>
+            ))}
+          </React.Fragment>
+        ))
+      }
+    </ul>,
+    document.body
+  );
 
   return (
-    <div className={cn(className || 'relative w-full')} style={{ minWidth: 0 }}>
-      <div role="combobox" aria-expanded={open} aria-haspopup="listbox" className="flex items-center gap-2">
-        <input
-          ref={inputRef}
-          type="text"
-          className={cn(
-            'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
-          )}
-          placeholder={placeholder}
-          value={inputValue}
-          onChange={ev => {
-            const v = ev.target.value;
-            setQuery(v);
-            if (String(v).trim() !== '') { setOpen(true); } else { setInitialDisplay(''); }
-            setHighlight(0);
-          }}
-          onFocus={() => {
-            if (!isFocusedRef.current) {
-              isFocusedRef.current = true;
-              setTimeout(() => inputRef.current?.select(), 0);
-            }
-            setOpen(true);
-          }}
-          onBlur={() => {
-            isFocusedRef.current = false;
-            // Commit freetext IRI if user typed a value but never selected from dropdown
+    <>
+      <input
+        ref={inputRef}
+        type="text"
+        disabled={disabled}
+        placeholder={placeholder}
+        value={query !== '' ? query : displayValue}
+        className={cn(
+          'flex h-7 w-full rounded-md border border-input bg-background px-2 py-1 text-xs',
+          'ring-offset-background placeholder:text-muted-foreground',
+          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+          'disabled:cursor-not-allowed disabled:opacity-50',
+          className,
+        )}
+        onFocus={() => {
+          if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
+          setOpen(true);
+          setTimeout(() => inputRef.current?.select(), 0);
+        }}
+        onBlur={() => {
+          closeTimer.current = setTimeout(() => {
+            setOpen(false);
             if (query.trim() && /^[a-z][a-z0-9+.-]*:/i.test(query.trim())) {
-              const iri = query.trim();
-              onChange?.({ iri } as FatMapEntity);
-              setQuery('');
-              setInitialDisplay(iri);
+              onChange?.({ iri: query.trim() } as FatMapEntity);
             }
-          }}
-          onKeyDown={onKeyDown}
-          disabled={disabled}
-          aria-controls="entity-autocomplete-list"
-          aria-autocomplete="list"
-        />
-      </div>
-
-      {open && (
-        <ul
-          id="entity-autocomplete-list"
-          role="listbox"
-          ref={listRef}
-          className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded border bg-popover shadow"
-        >
-          {filtered.length === 0
-            ? <li className="px-3 py-2 text-sm text-muted-foreground">{emptyMessage}</li>
-            : listItems
+            setQuery('');
+          }, 150);
+        }}
+        onChange={e => { setQuery(e.target.value); setOpen(true); }}
+        onKeyDown={e => {
+          if (e.key === 'Escape') { setOpen(false); setQuery(''); }
+          if (e.key === 'Enter' && query.trim() && filtered.length === 0) {
+            if (/^[a-z][a-z0-9+.-]*:/i.test(query.trim())) {
+              onChange?.({ iri: query.trim() } as FatMapEntity);
+              setOpen(false);
+              setQuery('');
+            }
           }
-        </ul>
-      )}
-    </div>
+        }}
+      />
+      {dropdown}
+    </>
   );
 }

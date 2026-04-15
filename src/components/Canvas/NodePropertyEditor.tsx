@@ -688,9 +688,8 @@ export const NodePropertyEditor = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange} modal>
       <DialogContent
-        className="sm:max-w-2xl max-h-[90vh] max-w-[min(90vw,48rem)] overflow-y-auto text-foreground"
+        className="sm:max-w-2xl max-h-[90vh] max-w-[min(90vw,48rem)] flex flex-col gap-0 p-0 overflow-hidden text-foreground"
         onInteractOutside={(e) => {
-          // Prevent closing when clicking on popover content
           const target = e.target as Element;
           if (target.closest("[data-radix-popper-content-wrapper]") ||
               target.closest("[data-radix-select-content]") ||
@@ -700,193 +699,158 @@ export const NodePropertyEditor = ({
           }
         }}
       >
-        <DialogHeader>
-          <DialogTitle>Edit Node Properties</DialogTitle>
-          <DialogDescription>
-            Change the type, IRI, and annotation properties of this node.
-            In A-box mode, owl:NamedIndividual is preserved by the mapping pipeline.
-          </DialogDescription>
+        <DialogHeader className="px-4 pt-4 pb-3 border-b shrink-0">
+          <DialogTitle className="text-base">Edit Node Properties</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="nodeType">Node Type (Meaningful Class)</Label>
-            <div className="flex items-center gap-2">
+        <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="flex flex-col min-h-0 overflow-y-auto">
+          <div className="px-4 py-3 space-y-3">
+
+            {/* Node Type */}
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Node Type</Label>
               <EntityAutoComplete
                 mode="classes"
                 optionsLimit={5}
                 value={nodeType}
                 onChange={(ent: any) => { const val = ent ? String(ent.iri || '') : ''; setNodeType(val); setRdfTypesState(val ? [val] : []); }}
-                placeholder="Type to search for classes..."
-                emptyMessage="No OWL classes found. Load an ontology first."
+                placeholder="Search for class…"
+                emptyMessage="No OWL classes found."
                 className="w-full"
                 dataProvider={dataProvider}
               />
             </div>
-            <p className="text-xs text-muted-foreground">
-              owl:NamedIndividual will be preserved by the mapping pipeline if applicable.
-            </p>
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="nodeIri">Node IRI</Label>
-            <Input
-              id="nodeIri"
-              value={nodeIri}
-              onChange={(e) => setNodeIri(e.target.value)}
-              placeholder="https://example.com/entity"
-            />
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Label>RDF Types (rdf:type assertions)</Label>
-              <Button type="button" variant="outline" size="sm" onClick={(e) => handleAddType(e)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Type
-              </Button>
+            {/* Node IRI */}
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">IRI</Label>
+              <Input
+                id="nodeIri"
+                value={nodeIri}
+                onChange={(e) => setNodeIri(e.target.value)}
+                placeholder="https://example.com/entity"
+                className="h-8 text-sm"
+              />
             </div>
 
-            <div className="space-y-3">
-              {rdfTypesState.map((type, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <EntityAutoComplete
-                    mode="classes"
-                    optionsLimit={5}
-                    value={type}
-                    onChange={(ent: any) => handleUpdateType(index, ent ? String(ent.iri || '') : '')}
-                    placeholder="Type to search for classes..."
-                    emptyMessage="No OWL classes found. Load an ontology first."
-                    className="flex-1"
-                    dataProvider={dataProvider}
-                  />
-                  <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveType(index, e)} className="h-9 px-2">
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
+            {/* RDF Types */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">RDF Types</Label>
+                <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={(e) => handleAddType(e)}>
+                  <Plus className="h-3 w-3 mr-1" />Add
+                </Button>
+              </div>
+              <div className="space-y-1.5">
+                {rdfTypesState.map((type, index) => (
+                  <div key={index} className="flex items-center gap-1.5">
+                    <EntityAutoComplete
+                      mode="classes"
+                      optionsLimit={5}
+                      value={type}
+                      onChange={(ent: any) => handleUpdateType(index, ent ? String(ent.iri || '') : '')}
+                      placeholder="Search for class…"
+                      emptyMessage="No OWL classes found."
+                      className="flex-1"
+                      dataProvider={dataProvider}
+                    />
+                    <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveType(index, e)} className="h-8 w-8 p-0 shrink-0">
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+                {rdfTypesState.length === 0 && (
+                  <p className="text-xs text-muted-foreground py-1">None</p>
+                )}
+              </div>
+            </div>
 
-              {rdfTypesState.length === 0 && (
-                <div className="text-center py-4 text-muted-foreground border-2 border-dashed border-border/20 rounded-lg">
-                  <p className="text-sm">No RDF types assigned</p>
-                  <p className="text-xs">Click "Add Type" to assign type(s) to this individual</p>
+            {/* Annotation Properties */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Annotation Properties</Label>
+                <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={(e) => handleAddProperty(e)}>
+                  <Plus className="h-3 w-3 mr-1" />Add
+                </Button>
+              </div>
+
+              {properties.length > 0 && (
+                <div className="grid grid-cols-[1fr_1fr_5rem_3rem_2rem] gap-1.5 px-0.5 pb-0.5">
+                  <span className="text-[10px] text-muted-foreground">Property</span>
+                  <span className="text-[10px] text-muted-foreground">Value</span>
+                  <span className="text-[10px] text-muted-foreground">Type</span>
+                  <span className="text-[10px] text-muted-foreground">Lang</span>
+                  <span />
                 </div>
               )}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Multiple types can trigger disjoint class violation warnings if classes are declared disjoint.
-            </p>
-          </div>
 
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Label>Annotation Properties</Label>
-              <Button type="button" variant="outline" size="sm" onClick={(e) => handleAddProperty(e)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Property
-              </Button>
-            </div>
-
-            <div className="space-y-3">
-              {properties.map((property, index) => (
-                <div key={index} className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-4">
-                    <Label className="text-xs">Property *</Label>
-                    <EntityAutoComplete
-                      mode="properties"
-                      value={property.key}
-                      onChange={(ent) => handleUpdateProperty(index, "key", ent ? String(ent.iri || '') : "")}
-                      placeholder="Select property..."
-                      className={!property.key.trim() ? "border-destructive" : ""}
-                      dataProvider={dataProvider}
-                      refreshToken={ontologiesVersion}
-                    />
-                    {!property.key.trim() && (
-                      <p className="text-xs text-destructive mt-1">Property is required</p>
-                    )}
-                  </div>
-
-                  <div className="col-span-5">
-                    <Label className="text-xs">Value</Label>
+              <div className="space-y-1.5">
+                {properties.map((property, index) => (
+                  <div key={index} className="grid grid-cols-[1fr_1fr_5rem_3rem_2rem] gap-1.5 items-start">
+                    <div>
+                      <EntityAutoComplete
+                        mode="properties"
+                        value={property.key}
+                        onChange={(ent) => handleUpdateProperty(index, "key", ent ? String(ent.iri || '') : "")}
+                        placeholder="Property…"
+                        className={!property.key.trim() ? "ring-1 ring-destructive" : ""}
+                        dataProvider={dataProvider}
+                        refreshToken={ontologiesVersion}
+                      />
+                    </div>
                     <Input
                       value={property.value}
                       onChange={(e) => handleUpdateProperty(index, "value", e.target.value)}
-                      placeholder="Property value..."
+                      placeholder="Value…"
+                      className="h-8 text-sm"
                     />
-                  </div>
-
-                  <div className="col-span-1">
-                    <Label className="text-xs">Type</Label>
                     <Select
                       value={property.type || DISPLAY_DATATYPE}
                       onValueChange={(value) => {
                         handleUpdateProperty(index, "type", value);
-                        if (value !== DISPLAY_DATATYPE) {
-                          handleUpdateProperty(index, "lang", "");
-                        }
+                        if (value !== DISPLAY_DATATYPE) handleUpdateProperty(index, "lang", "");
                       }}
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select type..." />
+                      <SelectTrigger className="h-8 text-xs px-2">
+                        <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         {getXSDTypes().map((type) => (
-                          <SelectItem key={type} value={type}>
-                            {type}
-                          </SelectItem>
+                          <SelectItem key={type} value={type} className="text-xs">{type}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
-
-                  {property.type === DISPLAY_DATATYPE && (
-                    <div className="col-span-1">
-                      <Label className="text-xs">Lang</Label>
-                      <Input
-                        value={property.lang || ""}
-                        onChange={(e) => {
-                          const v = String(e.target.value || "").trim();
-                          // if lang set, ensure type is xsd:string
-                          if (v) {
-                            handleUpdateProperty(index, "lang", v);
-                            handleUpdateProperty(index, "type", DISPLAY_DATATYPE);
-                          } else {
-                            handleUpdateProperty(index, "lang", "");
-                          }
-                        }}
-                        placeholder="en"
-                        className="w-full"
-                      />
-                    </div>
-                  )}
-
-                  <div className="col-span-1">
-                    <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveProperty(index, e)} className="h-9 px-2">
-                      <X className="h-4 w-4" />
+                    <Input
+                      value={property.lang || ""}
+                      onChange={(e) => {
+                        const v = String(e.target.value || "").trim();
+                        if (v) {
+                          handleUpdateProperty(index, "lang", v);
+                          handleUpdateProperty(index, "type", DISPLAY_DATATYPE);
+                        } else {
+                          handleUpdateProperty(index, "lang", "");
+                        }
+                      }}
+                      placeholder="en"
+                      disabled={property.type !== DISPLAY_DATATYPE}
+                      className="h-8 text-sm"
+                    />
+                    <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveProperty(index, e)} className="h-8 w-8 p-0">
+                      <X className="h-3.5 w-3.5" />
                     </Button>
                   </div>
-                </div>
-              ))}
-
-              {properties.length === 0 && (
-                <div className="text-center py-4 text-muted-foreground border-2 border-dashed border-border/20 rounded-lg">
-                  <p className="text-sm">No annotation properties</p>
-                  <p className="text-xs">Click "Add Property" to add annotation properties</p>
-                </div>
-              )}
+                ))}
+                {properties.length === 0 && (
+                  <p className="text-xs text-muted-foreground py-1">None</p>
+                )}
+              </div>
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-4 border-t">
-            <Button type="button" variant="destructive" onClick={(e) => handleDelete(e)}>
-              Delete
-            </Button>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" onClick={(e) => handleSave(e)}>
-              Save Changes
-            </Button>
+          <div className="flex justify-end gap-2 px-4 py-3 border-t shrink-0 mt-auto">
+            <Button type="button" variant="destructive" size="sm" onClick={(e) => handleDelete(e)}>Delete</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="submit" size="sm" onClick={(e) => handleSave(e)}>Save</Button>
           </div>
         </form>
       </DialogContent>
@@ -1102,145 +1066,128 @@ export const NodePropertyEditorContent = ({
   };
 
   return (
-    <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space-y-6 p-4">
-      <div className="space-y-2">
-        <Label htmlFor="nodeIri">IRI</Label>
-        <Input id="nodeIri" value={nodeIri} readOnly className="text-muted-foreground" />
+    <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="flex flex-col gap-3 p-3 text-foreground">
+      {/* IRI */}
+      <div className="space-y-1">
+        <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">IRI</Label>
+        <Input id="nodeIri" value={nodeIri} readOnly className="h-8 text-xs text-muted-foreground font-mono" />
       </div>
 
-      <div className="space-y-4">
+      {/* RDF Types */}
+      <div className="space-y-1">
         <div className="flex items-center justify-between">
-          <Label>RDF Types</Label>
-          <Button type="button" variant="outline" size="sm" onClick={(e) => handleAddType(e)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Type
+          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">RDF Types</Label>
+          <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={(e) => handleAddType(e)}>
+            <Plus className="h-3 w-3 mr-1" />Add
           </Button>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           {rdfTypesState.map((type, index) => (
-            <div key={index} className="flex items-center gap-2">
+            <div key={index} className="flex items-center gap-1.5">
               <EntityAutoComplete
                 mode="classes"
                 optionsLimit={5}
                 value={type}
                 onChange={(ent: any) => handleUpdateType(index, ent ? String(ent.iri || "") : "")}
-                placeholder="Type to search for classes..."
-                emptyMessage="No OWL classes found. Load an ontology first."
+                placeholder="Search for class…"
+                emptyMessage="No OWL classes found."
                 className="flex-1"
                 dataProvider={dataProvider}
               />
-              <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveType(index, e)} className="h-9 px-2">
-                <X className="h-4 w-4" />
+              <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveType(index, e)} className="h-8 w-8 p-0 shrink-0">
+                <X className="h-3.5 w-3.5" />
               </Button>
             </div>
           ))}
           {rdfTypesState.length === 0 && (
-            <p className="text-xs text-muted-foreground">No RDF types assigned</p>
+            <p className="text-xs text-muted-foreground py-0.5">None</p>
           )}
         </div>
       </div>
 
-      <div className="space-y-4">
+      {/* Annotation Properties */}
+      <div className="space-y-1">
         <div className="flex items-center justify-between">
-          <Label>Annotation Properties</Label>
-          <Button type="button" variant="outline" size="sm" onClick={(e) => handleAddProperty(e)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Property
+          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Annotation Properties</Label>
+          <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={(e) => handleAddProperty(e)}>
+            <Plus className="h-3 w-3 mr-1" />Add
           </Button>
         </div>
 
-        <div className="space-y-3">
+        {properties.length > 0 && (
+          <div className="grid grid-cols-[1fr_1fr_5rem_3rem_2rem] gap-1.5 px-0.5 pb-0.5">
+            <span className="text-[10px] text-muted-foreground">Property</span>
+            <span className="text-[10px] text-muted-foreground">Value</span>
+            <span className="text-[10px] text-muted-foreground">Type</span>
+            <span className="text-[10px] text-muted-foreground">Lang</span>
+            <span />
+          </div>
+        )}
+
+        <div className="space-y-1.5">
           {properties.map((property, index) => (
-            <div key={index} className="grid grid-cols-12 gap-2 items-end">
-              <div className="col-span-4">
-                <Label className="text-xs">Property *</Label>
-                <EntityAutoComplete
-                  mode="properties"
-                  value={property.key}
-                  onChange={(ent) => handleUpdateProperty(index, "key", ent ? String(ent.iri || "") : "")}
-                  placeholder="Select property..."
-                  className={!property.key.trim() ? "border-destructive" : ""}
-                  dataProvider={dataProvider}
-                  refreshToken={ontologiesVersion}
-                />
-                {!property.key.trim() && (
-                  <p className="text-xs text-destructive mt-1">Property is required</p>
-                )}
-              </div>
-
-              <div className="col-span-5">
-                <Label className="text-xs">Value</Label>
-                <Input
-                  value={property.value}
-                  onChange={(e) => handleUpdateProperty(index, "value", e.target.value)}
-                  placeholder="Property value..."
-                />
-              </div>
-
-              <div className="col-span-1">
-                <Label className="text-xs">Type</Label>
-                <Select
-                  value={property.type || DISPLAY_DATATYPE}
-                  onValueChange={(value) => {
-                    handleUpdateProperty(index, "type", value);
-                    if (value !== DISPLAY_DATATYPE) handleUpdateProperty(index, "lang", "");
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Type..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {getXSDTypes().map((type) => (
-                      <SelectItem key={type} value={type}>{type}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {property.type === DISPLAY_DATATYPE && (
-                <div className="col-span-1">
-                  <Label className="text-xs">Lang</Label>
-                  <Input
-                    value={property.lang || ""}
-                    onChange={(e) => {
-                      const v = e.target.value.trim();
-                      if (v) {
-                        handleUpdateProperty(index, "lang", v);
-                        handleUpdateProperty(index, "type", DISPLAY_DATATYPE);
-                      } else {
-                        handleUpdateProperty(index, "lang", "");
-                      }
-                    }}
-                    placeholder="en"
-                    className="w-full"
-                  />
-                </div>
-              )}
-
-              <div className="col-span-1">
-                <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveProperty(index, e)} className="h-9 px-2">
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
+            <div key={index} className="grid grid-cols-[1fr_1fr_5rem_3rem_2rem] gap-1.5 items-start">
+              <EntityAutoComplete
+                mode="properties"
+                value={property.key}
+                onChange={(ent) => handleUpdateProperty(index, "key", ent ? String(ent.iri || "") : "")}
+                placeholder="Property…"
+                className={!property.key.trim() ? "ring-1 ring-destructive" : ""}
+                dataProvider={dataProvider}
+                refreshToken={ontologiesVersion}
+              />
+              <Input
+                value={property.value}
+                onChange={(e) => handleUpdateProperty(index, "value", e.target.value)}
+                placeholder="Value…"
+                className="h-8 text-sm"
+              />
+              <Select
+                value={property.type || DISPLAY_DATATYPE}
+                onValueChange={(value) => {
+                  handleUpdateProperty(index, "type", value);
+                  if (value !== DISPLAY_DATATYPE) handleUpdateProperty(index, "lang", "");
+                }}
+              >
+                <SelectTrigger className="h-8 text-xs px-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {getXSDTypes().map((type) => (
+                    <SelectItem key={type} value={type} className="text-xs">{type}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                value={property.lang || ""}
+                onChange={(e) => {
+                  const v = e.target.value.trim();
+                  if (v) {
+                    handleUpdateProperty(index, "lang", v);
+                    handleUpdateProperty(index, "type", DISPLAY_DATATYPE);
+                  } else {
+                    handleUpdateProperty(index, "lang", "");
+                  }
+                }}
+                placeholder="en"
+                disabled={property.type !== DISPLAY_DATATYPE}
+                className="h-8 text-sm"
+              />
+              <Button type="button" variant="ghost" size="sm" onClick={(e) => handleRemoveProperty(index, e)} className="h-8 w-8 p-0">
+                <X className="h-3.5 w-3.5" />
+              </Button>
             </div>
           ))}
 
           {properties.length === 0 && (
-            <div className="text-center py-4 text-muted-foreground border-2 border-dashed border-border/20 rounded-lg">
-              <p className="text-sm">No annotation properties</p>
-              <p className="text-xs">Click "Add Property" to add annotation properties</p>
-            </div>
+            <p className="text-xs text-muted-foreground py-0.5">None</p>
           )}
         </div>
       </div>
 
-      <div className="flex justify-end gap-2 pt-4 border-t">
-        <Button type="button" variant="outline" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button type="submit" onClick={(e) => handleSave(e)}>
-          Apply
-        </Button>
+      <div className="flex justify-end gap-2 pt-2 border-t">
+        <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+        <Button type="submit" size="sm" onClick={(e) => handleSave(e)}>Apply</Button>
       </div>
     </form>
   );
