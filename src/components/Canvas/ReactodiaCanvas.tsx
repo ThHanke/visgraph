@@ -337,6 +337,12 @@ export default function ReactodiaCanvas() {
   const { defaultLayout } = Reactodia.useWorker(Layouts);
   const { state: canvasState, actions } = useCanvasState();
   const [sidebarExpanded, setSidebarExpanded] = React.useState(false);
+  const [isMobile, setIsMobile] = React.useState(() => window.innerWidth < 740);
+  React.useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 740);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [loadOntologyOpen, setLoadOntologyOpen] = React.useState(false);
   const [ontologyUrlInput, setOntologyUrlInput] = React.useState('');
@@ -425,6 +431,17 @@ export default function ReactodiaCanvas() {
 
     // Store flush function for use by the Save toolbar action
     flushAuthoringStateRef.current = () => flushAuthoringState(editor, model);
+
+    // Keep isClustered in sync with actual group presence in the model.
+    // This ensures manually created/deleted groups are reflected in the toolbar.
+    const syncClustered = () => {
+      const hasGroups = model.elements.some(el => el instanceof Reactodia.EntityGroup);
+      console.debug('[canvas] syncClustered — hasGroups:', hasGroups, 'elements:', model.elements.length);
+      setIsClustered(hasGroups);
+      actions.setIsClustered(hasGroups);
+    };
+    model.events.on('changeCells', syncClustered);
+    signal.addEventListener('abort', () => model.events.off('changeCells', syncClustered));
   }, []);
 
   // Subscribe to rdfManager changes — incremental sync to live model
@@ -1154,7 +1171,7 @@ export default function ReactodiaCanvas() {
       <div style={{
         position: 'absolute',
         top: 0,
-        left: sidebarExpanded ? 288 : 40,
+        left: sidebarExpanded && window.innerWidth >= 740 ? Math.min(288, window.innerWidth * 0.75) : 40,
         right: 0,
         bottom: 0,
         transition: 'left 300ms ease-in-out',
@@ -1209,7 +1226,8 @@ export default function ReactodiaCanvas() {
               <Reactodia.ViewportDock dock="n">
                 <div style={{
                   display: 'flex',
-                  flexWrap: 'wrap',
+                  flexDirection: isMobile ? 'column' : 'row',
+                  flexWrap: 'nowrap',
                   alignItems: 'flex-start',
                   gap: 4,
                   width: '100%',
@@ -1219,8 +1237,8 @@ export default function ReactodiaCanvas() {
                   position: 'relative',
                   zIndex: 'calc(var(--reactodia-z-index-base, 0) + 35)',
                 }}>
-                  {/* Reactodia hamburger + search (no Toolbar wrapper to avoid nested ViewportDock) */}
-                  <div className="reactodia-toolbar" role="toolbar" style={{ display: 'flex', alignItems: 'top', pointerEvents: 'auto' }}>
+                  {/* Reactodia hamburger + search */}
+                  <div className="reactodia-toolbar" role="toolbar" style={{ display: 'flex', alignItems: 'center', pointerEvents: 'auto', flexShrink: 0, ...(isMobile ? { width: '100%' } : {}) }}>
                     <Reactodia.DropdownMenu
                       className="reactodia-toolbar__menu"
                       direction="down"
@@ -1239,11 +1257,11 @@ export default function ReactodiaCanvas() {
                     <SearchMatchCounter />
                   </div>
 
-                  {/* Spacer */}
-                  <div style={{ flex: 1 }} />
+                  {/* Spacer — desktop only */}
+                  {!isMobile && <div style={{ flex: '1 1 0', minWidth: 0 }} />}
 
-                  {/* Custom toolbar — same toolbar style, right-aligned */}
-                  <div className="reactodia-toolbar" role="toolbar" style={{ display: 'flex', alignItems: 'center', gap: 4, pointerEvents: 'auto' }}>
+                  {/* Action buttons — never shrinks, scrolls internally */}
+                  <div className="reactodia-toolbar" role="toolbar" style={{ display: 'flex', alignItems: 'center', gap: 4, pointerEvents: 'auto', overflowX: 'auto', overflowY: 'hidden', flexShrink: isMobile ? 0 : 1, maxWidth: '100%', ...(isMobile ? { width: '100%' } : {}) }}>
                     <LayoutPopover onApplyLayout={() => performLayoutRef.current?.()} />
                     <TopBar
                       viewMode={canvasState.viewMode as 'abox' | 'tbox'}

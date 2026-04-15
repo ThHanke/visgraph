@@ -102,12 +102,21 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
   return (
     <TooltipPrimitive.Provider delayDuration={0} skipDelayDuration={0}>
+      {/* Mobile backdrop — tap to close */}
+      {isExpanded && (
+        <div
+          className="fixed inset-0 sm:hidden"
+          style={{ zIndex: 90 }}
+          onClick={onToggle}
+        />
+      )}
       <div
         className={cn(
-          'absolute left-0 top-0 h-full z-20',
+          'absolute left-0 top-0 h-full',
           'transition-all duration-300 ease-in-out',
-          isExpanded ? 'w-72' : 'w-10'
+          isExpanded ? 'w-[min(18rem,75vw)]' : 'w-10'
         )}
+        style={{ zIndex: 100 }}
       >
         {/* Collapsed state - icon rail */}
         {!isExpanded && (

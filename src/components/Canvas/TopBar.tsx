@@ -48,9 +48,10 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   return (
     <div className="reactodia-toolbar" role="toolbar" style={{
-      display: 'flex',
+      display: 'inline-flex',
       whiteSpace: 'nowrap',
       gap: '4px',
+      minWidth: 'max-content',
     }}>
       {/* Clustering controls */}
       <div className="reactodia-btn-group reactodia-btn-group-sm">
