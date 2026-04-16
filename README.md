@@ -11,14 +11,16 @@ Key capabilities
 - Load RDF/Turtle/JSON-LD/RDF-XML/N-Triples from local files or remote URLs (including SPARQL endpoints and Fuseki datasets).
 - Startup URL support: auto-load an RDF file via URL query parameter (see "Startup / URL usage" below).
 - **Reactodia canvas**: pan, zoom, minimap, fit-view, with entity group (cluster) support and smooth animations.
-- **Authoring mode**: add nodes, draw edges, edit node annotation properties and link predicates directly on the canvas. Entity auto-complete uses scored domain/range tiers derived from loaded ontologies.
+- **Authoring mode** (always on): add nodes via search, draw edges by dragging the halo "Establish Link" handle, edit node annotation properties and link predicates directly on the canvas. Undo/Redo support. Entity auto-complete uses scored domain/range tiers derived from loaded ontologies.
+- **Search**: type in the search box to find entities by label or IRI; press Enter to cycle through matches on the canvas.
 - **TBox / ABox views**: toggle between ontology-level classes/properties (TBox) and data-level individuals (ABox).
 - **Layout engine**: multiple algorithms — Dagre (horizontal/vertical), ELK (layered, force, stress, radial), and Reactodia-default — all running in Web Workers so the UI stays responsive. Spacing is adjustable via a slider; re-layout triggers automatically when spacing changes.
-- **Clustering**: automatic grouping of large graphs on load. Three algorithms available — SLPA (default), K-means, and Louvain. Threshold is configurable (default 100 nodes). Expand/collapse individual clusters or all at once from the toolbar.
+- **Clustering**: automatic grouping of large graphs on load. Three algorithms available — Label Propagation (default), Louvain, and K-Means. Threshold is configurable (default 100 nodes). Expand/collapse individual clusters or all at once from the toolbar.
 - **OWL-RL reasoning**: run inference in the browser and see inferred triples rendered as amber dashed edges; inferred types/annotations appear in amber italic. A reasoning report lists all inferred triples grouped by rule. Clear inferred triples any time without affecting asserted data.
-- **Namespace management**: edit namespace URIs directly in the legend (rename propagates across all stored triples). Colour-coded namespace badges on nodes and edges.
-- Export the current graph as Turtle, RDF/XML (OWL), or JSON-LD.
-- Developer-friendly diagnostics and a global initialiser exposed on `window` for scripted startup.
+- **Namespace management**: edit namespace URIs directly in the legend panel (rename propagates across all stored triples). Colour-coded namespace badges on nodes and edges.
+- Export the current graph as Turtle, RDF/XML, or JSON-LD.
+- **Workflow catalog**: drag reusable workflow template cards from the sidebar onto the canvas to instantiate connected subgraphs.
+- **MCP support**: exposes a Model Context Protocol server (via the browser's `navigator.modelContext` API) for AI-agent integration. Tools: `loadRdf`, `loadOntology`, `queryGraph`, `exportGraph`, `exportImage`, `addNode`, `removeNode`, `getNodes`, `addLink`, `removeLink`, `getLinks`, `searchEntities`, `autocomplete`, `runLayout`, `runReasoning`, `clearInferred`, `getCapabilities`. MCP manifest at `/.well-known/mcp.json`.
 
 Quick start (development)
 -------------------------
@@ -121,70 +123,95 @@ The annotated diagram below identifies the numbered UI elements described in thi
 
 ![VisGraph UI overview](public/ui-overview.svg)
 
-### Toolbar (top bar, full width)
+### Top bar — left group
 
-① **Add Node** — opens a dialog to create a new RDF node by full IRI or prefixed name (e.g. `ex:Alice`). The RDF manager expands known prefixes automatically. New nodes default to the class selected in the dialog.
+**1** **☰ View menu** — dropdown: Export canvas as PNG, Export as SVG, Print, Show/Hide Legend (toggles the namespace colour key panel).
 
-② **A-Box view** — switches the canvas to show ABox individuals (data instances). Active by default.
+**2** **Search** — type to find entities by label or IRI. ↑↓ arrows or **Enter** cycle through matches on the canvas. The badge shows current match / total count.
 
-③ **T-Box view** — switches the canvas to show TBox entities: classes and properties.
+### Top bar — right group (action toolbar)
 
-④ **Legend** — toggles the namespace colour key. Click a namespace entry's edit icon to rename its URI; the rename propagates across all stored triples.
+**3** **Layout** — opens the layout popover: choose algorithm (Dagre horizontal/vertical, ELK layered/force/stress/radial, Reactodia-default), adjust spacing via a slider, toggle auto-layout (re-runs after every graph update).
 
-⑤ **Cluster / Expand All** — cluster the visible nodes using the selected algorithm, or expand all existing clusters at once. The badge shows the number of currently collapsed clusters.
+**4** **Clustering algorithm selector** — choose between None, Label Propagation, Louvain, or K-Means. The large-graph threshold (default 100 nodes, configurable in Settings) controls when auto-clustering runs on load.
 
-⑥ **Clustering algorithm selector** — choose between SLPA (community detection), K-means, and Louvain. The threshold (large-graph threshold, default 100) controls when auto-clustering activates on load.
+**5** **Cluster** — cluster visible nodes with the selected algorithm. Disabled when already clustered or algorithm is None.
 
-⑦ **Ontologies** — shows loaded ontologies and configured sources. Click to open the ontology manager.
+**6** **Expand All** — expand all collapsed cluster groups at once.
 
-⑧ **Layout** — opens the layout popover where you can pick the algorithm (Dagre horizontal/vertical, ELK layered/force/stress/radial, Reactodia-default) and adjust spacing. Clicking the button without the popover triggers a quick re-layout with current settings. Auto-layout re-runs on every graph update when enabled.
+**7** **A-Box / T-Box** — switch between instance-level individuals (A-Box, highlighted when active) and ontology-level classes/properties (T-Box).
 
-⑨ **Reasoning indicator** — shows whether OWL-RL reasoning has been applied. Click to open the reasoning report (inferred triples grouped by rule).
+**8** **Ontologies** — shows the count of loaded ontologies. Click to open a popover listing each ontology with options to add/remove from autoload.
 
-⑩ **Run reasoning** — triggers the OWL-RL reasoner. Inferred triples are added to the store and rendered as amber dashed edges. Idempotent.
+**9** **Reasoning status** — shows the current OWL-RL state: Ready / ✓ Valid / ⚠ Warnings / Errors / spinner while running. Click to open the reasoning report (inferred triples grouped by rule).
 
-⑪ **Clear inferred** — removes all inferred triples from the store and canvas without touching asserted data.
+**10** **Clear inferred** (🗑) — removes all inferred triples without touching asserted data.
 
-### Sidebar icon buttons (left panel)
+**11** **Run reasoning** (▶) — triggers the OWL-RL reasoner. Inferred triples appear as amber dashed edges. Idempotent.
 
-⑫ **Onto** — opens the ontology loader. Enter any HTTP(S) URL or pick from pre-configured sources in settings.
+### Authoring toolbar (bottom left)
 
-⑬ **File** — opens a file picker for local RDF files. Supported: Turtle (.ttl), JSON-LD (.jsonld), RDF/XML (.rdf/.owl), N-Triples (.nt).
+**12** **Undo** — undo last authoring change.
 
-⑭ **Clear** — removes all loaded graphs and resets the canvas.
+**13** **Redo** — redo last undone change.
 
-⑮ **Export** — exports the current graph as Turtle, OWL-XML, or JSON-LD. Generated entirely in the browser.
+**14** **Save** — commit all pending authoring edits to the RDF store in a single batch.
 
-⑯ **Settings** — opens the settings panel for default layout, clustering algorithm, large-graph threshold, ontology URLs, and other preferences.
+**15** **Re-layout** — re-apply the current layout algorithm in-place.
 
-### Sidebar content
+### Left sidebar
 
-⑰ **Workflows panel** — lists reusable workflow templates. Drag a template card onto the canvas to instantiate it as a connected subgraph.
+**16** **Onto** — open the ontology loader. Enter any HTTP(S) URL or pick from pre-configured sources in Settings.
+
+**17** **File** — open a file picker for local RDF files. Supported: Turtle (.ttl), JSON-LD (.jsonld), RDF/XML (.rdf/.owl), N-Triples (.nt).
+
+**18** **Clear** — remove all loaded graphs and reset the canvas.
+
+**19** **Export** — export as Turtle, JSON-LD, or RDF/XML (dropdown). Generated entirely in the browser.
+
+**20** **Settings** — open the settings panel for default layout, clustering algorithm, large-graph threshold, ontology autoload URLs, workflow catalog, and other preferences.
+
+### Sidebar content (expanded)
+
+When the sidebar is expanded (click the **›** toggle), the file operation buttons are shown in a compact grid. A **Workflows** accordion appears below when the workflow catalog is enabled in Settings. Drag a template card onto the canvas to instantiate it as a connected subgraph.
+
+### Node authoring halo (visible on selected node)
+
+**21** **Edit / Delete** — buttons that appear above a selected node. **Edit** opens the property editor (IRI, annotation properties, custom fields). **Delete** permanently removes the entity from the RDF store.
+
+**22** **Remove** (✕) — removes the node from the canvas view without deleting it from the RDF store.
+
+**23** **Establish Link** (plug icon, right side) — drag to another node to create a new edge. A dialog confirms the predicate with scored autocomplete from loaded ontologies.
+
+**24** **Expand neighbours** (∧, bottom) — load and show all RDF neighbours of the node on the canvas.
 
 ### Canvas elements
 
-⑱ **Cluster node** — represents a group of RDF nodes collapsed into one. The badge shows the member count. Click the cluster handle to expand or collapse it.
+**25** **Individual node** — represents an RDF subject. The header shows the local name, a coloured namespace badge, and the OWL class. Properties (IRI, annotations, custom fields) are shown in an editable table on selection.
 
-⑲ **Individual node** — represents an RDF subject. The header shows the local name, a coloured namespace badge, and the OWL class. Annotation properties (rdfs:label, custom annotations) are shown in a table below. Double-click to open the node editor.
+**26** **Edge / predicate** — labelled arrow between two nodes. Amber dashed edges are inferred triples. Double-click to open the link property editor (scored autocomplete from ontologies).
 
-⑳ **Edge / predicate** — an arrow connecting two nodes, labelled with the RDF predicate (local name). Amber dashed edges are inferred triples. Double-click to edit the predicate or link properties.
-
-㉑ **Minimap** — bottom-right overview. Click to jump, drag to pan.
+**27** **Minimap** — overview panel at bottom-right. Click to jump to a region, drag to pan.
 
 ### Canvas interactions
-- Double-click a node to open the node editor (edit labels and annotation properties).
-- Double-click an edge to edit its predicate or link properties. The link property editor uses scored auto-complete from loaded ontologies.
-- Drag from a node handle to another node to create a new edge (a dialog confirms the predicate).
+- **Add a node**: type in **2** Search and press Enter to search the ontology; select a match to place it on the canvas.
+- **Authoring mode** is always active: hover a node to reveal the halo (**21**–**24**).
+- Drag the **23** Establish Link handle to another node to create a new edge.
+- Double-click an edge (**26**) to open the link property editor.
 - Scroll to zoom; drag the background to pan.
-- Use the fit-view button in the controls panel to reset the viewport.
+- Namespace legend panel: enable via **1** View menu → Show Legend. Click a namespace entry's pencil icon to rename its URI; renames propagate across all stored triples.
+- Use the fit-view button in the canvas controls (left side, zoom icon group) to reset the viewport.
 
 Developer utilities (window globals)
 ------------------------------------
-- `window.__VG_INIT_APP()` — initialise loading programmatically.
-- `window.__VG_APPLY_LAYOUT('horizontal'|'vertical')` — apply a programmatic layout.
-- `window.__VG_ALLOW_PERSISTED_AUTOLOAD` — opt in to persisted autoload behaviour.
-- `window.__VG_STARTUP_TTL` — inline TTL content loaded on startup.
-- `window.__VG_STARTUP_URL` — explicit startup URL override.
+The following debug flags can be set in the browser console to enable diagnostic output. All are gated — they only activate when `window.__VG_DEBUG__` is truthy (or `config.debugAll` is enabled in Settings):
+
+- `window.__VG_DEBUG__` — master debug gate. Set to `true` to enable all `[VG_*]` diagnostic console output.
+- `window.__VG_LOG_RDF_WRITES` — log RDF triple writes to the console.
+- `window.__VG_DEBUG_STACKS__` — capture stack traces in debug messages.
+- `window.__VG_DEBUG_SUMMARY__` — read-only object populated by the startup debug harness with fallback and timing data.
+
+All flags are also persisted from `config.debugAll` (toggleable in Settings → Debug). Setting `config.debugAll = true` via Settings is the recommended way to enable diagnostics without console access.
 
 Troubleshooting
 ---------------
@@ -201,10 +228,12 @@ Troubleshooting
 
 Contributing / Development notes
 ---------------------------------
-- Canvas: [src/components/Canvas/](src/components/Canvas/)
-- Clustering: [src/services/clustering/](src/services/clustering/)
-- Layout functions: [src/layout/](src/layout/)
+- Canvas & top bar: [src/components/Canvas/](src/components/Canvas/)
+- Cluster algorithms: [src/components/Canvas/core/clusterAlgorithms/](src/components/Canvas/core/clusterAlgorithms/)
+- Layout functions: [src/components/Canvas/layout/](src/components/Canvas/layout/)
+- Search widget: [src/components/Canvas/search/](src/components/Canvas/search/)
 - RDF worker and protocol: [src/workers/](src/workers/)
+- MCP server and tools: [src/mcp/](src/mcp/)
 - Tests: [src/__tests__/](src/__tests__/) — run with `npm test`.
 
 License & authors
