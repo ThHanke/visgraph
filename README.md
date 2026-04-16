@@ -1,5 +1,6 @@
 VisGraph — interactive RDF / ontology canvas
 =============================================
+[![DOI](https://zenodo.org/badge/1049705027.svg)](https://doi.org/10.5281/zenodo.19605270)
 
 Overview
 --------
