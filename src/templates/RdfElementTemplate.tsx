@@ -58,12 +58,14 @@ function getProperties(
   for (const [propIri, values] of Object.entries(data.properties)) {
     if (propIri === RDF_LABEL || SYNTHETIC_VG_PROPS.has(propIri)) continue;
     if (!values || values.length === 0) continue;
-    const literals = values.filter(v => v.termType === 'Literal');
-    if (literals.length === 0) continue;
+    const displayValues = values
+      .filter(v => v.termType === 'Literal' || v.termType === 'NamedNode')
+      .map(v => v.termType === 'NamedNode' ? v.value : (v as Reactodia.Rdf.Literal).value);
+    if (displayValues.length === 0) continue;
     result.push({
       keyIri: propIri,
       keyShort: prefixShorten(propIri, prefixes),
-      values: literals.map(v => (v as Reactodia.Rdf.Literal).value),
+      values: displayValues,
     });
   }
   return result;

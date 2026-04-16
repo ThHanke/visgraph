@@ -355,6 +355,32 @@ export class N3DataProvider implements DataProvider {
 
   async elements(p: { elementIds: ReadonlyArray<ElementIri>; signal?: AbortSignal }): Promise<Map<ElementIri, ElementModel>> {
     const result = await this.inner.elements(p);
+
+    // The inner RdfDataProvider only stores Literal-valued properties. Inject IRI-valued
+    // properties where the object IRI has no type declarations in the dataset — i.e. it is
+    // an untyped entity that won't appear as a graph node, so treat it like an annotation value.
+    const dataset = (this.inner as any).dataset;
+    if (dataset) {
+      for (const [iri, model] of result) {
+        const subjectNode = this.inner.factory.namedNode(iri);
+        for (const q of dataset.iterateMatches(subjectNode, null, null)) {
+          if (q.predicate.termType !== 'NamedNode') continue;
+          if (q.object.termType !== 'NamedNode') continue;
+          const predIri = q.predicate.value;
+          if (predIri === RDF_TYPE) continue;
+          // Only inject if the object IRI is untyped (no entries in typeMap)
+          const objectTypes = this.typeMap.get(q.object.value);
+          if (objectTypes && objectTypes.size > 0) continue;
+          const props = model.properties as Record<string, (Rdf.NamedNode | Rdf.Literal)[]>;
+          if (!Object.prototype.hasOwnProperty.call(props, predIri)) {
+            props[predIri] = [q.object as Rdf.NamedNode];
+          } else {
+            props[predIri].push(q.object as Rdf.NamedNode);
+          }
+        }
+      }
+    }
+
     for (const [iri, model] of result) {
       const entry = this.inferredBySubject.get(iri);
       if (!entry) continue;
