@@ -210,8 +210,12 @@
   // el.innerText/textContent decodes HTML entities and strips all tags automatically,
   // so hyperlinked URLs, hljs spans, and &quot; encoding are all handled transparently.
 
+  // Dedup set — prevents re-firing when chat UI collapses/expands messages
+  var dispatchedSigs = new Set();
+
   function extractAndSend(text, sourceEl) {
-    var m = text.match(/TOOL:\s*(\w+)/);
+    // ^...$  with multiline flag: tool name must be alone on its line
+    var m = text.match(/^TOOL:\s*(\w+)\s*$/m);
     if (!m) return false;
     var tool = m[1];
     var params = {};
@@ -223,6 +227,9 @@
         params[kv[1]] = v === 'true' ? true : v === 'false' ? false : !isNaN(+v) && v !== '' ? +v : v;
       }
     });
+    var sig = tool + ':' + JSON.stringify(params);
+    if (dispatchedSigs.has(sig)) return false;
+    dispatchedSigs.add(sig);
     sendToolCall(tool, params, sourceEl);
     return true;
   }
