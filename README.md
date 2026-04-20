@@ -369,54 +369,33 @@ node scripts/mcp-demo-foaf.mjs       --url https://thhanke.github.io/visgraph
 
 The script opens a headless browser, navigates to the URL, registers the MCP tools, then drives the full workflow — building TBox + ABox, running reasoning, taking snapshots, exporting Turtle — exactly as shown in the demo documents.
 
-#### ChatGPT, Gemini, Grok, Claude.ai — starter conversation
+#### ChatGPT, Gemini, Claude.ai — AI Relay Bridge
 
-These services can run the same workflow if they have browser/computer-use capabilities, or you can relay tool calls manually. Paste the following as your opening message:
+The recommended way to use VisGraph with any AI chat service is the **AI Relay Bridge** — a bookmarklet that connects your AI chat tab to VisGraph automatically, with no copy-paste required.
 
----
+➡️ **[Setup guide: docs/relay-bridge.md](docs/relay-bridge.md)**
+
+The relay intercepts `TOOL:` / `PARAMS:` blocks from the AI, executes them in VisGraph, and copies results to your clipboard automatically.
+
+**Starter prompt** (paste into your AI chat after installing the bookmarklet):
 
 ```text
-You are an AI assistant working with VisGraph, a live RDF knowledge graph editor at:
+You are controlling VisGraph, a live RDF knowledge graph editor at:
 https://thhanke.github.io/visgraph
 
-VisGraph exposes MCP tools. I will execute each tool call you request and paste the result back.
+Fetch https://thhanke.github.io/visgraph/.well-known/mcp.json for the full tool list and architecture notes.
 
 To call a tool, output EXACTLY this format (one call at a time):
 
 TOOL: <toolName>
 PARAMS: <JSON params object>
 
-I will run it and reply with the JSON result. Wait for my result before issuing the next call.
-
---- Tool reference ---
-Fetch https://thhanke.github.io/visgraph/.well-known/mcp.json for the full tool list, input schemas, and architecture notes.
-
---- How to relay ---
-Open https://thhanke.github.io/visgraph in your browser.
-Open the browser console (F12 → Console).
-For each tool call I request, run:
-
-  window.__mcpTools.<toolName>(<params>).then(r => console.log(JSON.stringify(r)))
-
-Paste the console output back to me as your reply.
-
----
+Wait for the result before issuing the next call. Results will be pasted back by the user.
 
 Now let's build a knowledge graph. What would you like to model?
 ```
 
----
-
-Once the AI issues its first `TOOL:` / `PARAMS:` block, open VisGraph at [thhanke.github.io/visgraph](https://thhanke.github.io/visgraph), open the browser console (F12), and run each call as:
-
-```js
-window.__mcpTools.addNode({iri:"http://example.org/alice", typeIri:"http://xmlns.com/foaf/0.1/Person", label:"Alice"})
-  .then(r => console.log(JSON.stringify(r)))
-```
-
-Paste the JSON result back into the chat. The AI will continue driving the full workflow — TBox, ABox, reasoning, export — one call at a time.
-
-Full tool schemas: [public/.well-known/mcp.json](public/.well-known/mcp.json)
+Once the AI issues its first tool call, the relay handles execution automatically.
 
 Contributing / Development notes
 ---------------------------------
