@@ -161,7 +161,8 @@
   /* ── Tool-call pattern parser ──────────────────────────────────────────── */
   var TOOL_RE = /```visgraph\s*\nTOOL:\s*(\w+)\s*\nPARAMS:\s*(\{[\s\S]*?\})\s*\n```/g;
 
-  var TOOL_PLAIN_RE = /TOOL:\s*(\w+)\s*\nPARAMS:\s*(\{[\s\S]*?\})/;
+  // Matches TOOL:/PARAMS: in plain text (innerText of rendered code blocks)
+  var TOOL_PLAIN_RE = /TOOL:\s*(\w+)\s*\nPARAMS:\s*(\{[\s\S]*?\})/g;
 
   function tryParse(toolName, paramsRaw) {
     var raw = decodeHtml(paramsRaw.trim());
@@ -174,32 +175,61 @@
     }
   }
 
-  function parseAndSend(el) {
-    if (el.dataset && el.dataset.vgProcessed) return;
-
-    // 1. Scan rendered <code>/<pre> blocks (chat UIs render ```visgraph as these)
-    var codeBlocks = el.querySelectorAll ? el.querySelectorAll('pre code, pre, code') : [];
-    var found = false;
-    Array.from(codeBlocks).forEach(function (block) {
-      if (block.dataset && block.dataset.vgProcessed) return;
-      var txt = block.innerText || block.textContent || '';
-      // Match blocks that look like visgraph tool calls
-      var m = TOOL_PLAIN_RE.exec(txt);
-      if (m) {
-        found = true;
-        tryParse(m[1], m[2]);
-        if (block.dataset) block.dataset.vgProcessed = '1';
-      }
+  function stripHtml(el) {
+    // Clone and strip all child span/em/strong tags to get clean text
+    var clone = el.cloneNode(true);
+    var spans = clone.querySelectorAll('span, em, strong, a, b, i');
+    Array.from(spans).forEach(function (s) {
+      s.replaceWith(s.textContent || '');
     });
+    return clone.textContent || '';
+  }
 
-    // 2. Fallback: scan raw innerText for ```visgraph fences (unrendered)
-    var text = el.innerText || el.textContent || '';
-    var match;
-    TOOL_RE.lastIndex = 0;
-    while ((match = TOOL_RE.exec(text)) !== null) {
+  function scanText(txt, re) {
+    var found = false;
+    var m;
+    re.lastIndex = 0;
+    while ((m = re.exec(txt)) !== null) {
       found = true;
-      tryParse(match[1], match[2]);
+      tryParse(m[1], m[2]);
     }
+    return found;
+  }
+
+  function parseAndSend(el) {
+    if (!el || (el.dataset && el.dataset.vgProcessed)) return;
+    var found = false;
+
+    // Strategy 1: visgraph-tagged code blocks (any UI that sets language class)
+    if (el.querySelectorAll) {
+      var vgBlocks = el.querySelectorAll('[class*="language-visgraph"], [class*="visgraph"], [class*="_codeBlock"]');
+      Array.from(vgBlocks).forEach(function (block) {
+        if (block.dataset && block.dataset.vgProcessed) return;
+        var txt = stripHtml(block);
+        if (scanText(txt, TOOL_PLAIN_RE)) {
+          found = true;
+          if (block.dataset) block.dataset.vgProcessed = '1';
+        }
+      });
+    }
+
+    // Strategy 2: any <pre> or <code> block containing TOOL:
+    if (el.querySelectorAll) {
+      var codeBlocks = el.querySelectorAll('pre, code, [class*="cm-content"], [class*="cm-editor"]');
+      Array.from(codeBlocks).forEach(function (block) {
+        if (block.dataset && block.dataset.vgProcessed) return;
+        var txt = stripHtml(block);
+        if (/^TOOL:\s*\w+/m.test(txt) && scanText(txt, TOOL_PLAIN_RE)) {
+          found = true;
+          if (block.dataset) block.dataset.vgProcessed = '1';
+        }
+      });
+    }
+
+    // Strategy 3: raw backtick ```visgraph fences in unrendered text
+    var text = el.innerText || el.textContent || '';
+    TOOL_RE.lastIndex = 0;
+    if (scanText(text, TOOL_RE)) found = true;
 
     if (found && el.dataset) el.dataset.vgProcessed = '1';
   }
