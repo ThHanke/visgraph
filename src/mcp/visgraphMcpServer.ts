@@ -18,7 +18,19 @@ const allTools: McpTool[] = [
 ];
 
 export async function registerMcpTools(): Promise<void> {
+  // Build the tool map unconditionally so the relay bridge can use it
+  // even in browsers without the navigator.modelContext MCP polyfill.
+  const toolMap: Record<string, (params: unknown) => Promise<import('./types').McpResult>> = {};
+  for (const tool of allTools) {
+    toolMap[tool.name] = (params: unknown) => tool.handler(params);
+  }
+  window.__mcpTools = toolMap;
+
   const mc = (navigator as any).modelContext;
+  if (!mc) {
+    console.warn('[MCP] navigator.modelContext not available; skipping tool registration');
+    return;
+  }
   for (const entry of mcpManifest) {
     const tool = allTools.find(t => t.name === entry.name);
     if (!tool) {

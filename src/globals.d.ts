@@ -6,6 +6,7 @@ declare global {
     __VG_DEBUG__?: boolean;
     __VG_DEBUG_SUMMARY__?: any;
     __VG_DEBUG_STACKS__?: boolean;
+    __mcpTools?: Record<string, (params: unknown) => Promise<import('./mcp/types').McpResult>>;
   }
 
   // Expose debug helpers on globalThis for legacy callsites that don't import startupDebug.
