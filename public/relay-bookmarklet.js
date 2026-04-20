@@ -161,26 +161,47 @@
   /* ── Tool-call pattern parser ──────────────────────────────────────────── */
   var TOOL_RE = /```visgraph\s*\nTOOL:\s*(\w+)\s*\nPARAMS:\s*(\{[\s\S]*?\})\s*\n```/g;
 
+  var TOOL_PLAIN_RE = /TOOL:\s*(\w+)\s*\nPARAMS:\s*(\{[\s\S]*?\})/;
+
+  function tryParse(toolName, paramsRaw) {
+    var raw = decodeHtml(paramsRaw.trim());
+    try {
+      sendToolCall(toolName, JSON.parse(raw));
+      return true;
+    } catch (e) {
+      showParseError(toolName, raw, e);
+      return false;
+    }
+  }
+
   function parseAndSend(el) {
     if (el.dataset && el.dataset.vgProcessed) return;
+
+    // 1. Scan rendered <code>/<pre> blocks (chat UIs render ```visgraph as these)
+    var codeBlocks = el.querySelectorAll ? el.querySelectorAll('pre code, pre, code') : [];
+    var found = false;
+    Array.from(codeBlocks).forEach(function (block) {
+      if (block.dataset && block.dataset.vgProcessed) return;
+      var txt = block.innerText || block.textContent || '';
+      // Match blocks that look like visgraph tool calls
+      var m = TOOL_PLAIN_RE.exec(txt);
+      if (m) {
+        found = true;
+        tryParse(m[1], m[2]);
+        if (block.dataset) block.dataset.vgProcessed = '1';
+      }
+    });
+
+    // 2. Fallback: scan raw innerText for ```visgraph fences (unrendered)
     var text = el.innerText || el.textContent || '';
     var match;
     TOOL_RE.lastIndex = 0;
-    var found = false;
     while ((match = TOOL_RE.exec(text)) !== null) {
       found = true;
-      var toolName = match[1];
-      var paramsRaw = decodeHtml(match[2]);
-      try {
-        var params = JSON.parse(paramsRaw);
-        sendToolCall(toolName, params);
-      } catch (e) {
-        showParseError(toolName, paramsRaw, e);
-      }
+      tryParse(match[1], match[2]);
     }
-    if (found && el.dataset) {
-      el.dataset.vgProcessed = '1';
-    }
+
+    if (found && el.dataset) el.dataset.vgProcessed = '1';
   }
 
   function sendToolCall(tool, params) {
