@@ -1,0 +1,369 @@
+{
+  "name": "VisGraph",
+  "description": "Interactive RDF/ontology knowledge graph editor — ABox authoring, OWL-RL reasoning, layout, and export. All client-side, no backend.\n\nArchitecture for AI agents: The app has two coupled layers. (1) N3 RDF store — the source of truth for all triples. Tools like addNode/addLink write triples here first. (2) Reactodia canvas — a visual model that mirrors a subset of the store as draggable node cards (subjects with annotations) and arrows (object-property triples). Canvas nodes are NOT created automatically when triples are added — you must call addNode to place a subject on canvas. After adding triples, the canvas refreshes links automatically. Nodes start collapsed; call expandNode or expandAll to reveal annotation property cards. OWL-RL reasoning writes inferred triples back to the store and refreshes the canvas.\n\nRecommended workflow: loadOntology (TBox) → addNode ×N (ABox individuals) → addLink ×N (object properties) → runLayout → expandAll → runReasoning → fitCanvas → exportImage(svg) → exportGraph(turtle).",
+  "tools": [
+    {
+      "name": "loadRdf",
+      "description": "Load RDF instance data (ABox) into the canvas from a URL or a Turtle string. Creates canvas nodes for each subject.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "turtle": {
+            "type": "string"
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "url"
+            ]
+          },
+          {
+            "required": [
+              "turtle"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "loadOntology",
+      "description": "Load an ontology (TBox) by URL. Feeds rdf:type autocomplete, domain/range hints, and OWL-RL reasoning. Does NOT add canvas nodes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "queryGraph",
+      "description": "Run a SPARQL SELECT query against the in-memory RDF store. Returns rows as JSON.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sparql": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sparql"
+        ]
+      }
+    },
+    {
+      "name": "exportGraph",
+      "description": "Export the current RDF graph as Turtle, JSON-LD, or RDF-XML.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string",
+            "enum": [
+              "turtle",
+              "jsonld",
+              "rdfxml"
+            ]
+          }
+        },
+        "required": [
+          "format"
+        ]
+      }
+    },
+    {
+      "name": "exportImage",
+      "description": "Export the canvas diagram as SVG text (default, token-efficient) or PNG data URI. Call fitCanvas first to ensure all nodes are visible.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string",
+            "enum": [
+              "svg",
+              "png"
+            ],
+            "default": "svg"
+          }
+        }
+      }
+    },
+    {
+      "name": "addNode",
+      "description": "Create an ABox individual (subject node) on the canvas. A node is an RDF resource — it has an IRI, an optional rdf:type pointing to a class, and annotation properties (rdfs:label, etc.) shown as a card on the canvas.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "iri": {
+            "type": "string"
+          },
+          "typeIri": {
+            "type": "string",
+            "description": "IRI of the rdf:type class (e.g. foaf:Person)"
+          },
+          "label": {
+            "type": "string",
+            "description": "rdfs:label value for this individual"
+          }
+        },
+        "required": [
+          "iri"
+        ]
+      }
+    },
+    {
+      "name": "removeNode",
+      "description": "Remove a canvas node (ABox individual) and all its RDF triples. Both the canvas element and all quads with this IRI as subject are deleted.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "iri": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "iri"
+        ]
+      }
+    },
+    {
+      "name": "expandNode",
+      "description": "Expand a canvas node to reveal its annotation properties (rdfs:label, rdf:type, datatype values). Nodes start collapsed — call this to make the property card visible. Pass expand=false to collapse.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "iri": {
+            "type": "string"
+          },
+          "expand": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "iri"
+        ]
+      }
+    },
+    {
+      "name": "expandAll",
+      "description": "Expand all canvas nodes to reveal their annotation property cards.",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "getNodes",
+      "description": "Return ABox individuals currently on the canvas with their IRI, label, and rdf:type(s). Optionally filter by type IRI or label substring.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "typeIri": {
+            "type": "string"
+          },
+          "labelContains": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 100
+          }
+        }
+      }
+    },
+    {
+      "name": "addLink",
+      "description": "Add a directed object-property triple (edge) between two canvas nodes: subjectIri --predicateIri--> objectIri. The edge appears on canvas immediately. Both subject and object must already be canvas nodes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subjectIri": {
+            "type": "string"
+          },
+          "predicateIri": {
+            "type": "string",
+            "description": "IRI of the object property (e.g. foaf:knows)"
+          },
+          "objectIri": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "subjectIri",
+          "predicateIri",
+          "objectIri"
+        ]
+      }
+    },
+    {
+      "name": "removeLink",
+      "description": "Remove an object-property triple (edge) between two nodes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subjectIri": {
+            "type": "string"
+          },
+          "predicateIri": {
+            "type": "string"
+          },
+          "objectIri": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "subjectIri",
+          "predicateIri",
+          "objectIri"
+        ]
+      }
+    },
+    {
+      "name": "getLinks",
+      "description": "Return object-property triples (edges) currently in the RDF store. Filter by subject, predicate, or object IRI.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subjectIri": {
+            "type": "string"
+          },
+          "predicateIri": {
+            "type": "string"
+          },
+          "objectIri": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 100
+          }
+        }
+      }
+    },
+    {
+      "name": "searchEntities",
+      "description": "Search ABox individuals and ontology classes by label or IRI substring. Returns IRI + label pairs. Use before addNode/addLink to resolve the correct full IRI.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "autocomplete",
+      "description": "Autocomplete entity IRIs by partial label or IRI text. Use before authoring to get the exact IRI for a known entity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        "required": [
+          "text"
+        ]
+      }
+    },
+    {
+      "name": "runLayout",
+      "description": "Apply a layout algorithm to reposition canvas nodes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "algorithm": {
+            "type": "string",
+            "enum": [
+              "dagre-lr",
+              "dagre-tb",
+              "elk-layered",
+              "elk-force",
+              "elk-stress",
+              "elk-radial"
+            ]
+          }
+        },
+        "required": [
+          "algorithm"
+        ]
+      }
+    },
+    {
+      "name": "focusNode",
+      "description": "Pan and zoom the canvas viewport to centre on a specific node by IRI.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "iri": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "iri"
+        ]
+      }
+    },
+    {
+      "name": "fitCanvas",
+      "description": "Zoom the canvas viewport to fit all nodes. Call before exportImage to ensure all nodes are visible.",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "runReasoning",
+      "description": "Run OWL-RL inference over the loaded graph and refresh the canvas with inferred types and properties. Returns count of new inferred triples. Pass clearBefore=true to discard previous inferences first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "clearBefore": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "clearInferred",
+      "description": "Remove all OWL-RL derived (inferred) triples from the graph.",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "getCapabilities",
+      "description": "Return available layout algorithms, export formats, and loaded ontologies.",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "getGraphState",
+      "description": "Return a summary of the current canvas: node count, link count, and per-node IRI/label/types. Use to verify canvas state before or after mutations.",
+      "inputSchema": {
+        "type": "object"
+      }
+    }
+  ]
+}

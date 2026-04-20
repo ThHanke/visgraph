@@ -23,8 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 
-scripts
 playwright-reports
-
-# Generated at build time
-public/.well-known/mcp.json
+.playwright-mcp
+scripts/outputs/

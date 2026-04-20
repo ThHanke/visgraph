@@ -1,10 +1,17 @@
 // src/mcp/manifest.ts
 import type { McpToolManifestEntry } from './types';
 
+export const mcpServerName = 'VisGraph';
+
+export const mcpServerDescription =
+  'Interactive RDF/ontology knowledge graph editor — ABox authoring, OWL-RL reasoning, layout, and export. All client-side, no backend.\n\n' +
+  'Architecture for AI agents: The app has two coupled layers. (1) N3 RDF store — the source of truth for all triples. Tools like addNode/addLink write triples here first. (2) Reactodia canvas — a visual model that mirrors a subset of the store as draggable node cards (subjects with annotations) and arrows (object-property triples). Canvas nodes are NOT created automatically when triples are added — you must call addNode to place a subject on canvas. After adding triples, the canvas refreshes links automatically. Nodes start collapsed; call expandNode or expandAll to reveal annotation property cards. OWL-RL reasoning writes inferred triples back to the store and refreshes the canvas.\n\n' +
+  'Recommended workflow: loadOntology (TBox) → addNode ×N (ABox individuals) → addLink ×N (object properties) → runLayout → expandAll → runReasoning → fitCanvas → exportImage(svg) → exportGraph(turtle).';
+
 export const mcpManifest: McpToolManifestEntry[] = [
   {
     name: 'loadRdf',
-    description: 'Load RDF data into the canvas from a URL or a Turtle string.',
+    description: 'Load RDF instance data (ABox) into the canvas from a URL or a Turtle string. Creates canvas nodes for each subject.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -19,7 +26,7 @@ export const mcpManifest: McpToolManifestEntry[] = [
   },
   {
     name: 'loadOntology',
-    description: 'Load an ontology by URL into the TBox. Feeds domain/range autocomplete and OWL-RL reasoning.',
+    description: 'Load an ontology (TBox) by URL. Feeds rdf:type autocomplete, domain/range hints, and OWL-RL reasoning. Does NOT add canvas nodes.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -52,31 +59,30 @@ export const mcpManifest: McpToolManifestEntry[] = [
   },
   {
     name: 'exportImage',
-    description: 'Export the canvas as an SVG string or a PNG data URI.',
+    description: 'Export the canvas diagram as SVG text (default, token-efficient) or PNG data URI. Call fitCanvas first to ensure all nodes are visible.',
     inputSchema: {
       type: 'object',
       properties: {
-        format: { type: 'string', enum: ['svg', 'png'] },
+        format: { type: 'string', enum: ['svg', 'png'], default: 'svg' },
       },
-      required: ['format'],
     },
   },
   {
     name: 'addNode',
-    description: 'Add an entity (node) to the canvas by IRI, with an optional RDF type and label.',
+    description: 'Create an ABox individual (subject node) on the canvas. A node is an RDF resource — it has an IRI, an optional rdf:type pointing to a class, and annotation properties (rdfs:label, etc.) shown as a card on the canvas.',
     inputSchema: {
       type: 'object',
       properties: {
         iri: { type: 'string' },
-        typeIri: { type: 'string' },
-        label: { type: 'string' },
+        typeIri: { type: 'string', description: 'IRI of the rdf:type class (e.g. foaf:Person)' },
+        label: { type: 'string', description: 'rdfs:label value for this individual' },
       },
       required: ['iri'],
     },
   },
   {
     name: 'removeNode',
-    description: 'Remove an entity and all its triples from the canvas.',
+    description: 'Remove a canvas node (ABox individual) and all its RDF triples. Both the canvas element and all quads with this IRI as subject are deleted.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -86,8 +92,25 @@ export const mcpManifest: McpToolManifestEntry[] = [
     },
   },
   {
+    name: 'expandNode',
+    description: 'Expand a canvas node to reveal its annotation properties (rdfs:label, rdf:type, datatype values). Nodes start collapsed — call this to make the property card visible. Pass expand=false to collapse.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        iri: { type: 'string' },
+        expand: { type: 'boolean', default: true },
+      },
+      required: ['iri'],
+    },
+  },
+  {
+    name: 'expandAll',
+    description: 'Expand all canvas nodes to reveal their annotation property cards.',
+    inputSchema: { type: 'object' },
+  },
+  {
     name: 'getNodes',
-    description: 'Return entities currently on the canvas. Optionally filter by type IRI or label substring.',
+    description: 'Return ABox individuals currently on the canvas with their IRI, label, and rdf:type(s). Optionally filter by type IRI or label substring.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -99,12 +122,12 @@ export const mcpManifest: McpToolManifestEntry[] = [
   },
   {
     name: 'addLink',
-    description: 'Add a triple (directed edge) between two entities.',
+    description: 'Add a directed object-property triple (edge) between two canvas nodes: subjectIri --predicateIri--> objectIri. The edge appears on canvas immediately. Both subject and object must already be canvas nodes.',
     inputSchema: {
       type: 'object',
       properties: {
         subjectIri: { type: 'string' },
-        predicateIri: { type: 'string' },
+        predicateIri: { type: 'string', description: 'IRI of the object property (e.g. foaf:knows)' },
         objectIri: { type: 'string' },
       },
       required: ['subjectIri', 'predicateIri', 'objectIri'],
@@ -112,7 +135,7 @@ export const mcpManifest: McpToolManifestEntry[] = [
   },
   {
     name: 'removeLink',
-    description: 'Remove a triple (edge) between two entities.',
+    description: 'Remove an object-property triple (edge) between two nodes.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -125,7 +148,7 @@ export const mcpManifest: McpToolManifestEntry[] = [
   },
   {
     name: 'getLinks',
-    description: 'Return edges currently in the graph.',
+    description: 'Return object-property triples (edges) currently in the RDF store. Filter by subject, predicate, or object IRI.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -138,7 +161,7 @@ export const mcpManifest: McpToolManifestEntry[] = [
   },
   {
     name: 'searchEntities',
-    description: 'Search entities in the loaded graph by label or IRI substring. Returns IRI + label pairs the AI can use to pick real IRIs before adding nodes or links.',
+    description: 'Search ABox individuals and ontology classes by label or IRI substring. Returns IRI + label pairs. Use before addNode/addLink to resolve the correct full IRI.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -150,7 +173,7 @@ export const mcpManifest: McpToolManifestEntry[] = [
   },
   {
     name: 'autocomplete',
-    description: 'Autocomplete entity IRIs from the loaded graph — augments lookups so the AI can resolve partial names to full IRIs before authoring.',
+    description: 'Autocomplete entity IRIs by partial label or IRI text. Use before authoring to get the exact IRI for a known entity.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -162,7 +185,7 @@ export const mcpManifest: McpToolManifestEntry[] = [
   },
   {
     name: 'runLayout',
-    description: 'Apply a layout algorithm to reposition nodes on the canvas.',
+    description: 'Apply a layout algorithm to reposition canvas nodes.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -175,24 +198,44 @@ export const mcpManifest: McpToolManifestEntry[] = [
     },
   },
   {
-    name: 'runReasoning',
-    description: 'Run OWL-RL inference over the loaded graph. Returns the count of new inferred triples.',
+    name: 'focusNode',
+    description: 'Pan and zoom the canvas viewport to centre on a specific node by IRI.',
     inputSchema: {
       type: 'object',
+      properties: {
+        iri: { type: 'string' },
+      },
+      required: ['iri'],
+    },
+  },
+  {
+    name: 'fitCanvas',
+    description: 'Zoom the canvas viewport to fit all nodes. Call before exportImage to ensure all nodes are visible.',
+    inputSchema: { type: 'object' },
+  },
+  {
+    name: 'runReasoning',
+    description: 'Run OWL-RL inference over the loaded graph and refresh the canvas with inferred types and properties. Returns count of new inferred triples. Pass clearBefore=true to discard previous inferences first.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        clearBefore: { type: 'boolean', default: false },
+      },
     },
   },
   {
     name: 'clearInferred',
-    description: 'Remove all inferred (OWL-RL derived) triples from the graph.',
-    inputSchema: {
-      type: 'object',
-    },
+    description: 'Remove all OWL-RL derived (inferred) triples from the graph.',
+    inputSchema: { type: 'object' },
   },
   {
     name: 'getCapabilities',
     description: 'Return available layout algorithms, export formats, and loaded ontologies.',
-    inputSchema: {
-      type: 'object',
-    },
+    inputSchema: { type: 'object' },
+  },
+  {
+    name: 'getGraphState',
+    description: 'Return a summary of the current canvas: node count, link count, and per-node IRI/label/types. Use to verify canvas state before or after mutations.',
+    inputSchema: { type: 'object' },
   },
 ];

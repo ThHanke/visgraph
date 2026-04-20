@@ -1,6 +1,9 @@
 // src/mcp/tools/links.ts
 import type { McpTool } from '../types';
 import { rdfManager } from '@/utils/rdfManager';
+import { getWorkspaceRefs } from '@/mcp/workspaceContext';
+import { focusElementOnCanvas } from './layout';
+import * as Reactodia from '@reactodia/workspace';
 
 interface LinkParams {
   subjectIri?: string;
@@ -29,6 +32,18 @@ export const linkTools: McpTool[] = [
           return { success: false as const, error: 'subjectIri, predicateIri, and objectIri are all required' };
         }
         rdfManager.addTriple(subjectIri, predicateIri, objectIri);
+
+        const { ctx } = getWorkspaceRefs();
+        const model = ctx.model;
+        await model.requestLinks({
+          addedElements: [subjectIri as Reactodia.ElementIri, objectIri as Reactodia.ElementIri],
+        });
+
+        const subjectEl = model.elements.find(
+          e => e instanceof Reactodia.EntityElement && (e as Reactodia.EntityElement).iri === subjectIri
+        ) as Reactodia.EntityElement | undefined;
+        if (subjectEl) focusElementOnCanvas(subjectEl, ctx);
+
         return { success: true as const, data: { added: { s: subjectIri, p: predicateIri, o: objectIri } } };
       } catch (e) {
         return { success: false as const, error: String(e) };

@@ -276,6 +276,174 @@ Troubleshooting
   - Increase the large-graph threshold in Settings or reduce the number of loaded triples.
   - Clustering activates automatically above the threshold; use Expand All sparingly on huge graphs.
 
+AI / MCP Integration
+--------------------
+
+VisGraph exposes a full [Model Context Protocol](https://modelcontextprotocol.io) tool surface so AI agents can build and reason over knowledge graphs through natural-language chat.
+
+### How it works
+
+The app has two coupled layers:
+
+- **N3 RDF store** — source of truth. `addNode` / `addLink` write triples here.
+- **Reactodia canvas** — visual mirror. Nodes are *not* created automatically from triples; you must call `addNode` to place a subject on canvas. After adding triples, canvas links refresh automatically. Nodes start collapsed — call `expandNode` or `expandAll` to reveal annotation property cards.
+
+OWL-RL reasoning writes inferred triples back to the store and refreshes the canvas.
+
+### Setup (Playwright / headless)
+
+`navigator.modelContext` does not exist in headless Chromium. Inject the polyfill **before** the page loads using `page.addInitScript`:
+
+```js
+await page.addInitScript(() => {
+  const tools = {};
+  Object.defineProperty(navigator, 'modelContext', {
+    value: { registerTool: async (n, _d, _s, h) => { tools[n] = h; } },
+    configurable: true,
+  });
+  window.__mcpTools = tools;
+});
+
+// After page load:
+await page.evaluate(async () => {
+  const mod = await import('/src/mcp/visgraphMcpServer.ts');
+  await mod.registerMcpTools();
+});
+
+// Call a tool:
+await page.evaluate(async ([name, params]) => window.__mcpTools[name](params),
+  ['addNode', { iri: 'ex:alice', typeIri: 'foaf:Person', label: 'Alice' }]);
+```
+
+In a browser with native `navigator.modelContext`, tools register automatically on app load.
+
+### Recommended workflow
+
+```text
+loadOntology (TBox)
+  → addNode ×N  (ABox individuals, rdf:type set)
+  → addLink ×N  (object-property triples, edges appear on canvas)
+  → runLayout   (dagre-lr recommended)
+  → expandAll   (reveal annotation property cards)
+  → runReasoning (infer subClass / domain / range entailments)
+  → fitCanvas + exportImage   (SVG snapshot, token-efficient)
+  → exportGraph(turtle)       (final deliverable)
+```
+
+### URL parameters
+
+| Parameter | Effect |
+|-----------|--------|
+| `?url=<encoded-url>` | Load RDF from URL on startup |
+| `?ontology=foaf` | Pre-load FOAF ontology |
+| `?loadImports=false` | Skip owl:imports auto-loading |
+
+### Demo
+
+| Demo | Description |
+|------|-------------|
+| [FOAF social network](docs/mcp-demo/foaf-social-network.md) | Build a social network from scratch, run reasoning, add people |
+| [OWL-RL reasoning](docs/mcp-demo/reasoning-demo.md) | Build a full TBox + ABox, then watch the reasoner infer types and relationships |
+
+Regenerate:
+
+```sh
+node scripts/mcp-demo-foaf.mjs
+node scripts/mcp-demo-reasoning.mjs
+```
+
+Full tool declarations with input schemas: [public/.well-known/mcp.json](public/.well-known/mcp.json)
+
+### Using VisGraph with any AI
+
+The demo scripts work against the **live deployment** — no local server needed. Any AI that can drive a browser (Claude Code, headless Playwright, computer-use agents) can use VisGraph directly via its MCP tools.
+
+#### Claude Code / Playwright (full automation)
+
+Point the demo scripts at the deployed app:
+
+```sh
+node scripts/mcp-demo-reasoning.mjs --url https://thhanke.github.io/visgraph
+node scripts/mcp-demo-foaf.mjs       --url https://thhanke.github.io/visgraph
+```
+
+The script opens a headless browser, navigates to the URL, registers the MCP tools, then drives the full workflow — building TBox + ABox, running reasoning, taking snapshots, exporting Turtle — exactly as shown in the demo documents.
+
+#### ChatGPT, Gemini, Grok, Claude.ai — starter conversation
+
+These services can run the same workflow if they have browser/computer-use capabilities, or you can relay tool calls manually. Paste the following as your opening message:
+
+---
+
+```text
+You are an AI assistant working with VisGraph, a live RDF knowledge graph editor at:
+https://thhanke.github.io/visgraph
+
+VisGraph exposes MCP tools. I will execute each tool call you request and paste the result back.
+
+To call a tool, output EXACTLY this format (one call at a time):
+
+TOOL: <toolName>
+PARAMS: <JSON params object>
+
+I will run it and reply with the JSON result. Wait for my result before issuing the next call.
+
+--- Architecture ---
+VisGraph has two coupled layers:
+1. N3 RDF store — source of truth. addNode/addLink write triples here.
+2. Reactodia canvas — visual layer. Subjects are shown as draggable node cards; object-property triples are arrows.
+Canvas nodes are NOT created automatically from triples — you must call addNode for each subject you want visible.
+After building the graph, call runLayout then expandAll to arrange and reveal annotation cards.
+runReasoning runs OWL-RL inference and adds inferred types and relationships to the canvas.
+
+--- Available tools ---
+addNode(iri, label, typeIri?)           — place a subject node on the canvas
+addLink(subjectIri, predicateIri, objectIri) — add an object-property triple + draw the edge
+removeNode(iri)                         — remove a node and its triples
+getNodes()                              — list all canvas nodes with labels and types
+getLinks(subjectIri?, predicateIri?, objectIri?, limit?) — query triples from the store
+getGraphState()                         — node count, link count, node list with types
+loadRdf(turtle)                         — load a Turtle string into the store
+loadOntology(url)                       — load a TBox ontology by URL
+queryGraph(sparql)                      — run a SPARQL SELECT query
+searchEntities(query)                   — search nodes by label
+runLayout(algorithm?)                   — lay out the canvas (dagre-lr recommended)
+expandAll()                             — expand all nodes to show annotation cards
+expandNode(iri)                         — expand a single node
+focusNode(iri)                          — zoom the canvas to a node
+fitCanvas()                             — fit all nodes into view
+runReasoning(clearBefore?)              — run OWL-RL inference
+clearInferred()                         — remove all inferred triples
+exportGraph(format)                     — export as turtle / jsonld / rdfxml
+exportImage(format?)                    — export canvas as SVG (default) or PNG
+
+--- How to relay ---
+Open https://thhanke.github.io/visgraph in your browser.
+Open the browser console (F12 → Console).
+For each tool call I request, run:
+
+  window.__mcpTools.<toolName>(<params>).then(r => console.log(JSON.stringify(r)))
+
+Paste the console output back to me as your reply.
+
+---
+
+Now let's build a knowledge graph. What would you like to model?
+```
+
+---
+
+Once the AI issues its first `TOOL:` / `PARAMS:` block, open VisGraph at [thhanke.github.io/visgraph](https://thhanke.github.io/visgraph), open the browser console (F12), and run each call as:
+
+```js
+window.__mcpTools.addNode({iri:"http://example.org/alice", typeIri:"http://xmlns.com/foaf/0.1/Person", label:"Alice"})
+  .then(r => console.log(JSON.stringify(r)))
+```
+
+Paste the JSON result back into the chat. The AI will continue driving the full workflow — TBox, ABox, reasoning, export — one call at a time.
+
+Full tool schemas: [public/.well-known/mcp.json](public/.well-known/mcp.json)
+
 Contributing / Development notes
 ---------------------------------
 - Canvas & top bar: [src/components/Canvas/](src/components/Canvas/)

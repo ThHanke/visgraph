@@ -1,4 +1,5 @@
 // src/mcp/tools/graph.ts
+import * as Reactodia from '@reactodia/workspace';
 import type { McpTool, McpResult } from '@/mcp/types';
 import { rdfManager } from '@/utils/rdfManager';
 import { getWorkspaceRefs } from '@/mcp/workspaceContext';
@@ -73,14 +74,10 @@ const queryGraph: McpTool = {
     },
   },
   async handler(_params): Promise<McpResult> {
-    try {
-      return {
-        success: false,
-        error: 'SPARQL SELECT not yet supported — use getNodes/getLinks to query the graph',
-      };
-    } catch (e) {
-      return { success: false, error: String(e) };
-    }
+    return {
+      success: false,
+      error: 'SPARQL SELECT not yet supported — use getNodes/getLinks to query the graph',
+    };
   },
 };
 
@@ -122,35 +119,34 @@ const exportGraph: McpTool = {
 };
 
 // ---------------------------------------------------------------------------
-// exportImage
+// exportImage  (SVG default — vector text, far fewer tokens than PNG base64)
 // ---------------------------------------------------------------------------
 const exportImage: McpTool = {
   name: 'exportImage',
-  description: 'Export the current diagram canvas as SVG or PNG.',
+  description: 'Export the current diagram canvas as SVG (default) or PNG.',
   inputSchema: {
     type: 'object',
-    required: ['format'],
     properties: {
       format: {
         type: 'string',
         enum: ['svg', 'png'],
-        description: 'Image format: svg | png',
+        default: 'svg',
+        description: 'Image format: svg (default) | png',
       },
     },
   },
   async handler(params): Promise<McpResult> {
     try {
-      const { format } = params as { format: string };
-      let ctx;
+      const { format = 'svg' } = (params ?? {}) as { format?: string };
+      let canvas: Reactodia.CanvasApi | undefined;
       try {
-        ({ ctx } = getWorkspaceRefs());
+        const { ctx } = getWorkspaceRefs();
+        canvas = ctx.view.findAnyCanvas();
       } catch {
         return { success: false, error: 'Canvas not available' };
       }
-      const canvas = ctx.canvas;
-      if (!canvas) {
-        return { success: false, error: 'Canvas not available' };
-      }
+      if (!canvas) return { success: false, error: 'Canvas not available' };
+
       if (format === 'svg') {
         const content = await canvas.exportSvg({ addXmlHeader: true });
         return { success: true, data: { content } };
@@ -167,6 +163,42 @@ const exportImage: McpTool = {
 };
 
 // ---------------------------------------------------------------------------
+// getGraphState
+// ---------------------------------------------------------------------------
+const getGraphState: McpTool = {
+  name: 'getGraphState',
+  description: 'Return a summary of what is currently on the canvas: node count, link count, and node details.',
+  inputSchema: { type: 'object' },
+  async handler(): Promise<McpResult> {
+    try {
+      const { ctx } = getWorkspaceRefs();
+      const model = ctx.model;
+      const nodes = model.elements
+        .filter(e => e instanceof Reactodia.EntityElement)
+        .map(e => {
+          const entity = e as Reactodia.EntityElement;
+          const data = entity.data;
+          return {
+            iri: entity.iri,
+            label: data?.label?.value ?? '',
+            types: data?.types ?? [],
+          };
+        });
+      return {
+        success: true,
+        data: {
+          nodeCount: nodes.length,
+          linkCount: model.links.length,
+          nodes,
+        },
+      };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Exports
 // ---------------------------------------------------------------------------
 export const graphTools: McpTool[] = [
@@ -175,4 +207,5 @@ export const graphTools: McpTool[] = [
   queryGraph,
   exportGraph,
   exportImage,
+  getGraphState,
 ];

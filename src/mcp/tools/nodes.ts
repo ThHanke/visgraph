@@ -1,10 +1,18 @@
 // src/mcp/tools/nodes.ts
+import * as Reactodia from '@reactodia/workspace';
 import type { McpTool } from '@/mcp/types';
 import { rdfManager } from '@/utils/rdfManager';
 import { getWorkspaceRefs } from '@/mcp/workspaceContext';
+import { focusElementOnCanvas } from './layout';
 
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
+
+function findEntityElement(iri: string, model: Reactodia.DataDiagramModel): Reactodia.EntityElement | undefined {
+  return model.elements.find(
+    e => e instanceof Reactodia.EntityElement && (e as Reactodia.EntityElement).iri === iri
+  ) as Reactodia.EntityElement | undefined;
+}
 
 const addNode: McpTool = {
   name: 'addNode',
@@ -21,15 +29,30 @@ const addNode: McpTool = {
   handler: async (params) => {
     try {
       const { iri, typeIri, label } = params as { iri?: string; typeIri?: string; label?: string };
-      if (!iri) {
-        return { success: false, error: 'iri is required' };
+      if (!iri) return { success: false, error: 'iri is required' };
+
+      const { ctx } = getWorkspaceRefs();
+      const model = ctx.model;
+
+      if (typeIri) rdfManager.addTriple(iri, RDF_TYPE, typeIri);
+      if (label) rdfManager.addTriple(iri, RDFS_LABEL, '"' + label + '"');
+
+      if (!findEntityElement(iri, model)) {
+        model.createElement(iri as Reactodia.ElementIri);
       }
-      if (typeIri) {
-        rdfManager.addTriple(iri, RDF_TYPE, typeIri);
+
+      // Allow Reactodia to mount the element before requesting data
+      await new Promise(r => setTimeout(r, 0));
+
+      await model.requestElementData([iri as Reactodia.ElementIri]);
+      await model.requestLinks({ addedElements: [iri as Reactodia.ElementIri] });
+
+      const el = findEntityElement(iri, model);
+      if (el) {
+        model.history.execute(Reactodia.setElementExpanded(el, true));
+        focusElementOnCanvas(el, ctx);
       }
-      if (label) {
-        rdfManager.addTriple(iri, RDFS_LABEL, '"' + label + '"');
-      }
+
       return { success: true, data: { iri } };
     } catch (e) {
       return { success: false, error: String(e) };
@@ -50,8 +73,58 @@ const removeNode: McpTool = {
   handler: async (params) => {
     try {
       const { iri } = params as { iri: string };
+      const { ctx } = getWorkspaceRefs();
+      const el = findEntityElement(iri, ctx.model);
+      if (el) {
+        ctx.model.removeElement(el.id);
+      }
       await rdfManager.removeAllQuadsForIri(iri);
       return { success: true, data: { removed: iri } };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  },
+};
+
+const expandNode: McpTool = {
+  name: 'expandNode',
+  description: 'Expand a node to show its annotation properties. Pass expand=false to collapse.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      iri: { type: 'string' },
+      expand: { type: 'boolean', default: true },
+    },
+    required: ['iri'],
+  },
+  handler: async (params) => {
+    try {
+      const { iri, expand = true } = params as { iri: string; expand?: boolean };
+      const { ctx } = getWorkspaceRefs();
+      const el = findEntityElement(iri, ctx.model);
+      if (!el) return { success: false, error: `Element not on canvas: ${iri}` };
+      ctx.model.history.execute(Reactodia.setElementExpanded(el, expand));
+      return { success: true, data: { iri, expanded: expand } };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  },
+};
+
+const expandAll: McpTool = {
+  name: 'expandAll',
+  description: 'Expand all nodes on the canvas to show their annotation properties.',
+  inputSchema: { type: 'object' },
+  handler: async () => {
+    try {
+      const { ctx } = getWorkspaceRefs();
+      const model = ctx.model;
+      for (const el of model.elements) {
+        if (el instanceof Reactodia.EntityElement) {
+          model.history.execute(Reactodia.setElementExpanded(el, true));
+        }
+      }
+      return { success: true, data: { expanded: model.elements.length } };
     } catch (e) {
       return { success: false, error: String(e) };
     }
@@ -102,4 +175,4 @@ const getNodes: McpTool = {
   },
 };
 
-export const nodeTools: McpTool[] = [addNode, removeNode, getNodes];
+export const nodeTools: McpTool[] = [addNode, removeNode, expandNode, expandAll, getNodes];

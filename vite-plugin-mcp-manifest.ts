@@ -9,10 +9,10 @@ export function mcpManifestPlugin(): Plugin {
     name: 'vite-plugin-mcp-manifest',
     async buildStart() {
       const __dirname = dirname(fileURLToPath(import.meta.url));
-      const { mcpManifest } = await import('./src/mcp/manifest.js');
+      const { mcpManifest, mcpServerName, mcpServerDescription } = await import('./src/mcp/manifest.js');
       const manifest = {
-        name: 'VisGraph',
-        description: 'Interactive RDF/ontology graph editor — full authoring, reasoning, layout, and export. All client-side, no backend.',
+        name: mcpServerName,
+        description: mcpServerDescription,
         tools: mcpManifest,
       };
       const outDir = resolve(__dirname, 'public/.well-known');
