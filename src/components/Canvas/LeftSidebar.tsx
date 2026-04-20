@@ -15,6 +15,7 @@ import {
   Download,
   Settings,
   Sparkles,
+  Bot,
 } from 'lucide-react';
 import {
   Accordion,
@@ -33,6 +34,8 @@ import {
 import { WorkflowTemplateCard } from './WorkflowTemplateCard';
 import { getWorkflowTemplates, type WorkflowTemplate } from '../../utils/workflowInstantiator';
 import { useAppConfigStore } from '../../stores/appConfigStore';
+import { useRelayBridge } from '../../hooks/useRelayBridge';
+import { RelaySection } from './RelaySection';
 import { cn } from '../../lib/utils';
 
 export type RdfExportFormat = 'turtle' | 'json-ld' | 'rdf-xml';
@@ -60,6 +63,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const workflowCatalogEnabled = useAppConfigStore((s) => s.config.workflowCatalogEnabled);
+  const relayEnabled = useAppConfigStore((s) => s.config.relayEnabled);
+  const { connected } = useRelayBridge(relayEnabled);
 
   useEffect(() => {
     if (isExpanded && workflowCatalogEnabled) {
@@ -208,6 +213,25 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               </DropdownMenuContent>
             </DropdownMenu>
 
+            {relayEnabled && (
+              <TooltipPrimitive.Root>
+                <TooltipPrimitive.Trigger asChild>
+                  <button className="rail-btn relative" onClick={onToggle} aria-label="AI Relay">
+                    <Bot className="h-[18px] w-[18px]" />
+                    <span>Relay</span>
+                    {connected && (
+                      <span className="absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-green-500" />
+                    )}
+                  </button>
+                </TooltipPrimitive.Trigger>
+                <TooltipPrimitive.Portal>
+                  <TooltipPrimitive.Content className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md" sideOffset={5} side="right">
+                    AI Relay<TooltipPrimitive.Arrow className="fill-popover" />
+                  </TooltipPrimitive.Content>
+                </TooltipPrimitive.Portal>
+              </TooltipPrimitive.Root>
+            )}
+
             <div className="flex-1" />
 
             <TooltipPrimitive.Root>
@@ -355,10 +379,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             </div>
           </div>
 
-          {/* Workflows accordion - scrollable */}
-          {workflowCatalogEnabled && (
-            <div className="flex-1 bg-background overflow-y-auto">
-              <Accordion type="single" collapsible defaultValue="workflows">
+          {/* Accordion sections - scrollable */}
+          <div className="flex-1 bg-background overflow-y-auto">
+            <Accordion type="multiple" defaultValue={['workflows', 'ai-relay']}>
+              {workflowCatalogEnabled && (
                 <AccordionItem value="workflows" className="border-none">
                   <AccordionTrigger className="px-3 py-2 hover:bg-accent/5">
                     <div className="flex items-center gap-2 text-foreground">
@@ -404,20 +428,41 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     )}
                   </AccordionContent>
                 </AccordionItem>
-              </Accordion>
-            </div>
-          )}
+              )}
 
-          {/* If workflows not enabled, show placeholder */}
-          {!workflowCatalogEnabled && (
-            <div className="flex-1 flex items-center justify-center p-4">
-              <div className="text-center text-sm text-muted-foreground">
-                <Sparkles className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>Workflow catalog disabled</p>
-                <p className="text-xs mt-1">Enable in Settings</p>
+              {relayEnabled && (
+                <AccordionItem value="ai-relay" className="border-none">
+                  <AccordionTrigger className="px-3 py-2 hover:bg-accent/5">
+                    <div className="flex items-center gap-2 text-foreground flex-1">
+                      <Bot className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-medium">AI Relay</span>
+                      <span
+                        className={`ml-auto mr-1 h-2 w-2 rounded-full flex-shrink-0 ${connected ? 'bg-green-500' : 'bg-muted-foreground/40'}`}
+                        aria-label={connected ? 'Connected' : 'Not connected'}
+                      />
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="pb-2">
+                    <RelaySection
+                      bookmarkletHref="javascript:RELAY_BOOKMARKLET_PLACEHOLDER"
+                      enabled={relayEnabled}
+                    />
+                  </AccordionContent>
+                </AccordionItem>
+              )}
+            </Accordion>
+
+            {/* If neither section enabled, show placeholder */}
+            {!workflowCatalogEnabled && !relayEnabled && (
+              <div className="flex items-center justify-center p-4 h-full">
+                <div className="text-center text-sm text-muted-foreground">
+                  <Sparkles className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>No sections enabled</p>
+                  <p className="text-xs mt-1">Enable in Settings</p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
           </div>
         )}
       </div>

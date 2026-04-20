@@ -48,6 +48,7 @@ export interface AppConfig {
   workflowCatalogEnabled: boolean;
   workflowCatalogUrls: WorkflowCatalogUrls;
   loadWorkflowCatalogOnStartup: boolean;
+  relayEnabled: boolean;
 }
 
 interface AppConfigStore {
@@ -77,6 +78,7 @@ interface AppConfigStore {
   addRecentLayout: (layout: string) => void;
   addAdditionalOntology: (uri: string) => void;
   removeAdditionalOntology: (uri: string) => void;
+  setRelayEnabled: (enabled: boolean) => void;
   setWorkflowCatalogEnabled: (enabled: boolean) => void;
   setWorkflowCatalogUrls: (urls: Partial<WorkflowCatalogUrls>) => void;
   setLoadWorkflowCatalogOnStartup: (enabled: boolean) => void;
@@ -142,6 +144,7 @@ const defaultConfig: AppConfig = {
   workflowCatalogEnabled: true,
   workflowCatalogUrls: { ...DEFAULT_WORKFLOW_CATALOG_URLS },
   loadWorkflowCatalogOnStartup: true,
+  relayEnabled: true,
 };
 
 function pushRecent(list: string[], value: string, limit: number, context: string): string[] {
@@ -286,6 +289,11 @@ function normalizeAppConfigInput(value: unknown, context: string): AppConfig {
       input.loadWorkflowCatalogOnStartup,
       `${context}.loadWorkflowCatalogOnStartup`,
       cfg.loadWorkflowCatalogOnStartup,
+    ),
+    relayEnabled: normalizeBooleanFlag(
+      input.relayEnabled,
+      `${context}.relayEnabled`,
+      cfg.relayEnabled,
     ),
   };
 }
@@ -531,6 +539,13 @@ export const useAppConfigStore = create<AppConfigStore>()(
         }));
       },
 
+
+      setRelayEnabled: (enabled: boolean) => {
+        updateConfig(set, (config) => ({
+          ...config,
+          relayEnabled: normalizeBoolean(enabled, "setRelayEnabled.enabled"),
+        }));
+      },
 
       setWorkflowCatalogEnabled: (enabled: boolean) => {
         updateConfig(set, (config) => ({
