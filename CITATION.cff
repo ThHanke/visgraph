@@ -1,0 +1,38 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+title: "VisGraph"
+abstract: >
+  VisGraph is a browser-based RDF/ontology knowledge graph editor. It loads RDF
+  from local files, remote URLs, or SPARQL/Fuseki endpoints; lets users author
+  nodes and edges directly on the canvas; runs OWL-RL reasoning with visual
+  differentiation of inferred triples; and applies multi-algorithm layout
+  (Dagre, ELK) and automatic clustering for large graphs. Additional features
+  include namespace management with live URI renaming, a drag-and-drop workflow
+  template catalog, and a Model Context Protocol (MCP) server for AI-agent
+  integration. All computation runs entirely client-side in the browser against
+  an in-memory RDF store backed by Web Workers — no backend required.
+authors:
+  - family-names: Hanke
+    given-names: Thomas
+    affiliation: "Fraunhofer Institute for Mechanics of Materials IWM"
+    orcid: "https://orcid.org/0000-0003-1649-6832"
+repository-code: "https://github.com/ThHanke/visgraph"
+url: "https://thhanke.github.io/visgraph/"
+license: Apache-2.0
+keywords:
+  - rdf
+  - ontology
+  - knowledge-graph
+  - sparql
+  - owl
+  - reasoning
+  - visualization
+  - linked-data
+  - semantic-web
+  - turtle
+  - json-ld
+  - graph-editor
+  - fair-data
+  - reactodia
+  - mcp
+type: software
