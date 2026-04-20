@@ -114,37 +114,77 @@
     setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 4000);
   }
 
-  /* ── Inject result into ChatGPT input ─────────────────────────────────── */
-  function injectResult(text) {
-    var selectors = [
-      '#prompt-textarea',
-      'div[contenteditable="true"]',
-      'textarea[data-id]',
-      'textarea',
-    ];
-    var el = null;
-    for (var i = 0; i < selectors.length; i++) {
-      el = document.querySelector(selectors[i]);
-      if (el) break;
+  /* ── Find multiline input near the tool-call source element ───────────── */
+  function findInput(sourceEl) {
+    // Walk up from the element where the tool call was detected.
+    // At each level, look for a multiline input in the subtree.
+    // This works because the chat input is always in a sibling subtree
+    // of the message area — we just need their common ancestor.
+    var el = (sourceEl && document.contains(sourceEl)) ? sourceEl : document.body;
+    while (el && el !== document.body) {
+      var inp = pickInput(el);
+      if (inp) return inp;
+      el = el.parentElement;
     }
+    // Body-level fallback
+    return pickInput(document.body);
+  }
+
+  function pickInput(root) {
+    // Prefer textarea; fall back to contenteditable.
+    // Take the LAST match (chat input is at the bottom of the page).
+    var all = Array.from(root.querySelectorAll('textarea, div[contenteditable="true"]'));
+    if (!all.length) return null;
+    // Prefer textarea over contenteditable
+    var textareas = all.filter(function (e) { return e.tagName === 'TEXTAREA'; });
+    return textareas.length ? textareas[textareas.length - 1] : all[all.length - 1];
+  }
+
+  /* ── Submit the chat input (send button or Enter key) ─────────────────── */
+  function submitInput(inputEl) {
+    // Walk up from the input to find a send/submit button in the same form/container
+    var cur = inputEl.parentElement;
+    while (cur && cur !== document.body) {
+      var btns = Array.from(cur.querySelectorAll('button'));
+      var sendBtn = btns.find(function (b) {
+        if (b.disabled) return false;
+        var lbl = (b.getAttribute('aria-label') || b.title || b.textContent || '').toLowerCase();
+        return b.type === 'submit' || lbl.includes('send') || lbl.includes('submit');
+      });
+      if (sendBtn) { sendBtn.click(); return; }
+      cur = cur.parentElement;
+    }
+    // Fallback: Enter keypress on the input itself
+    ['keydown', 'keyup'].forEach(function (type) {
+      inputEl.dispatchEvent(new KeyboardEvent(type, {
+        key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
+      }));
+    });
+  }
+
+  /* ── Inject result into chat input and auto-submit ─────────────────────── */
+  function injectResult(text, sourceEl) {
+    var el = findInput(sourceEl);
     if (!el) return false;
 
     el.focus();
     if (el.tagName === 'TEXTAREA') {
-      var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-      var current = el.value ? el.value + '\n' : '';
-      nativeInputValueSetter.call(el, current + text);
+      var setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+      setter.call(el, (el.value ? el.value + '\n' : '') + text);
       el.dispatchEvent(new Event('input', { bubbles: true }));
     } else {
-      // contenteditable div (ChatGPT uses this)
-      var current = el.innerText ? el.innerText + '\n' : '';
-      el.innerText = current + text;
+      el.innerText = (el.innerText ? el.innerText + '\n' : '') + text;
       el.dispatchEvent(new InputEvent('input', { bubbles: true }));
     }
+    // Submit after a short delay to let the UI register the injected text
+    setTimeout(function () { submitInput(el); }, 300);
     return true;
   }
 
   /* ── Result listener (popup → AI tab) ─────────────────────────────────── */
+  // Keyed by requestId so concurrent calls inject into the right source element
+  var pendingSourceEl = {};
+
   window.addEventListener('message', function (evt) {
     if (evt.origin !== RELAY_ORIGIN) return;
     var data = evt.data;
@@ -152,8 +192,10 @@
 
     var ok = data.result && data.result.success !== false;
     var text = 'Tool result: ' + JSON.stringify(data.result !== undefined ? data.result : data, null, 2);
+    var sourceEl = pendingSourceEl[data.requestId] || null;
+    delete pendingSourceEl[data.requestId];
 
-    injectResult(text);
+    injectResult(text, sourceEl);
     showToast(ok ? 'Result injected into chat' : 'Error injected into chat', ok);
   });
 
@@ -168,7 +210,7 @@
   // el.innerText/textContent decodes HTML entities and strips all tags automatically,
   // so hyperlinked URLs, hljs spans, and &quot; encoding are all handled transparently.
 
-  function extractAndSend(text) {
+  function extractAndSend(text, sourceEl) {
     var m = text.match(/TOOL:\s*(\w+)/);
     if (!m) return false;
     var tool = m[1];
@@ -178,31 +220,29 @@
       var kv = line.match(/^(\w+):\s*(.+)/);
       if (kv) {
         var v = kv[2].trim();
-        // Auto-coerce booleans and numbers
         params[kv[1]] = v === 'true' ? true : v === 'false' ? false : !isNaN(+v) && v !== '' ? +v : v;
       }
     });
-    sendToolCall(tool, params);
+    sendToolCall(tool, params, sourceEl);
     return true;
   }
 
   function parseAndSend(el) {
     if (!el || (el.dataset && el.dataset.vgProcessed)) return;
-    // Scan raw text — HTML structure is irrelevant; rendering variation cannot break this
     var text = el.innerText || el.textContent || '';
-    if (extractAndSend(text) && el.dataset) {
+    if (extractAndSend(text, el) && el.dataset) {
       el.dataset.vgProcessed = '1';
     }
   }
 
-  function sendToolCall(tool, params) {
+  function sendToolCall(tool, params, sourceEl) {
     var popup = window.__vgRelayPopup;
     if (!popup || popup.closed) {
-      // Cannot call window.open here (not a user gesture) — ask user to click badge
       showToast('Relay popup closed — click the green badge to reopen', false);
       return;
     }
     var requestId = 'rq-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+    pendingSourceEl[requestId] = sourceEl || null;
     var payload = { type: 'vg-call', tool: tool, params: params, requestId: requestId };
     setTimeout(function () {
       try {
