@@ -221,36 +221,43 @@
     }, 6000);
   }
 
-  /* ── MutationObserver — watch for new assistant messages ───────────────── */
+  /* ── MutationObserver — scan every new/changed node generically ────────── */
   var debounceTimer = null;
+  var pendingNodes = new Set();
 
-  function scanPage() {
-    // ChatGPT
-    var chatgpt = document.querySelectorAll('[data-message-author-role="assistant"]');
-    // Claude.ai (try both selectors, use all matches)
-    var claudeA  = document.querySelectorAll('[data-testid*="message"]');
-    var claudeB  = document.querySelectorAll('.font-claude-message');
-    // Gemini
-    var geminiA  = document.querySelectorAll('model-response');
-    var geminiB  = document.querySelectorAll('.model-response-text');
-
-    var all = Array.from(chatgpt)
-      .concat(Array.from(claudeA))
-      .concat(Array.from(claudeB))
-      .concat(Array.from(geminiA))
-      .concat(Array.from(geminiB));
-
-    all.forEach(parseAndSend);
+  function flushPending() {
+    pendingNodes.forEach(function (node) { parseAndSend(node); });
+    pendingNodes.clear();
   }
 
-  var observer = new MutationObserver(function () {
+  function collectAncestors(node) {
+    // Walk up to find a meaningful block-level container to scan
+    var el = node.nodeType === 3 ? node.parentElement : node;
+    while (el && el !== document.body) {
+      if (el.dataset && el.dataset.vgProcessed) return; // already done
+      var tag = el.tagName ? el.tagName.toLowerCase() : '';
+      // Stop at block containers that likely hold a full AI response
+      if (tag === 'p' || tag === 'div' || tag === 'section' || tag === 'article' || tag === 'li') {
+        pendingNodes.add(el);
+        return;
+      }
+      el = el.parentElement;
+    }
+    if (el === document.body) pendingNodes.add(document.body);
+  }
+
+  var observer = new MutationObserver(function (mutations) {
+    mutations.forEach(function (m) {
+      m.addedNodes.forEach(function (n) { collectAncestors(n); });
+      if (m.type === 'characterData') collectAncestors(m.target);
+    });
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(scanPage, DEBOUNCE_MS);
+    debounceTimer = setTimeout(flushPending, DEBOUNCE_MS);
   });
 
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });
 
-  // Initial scan in case messages are already present
-  setTimeout(scanPage, 500);
+  // Initial scan of full body in case messages already present
+  setTimeout(function () { parseAndSend(document.body); }, 500);
 
 })();
