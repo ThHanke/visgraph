@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VisGraph Relay Bridge</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 13px;
+      padding: 16px;
+      min-height: 100vh;
+    }
+    h1 {
+      font-size: 15px;
+      color: #58a6ff;
+      margin-bottom: 12px;
+      letter-spacing: 0.05em;
+    }
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot.ok   { background: #3fb950; }
+    .dot.warn { background: #d29922; }
+    .dot.off  { background: #484f58; }
+    .label { color: #8b949e; width: 130px; flex-shrink: 0; }
+    .value { color: #c9d1d9; }
+    .divider {
+      border: none;
+      border-top: 1px solid #21262d;
+      margin: 10px 0;
+    }
+    #activity {
+      color: #8b949e;
+      word-break: break-all;
+      line-height: 1.5;
+    }
+    #activity span { color: #c9d1d9; }
+    .note {
+      margin-top: 12px;
+      color: #484f58;
+      font-size: 11px;
+    }
+    .standalone-msg {
+      margin-top: 16px;
+      padding: 10px 12px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      color: #8b949e;
+      line-height: 1.6;
+    }
+    .standalone-msg code {
+      color: #79c0ff;
+    }
+  </style>
+</head>
+<body>
+  <h1>⬡ VisGraph Relay Bridge</h1>
+
+  <div class="status-row">
+    <div class="dot" id="dot-opener"></div>
+    <span class="label">AI tab (opener)</span>
+    <span class="value" id="val-opener">—</span>
+  </div>
+  <div class="status-row">
+    <div class="dot" id="dot-bc"></div>
+    <span class="label">VisGraph app (BC)</span>
+    <span class="value" id="val-bc">listening…</span>
+  </div>
+
+  <hr class="divider" />
+
+  <div id="activity">Waiting for first message…</div>
+
+  <div id="standalone-msg" style="display:none" class="standalone-msg">
+    This page should be opened as a popup via the bookmarklet on your AI chat tab.<br/>
+    Example: <code>window.open(location.href, 'vg-relay', 'width=320,height=200')</code>
+  </div>
+
+  <p class="note">Keep this window open while using VisGraph with AI.</p>
+
+  <script>
+    // ── DOM refs ────────────────────────────────────────────────────────────
+    const dotOpener = document.getElementById('dot-opener');
+    const valOpener = document.getElementById('val-opener');
+    const dotBc     = document.getElementById('dot-bc');
+    const valBc     = document.getElementById('val-bc');
+    const activity  = document.getElementById('activity');
+    const standaloneMsg = document.getElementById('standalone-msg');
+
+    const CHANNEL_NAME = 'visgraph-relay-v1';
+
+    // ── Helpers ─────────────────────────────────────────────────────────────
+    function setActivity(html) {
+      activity.innerHTML = html;
+    }
+
+    function ts() {
+      return new Date().toLocaleTimeString();
+    }
+
+    function truncate(s, n) {
+      if (typeof s !== 'string') s = JSON.stringify(s);
+      return s.length > n ? s.slice(0, n) + '…' : s;
+    }
+
+    // ── BroadcastChannel setup ───────────────────────────────────────────────
+    let bc;
+    try {
+      bc = new BroadcastChannel(CHANNEL_NAME);
+    } catch (e) {
+      setActivity('<span style="color:#f85149">BroadcastChannel not supported in this browser.</span>');
+    }
+
+    // Forward BC → opener
+    if (bc) {
+      bc.onmessage = function (evt) {
+        const data = evt.data;
+        if (!data || data.type !== 'vg-result') return;
+
+        dotBc.className = 'dot ok';
+        valBc.textContent = 'received result';
+
+        if (window.opener) {
+          try {
+            window.opener.postMessage(data, '*');
+            setActivity(
+              '[' + ts() + '] BC → opener: <span>vg-result</span> ' +
+              'requestId=' + (data.requestId || '?') + ' ' +
+              truncate(JSON.stringify(data.result), 80)
+            );
+          } catch (e) {
+            setActivity('<span style="color:#f85149">postMessage to opener failed: ' + e.message + '</span>');
+          }
+        }
+      };
+    }
+
+    // ── Opener / standalone detection ────────────────────────────────────────
+    if (!window.opener) {
+      dotOpener.className = 'dot off';
+      valOpener.textContent = 'not connected';
+      standaloneMsg.style.display = 'block';
+    } else {
+      dotOpener.className = 'dot ok';
+      valOpener.textContent = 'connected';
+    }
+
+    // Forward opener → BC
+    window.addEventListener('message', function (evt) {
+      const data = evt.data;
+
+      // Validate payload
+      if (!data || typeof data !== 'object' || data.type !== 'vg-call') return;
+      if (!bc) return;
+
+      dotOpener.className = 'dot ok';
+      valOpener.textContent = 'active';
+
+      dotBc.className = 'dot warn';
+      valBc.textContent = 'forwarded, awaiting result…';
+
+      try {
+        bc.postMessage(data);
+        setActivity(
+          '[' + ts() + '] opener → BC: <span>vg-call</span> ' +
+          'tool=' + (data.tool || '?') + ' ' +
+          'requestId=' + (data.requestId || '?')
+        );
+      } catch (e) {
+        setActivity('<span style="color:#f85149">BroadcastChannel postMessage failed: ' + e.message + '</span>');
+      }
+    });
+  </script>
+</body>
+</html>
