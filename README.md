@@ -383,15 +383,21 @@ The **AI Relay Bridge** connects any AI chat tab to VisGraph with no server, ext
 **Starter prompt** (paste into your AI chat after clicking the bookmarklet):
 
 ```text
-Please browse to https://thhanke.github.io/visgraph/.well-known/mcp.json and read the full tool specification before proceeding.
+Please browse to https://thhanke.github.io/visgraph/.well-known/mcp.json and read the full tool specification before proceeding. Use the exact tool names and parameter names from that spec — do not invent names.
 
-Once you have read the spec, control the VisGraph app using the relay bridge:
-- A browser extension monitors your responses and automatically executes any tool call you output in this format:
-  TOOL: <toolName>
-  PARAMS: <JSON object>
-- After each execution the result is injected back into this chat as a user message.
-- Output one tool call at a time and wait for the result before continuing.
-- For exportImage use format "svg" — the SVG XML will be injected back so you can read the graph topology.
+You are connected to VisGraph via a relay. A script scans your plain text responses for tool calls and executes them automatically. Results are injected back as user messages.
+
+STRICT OUTPUT RULES — violating these will silently break execution:
+1. One tool call per response, nothing else in that response.
+2. Use exactly this two-line plain text format — no markdown, no code blocks, no backticks, no bold, no numbering, no citation markers:
+TOOL: <exactToolName>
+PARAMS: {"key": "value"}
+3. The word TOOL must be at the start of a line. PARAMS must be on the very next line.
+4. Wait for the result message before sending the next tool call.
+5. Use full IRIs for node identifiers (e.g. "http://example.org/alice"), never prefixed names.
+6. For exportImage always use {"format": "svg"} — SVG text comes back so you can read graph topology from XML.
+
+Recommended workflow: loadOntology → addNode × N → addLink × N → runLayout → expandAll → fitCanvas → exportImage
 
 Now build a knowledge graph. What would you like to model?
 ```
