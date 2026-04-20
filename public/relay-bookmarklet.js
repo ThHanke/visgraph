@@ -214,8 +214,9 @@
     }
 
     // Strategy 2: any <pre> or <code> block containing TOOL:
+    // Use pre:not(:has(code)) to avoid double-scanning pre>code structures (e.g. Gemini)
     if (el.querySelectorAll) {
-      var codeBlocks = el.querySelectorAll('pre, code, [class*="cm-content"], [class*="cm-editor"]');
+      var codeBlocks = el.querySelectorAll('pre:not(:has(code)), code, [class*="cm-content"], [class*="cm-editor"]');
       Array.from(codeBlocks).forEach(function (block) {
         if (block.dataset && block.dataset.vgProcessed) return;
         var txt = stripHtml(block);
