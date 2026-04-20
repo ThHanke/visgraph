@@ -131,11 +131,13 @@
   }
 
   function pickInput(root) {
-    // Prefer textarea; fall back to contenteditable.
-    // Take the LAST match (chat input is at the bottom of the page).
+    // Strategy A: known IDs used by major chat UIs
+    var byId = ['chat-input', 'prompt-textarea'].map(function (id) { return document.getElementById(id); })
+      .filter(Boolean)[0];
+    if (byId) return byId;
+    // Strategy B: prefer textarea, fall back to contenteditable; take last (bottom of page)
     var all = Array.from(root.querySelectorAll('textarea, div[contenteditable="true"]'));
     if (!all.length) return null;
-    // Prefer textarea over contenteditable
     var textareas = all.filter(function (e) { return e.tagName === 'TEXTAREA'; });
     return textareas.length ? textareas[textareas.length - 1] : all[all.length - 1];
   }
