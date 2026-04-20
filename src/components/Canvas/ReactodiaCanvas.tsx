@@ -1291,13 +1291,13 @@ export default function ReactodiaCanvas() {
                       title="Menu"
                     >
                       <Reactodia.ToolbarAction title="Export PNG" onSelect={() => {
-                        const { canvas } = getWorkspaceRefs();
+                        const canvas = getWorkspaceRefs().ctx.view.findAnyCanvas();
                         canvas?.exportRaster({ mimeType: 'image/png' }).then(dataUrl => {
                           const a = document.createElement('a'); a.href = dataUrl; a.download = 'knowledgegraph.png'; a.click();
                         });
                       }}>Export PNG</Reactodia.ToolbarAction>
                       <Reactodia.ToolbarAction title="Export SVG" onSelect={() => {
-                        const { canvas } = getWorkspaceRefs();
+                        const canvas = getWorkspaceRefs().ctx.view.findAnyCanvas();
                         canvas?.exportSvg({ addXmlHeader: true }).then(svg => {
                           const blob = new Blob([svg], { type: 'image/svg+xml' });
                           const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'knowledgegraph.svg'; a.click();
