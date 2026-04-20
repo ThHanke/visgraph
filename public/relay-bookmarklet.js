@@ -151,8 +151,15 @@
     showToast(ok ? 'Result injected into chat' : 'Error injected into chat', ok);
   });
 
+  /* ── HTML entity decoder ───────────────────────────────────────────────── */
+  function decodeHtml(s) {
+    var t = document.createElement('textarea');
+    t.innerHTML = s;
+    return t.value;
+  }
+
   /* ── Tool-call pattern parser ──────────────────────────────────────────── */
-  var TOOL_RE = /TOOL:\s*(\w+)\s*\nPARAMS:\s*(\{[\s\S]*?\})\s*(?:\n|$)/g;
+  var TOOL_RE = /TOOL:\s*(\w+)\s*(?:\n|\s)PARAMS:\s*(\{[\s\S]*?\})\s*(?:\n|$)/g;
 
   function parseAndSend(el) {
     if (el.dataset && el.dataset.vgProcessed) return;
@@ -163,7 +170,7 @@
     while ((match = TOOL_RE.exec(text)) !== null) {
       found = true;
       var toolName = match[1];
-      var paramsRaw = match[2];
+      var paramsRaw = decodeHtml(match[2]);
       try {
         var params = JSON.parse(paramsRaw);
         sendToolCall(toolName, params);
