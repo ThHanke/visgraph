@@ -173,10 +173,17 @@
       setter.call(el, (el.value ? el.value + '\n' : '') + text);
       el.dispatchEvent(new Event('input', { bubbles: true }));
     } else {
-      el.innerText = (el.innerText ? el.innerText + '\n' : '') + text;
-      el.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      // ProseMirror/TipTap manage their own state — setting innerText is overwritten immediately.
+      // execCommand('insertText') goes through the browser input pipeline that these frameworks hook.
+      var sel = window.getSelection();
+      var range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false); // move cursor to end
+      sel.removeAllRanges();
+      sel.addRange(range);
+      var prefix = el.textContent && el.textContent.trim() ? '\n' : '';
+      document.execCommand('insertText', false, prefix + text);
     }
-    // Submit after a short delay to let the UI register the injected text
     setTimeout(function () { submitInput(el); }, 300);
     return true;
   }
