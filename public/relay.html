@@ -119,6 +119,7 @@
 
     // ── BroadcastChannel setup ───────────────────────────────────────────────
     let bc;
+    let openerOrigin = null;
     try {
       bc = new BroadcastChannel(CHANNEL_NAME);
     } catch (e) {
@@ -136,17 +137,27 @@
 
         if (window.opener) {
           try {
-            window.opener.postMessage(data, '*');
-            setActivity(
-              '[' + ts() + '] BC → opener: <span>vg-result</span> ' +
-              'requestId=' + (data.requestId || '?') + ' ' +
-              truncate(JSON.stringify(data.result), 80)
-            );
+            window.opener.postMessage(data, openerOrigin || '*');
+            const safeRequestId = document.createTextNode('requestId=' + (data.requestId || '?'));
+            const safeResult = document.createTextNode(truncate(JSON.stringify(data.result), 80));
+            const prefix = '[' + ts() + '] BC \u2192 opener: ';
+            activity.textContent = '';
+            activity.appendChild(document.createTextNode(prefix));
+            const span = document.createElement('span');
+            span.textContent = 'vg-result';
+            activity.appendChild(span);
+            activity.appendChild(document.createTextNode(' '));
+            activity.appendChild(safeRequestId);
+            activity.appendChild(document.createTextNode(' '));
+            activity.appendChild(safeResult);
           } catch (e) {
             setActivity('<span style="color:#f85149">postMessage to opener failed: ' + e.message + '</span>');
           }
         }
       };
+      window.addEventListener('unload', function () {
+        bc.close();
+      });
     }
 
     // ── Opener / standalone detection ────────────────────────────────────────
@@ -161,6 +172,8 @@
 
     // Forward opener → BC
     window.addEventListener('message', function (evt) {
+      if (!openerOrigin) openerOrigin = evt.origin;
+
       const data = evt.data;
 
       // Validate payload
@@ -175,11 +188,13 @@
 
       try {
         bc.postMessage(data);
-        setActivity(
-          '[' + ts() + '] opener → BC: <span>vg-call</span> ' +
-          'tool=' + (data.tool || '?') + ' ' +
-          'requestId=' + (data.requestId || '?')
-        );
+        const prefix = '[' + ts() + '] opener \u2192 BC: ';
+        activity.textContent = '';
+        activity.appendChild(document.createTextNode(prefix));
+        const span = document.createElement('span');
+        span.textContent = 'vg-call';
+        activity.appendChild(span);
+        activity.appendChild(document.createTextNode(' tool=' + (data.tool || '?') + ' requestId=' + (data.requestId || '?')));
       } catch (e) {
         setActivity('<span style="color:#f85149">BroadcastChannel postMessage failed: ' + e.message + '</span>');
       }
