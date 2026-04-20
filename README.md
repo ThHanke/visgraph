@@ -383,17 +383,28 @@ The **AI Relay Bridge** connects any AI chat tab to VisGraph with no server, ext
 **Starter prompt** (paste into your AI chat after clicking the bookmarklet):
 
 ```text
-You are controlling VisGraph, a live RDF knowledge graph editor open in another browser tab.
+You are controlling VisGraph, a live RDF knowledge graph editor open in another browser tab via a relay bridge.
 
-Fetch https://thhanke.github.io/visgraph/.well-known/mcp.json to get the full tool list and architecture notes.
+Available tools (use exact names):
+loadOntology(url), loadRdf(url|turtle), addNode(iri, typeIri?, label?), removeNode(iri),
+addLink(subjectIri, predicateIri, objectIri), removeLink(subjectIri, predicateIri, objectIri),
+getNodes(typeIri?, labelContains?, limit?), getLinks(subjectIri?, predicateIri?, objectIri?, limit?),
+runLayout(algorithm: dagre-lr|dagre-tb|elk-layered|elk-force|elk-stress|elk-radial),
+expandAll(), expandNode(iri, expand?), fitCanvas(), focusNode(iri),
+runReasoning(clearBefore?), clearInferred(), queryGraph(sparql),
+exportGraph(format: turtle|jsonld|rdfxml), exportImage(format: svg|png),
+searchEntities(query, limit?), autocomplete(text, limit?), getGraphState(), getCapabilities()
+
+Architecture: nodes must be explicitly added with addNode before addLink can reference them.
+After addLink the canvas refreshes links automatically. Call expandAll after adding nodes to show properties.
 
 How the relay works:
-- Output each tool call in this exact format (no prose between blocks):
+- Output each tool call in this exact format (one block at a time, no prose between):
   TOOL: <toolName>
   PARAMS: <JSON object>
-- The relay executes each call in VisGraph and injects the result JSON back into this input field automatically.
+- The relay executes each call and injects the result JSON back into this input field automatically.
 - Wait for the injected result before issuing the next call.
-- For exportImage, use format "svg" — the SVG text will be injected here so you can analyze graph topology from the XML.
+- For exportImage use format "svg" — SVG text will be injected so you can read graph topology from XML tags.
 
 Now build a knowledge graph. What would you like to model?
 ```
