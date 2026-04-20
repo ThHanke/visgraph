@@ -1,7 +1,20 @@
 {
-  "name": "vite_react_shadcn_ts",
-  "private": true,
-  "version": "0.0.0",
+  "name": "visgraph",
+  "description": "Browser-based interactive RDF/ontology knowledge graph editor — authoring, OWL-RL reasoning, clustering, multi-algorithm layout, and MCP support. Runs entirely client-side.",
+  "version": "1.0.0",
+  "license": "Apache-2.0",
+  "author": "Thomas Hanke <thomas.hnke82@gmail.com> (https://github.com/ThHanke)",
+  "homepage": "https://thhanke.github.io/visgraph/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ThHanke/visgraph.git"
+  },
+  "keywords": [
+    "rdf", "ontology", "knowledge-graph", "sparql", "owl", "reasoning",
+    "visualization", "linked-data", "semantic-web", "turtle", "json-ld",
+    "graph-editor", "fair-data", "reactodia", "mcp"
+  ],
+  "private": false,
   "type": "module",
   "scripts": {
     "start": "node server.js",

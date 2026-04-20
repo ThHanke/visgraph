@@ -1,10 +1,12 @@
-VisGraph — interactive RDF / ontology canvas
-=============================================
+VisGraph — Browser-based RDF Knowledge Graph Editor
+====================================================
+
 [![DOI](https://zenodo.org/badge/1049705027.svg)](https://doi.org/10.5281/zenodo.19605270)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 Overview
 --------
-VisGraph is an interactive editor for RDF knowledge graphs and ontologies built on the [Reactodia](https://github.com/reactodia/reactodia-workspace) canvas. It visualises RDF subjects as nodes and predicates as edges, provides full authoring (add nodes, create and edit links, rename namespaces), applies OWL-RL reasoning with visual differentiation of inferred knowledge, and automatically clusters large graphs for readability — all directly in the browser against an in-memory RDF store backed by Web Workers.
+VisGraph is a browser-based [RDF](https://www.w3.org/RDF/)/ontology knowledge graph editor. It loads RDF from local files, remote URLs, or SPARQL/Fuseki endpoints; lets users author nodes and edges directly on the canvas; runs [OWL-RL](https://www.w3.org/TR/owl2-profiles/#OWL_2_RL) reasoning with visual differentiation of inferred triples; and applies multi-algorithm layout ([Dagre](https://github.com/dagrejs/dagre), [ELK](https://github.com/kieler/elkjs)) and automatic clustering for large graphs. Additional features include namespace management with live URI renaming, a drag-and-drop workflow template catalog, and a [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for AI-agent integration. All computation runs entirely client-side in the browser against an in-memory RDF store backed by Web Workers — no backend required.
 
 Key capabilities
 ----------------
