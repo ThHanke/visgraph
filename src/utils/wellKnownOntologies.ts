@@ -32,11 +32,31 @@ export const WELL_KNOWN_PREFIXES = [
     prefix: "prov",
     url: "http://www.w3.org/ns/prov#",
     name: "PROV-O - The PROV Ontology",
+    ontologyUrl: "http://www.w3.org/ns/prov-o#",
   },
   {
     prefix: "p-plan",
     url: "http://purl.org/net/p-plan#",
     name: "P-Plan - The P-Plan Ontology",
+    ontologyUrl: "http://purl.org/net/p-plan",
+  },
+  {
+    prefix: "bfo",
+    url: "http://purl.obolibrary.org/obo/BFO_",
+    name: "BFO 2 - Basic Formal Ontology 2.0",
+    ontologyUrl: "http://purl.obolibrary.org/obo/bfo/2.0/bfo.owl",
+  },
+  {
+    prefix: "bfo2020",
+    url: "https://basic-formal-ontology.org/2020/formulas/owl/",
+    name: "BFO 2020 - Basic Formal Ontology 2020",
+    ontologyUrl: "https://raw.githubusercontent.com/BFO-ontology/BFO-2020/master/src/owl/bfo-2020.owl",
+  },
+  {
+    prefix: "dcat",
+    url: "http://www.w3.org/ns/dcat#",
+    name: "DCAT - Data Catalog Vocabulary",
+    ontologyUrl: "http://www.w3.org/ns/dcat2",
   },
   {
     prefix: "qudt",
@@ -93,8 +113,22 @@ export const WELL_KNOWN_PREFIXES = [
 
 export const WELL_KNOWN_BY_PREFIX: Record<
   string,
-  { prefix: string; url: string; name: string }
+  { prefix: string; url: string; name: string; ontologyUrl?: string }
 > = Object.fromEntries(WELL_KNOWN_PREFIXES.map((p) => [p.prefix, p])) as any;
+
+/**
+ * Resolve a well-known prefix name or arbitrary URI to the URL that should be
+ * fetched when loading the ontology.  For entries with an explicit `ontologyUrl`
+ * (e.g. BFO, DCAT) that URL is returned; otherwise the namespace `url` is used.
+ * Unrecognised strings are returned as-is so callers can pass raw URIs directly.
+ */
+export function resolveOntologyLoadUrl(prefixOrUri: string): string {
+  const entry = WELL_KNOWN_BY_PREFIX[prefixOrUri];
+  if (entry) {
+    return (entry as any).ontologyUrl ?? entry.url;
+  }
+  return prefixOrUri;
+}
 
 // Map from namespace URL -> array of prefixes that point to it
 export const WELL_KNOWN_BY_URL: Map<string, string[]> = (() => {

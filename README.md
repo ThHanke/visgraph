@@ -81,6 +81,45 @@ VisGraph supports several URL query parameters that control what is loaded on st
 
 The API key is sent only with the RDF fetch request. CORS: the server must allow the VisGraph origin with credentials (wildcard `*` origins are incompatible with authenticated requests).
 
+### Ontology pre-loading
+
+| Parameter   | Alias        | Description |
+|-------------|--------------|-------------|
+| `ontology`  | `ontologies` | Comma-separated list of ontologies to load on startup, in addition to any configured autoload and `owl:imports` discovery. Each value is either a well-known short name (see table below) or an arbitrary HTTPS/HTTP URI. |
+
+```text
+?ontology=bfo,dcat
+?ontology=bfo2020,https://example.org/myontology.ttl
+```
+
+**Well-known short names:**
+
+| Short name | Ontology |
+|------------|----------|
+| `rdf`      | RDF Concepts Vocabulary |
+| `rdfs`     | RDF Schema |
+| `owl`      | OWL |
+| `skos`     | SKOS |
+| `prov`     | PROV-O – The PROV Ontology |
+| `p-plan`   | P-Plan Ontology |
+| `bfo`      | BFO 2.0 – Basic Formal Ontology 2.0 |
+| `bfo2020`  | BFO 2020 – Basic Formal Ontology 2020 |
+| `dcat`     | DCAT – Data Catalog Vocabulary |
+| `foaf`     | FOAF |
+| `dcterms`  | Dublin Core Terms |
+| `qudt`     | QUDT |
+| `iof-core` | IOF Core |
+
+### Import discovery
+
+| Parameter     | Default | Description |
+|---------------|---------|-------------|
+| `loadImports` | `true`  | Set to `false` to disable automatic loading of `owl:imports` referenced in the loaded RDF. Overrides the per-session app setting without persisting it. |
+
+```text
+?rdfUrl=https://example.org/data.ttl&loadImports=false
+```
+
 ### Full example (CKAN private dataset via Fuseki SPARQL)
 
 ```text
@@ -88,6 +127,15 @@ http://docker-dev.iwm.fraunhofer.de:8080/
   ?rdfUrl=https://docker-dev.iwm.fraunhofer.de/dataset/<uuid>/fuseki/$/sparql
   &apiKey=<ckan-api-jwt-token>
 ```
+
+### Startup loading order
+
+All startup mechanisms are additive and run in this order:
+
+1. Configured additional ontologies (app settings → *persistedAutoload*)
+2. RDF data graph (`rdfUrl` / `url` / `vg_url`)
+3. Ontologies from `?ontology=` URL parameter
+4. `owl:imports` discovery (runs after each load unless `?loadImports=false`)
 
 ### Other startup mechanisms
 

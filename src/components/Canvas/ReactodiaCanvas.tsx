@@ -41,7 +41,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Label } from '../ui/label';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
-import { WELL_KNOWN_PREFIXES } from '@/utils/wellKnownOntologies';
+import { WELL_KNOWN_PREFIXES, resolveOntologyLoadUrl } from '@/utils/wellKnownOntologies';
 import { instantiateWorkflowOnCanvas } from '@/utils/workflowInstantiator';
 
 function extractNamespace(iri: string): string {
@@ -806,6 +806,21 @@ export default function ReactodiaCanvas() {
       startupUrl = '';
     }
 
+    // ?ontology= comma-separated list of well-known prefix names (e.g. "bfo,dcat") or full URIs.
+    let startupOntologyUrls: string[] = [];
+    try {
+      const u = new URL(String(window.location.href));
+      const ontologyParam = u.searchParams.get('ontology') || u.searchParams.get('ontologies') || '';
+      if (ontologyParam.trim()) {
+        startupOntologyUrls = ontologyParam
+          .split(',')
+          .map((s) => resolveOntologyLoadUrl(s.trim()))
+          .filter(Boolean);
+      }
+    } catch {
+      /* ignore */
+    }
+
     (async () => {
       // Autoload configured ontologies if enabled
       if (additional.length > 0 && cfg?.persistedAutoload) {
@@ -836,6 +851,20 @@ export default function ReactodiaCanvas() {
           toast.success('Startup knowledge graph loaded');
         } catch (err) {
           console.error('[ReactodiaCanvas] Startup URL load failed', err);
+        } finally {
+          actions.setLoading(false, 0, '');
+        }
+      }
+
+      // Load ontologies specified via ?ontology= URL param (additive — runs alongside all other mechanisms).
+      if (startupOntologyUrls.length > 0) {
+        try {
+          actions.setLoading(true, 5, 'Loading ontologies from URL parameter...');
+          await loadAdditionalOntologies(startupOntologyUrls, (progress: number, message: string) => {
+            actions.setLoading(true, Math.max(5, progress), message);
+          });
+        } catch (err) {
+          console.warn('[ReactodiaCanvas] ?ontology= load failed', err);
         } finally {
           actions.setLoading(false, 0, '');
         }
