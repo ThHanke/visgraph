@@ -16,7 +16,7 @@ import { workerQuadsToRdf, type WorkerQuad as ConverterQuad } from '@/providers/
 import type { WorkerQuad } from '@/utils/rdfSerialization';
 import { setWorkspaceContext } from '@/mcp/workspaceContext';
 import { TopBar } from './TopBar';
-import { exportSvgFull, exportPngFull } from './core/downloadHelpers';
+import { getWorkspaceRefs } from '@/mcp/workspaceContext';
 import { LeftSidebar } from './LeftSidebar';
 import { ConfigurationPanel } from './ConfigurationPanel';
 import { ReasoningReportModal } from './ReasoningReportModal';
@@ -1290,8 +1290,19 @@ export default function ReactodiaCanvas() {
                       direction="down"
                       title="Menu"
                     >
-                      <Reactodia.ToolbarAction title="Export PNG" onSelect={() => exportPngFull()}>Export PNG</Reactodia.ToolbarAction>
-                      <Reactodia.ToolbarAction title="Export SVG" onSelect={() => exportSvgFull()}>Export SVG</Reactodia.ToolbarAction>
+                      <Reactodia.ToolbarAction title="Export PNG" onSelect={() => {
+                        const { canvas } = getWorkspaceRefs();
+                        canvas?.exportRaster({ mimeType: 'image/png' }).then(dataUrl => {
+                          const a = document.createElement('a'); a.href = dataUrl; a.download = 'knowledgegraph.png'; a.click();
+                        });
+                      }}>Export PNG</Reactodia.ToolbarAction>
+                      <Reactodia.ToolbarAction title="Export SVG" onSelect={() => {
+                        const { canvas } = getWorkspaceRefs();
+                        canvas?.exportSvg({ addXmlHeader: true }).then(svg => {
+                          const blob = new Blob([svg], { type: 'image/svg+xml' });
+                          const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'knowledgegraph.svg'; a.click();
+                        });
+                      }}>Export SVG</Reactodia.ToolbarAction>
                       <Reactodia.ToolbarActionExport kind="print" />
                       <Reactodia.ToolbarAction
                         title={canvasState.showLegend ? 'Hide Legend' : 'Show Legend'}
