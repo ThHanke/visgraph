@@ -114,28 +114,21 @@
     setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 4000);
   }
 
-  /* ── Find multiline input near the tool-call source element ───────────── */
-  function findInput(sourceEl) {
-    // Walk up from the element where the tool call was detected.
-    // At each level, look for a multiline input in the subtree.
-    // This works because the chat input is always in a sibling subtree
-    // of the message area — we just need their common ancestor.
-    var el = (sourceEl && document.contains(sourceEl)) ? sourceEl : document.body;
-    while (el && el !== document.body) {
-      var inp = pickInput(el);
-      if (inp) return inp;
-      el = el.parentElement;
-    }
-    // Body-level fallback
-    return pickInput(document.body);
-  }
-
-  function pickInput(root) {
-    // Prefer textarea, fall back to contenteditable; take last (bottom of page)
-    var all = Array.from(root.querySelectorAll('textarea, div[contenteditable="true"]'));
-    if (!all.length) return null;
-    var textareas = all.filter(function (e) { return e.tagName === 'TEXTAREA'; });
-    return textareas.length ? textareas[textareas.length - 1] : all[all.length - 1];
+  /* ── Find the chat input: visible input closest to the bottom of viewport ── */
+  function findInput() {
+    var candidates = Array.from(document.querySelectorAll(
+      'textarea, div[contenteditable="true"]'
+    )).filter(function (el) {
+      var r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0; // must be visible
+    });
+    if (!candidates.length) return null;
+    // Prefer textarea; among the pool take the one with the largest bottom coordinate
+    var textareas = candidates.filter(function (e) { return e.tagName === 'TEXTAREA'; });
+    var pool = textareas.length ? textareas : candidates;
+    return pool.reduce(function (best, el) {
+      return el.getBoundingClientRect().bottom > best.getBoundingClientRect().bottom ? el : best;
+    });
   }
 
   /* ── Submit the chat input (send button or Enter key) ─────────────────── */
@@ -161,8 +154,8 @@
   }
 
   /* ── Inject result into chat input and auto-submit ─────────────────────── */
-  function injectResult(text, sourceEl) {
-    var el = findInput(sourceEl);
+  function injectResult(text) {
+    var el = findInput();
     if (!el) return false;
 
     el.focus();
@@ -187,8 +180,6 @@
   }
 
   /* ── Result listener (popup → AI tab) ─────────────────────────────────── */
-  // Keyed by requestId so concurrent calls inject into the right source element
-  var pendingSourceEl = {};
 
   window.addEventListener('message', function (evt) {
     if (evt.origin !== RELAY_ORIGIN) return;
@@ -197,10 +188,8 @@
 
     var ok = data.result && data.result.success !== false;
     var text = 'Tool result: ' + JSON.stringify(data.result !== undefined ? data.result : data, null, 2);
-    var sourceEl = pendingSourceEl[data.requestId] || null;
     delete pendingSourceEl[data.requestId];
-
-    injectResult(text, sourceEl);
+    injectResult(text);
     showToast(ok ? 'Result injected into chat' : 'Error injected into chat', ok);
   });
 
@@ -218,7 +207,7 @@
   // Dedup set — prevents re-firing when chat UI collapses/expands messages
   var dispatchedSigs = new Set();
 
-  function extractAndSend(text, sourceEl) {
+  function extractAndSend(text) {
     // ^...$  with multiline flag: tool name must be alone on its line
     var m = text.match(/^TOOL:\s*(\w+)\s*$/m);
     if (!m) return false;
@@ -235,7 +224,7 @@
     var sig = tool + ':' + JSON.stringify(params);
     if (dispatchedSigs.has(sig)) return false;
     dispatchedSigs.add(sig);
-    sendToolCall(tool, params, sourceEl);
+    sendToolCall(tool, params);
     return true;
   }
 
@@ -247,14 +236,13 @@
     }
   }
 
-  function sendToolCall(tool, params, sourceEl) {
+  function sendToolCall(tool, params) {
     var popup = window.__vgRelayPopup;
     if (!popup || popup.closed) {
       showToast('Relay popup closed — click the green badge to reopen', false);
       return;
     }
     var requestId = 'rq-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
-    pendingSourceEl[requestId] = sourceEl || null;
     var payload = { type: 'vg-call', tool: tool, params: params, requestId: requestId };
     setTimeout(function () {
       try {
