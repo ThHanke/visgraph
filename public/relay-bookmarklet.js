@@ -159,7 +159,7 @@
   }
 
   /* ── Tool-call pattern parser ──────────────────────────────────────────── */
-  var TOOL_RE = /TOOL:\s*(\w+)\s*(?:\n|\s)PARAMS:\s*(\{[\s\S]*?\})\s*(?:\n|$)/g;
+  var TOOL_RE = /```visgraph\s*\nTOOL:\s*(\w+)\s*\nPARAMS:\s*(\{[\s\S]*?\})\s*\n```/g;
 
   function parseAndSend(el) {
     if (el.dataset && el.dataset.vgProcessed) return;
