@@ -16,6 +16,7 @@ import { workerQuadsToRdf, type WorkerQuad as ConverterQuad } from '@/providers/
 import type { WorkerQuad } from '@/utils/rdfSerialization';
 import { setWorkspaceContext } from '@/mcp/workspaceContext';
 import { TopBar } from './TopBar';
+import { exportSvgFull, exportPngFull } from './core/downloadHelpers';
 import { LeftSidebar } from './LeftSidebar';
 import { ConfigurationPanel } from './ConfigurationPanel';
 import { ReasoningReportModal } from './ReasoningReportModal';
@@ -1289,8 +1290,8 @@ export default function ReactodiaCanvas() {
                       direction="down"
                       title="Menu"
                     >
-                      <Reactodia.ToolbarActionExport kind="exportRaster" />
-                      <Reactodia.ToolbarActionExport kind="exportSvg" />
+                      <Reactodia.ToolbarAction title="Export PNG" onSelect={() => exportPngFull()}>Export PNG</Reactodia.ToolbarAction>
+                      <Reactodia.ToolbarAction title="Export SVG" onSelect={() => exportSvgFull()}>Export SVG</Reactodia.ToolbarAction>
                       <Reactodia.ToolbarActionExport kind="print" />
                       <Reactodia.ToolbarAction
                         title={canvasState.showLegend ? 'Hide Legend' : 'Show Legend'}
