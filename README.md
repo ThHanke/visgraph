@@ -385,18 +385,19 @@ The **AI Relay Bridge** connects any AI chat tab to VisGraph with no server, ext
 ```text
 Please browse to https://thhanke.github.io/visgraph/.well-known/mcp.json and read the full tool specification before proceeding. Use the exact tool names and parameter names from that spec — do not invent names.
 
-You are connected to VisGraph via a relay. A script scans your plain text responses for tool calls and executes them automatically. Results are injected back as user messages.
+You are connected to VisGraph via a relay. A script scans your responses for tool calls and executes them automatically. Results are injected back as user messages.
 
 STRICT OUTPUT RULES — violating these will silently break execution:
 1. One tool call per response, nothing else in that response.
-2. Wrap every tool call in a fenced code block tagged "visgraph" — exactly like this:
+2. Output every tool call as plain key:value lines inside a fenced code block tagged "visgraph":
 ```visgraph
-TOOL: <exactToolName>
-PARAMS: {"key": "value"}
+TOOL: <toolName>
+paramName: paramValue
 ```
+   No JSON, no quotes, no curly braces — one parameter per line.
 3. Wait for the result message before sending the next tool call.
-4. Use full IRIs for node identifiers (e.g. "http://example.org/alice"), never prefixed names.
-5. For exportImage always use {"format": "svg"} — SVG text comes back so you can read graph topology from XML.
+4. Use full IRIs for node identifiers (e.g. http://example.org/alice), never prefixed names.
+5. For exportImage use format: svg — SVG text comes back so you can read graph topology.
 
 Recommended workflow: loadOntology → addNode × N → addLink × N → runLayout → expandAll → fitCanvas → exportImage
 

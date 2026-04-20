@@ -151,88 +151,42 @@
     showToast(ok ? 'Result injected into chat' : 'Error injected into chat', ok);
   });
 
-  /* ── HTML entity decoder ───────────────────────────────────────────────── */
-  function decodeHtml(s) {
-    var t = document.createElement('textarea');
-    t.innerHTML = s;
-    return t.value;
-  }
+  /* ── Tool-call extractor ───────────────────────────────────────────────── */
+  //
+  // Format (instructed to AI):
+  //   TOOL: toolName
+  //   param1: value1
+  //   param2: value2
+  //
+  // Key:value lines replace JSON — no quotes, no curly braces, no parse errors.
+  // el.innerText/textContent decodes HTML entities and strips all tags automatically,
+  // so hyperlinked URLs, hljs spans, and &quot; encoding are all handled transparently.
 
-  /* ── Tool-call pattern parser ──────────────────────────────────────────── */
-  var TOOL_RE = /```visgraph\s*\nTOOL:\s*(\w+)\s*\nPARAMS:\s*(\{[\s\S]*?\})\s*\n```/g;
-
-  // Matches TOOL:/PARAMS: in plain text (innerText of rendered code blocks)
-  var TOOL_PLAIN_RE = /TOOL:\s*(\w+)\s*\nPARAMS:\s*(\{[\s\S]*?\})/g;
-
-  function tryParse(toolName, paramsRaw) {
-    var raw = decodeHtml(paramsRaw.trim());
-    try {
-      sendToolCall(toolName, JSON.parse(raw));
-      return true;
-    } catch (e) {
-      showParseError(toolName, raw, e);
-      return false;
-    }
-  }
-
-  function stripHtml(el) {
-    // Clone and strip all child span/em/strong tags to get clean text
-    var clone = el.cloneNode(true);
-    var spans = clone.querySelectorAll('span, em, strong, a, b, i');
-    Array.from(spans).forEach(function (s) {
-      s.replaceWith(s.textContent || '');
+  function extractAndSend(text) {
+    var m = text.match(/TOOL:\s*(\w+)/);
+    if (!m) return false;
+    var tool = m[1];
+    var params = {};
+    var after = text.slice(text.indexOf(m[0]) + m[0].length);
+    after.split('\n').forEach(function (line) {
+      var kv = line.match(/^(\w+):\s*(.+)/);
+      if (kv) {
+        var v = kv[2].trim();
+        // Auto-coerce booleans and numbers
+        params[kv[1]] = v === 'true' ? true : v === 'false' ? false : !isNaN(+v) && v !== '' ? +v : v;
+      }
     });
-    return clone.textContent || '';
-  }
-
-  function scanText(txt, re) {
-    var found = false;
-    var m;
-    re.lastIndex = 0;
-    while ((m = re.exec(txt)) !== null) {
-      found = true;
-      tryParse(m[1], m[2]);
-    }
-    return found;
+    sendToolCall(tool, params);
+    return true;
   }
 
   function parseAndSend(el) {
     if (!el || (el.dataset && el.dataset.vgProcessed)) return;
-    var found = false;
-
-    // Strategy 1: visgraph-tagged code blocks (any UI that sets language class)
-    if (el.querySelectorAll) {
-      var vgBlocks = el.querySelectorAll('[class*="language-visgraph"], [class*="visgraph"], [class*="_codeBlock"]');
-      Array.from(vgBlocks).forEach(function (block) {
-        if (block.dataset && block.dataset.vgProcessed) return;
-        var txt = stripHtml(block);
-        if (scanText(txt, TOOL_PLAIN_RE)) {
-          found = true;
-          if (block.dataset) block.dataset.vgProcessed = '1';
-        }
-      });
-    }
-
-    // Strategy 2: any <pre> or <code> block containing TOOL:
-    // Use pre:not(:has(code)) to avoid double-scanning pre>code structures (e.g. Gemini)
-    if (el.querySelectorAll) {
-      var codeBlocks = el.querySelectorAll('pre:not(:has(code)), code, [class*="cm-content"], [class*="cm-editor"]');
-      Array.from(codeBlocks).forEach(function (block) {
-        if (block.dataset && block.dataset.vgProcessed) return;
-        var txt = stripHtml(block);
-        if (/^TOOL:\s*\w+/m.test(txt) && scanText(txt, TOOL_PLAIN_RE)) {
-          found = true;
-          if (block.dataset) block.dataset.vgProcessed = '1';
-        }
-      });
-    }
-
-    // Strategy 3: raw backtick ```visgraph fences in unrendered text
+    // Scan raw text — HTML structure is irrelevant; rendering variation cannot break this
     var text = el.innerText || el.textContent || '';
-    TOOL_RE.lastIndex = 0;
-    if (scanText(text, TOOL_RE)) found = true;
-
-    if (found && el.dataset) el.dataset.vgProcessed = '1';
+    if (extractAndSend(text) && el.dataset) {
+      el.dataset.vgProcessed = '1';
+    }
   }
 
   function sendToolCall(tool, params) {
@@ -247,30 +201,6 @@
         console.warn('[vg-relay] postMessage failed:', e);
       }
     }, 200);
-  }
-
-  /* ── Parse error warning overlay ───────────────────────────────────────── */
-  function showParseError(toolName, raw, err) {
-    var warn = document.createElement('div');
-    warn.style.cssText = [
-      'position:fixed',
-      'bottom:20px',
-      'right:12px',
-      'z-index:2147483647',
-      'background:#161b22',
-      'color:#f85149',
-      'border:1px solid #f85149',
-      'border-radius:6px',
-      'padding:8px 12px',
-      'font:12px monospace',
-      'max-width:340px',
-      'box-shadow:0 2px 8px rgba(0,0,0,.5)',
-    ].join(';');
-    warn.textContent = '[vg-relay] JSON parse error for tool "' + toolName + '": ' + err.message;
-    document.body.appendChild(warn);
-    setTimeout(function () {
-      if (warn.parentNode) warn.parentNode.removeChild(warn);
-    }, 6000);
   }
 
   /* ── MutationObserver — scan every new/changed node generically ────────── */
