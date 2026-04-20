@@ -131,11 +131,7 @@
   }
 
   function pickInput(root) {
-    // Strategy A: known IDs used by major chat UIs
-    var byId = ['chat-input', 'prompt-textarea'].map(function (id) { return document.getElementById(id); })
-      .filter(Boolean)[0];
-    if (byId) return byId;
-    // Strategy B: prefer textarea, fall back to contenteditable; take last (bottom of page)
+    // Prefer textarea, fall back to contenteditable; take last (bottom of page)
     var all = Array.from(root.querySelectorAll('textarea, div[contenteditable="true"]'));
     if (!all.length) return null;
     var textareas = all.filter(function (e) { return e.tagName === 'TEXTAREA'; });
