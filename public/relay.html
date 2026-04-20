@@ -123,7 +123,11 @@
     try {
       bc = new BroadcastChannel(CHANNEL_NAME);
     } catch (e) {
-      setActivity('<span style="color:#f85149">BroadcastChannel not supported in this browser.</span>');
+      const sp = document.createElement('span');
+      sp.style.color = '#f85149';
+      sp.textContent = 'BroadcastChannel not supported in this browser.';
+      const activityEl = document.getElementById('activity');
+      if (activityEl) { activityEl.innerHTML = ''; activityEl.appendChild(sp); }
     }
 
     // Forward BC → opener
@@ -151,7 +155,11 @@
             activity.appendChild(document.createTextNode(' '));
             activity.appendChild(safeResult);
           } catch (e) {
-            setActivity('<span style="color:#f85149">postMessage to opener failed: ' + e.message + '</span>');
+            const sp = document.createElement('span');
+            sp.style.color = '#f85149';
+            sp.textContent = 'postMessage to opener failed: ' + e.message;
+            const activityEl = document.getElementById('activity');
+            if (activityEl) { activityEl.innerHTML = ''; activityEl.appendChild(sp); }
           }
         }
       };
@@ -196,7 +204,11 @@
         activity.appendChild(span);
         activity.appendChild(document.createTextNode(' tool=' + (data.tool || '?') + ' requestId=' + (data.requestId || '?')));
       } catch (e) {
-        setActivity('<span style="color:#f85149">BroadcastChannel postMessage failed: ' + e.message + '</span>');
+        const sp = document.createElement('span');
+        sp.style.color = '#f85149';
+        sp.textContent = 'BroadcastChannel postMessage failed: ' + e.message;
+        const activityEl = document.getElementById('activity');
+        if (activityEl) { activityEl.innerHTML = ''; activityEl.appendChild(sp); }
       }
     });
   </script>

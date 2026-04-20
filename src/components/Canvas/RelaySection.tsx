@@ -79,8 +79,8 @@ export const RelaySection: React.FC<RelaySectionProps> = ({ bookmarkletHref, con
           <p className="text-xs text-muted-foreground italic">No calls yet</p>
         ) : (
           <ul className="space-y-0.5">
-            {callLog.map((entry: RelayCallLogEntry, i) => (
-              <li key={i} className="flex items-center justify-between text-xs">
+            {callLog.map((entry: RelayCallLogEntry) => (
+              <li key={entry.timestamp} className="flex items-center justify-between text-xs">
                 <span className="font-mono text-foreground">{entry.tool}</span>
                 <span className="flex items-center gap-1.5 text-muted-foreground">
                   <span className={entry.success ? 'text-green-600 dark:text-green-400' : 'text-destructive'}>

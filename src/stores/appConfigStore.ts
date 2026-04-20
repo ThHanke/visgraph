@@ -144,7 +144,7 @@ const defaultConfig: AppConfig = {
   workflowCatalogEnabled: true,
   workflowCatalogUrls: { ...DEFAULT_WORKFLOW_CATALOG_URLS },
   loadWorkflowCatalogOnStartup: true,
-  relayEnabled: true,
+  relayEnabled: false,
 };
 
 function pushRecent(list: string[], value: string, limit: number, context: string): string[] {
