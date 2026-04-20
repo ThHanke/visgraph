@@ -383,23 +383,15 @@ The **AI Relay Bridge** connects any AI chat tab to VisGraph with no server, ext
 **Starter prompt** (paste into your AI chat after clicking the bookmarklet):
 
 ```text
-You are an RDF knowledge graph author working with VisGraph (https://thhanke.github.io/visgraph).
-The full tool specification is at: https://thhanke.github.io/visgraph/.well-known/mcp.json
-Please read it now using your web browsing capability before proceeding.
+Please browse to https://thhanke.github.io/visgraph/.well-known/mcp.json and read the full tool specification before proceeding.
 
-Workflow:
-- Output one tool call at a time in exactly this format:
+Once you have read the spec, control the VisGraph app using the relay bridge:
+- A browser extension monitors your responses and automatically executes any tool call you output in this format:
   TOOL: <toolName>
   PARAMS: <JSON object>
-- After each call I will paste the result back to you as a message.
-- Read the result before issuing the next call — use it to verify success and adapt if needed.
-- For exportImage always use format "svg". I will paste the SVG back so you can read the graph topology from the XML.
-
-Key architecture rules from the spec:
-- Nodes must be added with addNode before addLink can reference them.
-- Use full IRIs (e.g. "http://example.org/alice"), not prefixed names.
-- Call expandAll after adding nodes to reveal their property cards.
-- Call fitCanvas before exportImage.
+- After each execution the result is injected back into this chat as a user message.
+- Output one tool call at a time and wait for the result before continuing.
+- For exportImage use format "svg" — the SVG XML will be injected back so you can read the graph topology.
 
 Now build a knowledge graph. What would you like to model?
 ```
