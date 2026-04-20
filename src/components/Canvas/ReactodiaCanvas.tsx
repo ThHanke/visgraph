@@ -357,10 +357,14 @@ export default function ReactodiaCanvas() {
   const preClusterPositions = React.useRef<Map<string, Reactodia.Vector> | null>(null);
   const silentLayoutPositions = React.useRef<Map<string, Reactodia.Vector> | null>(null);
 
+  // Resolved once at mount from ?loadImports URL param. false = imports disabled for this session.
+  const loadImportsEnabledRef = React.useRef<boolean>(true);
+
   const ontologyCount = useOntologyStore(s => s.loadedOntologies?.length ?? 0);
   const namespaces = useOntologyStore(s => Array.isArray(s.namespaceRegistry) ? s.namespaceRegistry : []);
   const loadKnowledgeGraph = useOntologyStore(s => s.loadKnowledgeGraph);
   const loadAdditionalOntologies = useOntologyStore(s => s.loadAdditionalOntologies);
+  const discoverReferencedOntologies = useOntologyStore(s => s.discoverReferencedOntologies);
 
   // prefixes: prefix -> namespace URI (for PrefixContext consumers)
   // NamespaceEntry uses the field name `uri`, not `namespace`
@@ -795,6 +799,9 @@ export default function ReactodiaCanvas() {
         '';
       startupApiKey = u.searchParams.get('apiKey') || '';
       startupApiKeyHeader = u.searchParams.get('apiKeyHeader') || '';
+      // ?loadImports=false disables owl:imports auto-loading for this session only.
+      const loadImportsParam = u.searchParams.get('loadImports');
+      loadImportsEnabledRef.current = loadImportsParam !== 'false';
     } catch {
       startupUrl = '';
     }
@@ -823,6 +830,7 @@ export default function ReactodiaCanvas() {
               actions.setLoading(true, Math.max(progress, 5), message);
             },
             timeout: 30000,
+            disableImportDiscovery: !loadImportsEnabledRef.current,
             ...(startupApiKey ? { apiKey: startupApiKey, apiKeyHeader: startupApiKeyHeader || undefined } : {}),
           });
           toast.success('Startup knowledge graph loaded');
@@ -983,12 +991,20 @@ export default function ReactodiaCanvas() {
       const text = await file.text();
       await rdfManager.loadRDFIntoGraph(text, undefined, undefined, file.name);
       actions.setLoading(false, 100, `Loaded ${file.name}`);
+      // Fire-and-forget: discover and load owl:imports referenced in the uploaded file.
+      if (typeof discoverReferencedOntologies === 'function') {
+        discoverReferencedOntologies({
+          load: 'async',
+          graphName: 'urn:vg:data',
+          forceDisabled: !loadImportsEnabledRef.current,
+        });
+      }
     } catch (err) {
       actions.setLoading(false, 0, '');
       console.error('[ReactodiaCanvas] File load failed', err);
     }
     e.target.value = '';
-  }, [actions]);
+  }, [actions, discoverReferencedOntologies]);
 
   const handleLoadFile = React.useCallback(() => {
     fileInputRef.current?.click();

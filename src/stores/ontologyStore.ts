@@ -479,6 +479,7 @@ interface OntologyStore {
       filename?: string;
       apiKey?: string;
       apiKeyHeader?: string;
+      disableImportDiscovery?: boolean;
     },
   ) => Promise<void>;
   loadAdditionalOntologies: (
@@ -492,6 +493,7 @@ interface OntologyStore {
       timeoutMs?: number;
       concurrency?: number;
       onProgress?: (p: number, message: string) => void;
+      forceDisabled?: boolean;
     },
   ) => Promise<{
     candidates: string[];
@@ -961,6 +963,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       filename?: string;
       apiKey?: string;
       apiKeyHeader?: string;
+      disableImportDiscovery?: boolean;
     },
   ) => {
     logCallGraph?.("loadKnowledgeGraph:start", source);
@@ -1020,6 +1023,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
                 timeoutMs: 10000,
                 graphName: "urn:vg:data",
                 onProgress: options?.onProgress,
+                forceDisabled: options?.disableImportDiscovery === true,
               });
             } catch (e) {
               console.debug("[VG_DEBUG] discoverReferencedOntologies (async) failed", e);
@@ -1063,6 +1067,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
               load: "async",
               graphName: "urn:vg:data",
               onProgress: options?.onProgress,
+              forceDisabled: options?.disableImportDiscovery === true,
             });
           } catch (e) {
             console.debug("[VG_DEBUG] discoverReferencedOntologies (async) invocation failed", e);
@@ -1107,6 +1112,10 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
 
     if (toLoad.length === 0) {
       onProgress?.(100, "No new ontologies to load");
+      const mgrEmitEarly = get().rdfManager;
+      if (mgrEmitEarly && typeof (mgrEmitEarly as any).emitAllSubjects === "function") {
+        await (mgrEmitEarly as any).emitAllSubjects();
+      }
       return;
     }
 
@@ -1162,6 +1171,12 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
       } catch (_) {
         console.debug("[VG_DEBUG] loadAdditionalOntologies.batchTripleCount", { tripleCount: -1 });
       }
+    }
+
+    // Emit once after the full batch so the canvas reflects newly loaded type/label data.
+    const mgrEmit = get().rdfManager;
+    if (mgrEmit && typeof (mgrEmit as any).emitAllSubjects === "function") {
+      await (mgrEmit as any).emitAllSubjects();
     }
 
     onProgress?.(100, "Additional ontologies loaded");
@@ -1257,8 +1272,13 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
     timeoutMs?: number;
     concurrency?: number;
     onProgress?: (p: number, message: string) => void;
+    forceDisabled?: boolean;
   }) => {
     const opts = options || {};
+    // Session-level override (e.g. ?loadImports=false URL param).
+    if (opts.forceDisabled === true) {
+      return { candidates: [] };
+    }
     // Respect the user setting — skip discovery entirely if disabled.
     const appCfgDiscover = useAppConfigStore.getState();
     if (appCfgDiscover && appCfgDiscover.config && appCfgDiscover.config.autoDiscoverOntologies === false) {

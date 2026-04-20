@@ -463,8 +463,8 @@ export const ConfigurationPanel = ({
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <Label htmlFor="autoDiscover">Auto-discover ontologies</Label>
-                    <p className="text-xs text-muted-foreground">Automatically load ontologies referenced in loaded data</p>
+                    <Label htmlFor="autoDiscover">Automatically load referenced ontologies</Label>
+                    <p className="text-xs text-muted-foreground">When loading RDF data, automatically fetch ontologies referenced via owl:imports.</p>
                   </div>
                   <Switch
                     id="autoDiscover"
