@@ -6,12 +6,12 @@
 import React from 'react';
 import { Zap, ExternalLink } from 'lucide-react';
 import { Button } from '../ui/button';
-import { useRelayBridge } from '../../hooks/useRelayBridge';
-import type { RelayCallLogEntry } from '../../mcp/relayBridge';
+import type { RelayCallLogEntry } from '../../hooks/useRelayBridge';
 
 interface RelaySectionProps {
   bookmarkletHref: string;
-  enabled: boolean;
+  connected: boolean;
+  callLog: RelayCallLogEntry[];
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -22,8 +22,7 @@ function formatRelativeTime(timestamp: number): string {
   return `${diffMin}m ago`;
 }
 
-export const RelaySection: React.FC<RelaySectionProps> = ({ bookmarkletHref, enabled }) => {
-  const { connected, callLog } = useRelayBridge(enabled);
+export const RelaySection: React.FC<RelaySectionProps> = ({ bookmarkletHref, connected, callLog }) => {
 
   return (
     <div className="px-3 py-2 space-y-3">

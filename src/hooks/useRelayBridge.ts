@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { startRelayBridge, onCallLogged, RelayCallLogEntry } from "../mcp/relayBridge";
+export type { RelayCallLogEntry };
 
 export function useRelayBridge(enabled: boolean): { connected: boolean; callLog: RelayCallLogEntry[] } {
   const [connected, setConnected] = useState(false);
