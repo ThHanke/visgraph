@@ -388,34 +388,8 @@ PARAMS: <JSON params object>
 
 I will run it and reply with the JSON result. Wait for my result before issuing the next call.
 
---- Architecture ---
-VisGraph has two coupled layers:
-1. N3 RDF store — source of truth. addNode/addLink write triples here.
-2. Reactodia canvas — visual layer. Subjects are shown as draggable node cards; object-property triples are arrows.
-Canvas nodes are NOT created automatically from triples — you must call addNode for each subject you want visible.
-After building the graph, call runLayout then expandAll to arrange and reveal annotation cards.
-runReasoning runs OWL-RL inference and adds inferred types and relationships to the canvas.
-
---- Available tools ---
-addNode(iri, label, typeIri?)           — place a subject node on the canvas
-addLink(subjectIri, predicateIri, objectIri) — add an object-property triple + draw the edge
-removeNode(iri)                         — remove a node and its triples
-getNodes()                              — list all canvas nodes with labels and types
-getLinks(subjectIri?, predicateIri?, objectIri?, limit?) — query triples from the store
-getGraphState()                         — node count, link count, node list with types
-loadRdf(turtle)                         — load a Turtle string into the store
-loadOntology(url)                       — load a TBox ontology by URL
-queryGraph(sparql)                      — run a SPARQL SELECT query
-searchEntities(query)                   — search nodes by label
-runLayout(algorithm?)                   — lay out the canvas (dagre-lr recommended)
-expandAll()                             — expand all nodes to show annotation cards
-expandNode(iri)                         — expand a single node
-focusNode(iri)                          — zoom the canvas to a node
-fitCanvas()                             — fit all nodes into view
-runReasoning(clearBefore?)              — run OWL-RL inference
-clearInferred()                         — remove all inferred triples
-exportGraph(format)                     — export as turtle / jsonld / rdfxml
-exportImage(format?)                    — export canvas as SVG (default) or PNG
+--- Tool reference ---
+Fetch https://thhanke.github.io/visgraph/.well-known/mcp.json for the full tool list, input schemas, and architecture notes.
 
 --- How to relay ---
 Open https://thhanke.github.io/visgraph in your browser.
