@@ -3,7 +3,7 @@
  * Shows relay connection status, setup instructions, draggable bookmarklet, and call log.
  */
 
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Zap, ExternalLink } from 'lucide-react';
 import { Button } from '../ui/button';
 import type { RelayCallLogEntry } from '../../hooks/useRelayBridge';
@@ -23,25 +23,32 @@ function formatRelativeTime(timestamp: number): string {
 }
 
 export const RelaySection: React.FC<RelaySectionProps> = ({ bookmarkletHref, connected, callLog }) => {
+  const bookmarkletRef = useRef<HTMLAnchorElement>(null);
+
+  useEffect(() => {
+    if (bookmarkletRef.current) {
+      bookmarkletRef.current.setAttribute('href', bookmarkletHref);
+    }
+  }, [bookmarkletHref]);
 
   return (
     <div className="px-3 py-2 space-y-3">
       {/* Description */}
       <p className="text-xs text-muted-foreground leading-relaxed">
-        Connect any AI chat (ChatGPT, Claude, Gemini) to this graph — no server or extension needed.
+        Connect ChatGPT, Claude, or Gemini to this graph — no server or extension needed. The AI outputs <code className="text-xs">TOOL:</code> / <code className="text-xs">PARAMS:</code> blocks; the relay executes them here and injects results back into the chat automatically.
       </p>
 
       {/* Setup steps */}
       <ol className="text-xs text-muted-foreground space-y-1 list-none">
         <li className="flex gap-2"><span className="text-foreground font-medium">1.</span> Drag the button below to your bookmark bar</li>
-        <li className="flex gap-2"><span className="text-foreground font-medium">2.</span> Open your AI chat, click the bookmarklet</li>
-        <li className="flex gap-2"><span className="text-foreground font-medium">3.</span> Chat normally — tool calls run here automatically</li>
+        <li className="flex gap-2"><span className="text-foreground font-medium">2.</span> Go to your AI chat tab, click the bookmark</li>
+        <li className="flex gap-2"><span className="text-foreground font-medium">3.</span> Paste the starter prompt — tool calls execute here automatically and results appear in the chat input</li>
       </ol>
 
       {/* Draggable bookmarklet */}
       <Button variant="outline" size="sm" asChild className="w-full cursor-grab active:cursor-grabbing">
         <a
-          href={bookmarkletHref}
+          ref={bookmarkletRef}
           draggable
           onClick={(e) => e.preventDefault()}
           aria-label="Drag to bookmark bar to install VisGraph Relay"
@@ -80,7 +87,7 @@ export const RelaySection: React.FC<RelaySectionProps> = ({ bookmarkletHref, con
         ) : (
           <ul className="space-y-0.5">
             {callLog.map((entry: RelayCallLogEntry) => (
-              <li key={entry.timestamp} className="flex items-center justify-between text-xs">
+              <li key={`${entry.timestamp}-${entry.tool}`} className="flex items-center justify-between text-xs">
                 <span className="font-mono text-foreground">{entry.tool}</span>
                 <span className="flex items-center gap-1.5 text-muted-foreground">
                   <span className={entry.success ? 'text-green-600 dark:text-green-400' : 'text-destructive'}>

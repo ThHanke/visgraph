@@ -371,31 +371,34 @@ The script opens a headless browser, navigates to the URL, registers the MCP too
 
 #### ChatGPT, Gemini, Claude.ai — AI Relay Bridge
 
-The recommended way to use VisGraph with any AI chat service is the **AI Relay Bridge** — a bookmarklet that connects your AI chat tab to VisGraph automatically, with no copy-paste required.
+The **AI Relay Bridge** connects any AI chat tab to VisGraph with no server, extension, or copy-paste. A bookmarklet watches the AI's output for `TOOL:` / `PARAMS:` blocks, executes them in VisGraph via a BroadcastChannel popup, and injects results back into the chat input automatically.
 
-➡️ **[Setup guide: docs/relay-bridge.md](docs/relay-bridge.md)**
+➡️ **[Full setup guide: docs/relay-bridge.md](docs/relay-bridge.md)**
 
-The relay intercepts `TOOL:` / `PARAMS:` blocks from the AI, executes them in VisGraph, and copies results to your clipboard automatically.
+**Setup (one time):**
+1. Open VisGraph, expand the **AI Relay** sidebar panel
+2. Drag the **VisGraph Relay** button to your browser bookmark bar
+3. Go to your AI chat tab and click the bookmark — a small relay popup opens
 
-**Starter prompt** (paste into your AI chat after installing the bookmarklet):
+**Starter prompt** (paste into your AI chat after clicking the bookmarklet):
 
 ```text
-You are controlling VisGraph, a live RDF knowledge graph editor at:
-https://thhanke.github.io/visgraph
+You are controlling VisGraph, a live RDF knowledge graph editor open in another browser tab.
 
-Fetch https://thhanke.github.io/visgraph/.well-known/mcp.json for the full tool list and architecture notes.
+Fetch https://thhanke.github.io/visgraph/.well-known/mcp.json to get the full tool list and architecture notes.
 
-To call a tool, output EXACTLY this format (one call at a time):
+How the relay works:
+- Output each tool call in this exact format (no prose between blocks):
+  TOOL: <toolName>
+  PARAMS: <JSON object>
+- The relay executes each call in VisGraph and injects the result JSON back into this input field automatically.
+- Wait for the injected result before issuing the next call.
+- For exportImage, use format "svg" — the SVG text will be injected here so you can analyze graph topology from the XML.
 
-TOOL: <toolName>
-PARAMS: <JSON params object>
-
-Wait for the result before issuing the next call. Results will be pasted back by the user.
-
-Now let's build a knowledge graph. What would you like to model?
+Now build a knowledge graph. What would you like to model?
 ```
 
-Once the AI issues its first tool call, the relay handles execution automatically.
+The relay handles execution and result feedback automatically — no manual copy-paste needed.
 
 Contributing / Development notes
 ---------------------------------

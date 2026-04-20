@@ -106,8 +106,9 @@ export function startRelayBridge(): () => void {
 
   channel.onmessage = (event: MessageEvent) => {
     const msg = event.data;
-    if (!msg || msg.type !== 'vg-call') return;
-    if (typeof msg.tool !== 'string' || typeof msg.requestId !== 'string') return;
+    console.info('[RelayBridge] BC message received:', msg);
+    if (!msg || msg.type !== 'vg-call') { console.warn('[RelayBridge] Ignored (wrong type):', msg?.type); return; }
+    if (typeof msg.tool !== 'string' || typeof msg.requestId !== 'string') { console.warn('[RelayBridge] Ignored (bad shape):', msg); return; }
 
     const { tool, params, requestId } = msg as { tool: string; params: unknown; requestId: string };
     handleCall(channel, tool, params, requestId).catch(err => {

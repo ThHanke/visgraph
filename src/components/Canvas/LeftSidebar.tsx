@@ -41,7 +41,11 @@ import { cn } from '../../lib/utils';
 export type RdfExportFormat = 'turtle' | 'json-ld' | 'rdf-xml';
 
 // eslint-disable-next-line no-script-url
-const BOOKMARKLET_HREF = `javascript:(function(){var RU='https://thhanke.github.io/visgraph/relay.html',RO='https://thhanke.github.io',PN='vg-relay',PO='width=320,height=180,menubar=no,toolbar=no,location=no,resizable=yes';if(window.__vgRelayActive){var b=document.getElementById('vg-relay-badge');if(b)b.style.display='flex';return;}window.__vgRelayActive=true;function op(){if(!window.__vgRelayPopup||window.__vgRelayPopup.closed)window.__vgRelayPopup=window.open(RU,PN,PO);return window.__vgRelayPopup;}op();function badge(){var e=document.getElementById('vg-relay-badge');if(e){e.style.display='flex';return;}var d=document.createElement('div');d.id='vg-relay-badge';d.style.cssText='position:fixed;top:12px;right:12px;z-index:2147483647;background:#0d1117;color:#3fb950;border:1px solid #3fb950;border-radius:6px;padding:6px 10px;font:13px/1.4 monospace;display:flex;align-items:center;gap:8px;box-shadow:0 2px 8px rgba(0,0,0,.5);cursor:default';var t=document.createElement('span');t.textContent='\uD83D\uDFE2 VisGraph Relay Active';var x=document.createElement('span');x.style.cssText='cursor:pointer;color:#8b949e;font-size:15px;line-height:1';x.textContent='\u00D7';x.title='Hide badge';x.addEventListener('click',function(){d.style.display='none';});d.appendChild(t);d.appendChild(x);document.body.appendChild(d);}badge();function overlay(txt){var o=document.createElement('div');o.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.7);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font:14px/1.5 monospace;color:#c9d1d9';var tx=document.createElement('textarea');tx.value=txt;tx.style.cssText='width:80%;height:200px;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;padding:8px;font:13px monospace';tx.readOnly=true;var p=document.createElement('p');p.textContent='VisGraph result (copy manually):';var cb=document.createElement('button');cb.textContent='Close';cb.style.cssText='padding:6px 18px;cursor:pointer;background:#21262d;color:#c9d1d9;border:1px solid #30363d;border-radius:4px';cb.addEventListener('click',function(){document.body.removeChild(o);});o.addEventListener('click',function(e){if(e.target===o)document.body.removeChild(o);});o.appendChild(p);o.appendChild(tx);o.appendChild(cb);document.body.appendChild(o);tx.select();}window.addEventListener('message',function(ev){if(ev.origin!==RO)return;var d=ev.data;if(!d||d.type!=='vg-result')return;var txt=JSON.stringify(d.result!==undefined?d.result:d,null,2);if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(txt).catch(function(){overlay(txt);});else overlay(txt);});function parseErr(tn,raw,e){var w=document.createElement('div');w.style.cssText='position:fixed;bottom:20px;right:12px;z-index:2147483647;background:#161b22;color:#f85149;border:1px solid #f85149;border-radius:6px;padding:8px 12px;font:12px monospace;max-width:340px';w.textContent='[vg-relay] JSON parse error for "'+tn+'": '+e.message;document.body.appendChild(w);setTimeout(function(){if(w.parentNode)w.parentNode.removeChild(w);},6000);}function send(tn,params){var pp=op();var rid='rq-'+Date.now()+'-'+Math.random().toString(36).slice(2,7);setTimeout(function(){try{pp.postMessage({type:'vg-call',tool:tn,params:params,requestId:rid},RO);}catch(e){}},200);}var TR=/TOOL:\\s*(\\w+)\\s*\\nPARAMS:\\s*(\\{[\\s\\S]*?\\})\\s*(?:\\n|$)/g;function scan(el){if(el.dataset&&el.dataset.vgProcessed)return;var txt=el.innerText||el.textContent||'';var m;TR.lastIndex=0;var f=false;while((m=TR.exec(txt))!==null){f=true;try{send(m[1],JSON.parse(m[2]));}catch(e){parseErr(m[1],m[2],e);}}if(f&&el.dataset)el.dataset.vgProcessed='1';}function scanAll(){var s=[].concat(Array.from(document.querySelectorAll('[data-message-author-role="assistant"]')),Array.from(document.querySelectorAll('[data-testid*="message"]')),Array.from(document.querySelectorAll('.font-claude-message')),Array.from(document.querySelectorAll('model-response')),Array.from(document.querySelectorAll('.model-response-text')));s.forEach(scan);}var dt=null;new MutationObserver(function(){clearTimeout(dt);dt=setTimeout(scanAll,400);}).observe(document.body,{childList:true,subtree:true,characterData:true});setTimeout(scanAll,500);})();`;
+function buildBookmarkletHref(origin: string): string {
+  const RU = `${origin}/relay.html`;
+  const RO = origin;
+  return `javascript:(function(){var RU='${RU}',RO='${RO}',PN='vg-relay',PO='width=320,height=180,menubar=no,toolbar=no,location=no,resizable=yes';if(window.__vgRelayActive){var b=document.getElementById('vg-relay-badge');if(b)b.style.display='flex';return;}window.__vgRelayActive=true;function op(){if(!window.__vgRelayPopup||window.__vgRelayPopup.closed)window.__vgRelayPopup=window.open(RU,PN,PO);return window.__vgRelayPopup;}op();function badge(){var e=document.getElementById('vg-relay-badge');if(e){e.style.display='flex';return;}var d=document.createElement('div');d.id='vg-relay-badge';d.style.cssText='position:fixed;top:12px;right:12px;z-index:2147483647;background:#0d1117;color:#3fb950;border:1px solid #3fb950;border-radius:6px;padding:6px 10px;font:13px/1.4 monospace;display:flex;align-items:center;gap:8px;box-shadow:0 2px 8px rgba(0,0,0,.5);cursor:default';var t=document.createElement('span');t.textContent='\uD83D\uDFE2 VisGraph Relay Active';var x=document.createElement('span');x.style.cssText='cursor:pointer;color:#8b949e;font-size:15px;line-height:1';x.textContent='\u00D7';x.title='Hide badge';x.addEventListener('click',function(){d.style.display='none';});d.appendChild(t);d.appendChild(x);document.body.appendChild(d);}badge();function toast(txt,ok){var t=document.createElement('div');t.style.cssText='position:fixed;bottom:20px;right:12px;z-index:2147483647;background:#0d1117;color:'+(ok?'#3fb950':'#f85149')+';border:1px solid '+(ok?'#3fb950':'#f85149')+';border-radius:6px;padding:8px 12px;font:12px monospace;max-width:340px;box-shadow:0 2px 8px rgba(0,0,0,.5)';t.textContent=(ok?'✓ ':'✗ ')+txt.slice(0,80);document.body.appendChild(t);setTimeout(function(){if(t.parentNode)t.parentNode.removeChild(t);},4000);}function inject(text){var sels=['#prompt-textarea','div[contenteditable="true"]','textarea'];var el=null;for(var i=0;i<sels.length;i++){el=document.querySelector(sels[i]);if(el)break;}if(!el)return;el.focus();if(el.tagName==='TEXTAREA'){var s=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;var cur=el.value?el.value+'\n':'';s.call(el,cur+text);el.dispatchEvent(new Event('input',{bubbles:true}));}else{var cur=el.innerText?el.innerText+'\n':'';el.innerText=cur+text;el.dispatchEvent(new InputEvent('input',{bubbles:true}));}}window.addEventListener('message',function(ev){if(ev.origin!==RO)return;var d=ev.data;if(!d||d.type!=='vg-result')return;var ok=d.result&&d.result.success!==false;var txt='Tool result: '+JSON.stringify(d.result!==undefined?d.result:d,null,2);inject(txt);toast(ok?'Result injected':'Error injected',ok);});function parseErr(tn,raw,e){var w=document.createElement('div');w.style.cssText='position:fixed;bottom:20px;right:12px;z-index:2147483647;background:#161b22;color:#f85149;border:1px solid #f85149;border-radius:6px;padding:8px 12px;font:12px monospace;max-width:340px';w.textContent='[vg-relay] JSON parse error for "'+tn+'": '+e.message;document.body.appendChild(w);setTimeout(function(){if(w.parentNode)w.parentNode.removeChild(w);},6000);}function send(tn,params){var pp=op();var rid='rq-'+Date.now()+'-'+Math.random().toString(36).slice(2,7);setTimeout(function(){try{pp.postMessage({type:'vg-call',tool:tn,params:params,requestId:rid},RO);}catch(e){}},200);}var TR=/TOOL:\\s*(\\w+)\\s*\\nPARAMS:\\s*(\\{[\\s\\S]*?\\})\\s*(?:\\n|$)/g;function scan(el){if(el.dataset&&el.dataset.vgProcessed)return;var txt=el.innerText||el.textContent||'';var m;TR.lastIndex=0;var f=false;while((m=TR.exec(txt))!==null){f=true;try{send(m[1],JSON.parse(m[2]));}catch(e){parseErr(m[1],m[2],e);}}if(f&&el.dataset)el.dataset.vgProcessed='1';}function scanAll(){var s=[].concat(Array.from(document.querySelectorAll('[data-message-author-role="assistant"]')),Array.from(document.querySelectorAll('[data-testid*="message"]')),Array.from(document.querySelectorAll('.font-claude-message')),Array.from(document.querySelectorAll('model-response')),Array.from(document.querySelectorAll('.model-response-text')));s.forEach(scan);}var dt=null;new MutationObserver(function(){clearTimeout(dt);dt=setTimeout(scanAll,400);}).observe(document.body,{childList:true,subtree:true,characterData:true});setTimeout(scanAll,500);})();`;
+}
 
 interface LeftSidebarProps {
   isExpanded: boolean;
@@ -66,8 +70,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const workflowCatalogEnabled = useAppConfigStore((s) => s.config.workflowCatalogEnabled);
-  const relayEnabled = useAppConfigStore((s) => s.config.relayEnabled);
-  const { connected, callLog } = useRelayBridge(relayEnabled);
+  const { connected, callLog } = useRelayBridge(true);
 
   useEffect(() => {
     if (isExpanded && workflowCatalogEnabled) {
@@ -216,8 +219,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {relayEnabled && (
-              <TooltipPrimitive.Root>
+            <TooltipPrimitive.Root>
                 <TooltipPrimitive.Trigger asChild>
                   <button className="rail-btn relative" onClick={onToggle} aria-label="AI Relay">
                     <Bot className="h-[18px] w-[18px]" />
@@ -233,7 +235,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   </TooltipPrimitive.Content>
                 </TooltipPrimitive.Portal>
               </TooltipPrimitive.Root>
-            )}
 
             <div className="flex-1" />
 
@@ -384,7 +385,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
           {/* Accordion sections - scrollable */}
           <div className="flex-1 bg-background overflow-y-auto">
-            <Accordion type="multiple" defaultValue={['workflows', 'ai-relay']}>
+            <Accordion type="multiple" defaultValue={['ai-relay']}>
               {workflowCatalogEnabled && (
                 <AccordionItem value="workflows" className="border-none">
                   <AccordionTrigger className="px-3 py-2 hover:bg-accent/5">
@@ -433,31 +434,29 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 </AccordionItem>
               )}
 
-              {relayEnabled && (
-                <AccordionItem value="ai-relay" className="border-none">
-                  <AccordionTrigger className="px-3 py-2 hover:bg-accent/5">
-                    <div className="flex items-center gap-2 text-foreground flex-1">
-                      <Bot className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-medium">AI Relay</span>
-                      <span
-                        className={`ml-auto mr-1 h-2 w-2 rounded-full flex-shrink-0 ${connected ? 'bg-green-500' : 'bg-muted-foreground/40'}`}
-                        aria-label={connected ? 'Connected' : 'Not connected'}
-                      />
-                    </div>
-                  </AccordionTrigger>
-                  <AccordionContent className="pb-2">
-                    <RelaySection
-                      bookmarkletHref={BOOKMARKLET_HREF}
-                      connected={connected}
-                      callLog={callLog}
+              <AccordionItem value="ai-relay" className="border-none">
+                <AccordionTrigger className="px-3 py-2 hover:bg-accent/5">
+                  <div className="flex items-center gap-2 text-foreground flex-1">
+                    <Bot className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium">AI Relay</span>
+                    <span
+                      className={`ml-auto mr-1 h-2 w-2 rounded-full flex-shrink-0 ${connected ? 'bg-green-500' : 'bg-muted-foreground/40'}`}
+                      aria-label={connected ? 'Connected' : 'Not connected'}
                     />
-                  </AccordionContent>
-                </AccordionItem>
-              )}
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="pb-2">
+                  <RelaySection
+                    bookmarkletHref={buildBookmarkletHref(window.location.origin)}
+                    connected={connected}
+                    callLog={callLog}
+                  />
+                </AccordionContent>
+              </AccordionItem>
             </Accordion>
 
             {/* If neither section enabled, show placeholder */}
-            {!workflowCatalogEnabled && !relayEnabled && (
+            {!workflowCatalogEnabled && (
               <div className="flex items-center justify-center p-4 h-full">
                 <div className="text-center text-sm text-muted-foreground">
                   <Sparkles className="h-8 w-8 mx-auto mb-2 opacity-50" />

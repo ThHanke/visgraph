@@ -86,64 +86,70 @@
   }
   showBadge();
 
+  /* ── Result toast ──────────────────────────────────────────────────────── */
+  function showToast(text, ok) {
+    var t = document.createElement('div');
+    t.style.cssText = [
+      'position:fixed',
+      'bottom:20px',
+      'right:12px',
+      'z-index:2147483647',
+      'background:#0d1117',
+      'color:' + (ok ? '#3fb950' : '#f85149'),
+      'border:1px solid ' + (ok ? '#3fb950' : '#f85149'),
+      'border-radius:6px',
+      'padding:8px 12px',
+      'font:12px monospace',
+      'max-width:340px',
+      'box-shadow:0 2px 8px rgba(0,0,0,.5)',
+    ].join(';');
+    t.textContent = (ok ? '✓ ' : '✗ ') + text.slice(0, 120);
+    document.body.appendChild(t);
+    setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 4000);
+  }
+
+  /* ── Inject result into ChatGPT input ─────────────────────────────────── */
+  function injectResult(text) {
+    var selectors = [
+      '#prompt-textarea',
+      'div[contenteditable="true"]',
+      'textarea[data-id]',
+      'textarea',
+    ];
+    var el = null;
+    for (var i = 0; i < selectors.length; i++) {
+      el = document.querySelector(selectors[i]);
+      if (el) break;
+    }
+    if (!el) return false;
+
+    el.focus();
+    if (el.tagName === 'TEXTAREA') {
+      var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+      var current = el.value ? el.value + '\n' : '';
+      nativeInputValueSetter.call(el, current + text);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    } else {
+      // contenteditable div (ChatGPT uses this)
+      var current = el.innerText ? el.innerText + '\n' : '';
+      el.innerText = current + text;
+      el.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    }
+    return true;
+  }
+
   /* ── Result listener (popup → AI tab) ─────────────────────────────────── */
   window.addEventListener('message', function (evt) {
     if (evt.origin !== RELAY_ORIGIN) return;
     var data = evt.data;
     if (!data || data.type !== 'vg-result') return;
 
-    var text = JSON.stringify(data.result !== undefined ? data.result : data, null, 2);
+    var ok = data.result && data.result.success !== false;
+    var text = 'Tool result: ' + JSON.stringify(data.result !== undefined ? data.result : data, null, 2);
 
-    // Try clipboard API
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).catch(function () {
-        showOverlay(text);
-      });
-    } else {
-      showOverlay(text);
-    }
+    injectResult(text);
+    showToast(ok ? 'Result injected into chat' : 'Error injected into chat', ok);
   });
-
-  /* ── Clipboard fallback overlay ────────────────────────────────────────── */
-  function showOverlay(text) {
-    var overlay = document.createElement('div');
-    overlay.style.cssText = [
-      'position:fixed',
-      'inset:0',
-      'z-index:2147483646',
-      'background:rgba(0,0,0,.7)',
-      'display:flex',
-      'flex-direction:column',
-      'align-items:center',
-      'justify-content:center',
-      'gap:12px',
-      'font:14px/1.5 monospace',
-      'color:#c9d1d9',
-    ].join(';');
-
-    var box = document.createElement('textarea');
-    box.value = text;
-    box.style.cssText = 'width:80%;height:200px;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;padding:8px;font:13px monospace';
-    box.readOnly = true;
-
-    var msg = document.createElement('p');
-    msg.textContent = 'VisGraph result (copy manually — clipboard blocked):';
-
-    var closeBtn = document.createElement('button');
-    closeBtn.textContent = 'Close';
-    closeBtn.style.cssText = 'padding:6px 18px;cursor:pointer;background:#21262d;color:#c9d1d9;border:1px solid #30363d;border-radius:4px';
-    closeBtn.addEventListener('click', function () { document.body.removeChild(overlay); });
-
-    overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) document.body.removeChild(overlay);
-    });
-
-    overlay.appendChild(msg);
-    overlay.appendChild(box);
-    overlay.appendChild(closeBtn);
-    document.body.appendChild(overlay);
-    box.select();
-  }
 
   /* ── Tool-call pattern parser ──────────────────────────────────────────── */
   var TOOL_RE = /TOOL:\s*(\w+)\s*\nPARAMS:\s*(\{[\s\S]*?\})\s*(?:\n|$)/g;
