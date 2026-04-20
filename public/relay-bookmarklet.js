@@ -36,13 +36,14 @@
   window.__vgRelayActive = true;
 
   /* ── Popup management ──────────────────────────────────────────────────── */
+  // Only open via user gesture (bookmark click or badge click) to avoid popup blockers.
   function openPopup() {
     if (!window.__vgRelayPopup || window.__vgRelayPopup.closed) {
       window.__vgRelayPopup = window.open(RELAY_URL, POPUP_NAME, POPUP_OPTS);
     }
     return window.__vgRelayPopup;
   }
-  openPopup();
+  openPopup(); // bookmark click = user gesture → always allowed
 
   /* ── "Relay Active" badge ──────────────────────────────────────────────── */
   function showBadge() {
@@ -66,8 +67,9 @@
       'align-items:center',
       'gap:8px',
       'box-shadow:0 2px 8px rgba(0,0,0,.5)',
-      'cursor:default',
+      'cursor:pointer',
     ].join(';');
+    badge.title = 'Click to reopen relay popup';
 
     var text = document.createElement('span');
     text.textContent = '\uD83D\uDFE2 VisGraph Relay Active';
@@ -76,9 +78,13 @@
     closeBtn.textContent = '\u00D7';
     closeBtn.style.cssText = 'cursor:pointer;color:#8b949e;font-size:15px;line-height:1';
     closeBtn.title = 'Hide badge (relay stays active)';
-    closeBtn.addEventListener('click', function () {
+    closeBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
       badge.style.display = 'none';
     });
+
+    // Badge click (not the × button) reopens popup — this IS a user gesture
+    badge.addEventListener('click', function () { openPopup(); });
 
     badge.appendChild(text);
     badge.appendChild(closeBtn);
@@ -190,10 +196,14 @@
   }
 
   function sendToolCall(tool, params) {
-    var popup = openPopup();
+    var popup = window.__vgRelayPopup;
+    if (!popup || popup.closed) {
+      // Cannot call window.open here (not a user gesture) — ask user to click badge
+      showToast('Relay popup closed — click the green badge to reopen', false);
+      return;
+    }
     var requestId = 'rq-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
     var payload = { type: 'vg-call', tool: tool, params: params, requestId: requestId };
-    // Small delay to let the popup finish loading if it was just opened
     setTimeout(function () {
       try {
         popup.postMessage(payload, RELAY_ORIGIN);
