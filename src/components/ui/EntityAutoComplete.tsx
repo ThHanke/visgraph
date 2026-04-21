@@ -114,6 +114,7 @@ export default function EntityAutoComplete({
     const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
     const matched = source.filter(e =>
       rx.test(String(e?.label || '')) ||
+      rx.test(String((e as any)?.prefixed || '')) ||
       rx.test(prefixedIri(String(e?.iri || ''))) ||
       rx.test(String(e?.iri || ''))
     );
@@ -163,7 +164,7 @@ export default function EntityAutoComplete({
                 onMouseDown={e => { e.preventDefault(); handleSelect(ent); }}
                 className="px-2 py-1 text-xs cursor-pointer hover:bg-accent hover:text-accent-foreground"
               >
-                <div className="font-medium leading-tight">{prefixedIri(String(ent.iri))}</div>
+                <div className="font-medium leading-tight">{(ent as any).prefixed != null ? String((ent as any).prefixed) : String(ent.iri || '')}</div>
                 {ent.label && <div className="text-[10px] text-muted-foreground leading-tight">{ent.label}</div>}
               </li>
             ))}
@@ -179,6 +180,9 @@ export default function EntityAutoComplete({
       <input
         ref={inputRef}
         type="text"
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
         disabled={disabled}
         placeholder={placeholder}
         value={query !== '' ? query : displayValue}

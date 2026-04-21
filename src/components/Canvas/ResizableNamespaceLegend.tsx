@@ -30,7 +30,7 @@ export const ResizableNamespaceLegend = ({ onClose: _onClose }: ResizableNamespa
   const entries = useMemo(
     () =>
       namespaceRegistry
-        .map(({ prefix, uri }) => [String(prefix ?? ""), String(uri ?? "")] as [string, string])
+        .map((e: any) => [String(e.prefix ?? ""), String(e.uri ?? e.namespace ?? "")] as [string, string])
         .sort(([a], [b]) => a.localeCompare(b)),
     [namespaceRegistry],
   );
@@ -90,13 +90,27 @@ export const ResizableNamespaceLegend = ({ onClose: _onClose }: ResizableNamespa
     };
   }, [isDragging, dragStart]);
 
+  const setNamespaceRegistry = useOntologyStore((s) => s.setNamespaceRegistry);
+
   const handleRemoveNamespace = useCallback(
     (prefix: string) => {
+      const remaining = namespaceRegistry.filter((e: any) => e.prefix !== prefix);
+      setNamespaceRegistry(remaining);
       if (rdfManager) {
-        rdfManager.removeNamespace(prefix);
+        const nsMap: Record<string, string> = {};
+        for (const e of remaining) {
+          const uri = (e as any).uri ?? (e as any).namespace ?? "";
+          if (uri) nsMap[e.prefix] = uri;
+        }
+        if (typeof (rdfManager as any).setNamespaces === "function") {
+          (rdfManager as any).setNamespaces(nsMap, { replace: true });
+        }
+        if (typeof (rdfManager as any).emitAllSubjects === "function") {
+          (rdfManager as any).emitAllSubjects();
+        }
       }
     },
-    [rdfManager],
+    [rdfManager, namespaceRegistry, setNamespaceRegistry],
   );
 
   const handleEditStart = useCallback((prefix: string, uri: string) => {
