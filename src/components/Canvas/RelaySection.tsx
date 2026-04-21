@@ -60,7 +60,7 @@ export const RelaySection: React.FC<RelaySectionProps> = ({ bookmarkletHref, con
 
       {/* Docs link */}
       <a
-        href="https://github.com/ThHanke/visgraph#ai-relay"
+        href="https://github.com/ThHanke/visgraph#chatgpt-gemini-claudeai--ai-relay-bridge"
         target="_blank"
         rel="noopener noreferrer"
         className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
