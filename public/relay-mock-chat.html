@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en" style="--background: #1f2023; --text-color: #FFFFFF; color-scheme: dark;">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VisGraph Relay — Mock Chat Page</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #1f2023;
+      color: #fff;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    header {
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    header h1 { font-size: 15px; color: #58a6ff; }
+    header .badge {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      padding: 3px 8px;
+      font-size: 11px;
+      color: #8b949e;
+    }
+    #scenario-bar {
+      background: #161b22;
+      border-bottom: 1px solid #21262d;
+      padding: 8px 12px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    #scenario-bar span { color: #8b949e; font-size: 12px; margin-right: 4px; }
+    button.scenario {
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      color: #c9d1d9;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 4px 10px;
+    }
+    button.scenario:hover { background: #30363d; }
+    #chat-stream {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .msg {
+      max-width: 720px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .msg-user {
+      background: #2d333b;
+      border-radius: 8px;
+      padding: 10px 14px;
+      align-self: flex-end;
+    }
+    .msg-ai {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 10px 14px;
+      white-space: pre-wrap;
+      font-family: monospace;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .msg-label {
+      font-size: 11px;
+      color: #8b949e;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .msg-label .dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #58a6ff;
+    }
+    .msg-label.user-label .dot { background: #3fb950; }
+    #input-row {
+      border-top: 1px solid #30363d;
+      background: #161b22;
+      padding: 10px 12px;
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+    }
+    #user-input {
+      flex: 1;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-size: 13px;
+      padding: 8px 10px;
+      resize: none;
+      min-height: 40px;
+      max-height: 140px;
+    }
+    #user-input:focus { outline: none; border-color: #58a6ff; }
+    button#send-btn {
+      background: #238636;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 8px 14px;
+    }
+    button#send-btn:hover { background: #2ea043; }
+    #status-bar {
+      font-size: 11px;
+      color: #8b949e;
+      background: #0d1117;
+      padding: 4px 12px;
+      border-top: 1px solid #21262d;
+    }
+  </style>
+</head>
+<body data-vg-processed="1">
+
+<header>
+  <h1>⬡ VisGraph Relay — Mock Chat</h1>
+  <span class="badge">Bookmarklet test page</span>
+</header>
+
+<div id="scenario-bar">
+  <span>UI mode:</span>
+  <button class="scenario" id="mode-fhgenie" style="border-color:#58a6ff;color:#58a6ff;">FhGenie (textarea)</button>
+  <button class="scenario" id="mode-openwebui">Open WebUI (contenteditable)</button>
+  <button class="scenario" id="mode-chatgpt">ChatGPT (ProseMirror)</button>
+  <span style="margin-left:8px;">Inject scenario:</span>
+  <button class="scenario" data-scenario="single">Single addNode</button>
+  <button class="scenario" data-scenario="batch">Batch (3 nodes)</button>
+  <button class="scenario" data-scenario="full">Full: nodes + links + layout</button>
+  <button class="scenario" data-scenario="fenced">Fenced TOOL block</button>
+  <button class="scenario" data-scenario="inline-params">Inline params</button>
+  <button class="scenario" data-scenario="prefixed">Prefixed IRIs</button>
+  <button class="scenario" data-scenario="unknown-tool">Unknown tool</button>
+  <button class="scenario" data-scenario="clear" style="border-color:#f85149;color:#f85149;">Clear chat</button>
+</div>
+
+<div id="chat-stream">
+  <div class="msg">
+    <div class="msg-label user-label"><span class="dot"></span> You</div>
+    <div class="msg-user">Use the VisGraph relay to add some nodes. (Load the bookmarklet first.)</div>
+  </div>
+</div>
+
+<div id="input-row">
+  <!-- FhGenie-style: plain textarea -->
+  <textarea id="user-input" rows="1" placeholder="Result will be injected here by the relay… (FhGenie mode)"></textarea>
+  <!-- Open WebUI-style: contenteditable div (hidden by default) -->
+  <div id="owui-input" contenteditable="true" role="textbox"
+       style="display:none;flex:1;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;font-size:13px;padding:8px 10px;min-height:40px;max-height:140px;overflow:auto;"
+       aria-label="Chat-Eingabe" data-placeholder="Result will be injected here by the relay… (Open WebUI mode)"></div>
+  <!-- ChatGPT ProseMirror-style: contenteditable div with inner p (hidden by default) -->
+  <div id="gpt-input-wrap" style="display:none;flex:1;position:relative;">
+    <div id="gpt-input" contenteditable="true" role="textbox" aria-multiline="true"
+         class="ProseMirror"
+         style="background:#212121;border:1px solid #424242;border-radius:12px;color:#ececec;font-size:14px;padding:10px 14px;min-height:44px;max-height:200px;overflow:auto;">
+      <p><br></p>
+    </div>
+  </div>
+  <button id="send-btn" type="submit" aria-label="send">Send</button>
+</div>
+
+<div id="status-bar">Ready. Load the bookmarklet, then click a scenario above.</div>
+
+<script>
+// ── Scenarios ──────────────────────────────────────────────────────────────
+var SCENARIOS = {
+  single: [
+    'AI',
+    'TOOL: addNode\niri: http://example.org/Alice\nlabel: Alice\ntypeIri: http://example.org/Person'
+  ],
+  batch: [
+    'AI',
+    'TOOL: addNode\niri: http://example.org/Alice\nlabel: Alice\ntypeIri: http://example.org/Person\n\nTOOL: addNode\niri: http://example.org/Bob\nlabel: Bob\ntypeIri: http://example.org/Person\n\nTOOL: addNode\niri: http://example.org/Carol\nlabel: Carol\ntypeIri: http://example.org/Person'
+  ],
+  full: [
+    'AI',
+    'First, add the nodes:\n\nTOOL: addNode\niri: http://example.org/Alice\nlabel: Alice\ntypeIri: http://example.org/Person\n\nTOOL: addNode\niri: http://example.org/Bob\nlabel: Bob\ntypeIri: http://example.org/Person\n\nTOOL: runLayout\nalgorithm: dagre-lr\n\nTOOL: fitCanvas\n\nTOOL: exportImage\nformat: svg\nnoCss: true'
+  ],
+  fenced: [
+    'AI',
+    '```\nTOOL: addNode\niri: http://example.org/Fenced\nlabel: FencedNode\ntypeIri: http://example.org/Thing\n```'
+  ],
+  'inline-params': [
+    'AI',
+    'TOOL: addNode iri: http://example.org/Inline label: InlineNode typeIri: http://example.org/Thing'
+  ],
+  prefixed: [
+    'AI',
+    'TOOL: addNode\niri: ex:PrefixedNode\nlabel: PrefixedNode\ntypeIri: owl:Class'
+  ],
+  'unknown-tool': [
+    'AI',
+    'TOOL: nonExistentTool\nparam1: value1'
+  ],
+};
+
+var stream = document.getElementById('chat-stream');
+var statusBar = document.getElementById('status-bar');
+
+function addMessage(role, text) {
+  var wrapper = document.createElement('div');
+  wrapper.className = 'msg';
+
+  var label = document.createElement('div');
+  label.className = 'msg-label' + (role === 'user' ? ' user-label' : '');
+  var dot = document.createElement('span');
+  dot.className = 'dot';
+  label.appendChild(dot);
+  label.appendChild(document.createTextNode(' ' + (role === 'user' ? 'You' : 'AI')));
+  wrapper.appendChild(label);
+
+  var body = document.createElement('div');
+  body.className = role === 'user' ? 'msg-user' : 'msg-ai';
+  body.textContent = text;
+  wrapper.appendChild(body);
+
+  stream.appendChild(wrapper);
+  stream.scrollTop = stream.scrollHeight;
+  statusBar.textContent = 'Message added — bookmarklet should detect TOOL blocks automatically.';
+}
+
+// ── UI mode switching ───────────────────────────────────────────────────────
+var currentMode = 'fhgenie';
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('user-input').style.display = mode === 'fhgenie' ? '' : 'none';
+  document.getElementById('owui-input').style.display = mode === 'openwebui' ? '' : 'none';
+  document.getElementById('gpt-input-wrap').style.display = mode === 'chatgpt' ? '' : 'none';
+  ['mode-fhgenie','mode-openwebui','mode-chatgpt'].forEach(function(id) {
+    var el = document.getElementById(id);
+    el.style.borderColor = '';
+    el.style.color = '';
+  });
+  var activeId = 'mode-' + mode;
+  document.getElementById(activeId).style.borderColor = '#58a6ff';
+  document.getElementById(activeId).style.color = '#58a6ff';
+  statusBar.textContent = 'Mode: ' + mode + '. Load the bookmarklet, then click a scenario.';
+}
+document.getElementById('mode-fhgenie').addEventListener('click', function() { setMode('fhgenie'); });
+document.getElementById('mode-openwebui').addEventListener('click', function() { setMode('openwebui'); });
+document.getElementById('mode-chatgpt').addEventListener('click', function() { setMode('chatgpt'); });
+
+document.querySelectorAll('button.scenario').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var s = btn.dataset.scenario;
+    if (s === 'clear') {
+      while (stream.children.length > 1) stream.removeChild(stream.lastChild);
+      statusBar.textContent = 'Chat cleared.';
+      return;
+    }
+    var data = SCENARIOS[s];
+    if (!data) return;
+    addMessage(data[0].toLowerCase(), data[1]);
+  });
+});
+
+// Allow manual send
+document.getElementById('send-btn').addEventListener('click', function() {
+  var v = '';
+  if (currentMode === 'fhgenie') {
+    var ta = document.getElementById('user-input');
+    v = ta.value.trim();
+    if (!v) return;
+    addMessage('user', v);
+    ta.value = '';
+  } else if (currentMode === 'openwebui') {
+    var ce = document.getElementById('owui-input');
+    v = (ce.innerText || '').trim();
+    if (!v) return;
+    addMessage('user', v);
+    ce.innerText = '';
+  } else {
+    var gpt = document.getElementById('gpt-input');
+    v = (gpt.innerText || '').trim();
+    if (!v) return;
+    addMessage('user', v);
+    gpt.innerHTML = '<p><br></p>';
+  }
+});
+document.getElementById('user-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('send-btn').click(); }
+});
+document.getElementById('owui-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('send-btn').click(); }
+});
+document.getElementById('gpt-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('send-btn').click(); }
+});
+</script>
+</body>
+</html>
