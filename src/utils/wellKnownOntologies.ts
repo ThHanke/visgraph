@@ -109,6 +109,59 @@ export const WELL_KNOWN_PREFIXES = [
     url: "https://spec.industrialontologies.org/ontology/qualities/",
     name: "IOF Qualities",
   },
+  {
+    prefix: "ro",
+    url: "http://purl.obolibrary.org/obo/RO_",
+    name: "RO - Relations Ontology",
+    ontologyUrl: "http://purl.obolibrary.org/obo/ro.owl",
+  },
+  {
+    prefix: "iao",
+    url: "http://purl.obolibrary.org/obo/IAO_",
+    name: "IAO - Information Artifact Ontology",
+    ontologyUrl: "http://purl.obolibrary.org/obo/iao.owl",
+  },
+  {
+    prefix: "log",
+    url: "https://w3id.org/pmd/log/",
+    name: "PMD LOG - PMD Laboratory Operations Graph",
+    ontologyUrl: "https://w3id.org/pmd/log",
+  },
+  {
+    prefix: "emmo",
+    url: "https://w3id.org/emmo#",
+    name: "EMMO - European Materials Modelling Ontology",
+    ontologyUrl: "https://emmo.info/emmo",
+  },
+  {
+    prefix: "sosa",
+    url: "http://www.w3.org/ns/sosa/",
+    name: "SOSA - Sensor, Observation, Sample and Actuator",
+    ontologyUrl: "http://www.w3.org/ns/sosa/",
+  },
+  {
+    prefix: "ssn",
+    url: "http://www.w3.org/ns/ssn/",
+    name: "SSN - Semantic Sensor Network Ontology",
+    ontologyUrl: "http://www.w3.org/ns/ssn/",
+  },
+  {
+    prefix: "schema",
+    url: "https://schema.org/",
+    name: "Schema.org",
+  },
+  {
+    prefix: "sh",
+    url: "http://www.w3.org/ns/shacl#",
+    name: "SHACL - Shapes Constraint Language",
+    ontologyUrl: "http://www.w3.org/ns/shacl",
+  },
+  {
+    prefix: "time",
+    url: "http://www.w3.org/2006/time#",
+    name: "OWL-Time - Time Ontology in OWL",
+    ontologyUrl: "http://www.w3.org/2006/time",
+  },
 ] as const;
 
 export const WELL_KNOWN_BY_PREFIX: Record<

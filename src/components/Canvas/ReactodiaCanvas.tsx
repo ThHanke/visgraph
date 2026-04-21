@@ -41,6 +41,7 @@ import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
 import { Label } from '../ui/label';
 import { Input } from '../ui/input';
+import OntologyUrlAutoComplete from '../ui/OntologyUrlAutoComplete';
 import { Button } from '../ui/button';
 import { WELL_KNOWN_PREFIXES, resolveOntologyLoadUrl } from '@/utils/wellKnownOntologies';
 import { instantiateWorkflowOnCanvas } from '@/utils/workflowInstantiator';
@@ -1367,37 +1368,16 @@ export default function ReactodiaCanvas() {
           <DialogHeader>
             <DialogTitle>Load Ontology</DialogTitle>
             <DialogDescription>
-              Load an ontology from a URL or select from common vocabularies.
+              Enter a URL or type to search well-known ontologies.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="ontologyUrl">Ontology URL</Label>
-              <Input
-                id="ontologyUrl"
-                placeholder="https://example.com/ontology.owl"
+              <OntologyUrlAutoComplete
                 value={ontologyUrlInput}
-                onChange={(e) => setOntologyUrlInput(e.target.value)}
+                onChange={setOntologyUrlInput}
               />
-            </div>
-            <div className="space-y-2">
-              <Label>Common Ontologies</Label>
-              <div className="grid gap-1 max-h-48 overflow-y-auto pr-1">
-                {WELL_KNOWN_PREFIXES.map((entry) => (
-                  <Button
-                    key={entry.url}
-                    variant={ontologyUrlInput === entry.url ? 'secondary' : 'outline'}
-                    size="sm"
-                    className="justify-start h-auto py-2 text-left"
-                    onClick={() => setOntologyUrlInput(entry.url)}
-                  >
-                    <div>
-                      <div className="font-medium">{entry.prefix} — {entry.name}</div>
-                      <div className="text-xs text-muted-foreground truncate">{entry.url}</div>
-                    </div>
-                  </Button>
-                ))}
-              </div>
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setLoadOntologyOpen(false)}>
