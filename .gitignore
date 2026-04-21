@@ -29,3 +29,8 @@ scripts/outputs/
 
 # Claude Code
 .claude/
+
+# Local test/dev HTML pages (bookmarklet testing, not for the repo)
+public/relay-mock-chat.html
+public/relay-test.html
+*.png
