@@ -131,7 +131,7 @@ export const WELL_KNOWN_PREFIXES = [
     prefix: "emmo",
     url: "https://w3id.org/emmo#",
     name: "EMMO - European Materials Modelling Ontology",
-    ontologyUrl: "https://emmo.info/emmo",
+    ontologyUrl: "https://raw.githubusercontent.com/emmo-repo/EMMO/master/emmo.ttl",
   },
   {
     prefix: "sosa",
