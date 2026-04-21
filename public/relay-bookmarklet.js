@@ -308,25 +308,28 @@
       function parseParamLine(line) {
         line = line.trim();
         if (!line) return;
-        // Try standard single "key: value" (whole line)
+        // Try standard single "key: value" (whole line).
+        // But only use it when the value part doesn't contain additional " word:" tokens
+        // (which would mean the line has multiple inline params that need splitting).
         var kv = line.match(/^(\w+):\s*(.+)/);
-        if (kv) {
+        if (kv && !/\s+\w+:/.test(kv[2])) {
           var v = kv[2].trim();
           if (v.indexOf(':') !== -1 && v.indexOf(' ') === -1) v = expandPrefix(v);
           params[kv[1]] = v === 'true' ? true : v === 'false' ? false
             : (!isNaN(+v) && v !== '') ? +v : v;
           return;
         }
-        // Inline: multiple "key: value" pairs on one line — split before each "word:"
-        var tokens = line.split(/(?=\b\w+:)/);
-        tokens.forEach(function(tok) {
-          var m = tok.match(/^(\w+):\s*(.*)/);
-          if (!m || !m[2].trim()) return;
-          var v = m[2].trim();
+        // Inline: multiple "key: value" pairs — match each pair stopping before next \s+word:
+        // This correctly handles IRI values that contain "http:" or "https:".
+        var pairRe = /(\w+):\s*(.*?)(?=\s+\w+:|$)/g;
+        var mp;
+        while ((mp = pairRe.exec(line)) !== null) {
+          var v = mp[2].trim();
+          if (!v) continue;
           if (v.indexOf(':') !== -1 && v.indexOf(' ') === -1) v = expandPrefix(v);
-          params[m[1]] = v === 'true' ? true : v === 'false' ? false
+          params[mp[1]] = v === 'true' ? true : v === 'false' ? false
             : (!isNaN(+v) && v !== '') ? +v : v;
-        });
+        }
       }
 
       var inlineRest = toolMatch[2].trim();
