@@ -296,22 +296,42 @@
     var parts = stripped.split(/^TOOL:\s*/m);
     for (var i = 1; i < parts.length; i++) {
       var lines = parts[i].split('\n');
-      var tool = lines[0].trim();
-      if (!tool || !/^\w+$/.test(tool)) continue;
+      // Extract tool name = first word; params may be inline on same line or on subsequent lines
+      var firstLine = lines[0].trim();
+      var toolMatch = firstLine.match(/^(\w+)(.*)/);
+      if (!toolMatch) continue;
+      var tool = toolMatch[1];
       var params = {};
-      for (var j = 1; j < lines.length; j++) {
-        var kv = lines[j].match(/^(\w+):\s*(.+)/);
-        if (!kv) continue;
-        var v = kv[2].trim();
-        // Expand known RDF prefixes in IRI-like parameter values
-        if (v.indexOf(':') !== -1 && v.indexOf(' ') === -1) {
-          v = expandPrefix(v);
+
+      // Build a flat list of "key: value" strings from inline rest + subsequent lines.
+      // Inline format: "key: val key: val" — split on boundaries before each "word:"
+      function parseParamLine(line) {
+        line = line.trim();
+        if (!line) return;
+        // Try standard single "key: value" (whole line)
+        var kv = line.match(/^(\w+):\s*(.+)/);
+        if (kv) {
+          var v = kv[2].trim();
+          if (v.indexOf(':') !== -1 && v.indexOf(' ') === -1) v = expandPrefix(v);
+          params[kv[1]] = v === 'true' ? true : v === 'false' ? false
+            : (!isNaN(+v) && v !== '') ? +v : v;
+          return;
         }
-        params[kv[1]] = v === 'true' ? true
-          : v === 'false' ? false
-          : (!isNaN(+v) && v !== '') ? +v
-          : v;
+        // Inline: multiple "key: value" pairs on one line — split before each "word:"
+        var tokens = line.split(/(?=\b\w+:)/);
+        tokens.forEach(function(tok) {
+          var m = tok.match(/^(\w+):\s*(.*)/);
+          if (!m || !m[2].trim()) return;
+          var v = m[2].trim();
+          if (v.indexOf(':') !== -1 && v.indexOf(' ') === -1) v = expandPrefix(v);
+          params[m[1]] = v === 'true' ? true : v === 'false' ? false
+            : (!isNaN(+v) && v !== '') ? +v : v;
+        });
       }
+
+      var inlineRest = toolMatch[2].trim();
+      if (inlineRest) parseParamLine(inlineRest);
+      for (var j = 1; j < lines.length; j++) parseParamLine(lines[j]);
       var sig = tool + ':' + JSON.stringify(params);
       if (!dispatchedSigs.has(sig)) {
         dispatchedSigs.add(sig);
