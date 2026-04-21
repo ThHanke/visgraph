@@ -341,6 +341,15 @@
     return calls;
   }
 
+  var drainTimer = null;
+
+  function scheduleDrain() {
+    clearTimeout(drainTimer);
+    drainTimer = setTimeout(function () {
+      if (!isProcessing) processNextInQueue();
+    }, DEBOUNCE_MS);
+  }
+
   function parseAndEnqueue(el) {
     if (!el || (el.dataset && el.dataset.vgProcessed)) return;
     var text = el.innerText || el.textContent || '';
@@ -348,7 +357,9 @@
     if (calls.length === 0) return;
     if (el.dataset) el.dataset.vgProcessed = '1';
     callQueue = callQueue.concat(calls);
-    if (!isProcessing) processNextInQueue();
+    // Wait for DOM to settle before draining — prevents starting while AI is
+    // still streaming more tool calls into the message.
+    scheduleDrain();
   }
 
   function processNextInQueue() {
