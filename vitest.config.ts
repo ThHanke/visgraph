@@ -11,7 +11,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['src/test-setup.ts'],
-    exclude: ['.trunk/**', 'node_modules/**'],
+    exclude: ['.trunk/**', 'node_modules/**', 'e2e/**'],
     server: {
       deps: {
         inline: ['@reactodia/workspace'],
