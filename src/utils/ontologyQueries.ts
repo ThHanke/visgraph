@@ -9,8 +9,14 @@ export interface FatMapEntity {
   [k: string]: any;
 }
 
-function getLabel(label: ReadonlyArray<{ value: string; language?: string }> | undefined): string | undefined {
-  if (!label || label.length === 0) return undefined;
+function getLabel(label: ReadonlyArray<{ value: string; language?: string }> | Record<string, string> | undefined): string | undefined {
+  if (!label) return undefined;
+  // Handle plain {lang: value} object (e.g. { en: 'knows' })
+  if (!Array.isArray(label)) {
+    const obj = label as Record<string, string>;
+    return obj['en'] ?? obj[''] ?? Object.values(obj)[0];
+  }
+  if (label.length === 0) return undefined;
   const en = label.find(l => l.language === 'en');
   if (en) return en.value;
   return label[0].value;

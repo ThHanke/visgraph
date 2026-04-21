@@ -293,5 +293,21 @@ void (async () => {
   }
 }
 
+// Polyfill window.matchMedia for jsdom (used by Radix UI and other UI libs)
+{
+  if (typeof (globalThis as any).window !== "undefined" && typeof (globalThis as any).window.matchMedia === "undefined") {
+    (globalThis as any).window.matchMedia = (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    });
+  }
+}
+
 // Worker initialization is handled by tests themselves via the initRdfManagerWorker() helper
 // function called in beforeEach hooks. This ensures proper sequencing and isolation between tests.

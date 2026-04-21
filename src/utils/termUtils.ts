@@ -13,6 +13,7 @@ import type { NamespaceEntry } from "../constants/namespaces";
 
 // Re-export canonical type so callers that previously imported NamespaceRegistryEntry from termUtils still work.
 export type { NamespaceEntry };
+export type NamespaceRegistryEntry = NamespaceEntry;
 
 export interface FatMapEntry {
   iri: string;
@@ -45,7 +46,11 @@ function coerceNamespaceEntry(value: unknown, context: string): NamespaceEntry {
   // Accept both .uri (new canonical) and .namespace (legacy inputs from tests/adapters)
   const uriRaw = record.uri ?? record.namespace;
   const uri = normalizeString(uriRaw, `${context}.uri`);
-  return { prefix, uri };
+  const color =
+    typeof record.color === "string" && record.color.trim().length > 0
+      ? record.color.trim()
+      : undefined;
+  return { prefix, uri, ...(color !== undefined ? { color } : {}) };
 }
 
 function coerceNamespaceRegistry(
@@ -310,7 +315,10 @@ export function getNodeColor(
 
   const entry = findRegistryEntryForIri(iri, overrides?.registry);
 
-  // Primary: palette color keyed by prefix (colors are derived, never stored)
+  // Primary: namespace registry color
+  if (entry && entry.color) return entry.color;
+
+  // Secondary: palette color keyed by prefix
   if (palette && entry && entry.prefix) {
     const prefix = entry.prefix;
     const paletteColor =
