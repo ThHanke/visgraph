@@ -159,16 +159,23 @@
       setter.call(el, (el.value ? el.value + '\n' : '') + text);
       el.dispatchEvent(new Event('input', { bubbles: true }));
     } else {
+      var prefix = el.textContent && el.textContent.trim() ? '\n' : '';
+      var full = prefix + text;
+      // Open WebUI (Svelte) binds to innerHTML. Set both innerText and innerHTML,
+      // then fire input+change so the framework syncs before submit.
+      el.innerHTML = '';
+      el.innerText = full;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      // Move caret to end
       var sel = window.getSelection();
       var range = document.createRange();
       range.selectNodeContents(el);
       range.collapse(false);
       sel.removeAllRanges();
       sel.addRange(range);
-      var prefix = el.textContent && el.textContent.trim() ? '\n' : '';
-      document.execCommand('insertText', false, prefix + text);
     }
-    setTimeout(function () { submitInput(el); }, 300);
+    setTimeout(function () { submitInput(el); }, 500);
     return true;
   }
 
