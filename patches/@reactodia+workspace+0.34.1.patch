@@ -1,0 +1,16 @@
+diff --git a/node_modules/@reactodia/workspace/dist/workspace.js b/node_modules/@reactodia/workspace/dist/workspace.js
+index 36056b7..16fed48 100644
+--- a/node_modules/@reactodia/workspace/dist/workspace.js
++++ b/node_modules/@reactodia/workspace/dist/workspace.js
+@@ -15744,8 +15744,9 @@ function addWatermark(svg, viewBox, watermarkSvg) {
+ function collectAppliedCssFromDocument(targetSubtree) {
+   const appliedRules = [];
+   enumerateStylesheets((rule) => {
+-    const selectorWithoutPseudo = rule.selectorText.replace(/::[a-zA-Z-]+$/, "");
+-    if (targetSubtree.querySelector(selectorWithoutPseudo)) {
++    const parts = rule.selectorText.split(",").map(s => s.trim().replace(/::[a-zA-Z-]+/g, "").trim()).filter(Boolean);
++    const matches = parts.some(sel => { try { return targetSubtree.querySelector(sel); } catch { return false; } });
++    if (matches) {
+       appliedRules.push(rule);
+     }
+   });
