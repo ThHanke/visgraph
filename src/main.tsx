@@ -1,8 +1,4 @@
- // Rely on vite-plugin-node-polyfills for process/stream/buffer in the bundle.
- // No runtime shims here — remove local polyfills to rely on configured Vite polyfills.
- 
- // Explicit runtime polyfills as a safeguard to ensure process/stream/buffer are bundled
- // in production builds (the vite plugin + aliases are the primary mechanism).
+ // Explicit runtime polyfills to ensure process/stream/buffer are bundled in production builds.
  import 'process/browser';
  import 'stream-browserify';
  import { Buffer } from 'buffer';
