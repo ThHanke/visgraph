@@ -159,21 +159,11 @@
       setter.call(el, (el.value ? el.value + '\n' : '') + text);
       el.dispatchEvent(new Event('input', { bubbles: true }));
     } else {
-      var prefix = el.textContent && el.textContent.trim() ? '\n' : '';
-      var full = prefix + text;
-      // Open WebUI (Svelte) binds to innerHTML. Set both innerText and innerHTML,
-      // then fire input+change so the framework syncs before submit.
-      el.innerHTML = '';
-      el.innerText = full;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-      // Move caret to end
-      var sel = window.getSelection();
-      var range = document.createRange();
-      range.selectNodeContents(el);
-      range.collapse(false);
-      sel.removeAllRanges();
-      sel.addRange(range);
+      // TipTap/ProseMirror (Open WebUI) owns its own doc state — DOM writes are
+      // discarded on submit. execCommand is intercepted by ProseMirror and updates
+      // internal state correctly. Select-all first to clear existing content.
+      document.execCommand('selectAll');
+      document.execCommand('insertText', false, text);
     }
     setTimeout(function () { submitInput(el); }, 500);
     return true;
