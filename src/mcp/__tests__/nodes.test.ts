@@ -15,6 +15,10 @@ vi.mock('@/mcp/workspaceContext', () => ({
   getWorkspaceRefs: vi.fn(),
 }));
 
+vi.mock('@/mcp/tools/layout', () => ({
+  focusElementOnCanvas: vi.fn(),
+}));
+
 import { rdfManager } from '@/utils/rdfManager';
 import { getWorkspaceRefs } from '@/mcp/workspaceContext';
 import { nodeTools } from '../tools/nodes';
@@ -23,11 +27,41 @@ const addNode = nodeTools.find((t) => t.name === 'addNode')!;
 const removeNode = nodeTools.find((t) => t.name === 'removeNode')!;
 const getNodes = nodeTools.find((t) => t.name === 'getNodes')!;
 
+const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
+
+// DataProviderLookupItem shape: { element: ElementModel, ... }
+function makeItem(id: string, label: string | undefined, types: string[]) {
+  return {
+    element: {
+      id,
+      types,
+      properties: label !== undefined ? { [RDFS_LABEL]: [{ value: label }] } : {},
+    },
+    inLinks: [],
+    outLinks: [],
+  };
+}
+
 const mockLookupAll = vi.fn();
+
+const mockModel = {
+  elements: [],
+  createElement: vi.fn(),
+  removeElement: vi.fn(),
+  requestElementData: vi.fn().mockResolvedValue(undefined),
+  requestLinks: vi.fn().mockResolvedValue(undefined),
+  history: { execute: vi.fn() },
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockModel.createElement.mockReset();
+  mockModel.removeElement.mockReset();
+  mockModel.requestElementData.mockResolvedValue(undefined);
+  mockModel.requestLinks.mockResolvedValue(undefined);
+  mockModel.history.execute.mockReset();
   (getWorkspaceRefs as ReturnType<typeof vi.fn>).mockReturnValue({
+    ctx: { model: mockModel },
     dataProvider: { lookupAll: mockLookupAll },
   });
 });
@@ -46,10 +80,11 @@ describe('addNode', () => {
       'http://www.w3.org/1999/02/22-rdf-syntax-ns#type',
       'http://www.w3.org/2002/07/owl#Class'
     );
+    // label stored without wrapping quotes
     expect(rdfManager.addTriple).toHaveBeenCalledWith(
       'http://example.org/foo',
       'http://www.w3.org/2000/01/rdf-schema#label',
-      '"Foo"'
+      'Foo'
     );
     expect(result).toEqual({ success: true, data: { iri: 'http://example.org/foo' } });
   });
@@ -71,9 +106,9 @@ describe('removeNode', () => {
 
 describe('getNodes', () => {
   const sampleItems = [
-    { id: 'http://example.org/a', label: { value: 'Alpha' }, types: ['http://www.w3.org/2002/07/owl#Class'] },
-    { id: 'http://example.org/b', label: { value: 'Beta' }, types: ['http://www.w3.org/2002/07/owl#NamedIndividual'] },
-    { id: 'http://example.org/c', label: { value: 'Gamma' }, types: ['http://www.w3.org/2002/07/owl#Class'] },
+    makeItem('http://example.org/a', 'Alpha', ['http://www.w3.org/2002/07/owl#Class']),
+    makeItem('http://example.org/b', 'Beta', ['http://www.w3.org/2002/07/owl#NamedIndividual']),
+    makeItem('http://example.org/c', 'Gamma', ['http://www.w3.org/2002/07/owl#Class']),
   ];
 
   it('returns all entities mapped from lookupAll', async () => {

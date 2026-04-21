@@ -90,16 +90,15 @@ export const linkTools: McpTool[] = [
     handler: async (params: unknown) => {
       try {
         const { subjectIri, predicateIri, objectIri, limit } = (params ?? {}) as LinkParams;
-        const { quads } = await rdfManager.fetchQuadsPage({
-          subject: subjectIri,
-          predicate: predicateIri,
-          object: objectIri,
+        const { items } = await rdfManager.fetchQuadsPage({
+          graphName: 'urn:vg:data',
+          filter: { subject: subjectIri, predicate: predicateIri, object: objectIri },
           limit: limit ?? 100,
         });
-        const links = quads.map((q) => ({
-          subject: q.subject.value,
-          predicate: q.predicate.value,
-          object: q.object.value,
+        const links = (items ?? []).map((q: { subject: string; predicate: string; object: string }) => ({
+          subject: q.subject,
+          predicate: q.predicate,
+          object: q.object,
         }));
         return { success: true as const, data: { links } };
       } catch (e) {

@@ -5,17 +5,18 @@
  * via a bookmarklet.  It:
  *   1. Opens (or reuses) the relay popup window (relay.html).
  *   2. Watches the page for new assistant messages via MutationObserver.
- *   3. Parses "TOOL: <name>\nPARAMS: <json>" patterns from those messages.
+ *   3. Parses "TOOL: <name>\nparam: value" patterns from those messages.
  *   4. Forwards parsed tool calls to the relay popup via postMessage.
- *   5. Receives results back from the popup and copies them to the clipboard.
+ *   5. Receives results back from the popup and injects a compact summary
+ *      (✓/✗ per tool + canvas state + optional SVG) into the chat input.
  *
  * The minified `javascript:` URL version of this script is what goes in the
  * draggable bookmarklet anchor (see Unit 5 sidebar).  The full source here is
  * kept readable for maintenance and updates.
  *
  * Message formats (shared with relay.html and the VisGraph app):
- *   To popup:   { type: 'vg-call',   tool: string, params: unknown, requestId: string }
- *   From popup: { type: 'vg-result', requestId: string, result: unknown, svg?: string }
+ *   To popup:   { type: 'vg-call', tool, params, requestId, isLast }
+ *   From popup: { type: 'vg-result', requestId, result, summary?, svg? }
  */
 
 (function () {
@@ -36,14 +37,13 @@
   window.__vgRelayActive = true;
 
   /* ── Popup management ──────────────────────────────────────────────────── */
-  // Only open via user gesture (bookmark click or badge click) to avoid popup blockers.
   function openPopup() {
     if (!window.__vgRelayPopup || window.__vgRelayPopup.closed) {
       window.__vgRelayPopup = window.open(RELAY_URL, POPUP_NAME, POPUP_OPTS);
     }
     return window.__vgRelayPopup;
   }
-  openPopup(); // bookmark click = user gesture → always allowed
+  openPopup();
 
   /* ── "Relay Active" badge ──────────────────────────────────────────────── */
   function showBadge() {
@@ -83,9 +83,7 @@
       badge.style.display = 'none';
     });
 
-    // Badge click (not the × button) reopens popup — this IS a user gesture
     badge.addEventListener('click', function () { openPopup(); });
-
     badge.appendChild(text);
     badge.appendChild(closeBtn);
     document.body.appendChild(badge);
@@ -114,16 +112,15 @@
     setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 4000);
   }
 
-  /* ── Find the chat input: visible input closest to the bottom of viewport ── */
+  /* ── Find the chat input ───────────────────────────────────────────────── */
   function findInput() {
     var candidates = Array.from(document.querySelectorAll(
       'textarea, div[contenteditable="true"]'
     )).filter(function (el) {
       var r = el.getBoundingClientRect();
-      return r.width > 0 && r.height > 0; // must be visible
+      return r.width > 0 && r.height > 0;
     });
     if (!candidates.length) return null;
-    // Prefer textarea; among the pool take the one with the largest bottom coordinate
     var textareas = candidates.filter(function (e) { return e.tagName === 'TEXTAREA'; });
     var pool = textareas.length ? textareas : candidates;
     return pool.reduce(function (best, el) {
@@ -131,9 +128,8 @@
     });
   }
 
-  /* ── Submit the chat input (send button or Enter key) ─────────────────── */
+  /* ── Submit the chat input ─────────────────────────────────────────────── */
   function submitInput(inputEl) {
-    // Walk up from the input to find a send/submit button in the same form/container
     var cur = inputEl.parentElement;
     while (cur && cur !== document.body) {
       var btns = Array.from(cur.querySelectorAll('button'));
@@ -145,7 +141,6 @@
       if (sendBtn) { sendBtn.click(); return; }
       cur = cur.parentElement;
     }
-    // Fallback: Enter keypress on the input itself
     ['keydown', 'keyup'].forEach(function (type) {
       inputEl.dispatchEvent(new KeyboardEvent(type, {
         key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
@@ -164,12 +159,10 @@
       setter.call(el, (el.value ? el.value + '\n' : '') + text);
       el.dispatchEvent(new Event('input', { bubbles: true }));
     } else {
-      // ProseMirror/TipTap manage their own state — setting innerText is overwritten immediately.
-      // execCommand('insertText') goes through the browser input pipeline that these frameworks hook.
       var sel = window.getSelection();
       var range = document.createRange();
       range.selectNodeContents(el);
-      range.collapse(false); // move cursor to end
+      range.collapse(false);
       sel.removeAllRanges();
       sel.addRange(range);
       var prefix = el.textContent && el.textContent.trim() ? '\n' : '';
@@ -179,96 +172,214 @@
     return true;
   }
 
-  /* ── Result listener (popup → AI tab) ─────────────────────────────────── */
+  /* ── Compact data summary for success results ──────────────────────────── */
+  function briefData(data) {
+    if (!data) return 'ok';
+    if (typeof data === 'string') return data.slice(0, 80);
+    if (data.iri) return data.iri;
+    if (data.loaded !== undefined) {
+      var brief = String(data.loaded);
+      if (data.newEntitiesAvailable && data.newEntitiesAvailable.length) {
+        brief += ' — ' + data.newEntitiesAvailable.length + ' new entities available';
+      }
+      return brief;
+    }
+    if (data.entities) return data.entities.length + ' entities';
+    if (data.links) return data.links.length + ' links';
+    if (data.results) {
+      var onCanvas = data.results.filter(function (r) { return r.onCanvas; });
+      return data.results.length + ' results' + (onCanvas.length ? ', ' + onCanvas.length + ' on canvas (auto-focused)' : '');
+    }
+    if (data.completions) return data.completions.length + ' completions';
+    if (data.nodeCount !== undefined) return data.nodeCount + ' nodes, ' + data.linkCount + ' links';
+    if (data.added) return 's=' + (data.added.s || '') + ' p=' + (data.added.p || '') + ' o=' + (data.added.o || '');
+    if (data.removed !== undefined) return typeof data.removed === 'string' ? 'removed ' + data.removed : JSON.stringify(data.removed);
+    if (data.inferredTriples !== undefined) return data.inferredTriples + ' triples inferred';
+    if (data.content !== undefined) return '(' + (data.content.length || 0) + ' chars)';
+    if (data.expanded !== undefined) return data.expanded + ' nodes expanded';
+    return JSON.stringify(data).slice(0, 80);
+  }
 
+  /* ── Format and inject combined batch result ───────────────────────────── */
+  function injectCombinedResult(results, finalSummary, finalSvg) {
+    var allOk = results.every(function (r) { return r.ok; });
+    var lines = ['[VisGraph — ' + results.length + ' tool' + (results.length !== 1 ? 's' : '') + (allOk ? ' ✓' : ' (some failed)') + ']'];
+    results.forEach(function (r) {
+      if (r.ok) {
+        lines.push('✓ ' + r.tool + ': ' + briefData(r.result && r.result.data));
+      } else {
+        var err = (r.result && r.result.error) || 'failed';
+        lines.push('✗ ' + r.tool + ': ' + err);
+      }
+    });
+    if (finalSummary) {
+      lines.push('');
+      lines.push(finalSummary);
+    }
+    if (finalSvg && typeof finalSvg === 'string') {
+      lines.push('');
+      lines.push('Current graph (SVG):');
+      lines.push(finalSvg);
+    }
+    injectResult(lines.join('\n'));
+    showToast('Done: ' + results.length + ' tool' + (results.length !== 1 ? 's' : ''), allOk);
+  }
+
+  /* ── Batch queue state ─────────────────────────────────────────────────── */
+  var callQueue    = [];
+  var batchResults = [];
+  var isProcessing = false;
+  var pendingTool  = null;
+  var lastSummary  = null;
+
+  /* ── Result listener (popup → AI tab) ─────────────────────────────────── */
   window.addEventListener('message', function (evt) {
     if (evt.origin !== RELAY_ORIGIN) return;
     var data = evt.data;
     if (!data || data.type !== 'vg-result') return;
 
-    var ok = data.result && data.result.success !== false;
-    var text = 'Tool result: ' + JSON.stringify(data.result !== undefined ? data.result : data, null, 2);
-    delete pendingSourceEl[data.requestId];
-    injectResult(text);
-    showToast(ok ? 'Result injected into chat' : 'Error injected into chat', ok);
+    var ok = !!(data.result && data.result.success !== false);
+    batchResults.push({ tool: pendingTool || '?', ok: ok, result: data.result });
+    if (data.summary) lastSummary = data.summary;
+    isProcessing = false;
+    pendingTool  = null;
+
+    if (callQueue.length > 0) {
+      processNextInQueue();
+    } else {
+      var results = batchResults.slice();
+      var summary = lastSummary;
+      batchResults = [];
+      lastSummary  = null;
+      injectCombinedResult(results, summary, data.svg);
+    }
   });
+
+  /* ── Common RDF prefix expansion ──────────────────────────────────────── */
+  var KNOWN_PREFIXES = {
+    'rdf:'     : 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
+    'rdfs:'    : 'http://www.w3.org/2000/01/rdf-schema#',
+    'owl:'     : 'http://www.w3.org/2002/07/owl#',
+    'xsd:'     : 'http://www.w3.org/2001/XMLSchema#',
+    'foaf:'    : 'http://xmlns.com/foaf/0.1/',
+    'skos:'    : 'http://www.w3.org/2004/02/skos/core#',
+    'dc:'      : 'http://purl.org/dc/elements/1.1/',
+    'dcterms:' : 'http://purl.org/dc/terms/',
+    'schema:'  : 'https://schema.org/',
+    'ex:'      : 'http://example.org/',
+  };
+
+  function expandPrefix(val) {
+    for (var p in KNOWN_PREFIXES) {
+      if (val.indexOf(p) === 0) {
+        return KNOWN_PREFIXES[p] + val.slice(p.length);
+      }
+    }
+    return val;
+  }
 
   /* ── Tool-call extractor ───────────────────────────────────────────────── */
   //
-  // Format (instructed to AI):
-  //   TOOL: toolName
-  //   param1: value1
-  //   param2: value2
-  //
-  // Key:value lines replace JSON — no quotes, no curly braces, no parse errors.
-  // el.innerText/textContent decodes HTML entities and strips all tags automatically,
-  // so hyperlinked URLs, hljs spans, and &quot; encoding are all handled transparently.
+  // Handles:
+  //  - Plain TOOL blocks
+  //  - TOOL blocks wrapped in markdown fences (```text ... ```, ``` ... ```)
+  //  - Prefixed IRIs (rdf:type, owl:Class, ex:Alice, etc.) — expanded to full IRIs
+  //  - Values: booleans, numbers, strings coerced automatically
 
-  // Dedup set — prevents re-firing when chat UI collapses/expands messages
   var dispatchedSigs = new Set();
 
-  function extractAndSend(text) {
-    // ^...$  with multiline flag: tool name must be alone on its line
-    var m = text.match(/^TOOL:\s*(\w+)\s*$/m);
-    if (!m) return false;
-    var tool = m[1];
-    var params = {};
-    var after = text.slice(text.indexOf(m[0]) + m[0].length);
-    after.split('\n').forEach(function (line) {
-      var kv = line.match(/^(\w+):\s*(.+)/);
-      if (kv) {
+  function extractAllToolCalls(text) {
+    // Strip markdown code fences before parsing — models often wrap TOOL blocks
+    var stripped = text.replace(/^```[^\n]*\n([\s\S]*?)^```/gm, '$1');
+
+    var calls = [];
+    var parts = stripped.split(/^TOOL:\s*/m);
+    for (var i = 1; i < parts.length; i++) {
+      var lines = parts[i].split('\n');
+      var tool = lines[0].trim();
+      if (!tool || !/^\w+$/.test(tool)) continue;
+      var params = {};
+      for (var j = 1; j < lines.length; j++) {
+        var kv = lines[j].match(/^(\w+):\s*(.+)/);
+        if (!kv) continue;
         var v = kv[2].trim();
-        params[kv[1]] = v === 'true' ? true : v === 'false' ? false : !isNaN(+v) && v !== '' ? +v : v;
+        // Expand known RDF prefixes in IRI-like parameter values
+        if (v.indexOf(':') !== -1 && v.indexOf(' ') === -1) {
+          v = expandPrefix(v);
+        }
+        params[kv[1]] = v === 'true' ? true
+          : v === 'false' ? false
+          : (!isNaN(+v) && v !== '') ? +v
+          : v;
       }
-    });
-    var sig = tool + ':' + JSON.stringify(params);
-    if (dispatchedSigs.has(sig)) return false;
-    dispatchedSigs.add(sig);
-    sendToolCall(tool, params);
-    return true;
+      var sig = tool + ':' + JSON.stringify(params);
+      if (!dispatchedSigs.has(sig)) {
+        dispatchedSigs.add(sig);
+        calls.push({ tool: tool, params: params });
+      }
+    }
+    return calls;
   }
 
-  function parseAndSend(el) {
+  function parseAndEnqueue(el) {
     if (!el || (el.dataset && el.dataset.vgProcessed)) return;
     var text = el.innerText || el.textContent || '';
-    if (extractAndSend(text, el) && el.dataset) {
-      el.dataset.vgProcessed = '1';
-    }
+    var calls = extractAllToolCalls(text);
+    if (calls.length === 0) return;
+    if (el.dataset) el.dataset.vgProcessed = '1';
+    callQueue = callQueue.concat(calls);
+    if (!isProcessing) processNextInQueue();
   }
 
-  function sendToolCall(tool, params) {
+  function processNextInQueue() {
+    if (isProcessing || callQueue.length === 0) return;
+    isProcessing = true;
+    var item = callQueue.shift();
+    var isLast = callQueue.length === 0; // last item in this batch
+
     var popup = window.__vgRelayPopup;
-    if (!popup || popup.closed) {
-      showToast('Relay popup closed — click the green badge to reopen', false);
+    if (!popup || popup.closed) popup = openPopup();
+    if (!popup) {
+      showToast('Relay popup could not open', false);
+      isProcessing = false;
+      callQueue = [];
+      batchResults = [];
+      lastSummary = null;
       return;
     }
+    pendingTool = item.tool;
     var requestId = 'rq-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
-    var payload = { type: 'vg-call', tool: tool, params: params, requestId: requestId };
+    var payload = {
+      type: 'vg-call',
+      tool: item.tool,
+      params: item.params,
+      requestId: requestId,
+      isLast: isLast,
+    };
     setTimeout(function () {
       try {
         popup.postMessage(payload, RELAY_ORIGIN);
       } catch (e) {
         console.warn('[vg-relay] postMessage failed:', e);
+        isProcessing = false;
       }
     }, 200);
   }
 
-  /* ── MutationObserver — scan every new/changed node generically ────────── */
+  /* ── MutationObserver — scan every new/changed node ───────────────────── */
   var debounceTimer = null;
   var pendingNodes = new Set();
 
   function flushPending() {
-    pendingNodes.forEach(function (node) { parseAndSend(node); });
+    pendingNodes.forEach(function (node) { parseAndEnqueue(node); });
     pendingNodes.clear();
   }
 
   function collectAncestors(node) {
-    // Walk up to find a meaningful block-level container to scan
     var el = node.nodeType === 3 ? node.parentElement : node;
     while (el && el !== document.body) {
-      if (el.dataset && el.dataset.vgProcessed) return; // already done
+      if (el.dataset && el.dataset.vgProcessed) return;
       var tag = el.tagName ? el.tagName.toLowerCase() : '';
-      // Stop at block containers that likely hold a full AI response
       if (tag === 'p' || tag === 'div' || tag === 'section' || tag === 'article' || tag === 'li') {
         pendingNodes.add(el);
         return;
@@ -289,7 +400,6 @@
 
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });
 
-  // Initial scan of full body in case messages already present
-  setTimeout(function () { parseAndSend(document.body); }, 500);
+  setTimeout(function () { parseAndEnqueue(document.body); }, 500);
 
 })();

@@ -404,23 +404,111 @@ The **AI Relay Bridge** connects any AI chat tab to VisGraph with no server, ext
 **Starter prompt** (paste into your AI chat after clicking the bookmarklet):
 
 ```text
-Please browse to https://thhanke.github.io/visgraph/.well-known/mcp.json and read the full tool specification before proceeding. Use the exact tool names and parameter names from that spec — do not invent names.
+Browse to https://thhanke.github.io/visgraph/.well-known/mcp.json and read the full tool list before proceeding. Use exact tool names and parameter names from that spec.
 
-You are connected to VisGraph via a relay. A script scans your responses for tool calls and executes them automatically. Results are injected back as user messages.
+You are connected to VisGraph via a relay. A script in your browser tab scans your responses for TOOL blocks, executes them in VisGraph, and injects the combined result back as a user message.
 
-STRICT OUTPUT RULES — violating these will silently break execution:
-1. One tool call per response, nothing else in that response.
-2. Output every tool call as plain key:value lines inside a fenced code block tagged "visgraph":
-```visgraph
-TOOL: <toolName>
-paramName: paramValue
-```
-   No JSON, no quotes, no curly braces — one parameter per line.
-3. Wait for the result message before sending the next tool call.
-4. Use full IRIs for node identifiers (e.g. http://example.org/alice), never prefixed names.
-5. For exportImage use format: svg — SVG text comes back so you can read graph topology.
+OUTPUT FORMAT — each tool call is one TOOL block:
+TOOL: toolName
+param1: value1
+param2: value2
 
-Recommended workflow: loadOntology → addNode × N → addLink × N → runLayout → expandAll → fitCanvas → exportImage
+BATCHING RULES:
+1. You may output multiple TOOL blocks in one response. They run sequentially in order.
+2. Batch independent calls together (e.g. all addNode in one response, then all addLink in the next).
+3. addLink requires both nodes to already exist on canvas — never batch addNode and addLink for the same node in one response.
+4. Wait for the result message before sending the next batch.
+5. Never mix explanatory text with TOOL blocks in the same response.
+
+PARAMETER RULES:
+- Full IRIs only (e.g. http://example.org/Alice), never prefixed names like ex:Alice.
+- No JSON, no quotes around values, one parameter per line.
+- addLink objectIri accepts plain string literals (e.g. "Chief Executive") — the store detects non-IRIs and stores them as RDF literals.
+- For multiline values (e.g. inline Turtle), do NOT use loadRdf turtle — load from a URL instead, or addNode each entity individually.
+
+READING RESULTS:
+- After each batch, a combined result message is injected in this format:
+  [VisGraph — N tools ✓]
+  ✓ toolName: <compact summary>
+  ✗ toolName: <error reason>
+
+  Canvas: N nodes (Label1, Label2, ...), M links
+  Current graph (SVG): <svg...>
+- The canvas summary line gives you a quick state check without parsing SVG.
+- The SVG is attached on the last call of the batch. If your UI renders SVGs, view it directly. Otherwise read foreignObject text inside the SVG.
+- ✗ lines include the actual error reason — use it to self-correct (wrong IRI, node not on canvas, etc.).
+- searchEntities: "1 on canvas (auto-focused)" means the viewport moved — no separate focusNode needed. onCanvas: false means the entity is in the RDF store but not yet placed — use addNode.
+- loadRdf result shows "N new entities available" — use searchEntities or addNode to bring them onto the canvas.
+- Prefixed IRIs (rdf:type, owl:Class, foaf:Person, ex:Alice) are auto-expanded — you may use them in tool parameters.
+
+CLOSING EACH PHASE:
+End every major build phase (nodes done, links done, reasoning done) with:
+TOOL: runLayout
+algorithm: dagre-lr
+
+TOOL: fitCanvas
+
+TOOL: exportImage
+format: svg
+noCss: true
+
+This gives you a visual checkpoint before the next phase.
+
+KEY WORKFLOW PATTERNS:
+
+Load and explore existing data:
+TOOL: loadRdf
+url: https://example.org/data.ttl
+
+TOOL: getGraphState
+
+TOOL: searchEntities
+query: Person
+
+Build from scratch — all addNode in one batch:
+TOOL: addNode
+iri: http://example.org/Alice
+label: Alice
+typeIri: http://example.org/Person
+
+TOOL: addNode
+iri: http://example.org/Bob
+label: Bob
+typeIri: http://example.org/Person
+
+Then links in the next batch (after nodes confirmed):
+TOOL: addLink
+subjectIri: http://example.org/Alice
+predicateIri: http://example.org/knows
+objectIri: http://example.org/Bob
+
+TOOL: runLayout
+algorithm: dagre-lr
+
+TOOL: fitCanvas
+
+TOOL: exportImage
+format: svg
+noCss: true
+
+Run reasoning and review:
+TOOL: runReasoning
+
+TOOL: runLayout
+algorithm: dagre-lr
+
+TOOL: fitCanvas
+
+TOOL: exportImage
+format: svg
+noCss: true
+
+Inspect a specific node:
+TOOL: searchEntities
+query: Alice
+
+TOOL: expandNode
+iri: http://example.org/Alice
 
 Now build a knowledge graph. What would you like to model?
 ```

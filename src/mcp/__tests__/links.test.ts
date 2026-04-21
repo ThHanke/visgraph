@@ -10,7 +10,17 @@ vi.mock('@/utils/rdfManager', () => ({
   },
 }));
 
+// Mock workspaceContext — addLink needs getWorkspaceRefs for requestLinks
+vi.mock('@/mcp/workspaceContext', () => ({
+  getWorkspaceRefs: vi.fn(),
+}));
+
+vi.mock('@/mcp/tools/layout', () => ({
+  focusElementOnCanvas: vi.fn(),
+}));
+
 import { rdfManager } from '@/utils/rdfManager';
+import { getWorkspaceRefs } from '@/mcp/workspaceContext';
 import { linkTools } from '../tools/links';
 
 const addLink = linkTools.find((t) => t.name === 'addLink')!;
@@ -19,6 +29,9 @@ const getLinks = linkTools.find((t) => t.name === 'getLinks')!;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getWorkspaceRefs).mockReturnValue({
+    ctx: { model: { elements: [], links: [], requestLinks: vi.fn().mockResolvedValue(undefined) } },
+  } as never);
 });
 
 describe('addLink', () => {
@@ -79,17 +92,16 @@ describe('removeLink', () => {
 
 describe('getLinks', () => {
   it('returns mapped quads from fetchQuadsPage', async () => {
-    const mockQuads = [
-      { subject: { value: 'http://s1' }, predicate: { value: 'http://p1' }, object: { value: 'http://o1' } },
-      { subject: { value: 'http://s2' }, predicate: { value: 'http://p2' }, object: { value: 'http://o2' } },
+    const mockItems = [
+      { subject: 'http://s1', predicate: 'http://p1', object: 'http://o1' },
+      { subject: 'http://s2', predicate: 'http://p2', object: 'http://o2' },
     ];
-    vi.mocked(rdfManager.fetchQuadsPage).mockResolvedValue({ quads: mockQuads as any, hasMore: false });
+    vi.mocked(rdfManager.fetchQuadsPage).mockResolvedValue({ items: mockItems, total: 2 });
 
     const result = await getLinks.handler({ subjectIri: 'http://s1', limit: 50 });
     expect(rdfManager.fetchQuadsPage).toHaveBeenCalledWith({
-      subject: 'http://s1',
-      predicate: undefined,
-      object: undefined,
+      graphName: 'urn:vg:data',
+      filter: { subject: 'http://s1', predicate: undefined, object: undefined },
       limit: 50,
     });
     expect(result).toEqual({
@@ -104,7 +116,7 @@ describe('getLinks', () => {
   });
 
   it('defaults limit to 100 when not provided', async () => {
-    vi.mocked(rdfManager.fetchQuadsPage).mockResolvedValue({ quads: [], hasMore: false });
+    vi.mocked(rdfManager.fetchQuadsPage).mockResolvedValue({ items: [], total: 0 });
     await getLinks.handler({});
     expect(rdfManager.fetchQuadsPage).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 100 })

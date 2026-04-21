@@ -7,9 +7,28 @@ vi.mock('@/mcp/workspaceContext', () => ({
   getWorkspaceRefs: vi.fn(),
 }));
 
+// Mock layout to avoid import issues in node env
+vi.mock('@/mcp/tools/layout', () => ({
+  focusElementOnCanvas: vi.fn(),
+}));
+
 import { getWorkspaceRefs } from '@/mcp/workspaceContext';
 
 const mockGetWorkspaceRefs = vi.mocked(getWorkspaceRefs);
+
+const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
+
+function makeItem(id: string, label?: string) {
+  return {
+    element: {
+      id,
+      types: [],
+      properties: label !== undefined ? { [RDFS_LABEL]: [{ value: label }] } : {},
+    },
+    inLinks: [],
+    outLinks: [],
+  };
+}
 
 function getHandler(name: string) {
   const tool = searchTools.find((t) => t.name === name);
@@ -19,19 +38,20 @@ function getHandler(name: string) {
 
 describe('searchEntities', () => {
   const mockLookup = vi.fn();
+  const mockElements = [] as any[];
 
   beforeEach(() => {
     mockLookup.mockReset();
     mockGetWorkspaceRefs.mockReturnValue({
-      ctx: {} as never,
+      ctx: { model: { elements: mockElements } } as never,
       dataProvider: { lookup: mockLookup } as never,
     });
   });
 
   it('calls lookup with query text and returns iri+label pairs', async () => {
     mockLookup.mockResolvedValue([
-      { id: 'http://example.org/alice', label: { value: 'Alice' }, types: [] },
-      { id: 'http://example.org/bob', label: { value: 'Bob' }, types: [] },
+      makeItem('http://example.org/alice', 'Alice'),
+      makeItem('http://example.org/bob', 'Bob'),
     ]);
 
     const result = await getHandler('searchEntities')({ query: 'ali', limit: 5 });
@@ -41,8 +61,8 @@ describe('searchEntities', () => {
       success: true,
       data: {
         results: [
-          { iri: 'http://example.org/alice', label: 'Alice' },
-          { iri: 'http://example.org/bob', label: 'Bob' },
+          { iri: 'http://example.org/alice', label: 'Alice', onCanvas: false },
+          { iri: 'http://example.org/bob', label: 'Bob', onCanvas: false },
         ],
       },
     });
@@ -55,13 +75,11 @@ describe('searchEntities', () => {
   });
 
   it('falls back to IRI when label is absent', async () => {
-    mockLookup.mockResolvedValue([
-      { id: 'http://example.org/thing' },
-    ]);
+    mockLookup.mockResolvedValue([makeItem('http://example.org/thing')]);
     const result = await getHandler('searchEntities')({ query: 'thing' });
     expect(result).toEqual({
       success: true,
-      data: { results: [{ iri: 'http://example.org/thing', label: 'http://example.org/thing' }] },
+      data: { results: [{ iri: 'http://example.org/thing', label: 'http://example.org/thing', onCanvas: false }] },
     });
   });
 
@@ -78,15 +96,13 @@ describe('autocomplete', () => {
   beforeEach(() => {
     mockLookup.mockReset();
     mockGetWorkspaceRefs.mockReturnValue({
-      ctx: {} as never,
+      ctx: { model: { elements: [] } } as never,
       dataProvider: { lookup: mockLookup } as never,
     });
   });
 
   it('calls lookup with text and returns completions', async () => {
-    mockLookup.mockResolvedValue([
-      { id: 'http://example.org/carbon', label: { value: 'Carbon' } },
-    ]);
+    mockLookup.mockResolvedValue([makeItem('http://example.org/carbon', 'Carbon')]);
 
     const result = await getHandler('autocomplete')({ text: 'car', limit: 3 });
 
@@ -106,7 +122,7 @@ describe('autocomplete', () => {
   });
 
   it('falls back to IRI when label is absent', async () => {
-    mockLookup.mockResolvedValue([{ id: 'http://example.org/unlabelled' }]);
+    mockLookup.mockResolvedValue([makeItem('http://example.org/unlabelled')]);
     const result = await getHandler('autocomplete')({ text: 'unlab' });
     expect(result).toEqual({
       success: true,

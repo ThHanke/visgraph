@@ -15,7 +15,13 @@ vi.mock('@/utils/rdfManager', () => ({
 vi.mock('@/mcp/workspaceContext', () => {
   const dataProvider = { clearInferred: mockClearInferred };
   return {
-    getWorkspaceRefs: vi.fn(() => ({ ctx: {}, dataProvider })),
+    getWorkspaceRefs: vi.fn(() => ({
+      ctx: {
+        model: { requestData: vi.fn().mockResolvedValue(undefined) },
+        view: { findAnyCanvas: vi.fn().mockReturnValue(undefined) },
+      },
+      dataProvider,
+    })),
   };
 });
 

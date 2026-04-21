@@ -8,6 +8,10 @@ import { focusElementOnCanvas } from './layout';
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
 
+function getLabel(data: Reactodia.ElementModel | undefined): string {
+  return (data?.properties?.[RDFS_LABEL]?.[0] as { value?: string } | undefined)?.value ?? '';
+}
+
 function findEntityElement(iri: string, model: Reactodia.DataDiagramModel): Reactodia.EntityElement | undefined {
   return model.elements.find(
     e => e instanceof Reactodia.EntityElement && (e as Reactodia.EntityElement).iri === iri
@@ -35,7 +39,7 @@ const addNode: McpTool = {
       const model = ctx.model;
 
       if (typeIri) rdfManager.addTriple(iri, RDF_TYPE, typeIri);
-      if (label) rdfManager.addTriple(iri, RDFS_LABEL, '"' + label + '"');
+      if (label) rdfManager.addTriple(iri, RDFS_LABEL, label);
 
       if (!findEntityElement(iri, model)) {
         model.createElement(iri as Reactodia.ElementIri);
@@ -153,19 +157,19 @@ const getNodes: McpTool = {
       let items = await dataProvider.lookupAll();
 
       if (typeIri) {
-        items = items.filter((item) => item.types?.includes(typeIri));
+        items = items.filter((item) => item.element.types?.includes(typeIri));
       }
       if (labelContains) {
         const lower = labelContains.toLowerCase();
         items = items.filter((item) =>
-          item.label?.value?.toLowerCase().includes(lower)
+          getLabel(item.element).toLowerCase().includes(lower)
         );
       }
 
       const entities = items.slice(0, limit).map((item) => ({
-        iri: item.id,
-        label: item.label?.value,
-        types: item.types,
+        iri: item.element.id,
+        label: getLabel(item.element),
+        types: item.element.types,
       }));
 
       return { success: true, data: { entities } };

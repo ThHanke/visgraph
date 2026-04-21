@@ -41,11 +41,38 @@ async function waitForMcpTools(retries: number): Promise<Record<string, (params:
   return null;
 }
 
+/** Compact one-line canvas state string, e.g. "Canvas: 3 nodes (Alice, Bob, Carol), 2 links" */
+async function buildCanvasSummary(
+  tools: Record<string, (params: unknown) => Promise<McpResult>>
+): Promise<string | undefined> {
+  try {
+    const handler = tools['getGraphState'];
+    if (!handler) return undefined;
+    const result = await handler({});
+    if (!result.success || !result.data) return undefined;
+    const d = result.data as {
+      nodeCount: number;
+      linkCount: number;
+      nodes: Array<{ label?: string; iri: string }>;
+    };
+    const MAX_LABELS = 8;
+    const labels = d.nodes
+      .slice(0, MAX_LABELS)
+      .map(n => n.label || n.iri.split(/[/#]/).pop() || n.iri)
+      .join(', ');
+    const more = d.nodeCount > MAX_LABELS ? ` +${d.nodeCount - MAX_LABELS} more` : '';
+    return `Canvas: ${d.nodeCount} node${d.nodeCount !== 1 ? 's' : ''} (${labels}${more}), ${d.linkCount} link${d.linkCount !== 1 ? 's' : ''}`;
+  } catch {
+    return undefined;
+  }
+}
+
 async function handleCall(
   channel: BroadcastChannel,
   tool: string,
   params: unknown,
   requestId: string,
+  isLast: boolean,
 ): Promise<void> {
   const tools = await waitForMcpTools(RETRY_COUNT);
 
@@ -78,19 +105,30 @@ async function handleCall(
     return;
   }
 
-  // Attempt SVG export — optional, never fails the result
-  let svg: string | undefined;
-  try {
-    const exportHandler = tools['exportImage'];
-    if (exportHandler) {
-      const exportResult = await exportHandler({ format: 'svg' });
-      if (exportResult.success) {
-        svg = exportResult.data as string;
-      }
-    }
-  } catch { /* svg export is best-effort */ }
+  // Canvas summary — always included (cheap getGraphState call)
+  const summary = await buildCanvasSummary(tools);
 
-  channel.postMessage({ type: 'vg-result', requestId, result, ...(svg !== undefined ? { svg } : {}) });
+  // SVG export — only on the last call of a batch (avoids N-1 wasted exports)
+  let svg: string | undefined;
+  if (isLast && tool !== 'exportImage') {
+    try {
+      const exportHandler = tools['exportImage'];
+      if (exportHandler) {
+        const exportResult = await exportHandler({ format: 'svg', noCss: true });
+        if (exportResult.success) {
+          svg = exportResult.data as string;
+        }
+      }
+    } catch { /* svg export is best-effort */ }
+  }
+
+  channel.postMessage({
+    type: 'vg-result',
+    requestId,
+    result,
+    ...(summary !== undefined ? { summary } : {}),
+    ...(svg !== undefined ? { svg } : {}),
+  });
 
   if (result.success) {
     toast.success(`✓ ${tool}`);
@@ -111,7 +149,8 @@ export function startRelayBridge(): () => void {
     if (typeof msg.tool !== 'string' || typeof msg.requestId !== 'string') { console.warn('[RelayBridge] Ignored (bad shape):', msg); return; }
 
     const { tool, params, requestId } = msg as { tool: string; params: unknown; requestId: string };
-    handleCall(channel, tool, params, requestId).catch(err => {
+    const isLast = (msg as { isLast?: boolean }).isLast === true;
+    handleCall(channel, tool, params, requestId, isLast).catch(err => {
       console.error('[RelayBridge] Unhandled error in handleCall:', err);
     });
   };

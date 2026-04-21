@@ -18,10 +18,15 @@ const mockCanvas = {
   exportRaster: vi.fn().mockResolvedValue('data:image/png;base64,abc'),
 };
 
+const mockLookupAll = vi.fn().mockResolvedValue([]);
+
 vi.mock('@/mcp/workspaceContext', () => ({
   getWorkspaceRefs: vi.fn(() => ({
-    ctx: { canvas: mockCanvas },
-    dataProvider: {},
+    ctx: {
+      model: { elements: [] },
+      view: { findAnyCanvas: () => mockCanvas },
+    },
+    dataProvider: { lookupAll: mockLookupAll },
   })),
 }));
 
@@ -37,10 +42,13 @@ const tool = (name: string) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // restore default canvas mock
+  mockLookupAll.mockResolvedValue([]);
   (getWorkspaceRefs as ReturnType<typeof vi.fn>).mockReturnValue({
-    ctx: { canvas: mockCanvas },
-    dataProvider: {},
+    ctx: {
+      model: { elements: [] },
+      view: { findAnyCanvas: () => mockCanvas },
+    },
+    dataProvider: { lookupAll: mockLookupAll },
   });
   mockCanvas.exportSvg.mockResolvedValue('<svg/>');
   mockCanvas.exportRaster.mockResolvedValue('data:image/png;base64,abc');
@@ -57,8 +65,11 @@ describe('loadRdf', () => {
   it('calls loadRDFIntoGraph when turtle is provided', async () => {
     const turtle = '@prefix ex: <http://example.org/> .';
     const result = await tool('loadRdf').handler({ turtle });
-    expect(rdfManager.loadRDFIntoGraph).toHaveBeenCalledWith(turtle, 'default', 'text/turtle');
-    expect(result).toEqual({ success: true, data: { loaded: 'inline turtle' } });
+    expect(rdfManager.loadRDFIntoGraph).toHaveBeenCalledWith(turtle, 'urn:vg:data', 'text/turtle');
+    expect(result).toMatchObject({
+      success: true,
+      data: expect.objectContaining({ loaded: 'inline turtle' }),
+    });
   });
 
   it('returns error when neither url nor turtle is provided', async () => {
@@ -112,6 +123,12 @@ describe('exportImage', () => {
     expect(result).toEqual({ success: true, data: { content: '<svg/>' } });
   });
 
+  it('strips style block when noCss is true', async () => {
+    mockCanvas.exportSvg.mockResolvedValue('<svg><style>body{color:red}</style><g/></svg>');
+    const result = await tool('exportImage').handler({ format: 'svg', noCss: true });
+    expect((result as any).data.content).toBe('<svg><g/></svg>');
+  });
+
   it('returns png data uri for png format', async () => {
     const result = await tool('exportImage').handler({ format: 'png' });
     expect(mockCanvas.exportRaster).toHaveBeenCalledWith({ mimeType: 'image/png' });
@@ -120,8 +137,8 @@ describe('exportImage', () => {
 
   it('returns error when canvas is unavailable', async () => {
     (getWorkspaceRefs as ReturnType<typeof vi.fn>).mockReturnValue({
-      ctx: { canvas: undefined },
-      dataProvider: {},
+      ctx: { model: { elements: [] }, view: { findAnyCanvas: () => undefined } },
+      dataProvider: { lookupAll: mockLookupAll },
     });
     const result = await tool('exportImage').handler({ format: 'svg' });
     expect(result).toEqual({ success: false, error: 'Canvas not available' });

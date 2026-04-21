@@ -4,6 +4,20 @@ import type { McpTool, McpResult } from '@/mcp/types';
 import { rdfManager } from '@/utils/rdfManager';
 import { getWorkspaceRefs } from '@/mcp/workspaceContext';
 
+const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
+function getElementLabel(data: Reactodia.ElementModel | undefined): string {
+  return (data?.properties?.[RDFS_LABEL]?.[0] as { value?: string } | undefined)?.value ?? '';
+}
+
+function getCanvasIris(): string[] {
+  try {
+    const { ctx } = getWorkspaceRefs();
+    return ctx.model.elements
+      .filter(e => e instanceof Reactodia.EntityElement)
+      .map(e => (e as Reactodia.EntityElement).iri);
+  } catch { return []; }
+}
+
 // ---------------------------------------------------------------------------
 // loadRdf
 // ---------------------------------------------------------------------------
@@ -26,8 +40,25 @@ const loadRdf: McpTool = {
         return { success: true, data: { loaded: p.url } };
       }
       if (p.turtle) {
-        await rdfManager.loadRDFIntoGraph(p.turtle, 'default', 'text/turtle');
-        return { success: true, data: { loaded: 'inline turtle' } };
+        const canvasBefore = getCanvasIris();
+        await rdfManager.loadRDFIntoGraph(p.turtle, 'urn:vg:data', 'text/turtle');
+        // Wait for the RDF worker change event to propagate to dataProvider.allSubjects
+        await new Promise(r => setTimeout(r, 600));
+        const { dataProvider } = getWorkspaceRefs();
+        const allItems = await dataProvider.lookupAll();
+        const canvasBeforeSet = new Set(canvasBefore);
+        const newEntities = allItems
+          .filter(item => !canvasBeforeSet.has(item.element.id))
+          .slice(0, 100)
+          .map(item => ({ iri: item.element.id, label: getElementLabel(item.element) || item.element.id }));
+        return {
+          success: true,
+          data: {
+            loaded: 'inline turtle',
+            canvasNodesBefore: canvasBefore,
+            newEntitiesAvailable: newEntities,
+          },
+        };
       }
       return { success: false, error: 'Provide either url or turtle' };
     } catch (e) {
@@ -123,7 +154,7 @@ const exportGraph: McpTool = {
 // ---------------------------------------------------------------------------
 const exportImage: McpTool = {
   name: 'exportImage',
-  description: 'Export the current diagram canvas as SVG (default) or PNG.',
+  description: 'Export the current diagram canvas as SVG (default) or PNG. Use noCss: true to strip embedded CSS for smaller token-efficient output — recommended for AI relay use.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -133,11 +164,16 @@ const exportImage: McpTool = {
         default: 'svg',
         description: 'Image format: svg (default) | png',
       },
+      noCss: {
+        type: 'boolean',
+        default: false,
+        description: 'Strip embedded CSS from SVG output to reduce token count. Nodes lose visual styling but topology remains readable.',
+      },
     },
   },
   async handler(params): Promise<McpResult> {
     try {
-      const { format = 'svg' } = (params ?? {}) as { format?: string };
+      const { format = 'svg', noCss = false } = (params ?? {}) as { format?: string; noCss?: boolean };
       let canvas: Reactodia.CanvasApi | undefined;
       try {
         const { ctx } = getWorkspaceRefs();
@@ -148,7 +184,11 @@ const exportImage: McpTool = {
       if (!canvas) return { success: false, error: 'Canvas not available' };
 
       if (format === 'svg') {
-        const content = await canvas.exportSvg({ addXmlHeader: true });
+        let content = await canvas.exportSvg({ addXmlHeader: true });
+        if (noCss) {
+          // Strip <style>...</style> blocks to reduce token count
+          content = content.replace(/<style[\s\S]*?<\/style>/gi, '');
+        }
         return { success: true, data: { content } };
       }
       if (format === 'png') {
@@ -180,7 +220,7 @@ const getGraphState: McpTool = {
           const data = entity.data;
           return {
             iri: entity.iri,
-            label: data?.label?.value ?? '',
+            label: getElementLabel(data),
             types: data?.types ?? [],
           };
         });
