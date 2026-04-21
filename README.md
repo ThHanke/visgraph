@@ -4,6 +4,27 @@ VisGraph — Browser-based RDF Knowledge Graph Editor
 [![DOI](https://zenodo.org/badge/1049705027.svg)](https://doi.org/10.5281/zenodo.19605270)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Key capabilities](#key-capabilities)
+- [Quick start (development)](#quick-start-development)
+- [Startup / URL parameters](#startup--url-parameters)
+- [Reasoning demo](#reasoning-demo)
+- [CORS and proxies](#cors-and-proxies)
+- [Using the UI](#using-the-ui)
+- [Developer utilities](#developer-utilities-window-globals)
+- [Troubleshooting](#troubleshooting)
+- [AI / MCP Integration](#ai--mcp-integration)
+  - [How it works](#how-it-works)
+  - [Setup (Playwright / headless)](#setup-playwright--headless)
+  - [Recommended workflow](#recommended-workflow)
+  - [Using VisGraph with any AI](#using-visgraph-with-any-ai)
+    - [Claude Code / Playwright](#claude-code--playwright-full-automation)
+    - [AI Relay Bridge (ChatGPT, Gemini, Claude.ai)](#chatgpt-gemini-claudeai--ai-relay-bridge)
+- [Contributing](#contributing--development-notes)
+- [License & authors](#license--authors)
+
 Overview
 --------
 VisGraph is a browser-based [RDF](https://www.w3.org/RDF/)/ontology knowledge graph editor. It loads RDF from local files, remote URLs, or SPARQL/Fuseki endpoints; lets users author nodes and edges directly on the canvas; runs [OWL-RL](https://www.w3.org/TR/owl2-profiles/#OWL_2_RL) reasoning with visual differentiation of inferred triples; and applies multi-algorithm layout ([Dagre](https://github.com/dagrejs/dagre), [ELK](https://github.com/kieler/elkjs)) and automatic clustering for large graphs. Additional features include namespace management with live URI renaming, a drag-and-drop workflow template catalog, and a [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for AI-agent integration. All computation runs entirely client-side in the browser against an in-memory RDF store backed by Web Workers — no backend required.

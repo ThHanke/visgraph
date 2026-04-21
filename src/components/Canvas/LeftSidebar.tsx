@@ -16,6 +16,7 @@ import {
   Settings,
   Sparkles,
   Bot,
+  HelpCircle,
 } from 'lucide-react';
 import {
   Accordion,
@@ -69,6 +70,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [openAccordions, setOpenAccordions] = useState<string[]>(['ai-relay']);
   const workflowCatalogEnabled = useAppConfigStore((s) => s.config.workflowCatalogEnabled);
   const { connected, callLog } = useRelayBridge(true);
 
@@ -221,7 +223,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
             <TooltipPrimitive.Root>
                 <TooltipPrimitive.Trigger asChild>
-                  <button className="rail-btn relative" onClick={onToggle} aria-label="AI Relay">
+                  <button className="rail-btn relative" onClick={() => { setOpenAccordions(['ai-relay']); onToggle(); }} aria-label="AI Relay">
                     <Bot className="h-[18px] w-[18px]" />
                     <span>Relay</span>
                     {connected && (
@@ -237,6 +239,27 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               </TooltipPrimitive.Root>
 
             <div className="flex-1" />
+
+            <TooltipPrimitive.Root>
+              <TooltipPrimitive.Trigger asChild>
+                <button
+                  className="rail-btn"
+                  aria-label="Documentation"
+                  onClick={() => {
+                    setOpenAccordions(['docs']);
+                    onToggle();
+                  }}
+                >
+                  <HelpCircle className="h-[18px] w-[18px]" />
+                  <span>Docs</span>
+                </button>
+              </TooltipPrimitive.Trigger>
+              <TooltipPrimitive.Portal>
+                <TooltipPrimitive.Content className="z-[99999] rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md" sideOffset={5} side="right">
+                  Documentation<TooltipPrimitive.Arrow className="fill-popover" />
+                </TooltipPrimitive.Content>
+              </TooltipPrimitive.Portal>
+            </TooltipPrimitive.Root>
 
             <TooltipPrimitive.Root>
               <TooltipPrimitive.Trigger asChild>
@@ -385,7 +408,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
           {/* Accordion sections - scrollable */}
           <div className="flex-1 bg-background overflow-y-auto">
-            <Accordion type="multiple" defaultValue={['ai-relay']}>
+            <Accordion type="multiple" value={openAccordions} onValueChange={setOpenAccordions}>
               {workflowCatalogEnabled && (
                 <AccordionItem value="workflows" className="border-none">
                   <AccordionTrigger className="px-3 py-2 hover:bg-accent/5">
@@ -451,6 +474,39 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     connected={connected}
                     callLog={callLog}
                   />
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="docs" className="border-none">
+                <AccordionTrigger className="px-3 py-2 hover:bg-accent/5">
+                  <div className="flex items-center gap-2 text-foreground">
+                    <HelpCircle className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium">Documentation</span>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="pb-2">
+                  <nav className="px-3 py-1 space-y-1">
+                    {([
+                      ['Overview', '#overview'],
+                      ['Key capabilities', '#key-capabilities'],
+                      ['Startup / URL parameters', '#startup--url-parameters'],
+                      ['Left sidebar', '#left-sidebar'],
+                      ['AI / MCP integration', '#ai--mcp-integration'],
+                      ['AI Relay Bridge', '#chatgpt-gemini-claudeai--ai-relay-bridge'],
+                      ['Playwright / headless', '#setup-playwright--headless'],
+                    ] as [string, string][]).map(([label, anchor]) => (
+                      <a
+                        key={anchor}
+                        href={`https://github.com/ThHanke/visgraph${anchor}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-0.5"
+                      >
+                        <span className="text-muted-foreground/50">›</span>
+                        {label}
+                      </a>
+                    ))}
+                  </nav>
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
