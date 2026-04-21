@@ -26,3 +26,6 @@ dist-ssr
 playwright-reports
 .playwright-mcp
 scripts/outputs/
+
+# Claude Code
+.claude/
