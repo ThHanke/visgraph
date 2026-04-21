@@ -39,6 +39,8 @@
     "preview": "vite preview",
     "postinstall": "patch-package",
     "test": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:real": "playwright test e2e/relay-bookmarklet.real.spec.ts",
     "callgraph:generate": "node scripts/generate_call_graph_ts_morph.js",
     "callgraph:merge": "node scripts/merge_call_graphs.js",
     "callgraph:regen": "npm run callgraph:generate && npm run callgraph:merge",
@@ -113,6 +115,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/vite": "^4.1.16",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^24.10.0",
