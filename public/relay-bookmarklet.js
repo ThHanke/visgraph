@@ -5,10 +5,10 @@
  * via a bookmarklet.  It:
  *   1. Opens (or reuses) the relay popup window (relay.html).
  *   2. Watches the page for new assistant messages via MutationObserver.
- *   3. Parses "TOOL: <name>\nparam: value" patterns from those messages.
+ *   3. Extracts MCP JSON-RPC 2.0 tool calls from backtick-wrapped inline code.
  *   4. Forwards parsed tool calls to the relay popup via postMessage.
- *   5. Receives results back from the popup and injects a compact summary
- *      (✓/✗ per tool + canvas state + optional SVG) into the chat input.
+ *   5. Receives results back and injects backtick-wrapped JSON-RPC responses
+ *      into the chat input so the AI can read them.
  *
  * The minified `javascript:` URL version of this script is what goes in the
  * draggable bookmarklet anchor (see Unit 5 sidebar).  The full source here is
