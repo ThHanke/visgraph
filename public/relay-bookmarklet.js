@@ -29,13 +29,6 @@
   var POPUP_OPTS   = 'width=320,height=180,menubar=no,toolbar=no,location=no,resizable=yes';
   var DEBOUNCE_MS  = 400;
 
-  /* ── Idempotency guard ─────────────────────────────────────────────────── */
-  if (window.__vgRelayActive) {
-    showBadge(); // re-show badge if closed
-    return;
-  }
-  window.__vgRelayActive = true;
-
   /* ── Popup management ──────────────────────────────────────────────────── */
   function openPopup() {
     if (!window.__vgRelayPopup || window.__vgRelayPopup.closed) {
@@ -43,7 +36,27 @@
     }
     return window.__vgRelayPopup;
   }
-  openPopup();
+
+  /* ── Idempotency guard ─────────────────────────────────────────────────── */
+  if (window.__vgRelayActive) {
+    // Re-open popup if closed, then re-show badge.
+    var existingPopup = openPopup();
+    showBadge();
+    if (!existingPopup) {
+      showToast('Popup blocked — allow popups for this site, then click the badge to retry', false);
+      var existingBadge = document.getElementById('vg-relay-badge');
+      if (existingBadge) existingBadge.style.animation = 'vg-pulse 0.6s ease 3';
+    }
+    return;
+  }
+  window.__vgRelayActive = true;
+
+  /* ── Inject pulse keyframe for blocked-popup feedback ─────────────────── */
+  (function () {
+    var style = document.createElement('style');
+    style.textContent = '@keyframes vg-pulse{0%,100%{outline:2px solid #3fb950}50%{outline:4px solid #f0883e}}';
+    document.head.appendChild(style);
+  })();
 
   /* ── "Relay Active" badge ──────────────────────────────────────────────── */
   function showBadge() {
@@ -83,12 +96,30 @@
       badge.style.display = 'none';
     });
 
-    badge.addEventListener('click', function () { openPopup(); });
+    badge.addEventListener('click', function () {
+      var p = openPopup();
+      if (!p) {
+        showToast('Popup blocked — allow popups for this site, then click the badge to retry', false);
+        badge.style.animation = 'vg-pulse 0.6s ease 3';
+      }
+    });
     badge.appendChild(text);
     badge.appendChild(closeBtn);
     document.body.appendChild(badge);
   }
-  showBadge();
+
+  /* ── Initial popup open with blocked-popup detection ──────────────────── */
+  (function () {
+    var popup = openPopup();
+    if (!popup) {
+      showBadge();
+      showToast('Popup blocked — allow popups for this site, then click the badge to retry', false);
+      var b = document.getElementById('vg-relay-badge');
+      if (b) b.style.animation = 'vg-pulse 0.6s ease 3';
+    } else {
+      showBadge();
+    }
+  })();
 
   /* ── Result toast ──────────────────────────────────────────────────────── */
   function showToast(text, ok) {
@@ -149,23 +180,64 @@
   }
 
   /* ── Inject result into chat input and auto-submit ─────────────────────── */
+  // Three-layer fallback for cross-framework compatibility:
+  //   1. Clipboard API + paste event (ProseMirror, TipTap, React controlled inputs)
+  //   2. DataTransfer synthetic paste (synchronous, no permission needed)
+  //   3. Legacy: textarea native setter OR execCommand (last resort)
   function injectResult(text) {
     var el = findInput();
-    if (!el) return false;
-
-    el.focus();
-    if (el.tagName === 'TEXTAREA') {
-      var setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-      setter.call(el, (el.value ? el.value + '\n' : '') + text);
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-    } else {
-      // TipTap/ProseMirror (Open WebUI) owns its own doc state — DOM writes are
-      // discarded on submit. execCommand is intercepted by ProseMirror and updates
-      // internal state correctly. Select-all first to clear existing content.
-      document.execCommand('selectAll');
-      document.execCommand('insertText', false, text);
+    if (!el) {
+      showToast('Could not find chat input', false);
+      return false;
     }
-    setTimeout(function () { submitInput(el); }, 500);
+
+    function doSubmit() {
+      setTimeout(function () { submitInput(el); }, 500);
+    }
+
+    function fallback3() {
+      el.focus();
+      if (el.tagName === 'TEXTAREA') {
+        var setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+        setter.call(el, (el.value ? el.value + '\n' : '') + text);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      } else {
+        document.execCommand('selectAll');
+        document.execCommand('insertText', false, text);
+      }
+      doSubmit();
+    }
+
+    function fallback2() {
+      try {
+        var dt = new DataTransfer();
+        dt.setData('text/plain', text);
+        el.focus();
+        var snapBefore = el.tagName === 'TEXTAREA' ? el.value : el.textContent;
+        el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+        var snapAfter = el.tagName === 'TEXTAREA' ? el.value : el.textContent;
+        if (snapAfter !== snapBefore) {
+          doSubmit();
+        } else {
+          fallback3();
+        }
+      } catch (e) {
+        fallback3();
+      }
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        el.focus();
+        el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true }));
+        doSubmit();
+      }).catch(function () {
+        fallback2();
+      });
+    } else {
+      fallback2();
+    }
+
     return true;
   }
 
@@ -218,16 +290,24 @@
       lines.push('Current graph (SVG):');
       lines.push(finalSvg);
     }
-    injectResult(lines.join('\n'));
-    showToast('Done: ' + results.length + ' tool' + (results.length !== 1 ? 's' : ''), allOk);
+    var text   = lines.join('\n');
+    var toastMsg = 'Done: ' + results.length + ' tool' + (results.length !== 1 ? 's' : '');
+    if (!document.hasFocus() || document.visibilityState !== 'visible') {
+      pendingInjection = { text: text, allOk: allOk, toastMsg: toastMsg };
+      showToast('⏳ Waiting for tab focus to inject result', true);
+      return;
+    }
+    injectResult(text);
+    showToast(toastMsg, allOk);
   }
 
   /* ── Batch queue state ─────────────────────────────────────────────────── */
-  var callQueue    = [];
-  var batchResults = [];
-  var isProcessing = false;
-  var pendingTool  = null;
-  var lastSummary  = null;
+  var callQueue        = [];
+  var batchResults     = [];
+  var isProcessing     = false;
+  var pendingTool      = null;
+  var lastSummary      = null;
+  var pendingInjection = null; // { text, allOk } — held when tab is not focused
 
   /* ── Result listener (popup → AI tab) ─────────────────────────────────── */
   window.addEventListener('message', function (evt) {
@@ -430,6 +510,16 @@
   });
 
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+  /* ── Drain pending injection when tab regains focus ────────────────────── */
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible' && pendingInjection) {
+      var p = pendingInjection;
+      pendingInjection = null;
+      injectResult(p.text);
+      showToast(p.toastMsg, p.allOk);
+    }
+  });
 
   setTimeout(function () { parseAndEnqueue(document.body); }, 500);
 
