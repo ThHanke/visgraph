@@ -226,7 +226,14 @@
       }
     }
 
-    if (navigator.clipboard && navigator.clipboard.writeText) {
+    if (el.tagName === 'TEXTAREA') {
+      // For React-controlled textareas the native-setter + input event is the
+      // only reliable path — it updates React's internal fiber state so the
+      // send button becomes enabled before doSubmit fires.
+      // The clipboard/paste approach injects text into the DOM but bypasses
+      // React's onChange, leaving the button disabled.
+      fallback3();
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () {
         el.focus();
         el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true }));
