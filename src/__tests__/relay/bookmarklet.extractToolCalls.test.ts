@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * Unit tests for the TOOL block parser logic from relay-bookmarklet.js.
+ * Unit tests for the MCP JSON-RPC 2.0 parser logic from relay-bookmarklet.js.
  *
  * Extracted to pure JS so we can test without a browser environment.
  * Mirrors the exact algorithm in public/relay-bookmarklet.js.
@@ -30,53 +30,61 @@ function expandPrefix(val: string): string {
   return val;
 }
 
-interface ToolCall { tool: string; params: Record<string, unknown> }
+function validateMcpRequest(obj: unknown): boolean {
+  if (!obj || typeof obj !== 'object') return false;
+  const o = obj as Record<string, unknown>;
+  if (o.jsonrpc !== '2.0') return false;
+  if (o.method !== 'tools/call') return false;
+  if (!o.params || typeof (o.params as Record<string, unknown>).name !== 'string') return false;
+  return true;
+}
 
-function extractAllToolCalls(text: string, seen = new Set<string>()): ToolCall[] {
-  const stripped = text.replace(/^```[^\n]*\n([\s\S]*?)^```/gm, '$1');
-  const calls: ToolCall[] = [];
-  const parts = stripped.split(/^TOOL:\s*/m);
-
-  for (let i = 1; i < parts.length; i++) {
-    const lines = parts[i].split('\n');
-    const firstLine = lines[0].trim();
-    const toolMatch = firstLine.match(/^(\w+)(.*)/);
-    if (!toolMatch) continue;
-    const tool = toolMatch[1];
-    const params: Record<string, unknown> = {};
-
-    function parseParamLine(line: string) {
-      line = line.trim();
-      if (!line) return;
-      const kv = line.match(/^(\w+):\s*(.+)/);
-      if (kv && !/\s+\w+:/.test(kv[2])) {
-        let v = kv[2].trim();
-        if (v.indexOf(':') !== -1 && v.indexOf(' ') === -1) v = expandPrefix(v);
-        params[kv[1]] = v === 'true' ? true : v === 'false' ? false
-          : (!isNaN(+v) && v !== '') ? +v : v;
-        return;
-      }
-      // Inline multi-param: match each key-value pair stopping before next \s+word:
-      // This correctly handles IRI values that contain "http:" or "https:".
-      const pairRe = /(\w+):\s*(.*?)(?=\s+\w+:|$)/g;
-      let mp: RegExpExecArray | null;
-      while ((mp = pairRe.exec(line)) !== null) {
-        let v = mp[2].trim();
-        if (!v) continue;
-        if (v.indexOf(':') !== -1 && v.indexOf(' ') === -1) v = expandPrefix(v);
-        params[mp[1]] = v === 'true' ? true : v === 'false' ? false
-          : (!isNaN(+v) && v !== '') ? +v : v;
+function extractJsonObjects(text: string): string[] {
+  const objects: string[] = [];
+  let i = 0;
+  const n = text.length;
+  while (i < n) {
+    const start = text.indexOf('{', i);
+    if (start === -1) break;
+    let depth = 0, inStr = false, complete = false;
+    for (let j = start; j < n; j++) {
+      const c = text[j];
+      if (inStr) {
+        if (c === '\\') { j++; continue; }
+        if (c === '"') inStr = false;
+      } else {
+        if (c === '"') inStr = true;
+        else if (c === '{') depth++;
+        else if (c === '}') {
+          if (--depth === 0) { objects.push(text.slice(start, j + 1)); i = j + 1; complete = true; break; }
+        }
       }
     }
+    if (!complete) break;
+  }
+  return objects;
+}
 
-    const inlineRest = toolMatch[2].trim();
-    if (inlineRest) parseParamLine(inlineRest);
-    for (let j = 1; j < lines.length; j++) parseParamLine(lines[j]);
+interface ToolCall { tool: string; params: Record<string, unknown>; mcpId: number | null }
 
+function extractAllToolCalls(text: string, seen = new Set<string>()): ToolCall[] {
+  const calls: ToolCall[] = [];
+  const objects = extractJsonObjects(text);
+  for (const raw of objects) {
+    let req: Record<string, unknown>;
+    try { req = JSON.parse(raw); } catch { continue; }
+    if (!validateMcpRequest(req)) continue;
+    const p = req.params as Record<string, unknown>;
+    const tool = p.name as string;
+    const params: Record<string, unknown> = (p.arguments as Record<string, unknown>) || {};
+    for (const k in params) {
+      if (typeof params[k] === 'string') params[k] = expandPrefix(params[k] as string);
+    }
     const sig = tool + ':' + JSON.stringify(params);
     if (!seen.has(sig)) {
       seen.add(sig);
-      calls.push({ tool, params });
+      const id = req.id;
+      calls.push({ tool, params, mcpId: id != null ? (id as number) : null });
     }
   }
   return calls;
@@ -88,252 +96,119 @@ describe('extractAllToolCalls', () => {
   let seen: Set<string>;
   beforeEach(() => { seen = new Set(); });
 
-  it('parses a single TOOL block', () => {
-    const text = 'TOOL: addNode\niri: http://example.org/Alice\nlabel: Alice';
+  // ── Happy path ────────────────────────────────────────────────────────
+
+  it('parses a single inline backtick JSON-RPC call', () => {
+    const text = '`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.org/Alice","label":"Alice"}}}`';
     const calls = extractAllToolCalls(text, seen);
     expect(calls).toHaveLength(1);
     expect(calls[0].tool).toBe('addNode');
     expect(calls[0].params.iri).toBe('http://example.org/Alice');
     expect(calls[0].params.label).toBe('Alice');
+    expect(calls[0].mcpId).toBe(1);
   });
 
-  it('parses multiple TOOL blocks', () => {
+  it('parses two calls in one message, preserving order', () => {
     const text = [
-      'TOOL: addNode',
-      'iri: http://example.org/Alice',
-      'label: Alice',
-      '',
-      'TOOL: addNode',
-      'iri: http://example.org/Bob',
-      'label: Bob',
+      '`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.org/Alice","label":"Alice"}}}`',
+      '`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.org/Bob","label":"Bob"}}}`',
     ].join('\n');
     const calls = extractAllToolCalls(text, seen);
     expect(calls).toHaveLength(2);
     expect(calls[0].params.label).toBe('Alice');
     expect(calls[1].params.label).toBe('Bob');
+    expect(calls[0].mcpId).toBe(1);
+    expect(calls[1].mcpId).toBe(2);
   });
 
-  it('strips markdown fences', () => {
-    const text = '```text\nTOOL: addNode\niri: http://example.org/Fenced\nlabel: Fenced\n```';
+  it('carries mcpId null when id is omitted', () => {
+    const text = '`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"fitCanvas","arguments":{}}}`';
     const calls = extractAllToolCalls(text, seen);
     expect(calls).toHaveLength(1);
-    expect(calls[0].params.label).toBe('Fenced');
+    expect(calls[0].mcpId).toBeNull();
   });
 
-  it('expands prefixed IRIs', () => {
-    const text = 'TOOL: addNode\niri: ex:Alice\ntypeIri: owl:Class';
+  it('expands prefixed IRI values in arguments', () => {
+    const text = '`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"ex:Alice","typeIri":"owl:Class"}}}`';
     const calls = extractAllToolCalls(text, seen);
     expect(calls[0].params.iri).toBe('http://example.org/Alice');
     expect(calls[0].params.typeIri).toBe('http://www.w3.org/2002/07/owl#Class');
   });
 
-  it('parses inline params on same line as tool name', () => {
-    const text = 'TOOL: addNode iri: http://example.org/Inline label: InlineNode typeIri: http://example.org/Thing';
+  it('works when JSON appears without surrounding backticks (rendered <code>)', () => {
+    // In rendered HTML the backtick wrapper is stripped by the browser; innerText has raw JSON
+    const text = '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"fitCanvas","arguments":{}}}';
     const calls = extractAllToolCalls(text, seen);
     expect(calls).toHaveLength(1);
-    expect(calls[0].tool).toBe('addNode');
-    expect(calls[0].params.iri).toBe('http://example.org/Inline');
-    expect(calls[0].params.label).toBe('InlineNode');
+    expect(calls[0].tool).toBe('fitCanvas');
   });
 
-  it('coerces boolean values', () => {
-    const text = 'TOOL: exportImage\nformat: svg\nnoCss: true\ncompact: false';
+  // ── Streaming safety ──────────────────────────────────────────────────
+
+  it('skips truncated JSON (unbalanced braces — streaming in progress)', () => {
+    const text = '`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"addNode","arguments":{';
     const calls = extractAllToolCalls(text, seen);
-    expect(calls[0].params.noCss).toBe(true);
-    expect(calls[0].params.compact).toBe(false);
+    expect(calls).toHaveLength(0);
   });
 
-  it('coerces numeric values', () => {
-    const text = 'TOOL: someOp\ncount: 42\nfactor: 3.14';
+  // ── False-positive guards ─────────────────────────────────────────────
+
+  it('skips valid JSON with wrong method', () => {
+    const text = '`{"jsonrpc":"2.0","id":1,"method":"other/method","params":{"name":"addNode","arguments":{}}}`';
     const calls = extractAllToolCalls(text, seen);
-    expect(calls[0].params.count).toBe(42);
-    expect(calls[0].params.factor).toBe(3.14);
+    expect(calls).toHaveLength(0);
   });
 
-  it('deduplicates identical calls (dispatchedSigs)', () => {
-    const block = 'TOOL: addNode\niri: http://example.org/Alice\nlabel: Alice';
-    const calls1 = extractAllToolCalls(block, seen);
-    const calls2 = extractAllToolCalls(block, seen);
+  it('skips valid JSON missing params.name', () => {
+    const text = '`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"arguments":{}}}`';
+    const calls = extractAllToolCalls(text, seen);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('skips non-MCP JSON objects in the text', () => {
+    const text = 'Some context {"key":"value"} and more text without a tool call';
+    const calls = extractAllToolCalls(text, seen);
+    expect(calls).toHaveLength(0);
+  });
+
+  // ── Deduplication ─────────────────────────────────────────────────────
+
+  it('deduplicates identical calls across re-scans (streaming)', () => {
+    const call = '`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.org/Alice"}}}`';
+    const calls1 = extractAllToolCalls(call, seen);
+    const calls2 = extractAllToolCalls(call, seen);
     expect(calls1).toHaveLength(1);
-    expect(calls2).toHaveLength(0); // already in seen
+    expect(calls2).toHaveLength(0);
   });
 
-  it('handles TOOL block with no params', () => {
-    const text = 'TOOL: fitCanvas';
+  // ── Real-world AI output patterns ─────────────────────────────────────
+
+  it('extracts calls embedded in prose with surrounding text', () => {
+    const text = [
+      'I will add two nodes to the graph.',
+      '',
+      '`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.org/Alice","label":"Alice"}}}`',
+      '',
+      'And then Bob:',
+      '',
+      '`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.org/Bob","label":"Bob"}}}`',
+    ].join('\n');
+    const calls = extractAllToolCalls(text, seen);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].tool).toBe('addNode');
+    expect(calls[1].params.label).toBe('Bob');
+  });
+
+  it('handles empty arguments object', () => {
+    const text = '`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"fitCanvas","arguments":{}}}`';
     const calls = extractAllToolCalls(text, seen);
     expect(calls).toHaveLength(1);
     expect(calls[0].tool).toBe('fitCanvas');
     expect(calls[0].params).toEqual({});
   });
 
-  it('handles runLayout with algorithm param', () => {
-    const text = 'TOOL: runLayout\nalgorithm: dagre-lr';
-    const calls = extractAllToolCalls(text, seen);
-    expect(calls[0].tool).toBe('runLayout');
-    expect(calls[0].params.algorithm).toBe('dagre-lr');
-  });
-
-  it('handles addLink with literal objectIri', () => {
-    const text = [
-      'TOOL: addLink',
-      'subjectIri: http://example.org/Alice',
-      'predicateIri: http://example.org/role',
-      'objectIri: Chief Executive',
-    ].join('\n');
-    const calls = extractAllToolCalls(text, seen);
-    expect(calls[0].params.objectIri).toBe('Chief Executive');
-  });
-
-  it('does not expand values that contain spaces (literals)', () => {
-    const text = 'TOOL: addNode\niri: http://example.org/X\nlabel: some label with spaces';
-    const calls = extractAllToolCalls(text, seen);
-    expect(calls[0].params.label).toBe('some label with spaces');
-  });
-
-  it('parses real FhGenie-style message with surrounding prose', () => {
-    const text = [
-      'I will add three nodes to the graph.',
-      '',
-      'TOOL: addNode',
-      'iri: http://example.org/Alice',
-      'label: Alice',
-      'typeIri: http://example.org/Person',
-      '',
-      'TOOL: addNode',
-      'iri: http://example.org/Bob',
-      'label: Bob',
-      'typeIri: http://example.org/Person',
-      '',
-      'TOOL: runLayout',
-      'algorithm: dagre-lr',
-      '',
-      'TOOL: fitCanvas',
-    ].join('\n');
-    const calls = extractAllToolCalls(text, seen);
-    expect(calls).toHaveLength(4);
-    expect(calls.map(c => c.tool)).toEqual(['addNode', 'addNode', 'runLayout', 'fitCanvas']);
-  });
-
-  it('Open WebUI: markdown prose with leading/trailing text per paragraph', () => {
-    // Open WebUI renders assistant messages as <div class="prose">; innerText looks like this:
-    const text = [
-      'Ich werde jetzt die Knoten zum Graphen hinzufügen.',
-      '',
-      'TOOL: addNode',
-      'iri: http://example.org/Alice',
-      'label: Alice',
-      'typeIri: http://xmlns.com/foaf/0.1/Person',
-      '',
-      'TOOL: addNode',
-      'iri: http://example.org/Bob',
-      'label: Bob',
-      'typeIri: http://xmlns.com/foaf/0.1/Person',
-      '',
-      'TOOL: addLink',
-      'subjectIri: http://example.org/Alice',
-      'predicateIri: http://xmlns.com/foaf/0.1/knows',
-      'objectIri: http://example.org/Bob',
-      '',
-      'TOOL: runLayout',
-      'algorithm: dagre-lr',
-      '',
-      'TOOL: fitCanvas',
-      '',
-      'Die Knoten wurden erfolgreich hinzugefügt.',
-    ].join('\n');
-    const calls = extractAllToolCalls(text, seen);
-    expect(calls).toHaveLength(5);
-    expect(calls[0].tool).toBe('addNode');
-    expect(calls[0].params.iri).toBe('http://example.org/Alice');
-    expect(calls[0].params.typeIri).toBe('http://xmlns.com/foaf/0.1/Person');
-    expect(calls[2].tool).toBe('addLink');
-    expect(calls[2].params.subjectIri).toBe('http://example.org/Alice');
-    expect(calls[2].params.objectIri).toBe('http://example.org/Bob');
-    expect(calls[3].tool).toBe('runLayout');
-    expect(calls[3].params.algorithm).toBe('dagre-lr');
-  });
-
-  it('ChatGPT: fenced code blocks with prose between', () => {
-    // ChatGPT wraps TOOL blocks in ```text fences; prose renders as plain paragraphs:
-    const text = [
-      'Hier sind die Tool-Aufrufe für den Wissensgraphen:',
-      '',
-      '```text',
-      'TOOL: addNode',
-      'iri: http://example.org/Alice',
-      'label: Alice',
-      'typeIri: http://example.org/Person',
-      '```',
-      '',
-      'Und ein weiterer Knoten:',
-      '',
-      '```',
-      'TOOL: addNode',
-      'iri: http://example.org/Bob',
-      'label: Bob',
-      'typeIri: http://example.org/Person',
-      '```',
-      '',
-      'Abschließend das Layout:',
-      '',
-      '```',
-      'TOOL: runLayout',
-      'algorithm: dagre-lr',
-      '',
-      'TOOL: fitCanvas',
-      '',
-      'TOOL: exportImage',
-      'format: svg',
-      'noCss: true',
-      '```',
-    ].join('\n');
-    const calls = extractAllToolCalls(text, seen);
-    expect(calls).toHaveLength(5);
-    expect(calls[0].params.iri).toBe('http://example.org/Alice');
-    expect(calls[1].params.iri).toBe('http://example.org/Bob');
-    expect(calls[2].tool).toBe('runLayout');
-    expect(calls[4].params.format).toBe('svg');
-    expect(calls[4].params.noCss).toBe(true);
-  });
-
-  it('FhGenie GPT-5.1: prose before each block, no code fences', () => {
-    // FhGenie shows raw assistant text without fences
-    const text = [
-      'Ich lese zunächst die Tool-Liste von VisGraph.',
-      '',
-      'TOOL: getGraphState',
-      '',
-      'Gut. Jetzt füge ich Alice und Bob hinzu.',
-      '',
-      'TOOL: addNode',
-      'iri: http://example.org/Alice',
-      'label: Alice',
-      'typeIri: http://example.org/Person',
-      '',
-      'TOOL: addNode',
-      'iri: http://example.org/Bob',
-      'label: Bob',
-      'typeIri: http://example.org/Person',
-      '',
-      'TOOL: addLink',
-      'subjectIri: http://example.org/Alice',
-      'predicateIri: http://example.org/knows',
-      'objectIri: http://example.org/Bob',
-      '',
-      'TOOL: runLayout',
-      'algorithm: dagre-lr',
-      '',
-      'TOOL: fitCanvas',
-      '',
-      'TOOL: exportImage',
-      'format: svg',
-      'noCss: true',
-    ].join('\n');
-    const calls = extractAllToolCalls(text, seen);
-    expect(calls).toHaveLength(7);
-    expect(calls[0].tool).toBe('getGraphState');
-    expect(calls[1].tool).toBe('addNode');
-    expect(calls[3].tool).toBe('addLink');
-    expect(calls[6].params.noCss).toBe(true);
+  it('returns empty array for text with no JSON', () => {
+    const calls = extractAllToolCalls('just some plain text with no JSON at all', seen);
+    expect(calls).toHaveLength(0);
   });
 });
