@@ -491,7 +491,22 @@
     while (el && el !== document.body) {
       if (el.dataset && el.dataset.vgProcessed) return;
       var tag = el.tagName ? el.tagName.toLowerCase() : '';
-      if (tag === 'p' || tag === 'div' || tag === 'section' || tag === 'article' || tag === 'li') {
+      if (tag === 'p' || tag === 'li') {
+        // p/li are inline containers — climb to nearest block ancestor so we
+        // scan the whole message (params may be in sibling <p> elements).
+        var parent = el.parentElement;
+        while (parent && parent !== document.body) {
+          var ptag = parent.tagName ? parent.tagName.toLowerCase() : '';
+          if (ptag === 'div' || ptag === 'section' || ptag === 'article') {
+            pendingNodes.add(parent);
+            return;
+          }
+          parent = parent.parentElement;
+        }
+        pendingNodes.add(el);
+        return;
+      }
+      if (tag === 'div' || tag === 'section' || tag === 'article') {
         pendingNodes.add(el);
         return;
       }

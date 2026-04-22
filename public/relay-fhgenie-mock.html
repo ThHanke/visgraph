@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en" style="--background:#1f2023;color-scheme:dark;">
+<head>
+  <meta charset="UTF-8">
+  <title>VisGraph Relay — FhGenie mock</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background:#1f2023; color:#fff; font-family:system-ui,sans-serif; font-size:14px; }
+    /* Mimic FhGenie chat stream class names exactly */
+    ._chatMessageStream_c6udf_108 { padding:16px; display:flex; flex-direction:column; gap:16px; }
+    ._chatMessageGpt_c6udf_126 { background:#161b22; border:1px solid #30363d; border-radius:8px; padding:12px 16px; }
+    ._body_1gd8t_67 { white-space:pre-wrap; font-size:13px; line-height:1.6; }
+    /* Markdown-rendered paragraphs */
+    ._body_1gd8t_67 p { margin-bottom:8px; }
+    ._body_1gd8t_67 ul { margin-left:20px; margin-bottom:8px; }
+    ._body_1gd8t_67 li { list-style:disc; }
+    ._body_1gd8t_67 code { background:#0d1117; padding:1px 4px; border-radius:3px; font-family:monospace; }
+    ._body_1gd8t_67 pre { background:#0d1117; padding:8px; border-radius:4px; overflow:auto; }
+
+    #scenario-bar { background:#161b22; border-bottom:1px solid #21262d; padding:8px 12px; display:flex; gap:8px; flex-wrap:wrap; }
+    #scenario-bar span { color:#8b949e; font-size:12px; }
+    button.scenario { background:#21262d; border:1px solid #30363d; border-radius:4px; color:#c9d1d9; cursor:pointer; font-size:12px; padding:4px 10px; }
+    button.scenario:hover { background:#30363d; }
+    #status { font-size:11px; color:#8b949e; background:#0d1117; padding:4px 12px; border-top:1px solid #21262d; position:fixed; bottom:0; width:100%; }
+    /* Hidden textarea for bookmarklet result injection (mirrors relay-mock-chat.html) */
+    #user-input { position:fixed; bottom:20px; left:-9999px; width:1px; height:1px; opacity:0; }
+    /* Submitted user messages appear here */
+    #result-stream { padding:8px 16px 28px; }
+    .msg-user { background:#2d333b; border-radius:8px; padding:8px 12px; margin-bottom:8px; font-size:13px; white-space:pre-wrap; }
+  </style>
+</head>
+<body>
+
+<div id="scenario-bar">
+  <span>FhGenie rendering:</span>
+  <button class="scenario" data-scenario="plain">Plain text TOOL blocks</button>
+  <button class="scenario" data-scenario="markdown-p">Markdown &lt;p&gt; wrapped</button>
+  <button class="scenario" data-scenario="markdown-list">Markdown list item (dagre + - lr bug)</button>
+  <button class="scenario" data-scenario="codeblock">Fenced code block</button>
+  <button class="scenario" data-scenario="inline-algo">Inline algorithm param</button>
+  <button class="scenario" data-scenario="prefixed">Prefixed IRIs</button>
+  <button class="scenario" data-scenario="clear" style="border-color:#f85149;color:#f85149;">Clear</button>
+</div>
+
+<!-- FhGenie uses this exact class hierarchy for AI messages -->
+<div class="_chatMessageStream_c6udf_108" id="chat-stream">
+</div>
+
+<!-- Hidden textarea that the bookmarklet injects results into -->
+<textarea id="user-input"></textarea>
+
+<!-- Submitted result messages rendered here (read by E2E tests) -->
+<div id="result-stream"></div>
+
+<div id="status">Ready. Load the bookmarklet, then click a scenario.</div>
+
+<script>
+var stream = document.getElementById('chat-stream');
+var status = document.getElementById('status');
+var resultStream = document.getElementById('result-stream');
+var userInput = document.getElementById('user-input');
+
+// Mirror the relay-mock-chat.html submit pattern so E2E tests can observe results.
+// The bookmarklet sets the textarea value and fires a submit / Enter keydown.
+// We listen for 'input' changes (triggered by native setter) or Enter keydown.
+function submitUserInput() {
+  var text = userInput.value.trim();
+  if (!text) return;
+  userInput.value = '';
+  var div = document.createElement('div');
+  div.className = 'msg-user';
+  div.textContent = text;
+  resultStream.appendChild(div);
+  status.textContent = 'Submitted: ' + text.slice(0, 60) + (text.length > 60 ? '…' : '');
+}
+userInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitUserInput(); }
+});
+// Also fire on programmatic form submit events (bookmarklet uses click on send-btn or submit)
+document.addEventListener('submit', function(e) { e.preventDefault(); submitUserInput(); });
+// Bookmarklet may dispatch a click on a button with id="send-btn" – provide one.
+var fakeBtn = document.createElement('button');
+fakeBtn.id = 'send-btn';
+fakeBtn.style.display = 'none';
+fakeBtn.addEventListener('click', submitUserInput);
+document.body.appendChild(fakeBtn);
+
+// FhGenie renders AI responses as markdown HTML inside ._body_1gd8t_67
+// These scenarios reproduce the exact HTML a markdown renderer would produce.
+var SCENARIOS = {
+  // Scenario 1: Plain text (no markdown rendering) — baseline
+  'plain': {
+    label: 'Plain text',
+    html: 'TOOL: runLayout\nalgorithm: dagre-lr\n\nTOOL: fitCanvas\n\nTOOL: exportImage\nformat: svg\nnoCss: true',
+    pre: true,
+  },
+
+  // Scenario 2: Markdown renderer wraps each block in <p> tags
+  'markdown-p': {
+    label: 'Markdown <p> wrapped',
+    html: '<p>TOOL: runLayout</p><p>algorithm: dagre-lr</p><p>TOOL: fitCanvas</p><p>TOOL: exportImage</p><p>format: svg</p><p>noCss: true</p>',
+    pre: false,
+  },
+
+  // Scenario 3: THE BUG CASE — AI outputs "dagre" then "- lr" as a list item
+  // FhGenie markdown renders "- lr" as <ul><li>lr</li></ul>
+  // innerText sees: "TOOL: runLayout\nalgorithm: dagre\nlr" → algorithm = "dagre"
+  'markdown-list': {
+    label: 'Bug: dagre + <li>lr</li>',
+    html: '<p>TOOL: runLayout</p><p>algorithm: dagre</p><ul><li>lr</li></ul><p>TOOL: fitCanvas</p>',
+    pre: false,
+  },
+
+  // Scenario 4: AI wraps TOOL blocks in a fenced code block
+  'codeblock': {
+    label: 'Fenced code block',
+    html: '<pre><code>TOOL: runLayout\nalgorithm: dagre-lr\n\nTOOL: fitCanvas\n\nTOOL: exportImage\nformat: svg\nnoCss: true</code></pre>',
+    pre: false,
+  },
+
+  // Scenario 5: Inline algorithm param on same line as tool name
+  'inline-algo': {
+    label: 'Inline: TOOL: runLayout algorithm: dagre-lr',
+    html: '<p>TOOL: runLayout algorithm: dagre-lr</p><p>TOOL: fitCanvas</p>',
+    pre: false,
+  },
+
+  // Scenario 6: Prefixed IRIs — checks expansion
+  'prefixed': {
+    label: 'Prefixed IRIs',
+    html: '<p>TOOL: addNode</p><p>iri: ex:Alice</p><p>label: Alice</p><p>typeIri: owl:Class</p>',
+    pre: false,
+  },
+};
+
+function addAiMessage(scenario) {
+  var s = SCENARIOS[scenario];
+  if (!s) return;
+
+  var outer = document.createElement('div');
+  outer.className = '_chatMessageGpt_c6udf_126';
+
+  var label = document.createElement('div');
+  label.style.cssText = 'font-size:11px;color:#8b949e;margin-bottom:6px;';
+  label.textContent = 'AI (' + s.label + ')';
+  outer.appendChild(label);
+
+  var body = document.createElement('div');
+  body.className = '_body_1gd8t_67';
+
+  if (s.pre) {
+    // Plain text in a pre — closest to raw text rendering
+    var pre = document.createElement('pre');
+    pre.textContent = s.html;
+    body.appendChild(pre);
+  } else {
+    body.innerHTML = s.html;
+  }
+
+  outer.appendChild(body);
+  stream.appendChild(outer);
+  stream.scrollTop = stream.scrollHeight;
+  status.textContent = 'Scenario "' + s.label + '" added — load bookmarklet if not done, wait for relay to process.';
+}
+
+document.querySelectorAll('button.scenario').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var s = btn.dataset.scenario;
+    if (s === 'clear') {
+      stream.innerHTML = '';
+      status.textContent = 'Cleared.';
+      return;
+    }
+    addAiMessage(s);
+  });
+});
+</script>
+</body>
+</html>
