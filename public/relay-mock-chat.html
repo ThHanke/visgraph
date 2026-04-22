@@ -310,6 +310,23 @@ document.getElementById('owui-input').addEventListener('keydown', function(e) {
 document.getElementById('gpt-input').addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('send-btn').click(); }
 });
+
+// Handle synthetic paste events dispatched by the relay bookmarklet.
+// Non-trusted paste events don't update contenteditable automatically in all browsers,
+// so we explicitly read clipboardData and update innerText when available.
+function handleSyntheticPaste(e) {
+  if (e.isTrusted) return; // let the browser handle trusted paste normally
+  var cd = e.clipboardData;
+  if (cd) {
+    var text = cd.getData('text/plain');
+    if (text) {
+      e.preventDefault();
+      document.execCommand('insertText', false, text);
+    }
+  }
+}
+document.getElementById('owui-input').addEventListener('paste', handleSyntheticPaste);
+document.getElementById('gpt-input').addEventListener('paste', handleSyntheticPaste);
 </script>
 </body>
 </html>

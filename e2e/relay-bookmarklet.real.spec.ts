@@ -203,6 +203,45 @@ test.describe('relay — real end-to-end (dev server)', () => {
     expect(result).toContain('(some failed)');
   });
 
+  // ── Defocus queue: result deferred until tab regains focus ───────────
+
+  test('defocus queue: result injected after tab regains visibility', async ({ context, page }) => {
+    await page.goto(`${DEV_URL}/relay-mock-chat.html`);
+    await injectBookmarklet(page);
+
+    // Simulate the page becoming hidden before the tool response arrives
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      Object.defineProperty(document, 'hasFocus', { value: () => false, configurable: true });
+    });
+
+    // Trigger scenario — result will arrive while tab is "hidden"
+    await page.click('button[data-scenario="single"]');
+
+    // Wait for the round-trip to complete on the VisGraph side (node created in app)
+    // but injection should not yet have fired (tab is "hidden")
+    await appPage.waitForFunction(
+      async () => {
+        const tools = (window as any).__mcpTools as Record<string, (p: any) => Promise<any>>;
+        const result = await tools['getNodes']({});
+        const entities = (result.data as any)?.entities ?? [];
+        return entities.some((n: any) => n.iri === 'http://example.org/Alice');
+      },
+      { timeout: 15_000 },
+    );
+
+    // Restore visibility — should drain the pending injection
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      Object.defineProperty(document, 'hasFocus', { value: () => true, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    const result = await getSubmittedResult(page, 15_000);
+    expect(result).toContain('[VisGraph — 1 tool ✓]');
+    expect(result).toContain('✓ addNode');
+  });
+
   // ── relay.html shows correct status ───────────────────────────────────
 
   test('relay.html: shows "active" for opener and BC connection after first tool call', async ({ context, page }) => {

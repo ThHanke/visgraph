@@ -2,7 +2,7 @@
 
 ## What it is
 
-The AI Relay Bridge lets any AI chat service (ChatGPT, Claude.ai, Gemini, etc.) control VisGraph directly — no server, no browser extension required. A bookmarklet on the AI tab intercepts tool calls and routes them to VisGraph via a shared popup bridge. Results are automatically copied to your clipboard so you can paste them back into the chat.
+The AI Relay Bridge lets any AI chat service (ChatGPT, Claude.ai, Gemini, etc.) control VisGraph directly — no server, no browser extension required. A bookmarklet on the AI tab intercepts tool calls, routes them to VisGraph via a shared popup bridge, and automatically injects the result back into the chat input.
 
 ## How it works
 
@@ -18,7 +18,7 @@ AI chat tab                 relay.html popup            VisGraph tab
      │                            │ ◄────────────────────────── │
      │  postMessage(vg-result)    │                            │
      │ ◄───────────────────────── │                            │
-   result copied to clipboard
+   result injected into chat input automatically
 ```
 
 ## Prerequisites
@@ -46,7 +46,7 @@ AI chat tab                 relay.html popup            VisGraph tab
 
 1. Paste the starter prompt (see below) into your AI chat
 2. The AI will issue `TOOL:` / `PARAMS:` blocks
-3. Results are automatically copied to your clipboard — paste them back into the chat
+3. Results are automatically injected into the chat input and submitted — no manual paste needed
 
 ## Starter prompt
 
@@ -76,6 +76,7 @@ Now let's build a knowledge graph. What would you like to model?
 | Badge doesn't appear | Check browser console for errors; try clicking the bookmarklet again |
 | Results not appearing | Make sure VisGraph is open and the relay section shows the channel name |
 | Relay stopped working | Platform DOM changed — check for bookmarklet updates at the VisGraph sidebar |
+| Result not injected yet | If you switched to the VisGraph tab while a result was processing, it will inject automatically when you return to the chat tab |
 | Tool calls not detected | The AI may not be using the TOOL:/PARAMS: format — check the starter prompt |
 
 ## Updating the bookmarklet
