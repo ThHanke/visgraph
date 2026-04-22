@@ -27,7 +27,7 @@
   var RELAY_ORIGIN = 'https://thhanke.github.io';
   var POPUP_NAME   = 'vg-relay';
   var POPUP_OPTS   = 'width=320,height=180,menubar=no,toolbar=no,location=no,resizable=yes';
-  var DEBOUNCE_MS  = 400;
+  var DEBOUNCE_MS  = 800;
 
   /* ── Popup management ──────────────────────────────────────────────────── */
   function openPopup() {
@@ -428,12 +428,86 @@
     return calls;
   }
 
+  /* ── Streaming-idle detection ─────────────────────────────────────────── */
+  // Selectors that are present in the DOM while the AI is still generating.
+  // When ALL of these are absent (or none match), the AI is considered idle.
+  var STREAMING_SELECTORS = [
+    // Generic stop-generation buttons (most chat UIs)
+    'button[aria-label*="Stop"]',
+    'button[aria-label*="stop"]',
+    'button[aria-label*="Cancel"]',
+    'button[aria-label*="Abbrechen"]',  // German (FhGenie)
+    // ChatGPT
+    '.result-streaming',
+    '[data-testid="stop-button"]',
+    // Claude.ai
+    '[aria-label="Stop streaming"]',
+    // Open WebUI
+    '.typing-dots',
+    // FhGenie — add selector here once identified, e.g.:
+    // '._generating_c6udf_123',
+    // Broad fallback: any visible SVG spinner with CSS animation
+    'svg[class*="spin"]',
+    'svg[class*="loading"]',
+    '[class*="spinner"]',
+    '[class*="Spinner"]',
+    '[class*="generating"]',
+    '[class*="Generating"]',
+    '[class*="streaming"]',
+    '[class*="Streaming"]',
+  ];
+
+  function isAiStreaming() {
+    return STREAMING_SELECTORS.some(function (sel) {
+      try { return !!document.querySelector(sel); } catch (e) { return false; }
+    });
+  }
+
+  /**
+   * Wait until the AI appears idle (streaming indicators gone AND the
+   * container text has stopped growing), then call callback.
+   * Falls back after MAX_WAIT_MS regardless.
+   */
+  function waitForIdle(container, callback) {
+    var MAX_WAIT_MS  = 30000;
+    var POLL_MS      = 200;
+    var STABLE_TICKS = 3;   // text must be same length for 3 polls (600 ms)
+    var elapsed      = 0;
+    var lastLen      = -1;
+    var stableCount  = 0;
+
+    function poll() {
+      elapsed += POLL_MS;
+      var len = (container.innerText || container.textContent || '').length;
+
+      if (len !== lastLen) {
+        lastLen     = len;
+        stableCount = 0;
+      } else {
+        stableCount++;
+      }
+
+      var streaming = isAiStreaming();
+      var stable    = stableCount >= STABLE_TICKS;
+
+      if ((!streaming && stable) || elapsed >= MAX_WAIT_MS) {
+        callback();
+      } else {
+        setTimeout(poll, POLL_MS);
+      }
+    }
+
+    setTimeout(poll, POLL_MS);
+  }
+
   var drainTimer = null;
 
-  function scheduleDrain() {
+  function scheduleDrain(container) {
     clearTimeout(drainTimer);
     drainTimer = setTimeout(function () {
-      if (!isProcessing) processNextInQueue();
+      waitForIdle(container, function () {
+        if (!isProcessing) processNextInQueue();
+      });
     }, DEBOUNCE_MS);
   }
 
@@ -442,13 +516,8 @@
     var text = el.innerText || el.textContent || '';
     var calls = extractAllToolCalls(text);
     if (calls.length === 0) return;
-    // Do NOT mark el as processed — deduplication is handled by the
-    // dispatchedSigs set in extractAllToolCalls.  Marking here causes
-    // the container to be skipped when streaming adds more <p> siblings.
     callQueue = callQueue.concat(calls);
-    // Wait for DOM to settle before draining — prevents starting while AI is
-    // still streaming more tool calls into the message.
-    scheduleDrain();
+    scheduleDrain(el);
   }
 
   function processNextInQueue() {
