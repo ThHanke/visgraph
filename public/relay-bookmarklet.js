@@ -317,11 +317,6 @@
     }
     var text   = lines.join('\n');
     var toastMsg = 'Done: ' + results.length + ' tool' + (results.length !== 1 ? 's' : '');
-    if (!document.hasFocus() || document.visibilityState !== 'visible') {
-      pendingInjection = { text: text, allOk: allOk, toastMsg: toastMsg };
-      showToast('⏳ Waiting for tab focus to inject result', true);
-      return;
-    }
     injectResult(text);
     showToast(toastMsg, allOk);
   }
@@ -332,7 +327,6 @@
   var isProcessing     = false;
   var pendingTool      = null;
   var lastSummary      = null;
-  var pendingInjection = null; // { text, allOk } — held when tab is not focused
 
   /* ── Result listener (popup → AI tab) ─────────────────────────────────── */
   window.addEventListener('message', function (evt) {
@@ -631,16 +625,6 @@
   });
 
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-
-  /* ── Drain pending injection when tab regains focus ────────────────────── */
-  document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'visible' && pendingInjection) {
-      var p = pendingInjection;
-      pendingInjection = null;
-      injectResult(p.text);
-      showToast(p.toastMsg, p.allOk);
-    }
-  });
 
   setTimeout(function () { parseAndEnqueue(document.body); }, 500);
 
