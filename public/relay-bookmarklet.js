@@ -298,13 +298,22 @@
   function injectCombinedResult(results, finalSummary, finalSvg) {
     var allOk = results.every(function (r) { return r.ok; });
     var lines = ['[VisGraph — ' + results.length + ' tool' + (results.length !== 1 ? 's' : '') + (allOk ? ' ✓' : ' (some failed)') + ']'];
+    // MCP JSON-RPC 2.0 responses — one backtick-wrapped compact JSON per tool call
     results.forEach(function (r) {
+      var resp;
       if (r.ok) {
-        lines.push('✓ ' + r.tool + ': ' + briefData(r.result && r.result.data));
+        resp = JSON.stringify({
+          jsonrpc: '2.0', id: r.mcpId != null ? r.mcpId : null,
+          result: { content: [{ type: 'text', text: briefData(r.result && r.result.data) }] },
+        });
       } else {
         var err = (r.result && r.result.error) || 'failed';
-        lines.push('✗ ' + r.tool + ': ' + err);
+        resp = JSON.stringify({
+          jsonrpc: '2.0', id: r.mcpId != null ? r.mcpId : null,
+          error: { code: -32000, message: String(err), data: { tool: r.tool } },
+        });
       }
+      lines.push('`' + resp + '`');
     });
     if (finalSummary) {
       lines.push('');
@@ -326,6 +335,7 @@
   var batchResults     = [];
   var isProcessing     = false;
   var pendingTool      = null;
+  var pendingMcpId     = null;
   var lastSummary      = null;
 
   /* ── Result listener (popup → AI tab) ─────────────────────────────────── */
@@ -335,10 +345,11 @@
     if (!data || data.type !== 'vg-result') return;
 
     var ok = !!(data.result && data.result.success !== false);
-    batchResults.push({ tool: pendingTool || '?', ok: ok, result: data.result });
+    batchResults.push({ tool: pendingTool || '?', mcpId: pendingMcpId, ok: ok, result: data.result });
     if (data.summary) lastSummary = data.summary;
     isProcessing = false;
     pendingTool  = null;
+    pendingMcpId = null;
 
     if (callQueue.length > 0) {
       processNextInQueue();
@@ -376,65 +387,67 @@
 
   /* ── Tool-call extractor ───────────────────────────────────────────────── */
   //
-  // Handles:
-  //  - Plain TOOL blocks
-  //  - TOOL blocks wrapped in markdown fences (```text ... ```, ``` ... ```)
-  //  - Prefixed IRIs (rdf:type, owl:Class, ex:Alice, etc.) — expanded to full IRIs
-  //  - Values: booleans, numbers, strings coerced automatically
+  // Detects MCP JSON-RPC 2.0 tool calls written as single-backtick inline code:
+  //   `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"addNode","arguments":{...}}}`
+  //
+  // Works on both raw text (backticks present) and rendered HTML where the
+  // backtick content lands in <code> element text (no backticks in innerText).
+  // Streaming safety: truncated JSON has unbalanced braces → brace scanner skips it.
+  // False-positive guard: validateMcpRequest rejects anything not a valid tools/call.
 
   var dispatchedSigs = new Set();
 
-  function extractAllToolCalls(text) {
-    // Strip markdown code fences before parsing — models often wrap TOOL blocks
-    var stripped = text.replace(/^```[^\n]*\n([\s\S]*?)^```/gm, '$1');
+  function validateMcpRequest(obj) {
+    if (!obj || obj.jsonrpc !== '2.0') return false;
+    if (obj.method !== 'tools/call') return false;
+    if (!obj.params || typeof obj.params.name !== 'string') return false;
+    return true;
+  }
 
-    var calls = [];
-    var parts = stripped.split(/^TOOL:\s*/m);
-    for (var i = 1; i < parts.length; i++) {
-      var lines = parts[i].split('\n');
-      // Extract tool name = first word; params may be inline on same line or on subsequent lines
-      var firstLine = lines[0].trim();
-      var toolMatch = firstLine.match(/^(\w+)(.*)/);
-      if (!toolMatch) continue;
-      var tool = toolMatch[1];
-      var params = {};
-
-      // Build a flat list of "key: value" strings from inline rest + subsequent lines.
-      // Inline format: "key: val key: val" — split on boundaries before each "word:"
-      function parseParamLine(line) {
-        line = line.trim();
-        if (!line) return;
-        // Try standard single "key: value" (whole line).
-        // But only use it when the value part doesn't contain additional " word:" tokens
-        // (which would mean the line has multiple inline params that need splitting).
-        var kv = line.match(/^(\w+):\s*(.+)/);
-        if (kv && !/\s+\w+:/.test(kv[2])) {
-          var v = kv[2].trim();
-          if (v.indexOf(':') !== -1 && v.indexOf(' ') === -1) v = expandPrefix(v);
-          params[kv[1]] = v === 'true' ? true : v === 'false' ? false
-            : (!isNaN(+v) && v !== '') ? +v : v;
-          return;
-        }
-        // Inline: multiple "key: value" pairs — match each pair stopping before next \s+word:
-        // This correctly handles IRI values that contain "http:" or "https:".
-        var pairRe = /(\w+):\s*(.*?)(?=\s+\w+:|$)/g;
-        var mp;
-        while ((mp = pairRe.exec(line)) !== null) {
-          var v = mp[2].trim();
-          if (!v) continue;
-          if (v.indexOf(':') !== -1 && v.indexOf(' ') === -1) v = expandPrefix(v);
-          params[mp[1]] = v === 'true' ? true : v === 'false' ? false
-            : (!isNaN(+v) && v !== '') ? +v : v;
+  // Scan text for balanced top-level {...} JSON objects via brace depth tracking.
+  // Handles both raw text (backtick-wrapped) and rendered text (plain JSON in <code>).
+  function extractJsonObjects(text) {
+    var objects = [];
+    var i = 0, n = text.length;
+    while (i < n) {
+      var start = text.indexOf('{', i);
+      if (start === -1) break;
+      var depth = 0, inStr = false, complete = false;
+      for (var j = start; j < n; j++) {
+        var c = text[j];
+        if (inStr) {
+          if (c === '\\') { j++; continue; }
+          if (c === '"') inStr = false;
+        } else {
+          if (c === '"') inStr = true;
+          else if (c === '{') depth++;
+          else if (c === '}') {
+            if (--depth === 0) { objects.push(text.slice(start, j + 1)); i = j + 1; complete = true; break; }
+          }
         }
       }
+      if (!complete) break; // truncated JSON — stop scanning
+    }
+    return objects;
+  }
 
-      var inlineRest = toolMatch[2].trim();
-      if (inlineRest) parseParamLine(inlineRest);
-      for (var j = 1; j < lines.length; j++) parseParamLine(lines[j]);
+  function extractAllToolCalls(text) {
+    var calls = [];
+    var objects = extractJsonObjects(text);
+    for (var i = 0; i < objects.length; i++) {
+      var req;
+      try { req = JSON.parse(objects[i]); } catch (e) { continue; }
+      if (!validateMcpRequest(req)) continue;
+      var tool = req.params.name;
+      var params = req.params.arguments || {};
+      // Expand known RDF prefixes in string argument values
+      for (var k in params) {
+        if (typeof params[k] === 'string') params[k] = expandPrefix(params[k]);
+      }
       var sig = tool + ':' + JSON.stringify(params);
       if (!dispatchedSigs.has(sig)) {
         dispatchedSigs.add(sig);
-        calls.push({ tool: tool, params: params });
+        calls.push({ tool: tool, params: params, mcpId: req.id != null ? req.id : null });
       }
     }
     return calls;
@@ -559,7 +572,8 @@
       lastSummary = null;
       return;
     }
-    pendingTool = item.tool;
+    pendingTool  = item.tool;
+    pendingMcpId = item.mcpId != null ? item.mcpId : null;
     var requestId = 'rq-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
     var payload = {
       type: 'vg-call',
