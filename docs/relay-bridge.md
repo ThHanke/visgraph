@@ -2,7 +2,7 @@
 
 ## What it is
 
-The AI Relay Bridge lets any AI chat service (ChatGPT, Claude.ai, Gemini, etc.) control VisGraph directly — no server, no browser extension required. A bookmarklet on the AI tab intercepts tool calls, routes them to VisGraph via a shared popup bridge, and automatically injects the result back into the chat input.
+The AI Relay Bridge lets any AI chat service (ChatGPT, Claude.ai, Gemini, etc.) control VisGraph directly — no server, no browser extension required. A bookmarklet on the AI tab intercepts MCP JSON-RPC 2.0 tool calls, routes them to VisGraph via a shared popup bridge, and automatically injects the result back into the chat input.
 
 ## How it works
 
@@ -45,7 +45,7 @@ AI chat tab                 relay.html popup            VisGraph tab
 ### Step 3 — Start chatting
 
 1. Paste the starter prompt (see below) into your AI chat
-2. The AI will issue `TOOL:` / `PARAMS:` blocks
+2. The AI issues MCP JSON-RPC 2.0 tool calls as inline backtick-wrapped JSON
 3. Results are automatically injected into the chat input and submitted — no manual paste needed
 
 ## Starter prompt
@@ -53,19 +53,32 @@ AI chat tab                 relay.html popup            VisGraph tab
 Paste this as your opening message after installing the bookmarklet:
 
 ```text
-You are controlling VisGraph, a live RDF knowledge graph editor at:
-https://thhanke.github.io/visgraph
+You are connected to VisGraph via a relay. A script in your browser tab scans your responses for MCP tool calls, executes them in VisGraph, and injects the combined result back as a user message.
 
-Fetch https://thhanke.github.io/visgraph/.well-known/mcp.json for the full tool list and architecture notes.
+OUTPUT FORMAT — one MCP JSON-RPC 2.0 request per line, each wrapped in single backticks:
+`{"jsonrpc":"2.0","id":<N>,"method":"tools/call","params":{"name":"<toolName>","arguments":{...}}}`
 
-To call a tool, output EXACTLY this format (one call at a time):
+Rules:
+1. You may output multiple tool calls in one response. They run sequentially in order.
+2. Use a different integer id for each call.
+3. Wait for the injected result message before issuing more calls.
+4. Never output a tool call unless you intend it to run — the relay executes everything it finds.
+5. addLink requires both nodes to already exist on canvas — never issue addNode and addLink for the same node in one response.
 
-TOOL: <toolName>
-PARAMS: <JSON params object>
+Reading results:
+The relay injects a message like:
+[VisGraph — N tools ✓]
+`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"<summary>"}]}}`
 
-Wait for the result before issuing the next call. Results will be pasted back by the user.
+- Parse each backtick-wrapped line as a JSON-RPC 2.0 response. id matches your request id.
+- result means success; error means failure (check error.message).
+- A Canvas summary line and SVG may follow after the responses.
 
-Now let's build a knowledge graph. What would you like to model?
+Common prefixes you can use in argument values: rdf: rdfs: owl: xsd: foaf: skos: dc: dcterms: schema: ex:
+
+Fetch https://thhanke.github.io/visgraph/.well-known/mcp.json for the full tool list with parameter names.
+
+Now build a knowledge graph. What would you like to model?
 ```
 
 ## Troubleshooting
@@ -77,7 +90,7 @@ Now let's build a knowledge graph. What would you like to model?
 | Results not appearing | Make sure VisGraph is open and the relay section shows the channel name |
 | Relay stopped working | Platform DOM changed — check for bookmarklet updates at the VisGraph sidebar |
 | Result not injected yet | If you switched to the VisGraph tab while a result was processing, it will inject automatically when you return to the chat tab |
-| Tool calls not detected | The AI may not be using the TOOL:/PARAMS: format — check the starter prompt |
+| Tool calls not detected | The AI may not be using the JSON-RPC backtick format — paste the starter prompt again |
 
 ## Updating the bookmarklet
 
@@ -90,4 +103,4 @@ Re-drag the **"⚡ VisGraph Relay"** button from the VisGraph sidebar to replace
 | ChatGPT (free + Plus) | Supported |
 | Claude.ai | Supported |
 | Gemini | Supported |
-| Any AI chat with text output | Works if it outputs TOOL:/PARAMS: format |
+| Any AI chat with text output | Works if it outputs MCP JSON-RPC backtick format |
