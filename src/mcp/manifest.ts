@@ -238,4 +238,39 @@ export const mcpManifest: McpToolManifestEntry[] = [
     description: 'Return a summary of the current canvas: node count, link count, and per-node IRI/label/types. Use to verify canvas state before or after mutations.',
     inputSchema: { type: 'object' },
   },
+  {
+    name: 'addNamespace',
+    description: 'Register a new IRI prefix so it can be used in abbreviated form in tool parameters (e.g. "myns:Alice" → "http://myns.org/Alice").',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prefix: { type: 'string', description: 'Prefix without colon (e.g. "myns")' },
+        namespace: { type: 'string', description: 'Full IRI namespace ending with # or / (e.g. "http://myns.org/")' },
+      },
+      required: ['prefix', 'namespace'],
+    },
+  },
+  {
+    name: 'updateNamespace',
+    description: 'Change the IRI namespace bound to an existing prefix.',
+    inputSchema: {
+      type: 'object',
+      properties: { prefix: { type: 'string' }, namespace: { type: 'string' } },
+      required: ['prefix', 'namespace'],
+    },
+  },
+  {
+    name: 'removeNamespace',
+    description: 'Unregister an IRI prefix from the namespace registry.',
+    inputSchema: {
+      type: 'object',
+      properties: { prefix: { type: 'string' } },
+      required: ['prefix'],
+    },
+  },
+  {
+    name: 'listNamespaces',
+    description: 'Return all registered IRI prefixes and their namespace URIs.',
+    inputSchema: { type: 'object', properties: {} },
+  },
 ];

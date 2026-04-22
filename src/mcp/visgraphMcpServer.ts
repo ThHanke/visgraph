@@ -6,6 +6,7 @@ import { linkTools } from './tools/links';
 import { searchTools } from './tools/search';
 import { layoutTools } from './tools/layout';
 import { reasoningTools } from './tools/reasoning';
+import { namespaceTools } from './tools/namespaceTools';
 import type { McpTool } from './types';
 
 const allTools: McpTool[] = [
@@ -15,6 +16,7 @@ const allTools: McpTool[] = [
   ...searchTools,
   ...layoutTools,
   ...reasoningTools,
+  ...namespaceTools,
 ];
 
 export async function registerMcpTools(): Promise<void> {

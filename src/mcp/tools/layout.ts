@@ -53,11 +53,14 @@ const runLayout: McpTool = {
   async handler(params): Promise<McpResult> {
     try {
       const p = params as { algorithm?: string };
-      const algorithm = p.algorithm ?? '';
+      // Normalise common short forms: "dagre" → "dagre-lr", "elk" → "elk-layered"
+      const ALIASES: Record<string, string> = { dagre: 'dagre-lr', elk: 'elk-layered' };
+      const raw = p.algorithm ?? '';
+      const algorithm = ALIASES[raw] ?? raw;
       if (!(VALID_ALGORITHMS as readonly string[]).includes(algorithm)) {
         return {
           success: false,
-          error: `Unknown algorithm: ${algorithm}. Valid: ${VALID_ALGORITHMS.join(', ')}`,
+          error: `Unknown algorithm: ${raw}. Valid: ${VALID_ALGORITHMS.join(', ')}`,
         };
       }
 

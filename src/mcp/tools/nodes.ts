@@ -4,6 +4,7 @@ import type { McpTool } from '@/mcp/types';
 import { rdfManager } from '@/utils/rdfManager';
 import { getWorkspaceRefs } from '@/mcp/workspaceContext';
 import { focusElementOnCanvas } from './layout';
+import { expandIri } from './iriUtils';
 
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
@@ -32,8 +33,13 @@ const addNode: McpTool = {
   },
   handler: async (params) => {
     try {
-      const { iri, typeIri, label } = params as { iri?: string; typeIri?: string; label?: string };
-      if (!iri) return { success: false, error: 'iri is required' };
+      const raw = params as { iri?: string; typeIri?: string; label?: string };
+      if (!raw.iri) return { success: false, error: 'iri is required' };
+      const iri = expandIri(raw.iri);
+      if (iri.startsWith('Unknown prefix:')) return { success: false, error: iri };
+      const typeIri = raw.typeIri ? expandIri(raw.typeIri) : undefined;
+      if (typeIri?.startsWith('Unknown prefix:')) return { success: false, error: typeIri };
+      const { label } = raw;
 
       const { ctx } = getWorkspaceRefs();
       const model = ctx.model;

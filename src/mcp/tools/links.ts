@@ -3,6 +3,7 @@ import type { McpTool } from '../types';
 import { rdfManager } from '@/utils/rdfManager';
 import { getWorkspaceRefs } from '@/mcp/workspaceContext';
 import { focusElementOnCanvas } from './layout';
+import { expandIri } from './iriUtils';
 import * as Reactodia from '@reactodia/workspace';
 
 interface LinkParams {
@@ -27,10 +28,16 @@ export const linkTools: McpTool[] = [
     },
     handler: async (params: unknown) => {
       try {
-        const { subjectIri, predicateIri, objectIri } = (params ?? {}) as LinkParams;
+        const raw = (params ?? {}) as LinkParams;
+        const subjectIri = raw.subjectIri ? expandIri(raw.subjectIri) : undefined;
+        const predicateIri = raw.predicateIri ? expandIri(raw.predicateIri) : undefined;
+        // objectIri may be a plain literal — only expand if it looks like a prefixed IRI
+        const objectIri = raw.objectIri ? expandIri(raw.objectIri) : undefined;
         if (!subjectIri || !predicateIri || !objectIri) {
           return { success: false as const, error: 'subjectIri, predicateIri, and objectIri are all required' };
         }
+        const expandError = [subjectIri, predicateIri, objectIri].find(v => v.startsWith('Unknown prefix:'));
+        if (expandError) return { success: false as const, error: expandError };
         rdfManager.addTriple(subjectIri, predicateIri, objectIri);
 
         const { ctx } = getWorkspaceRefs();
@@ -64,10 +71,15 @@ export const linkTools: McpTool[] = [
     },
     handler: async (params: unknown) => {
       try {
-        const { subjectIri, predicateIri, objectIri } = (params ?? {}) as LinkParams;
+        const raw = (params ?? {}) as LinkParams;
+        const subjectIri = raw.subjectIri ? expandIri(raw.subjectIri) : undefined;
+        const predicateIri = raw.predicateIri ? expandIri(raw.predicateIri) : undefined;
+        const objectIri = raw.objectIri ? expandIri(raw.objectIri) : undefined;
         if (!subjectIri || !predicateIri || !objectIri) {
           return { success: false as const, error: 'subjectIri, predicateIri, and objectIri are all required' };
         }
+        const expandError = [subjectIri, predicateIri, objectIri].find(v => v.startsWith('Unknown prefix:'));
+        if (expandError) return { success: false as const, error: expandError };
         rdfManager.removeTriple(subjectIri, predicateIri, objectIri);
         return { success: true as const, data: { removed: { s: subjectIri, p: predicateIri, o: objectIri } } };
       } catch (e) {
