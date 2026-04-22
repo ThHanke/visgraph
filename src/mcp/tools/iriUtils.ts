@@ -39,10 +39,22 @@ function getPrefixMap(): Record<string, string> {
  * Returns the original value if already full or not prefixed.
  * Returns an error string starting with "Unknown prefix:" for unrecognised prefixes.
  */
+// URI schemes that are pass-through — never treated as RDF prefixes.
+const URI_SCHEMES = ['http:', 'https:', 'urn:', 'mailto:', 'ftp:', 'file:', 'urn:'];
+
+/**
+ * Expand a prefixed IRI (e.g. "rdf:type") to its full form.
+ * Values that start with a URI scheme (http:, https:, mailto:, urn: …) are
+ * returned as-is — including truncated/fragmented ones — so the caller gets
+ * the original string and can validate further if needed.
+ * Returns an error string starting with "Unknown prefix:" for unrecognised
+ * short prefixes (e.g. "ex2:Foo" when ex2 is not registered).
+ */
 export function expandIri(value: string): string {
   if (!value) return value;
-  if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('urn:')) {
-    return value;
+  // Pass through any value whose scheme is a known URI scheme (not an RDF prefix).
+  for (const scheme of URI_SCHEMES) {
+    if (value.startsWith(scheme)) return value;
   }
   const map = getPrefixMap();
   for (const prefix of Object.keys(map)) {
