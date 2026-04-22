@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { startRelayBridge, onCallLogged, RelayCallLogEntry } from "../mcp/relayBridge";
+import { startRelayBridge, onCallLogged, onConnectionChanged, RelayCallLogEntry } from "../mcp/relayBridge";
 export type { RelayCallLogEntry };
 
 export function useRelayBridge(enabled: boolean): { connected: boolean; callLog: RelayCallLogEntry[] } {
@@ -11,14 +11,15 @@ export function useRelayBridge(enabled: boolean): { connected: boolean; callLog:
     if (!enabled) return;
 
     const stopBridge = startRelayBridge();
-    setConnected(true);
+    const unsubscribeConnection = onConnectionChanged(setConnected);
 
-    const unsubscribe = onCallLogged((entry) => {
+    const unsubscribeLog = onCallLogged((entry) => {
       setCallLog((prev) => [entry, ...prev].slice(0, 10));
     });
 
     return () => {
-      unsubscribe();
+      unsubscribeConnection();
+      unsubscribeLog();
       stopBridge();
       setConnected(false);
     };

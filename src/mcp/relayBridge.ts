@@ -23,6 +23,23 @@ export function onCallLogged(cb: CallLogCallback): () => void {
   };
 }
 
+type ConnectionCallback = (connected: boolean) => void;
+const connectionListeners: ConnectionCallback[] = [];
+
+export function onConnectionChanged(cb: ConnectionCallback): () => void {
+  connectionListeners.push(cb);
+  return () => {
+    const idx = connectionListeners.indexOf(cb);
+    if (idx !== -1) connectionListeners.splice(idx, 1);
+  };
+}
+
+function notifyConnectionChanged(connected: boolean): void {
+  for (const cb of connectionListeners) {
+    try { cb(connected); } catch { /* ignore */ }
+  }
+}
+
 function notifyCallLog(entry: RelayCallLogEntry): void {
   for (const cb of callLogListeners) {
     try { cb(entry); } catch { /* ignore listener errors */ }
@@ -139,12 +156,35 @@ async function handleCall(
   }
 }
 
+const PING_STALE_MS = 15000;
+const PING_CHECK_INTERVAL_MS = 5000;
+
 export function startRelayBridge(): () => void {
   const channel = new BroadcastChannel(CHANNEL_NAME);
+  let lastPingAt = 0;
+  let isConnected = false;
+
+  const staleCheck = setInterval(() => {
+    const stale = lastPingAt > 0 && (Date.now() - lastPingAt > PING_STALE_MS);
+    if (stale && isConnected) {
+      isConnected = false;
+      notifyConnectionChanged(false);
+    }
+  }, PING_CHECK_INTERVAL_MS);
 
   channel.onmessage = (event: MessageEvent) => {
     const msg = event.data;
     console.info('[RelayBridge] BC message received:', msg);
+
+    if (msg?.type === 'vg-ping') {
+      lastPingAt = Date.now();
+      if (!isConnected) {
+        isConnected = true;
+        notifyConnectionChanged(true);
+      }
+      return;
+    }
+
     if (!msg || msg.type !== 'vg-call') { console.warn('[RelayBridge] Ignored (wrong type):', msg?.type); return; }
     if (typeof msg.tool !== 'string' || typeof msg.requestId !== 'string') { console.warn('[RelayBridge] Ignored (bad shape):', msg); return; }
 
@@ -158,6 +198,7 @@ export function startRelayBridge(): () => void {
   console.info('[RelayBridge] Listening on BroadcastChannel:', CHANNEL_NAME);
 
   return () => {
+    clearInterval(staleCheck);
     channel.close();
     console.info('[RelayBridge] Channel closed.');
   };

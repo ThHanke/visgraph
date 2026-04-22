@@ -163,7 +163,15 @@
           }
         }
       };
+      // Send heartbeat so the VisGraph app can show a real connection indicator.
+      bc.postMessage({ type: 'vg-ping' });
+      const pingInterval = setInterval(function () {
+        if (!bc) { clearInterval(pingInterval); return; }
+        bc.postMessage({ type: 'vg-ping' });
+      }, 10000);
+
       window.addEventListener('unload', function () {
+        clearInterval(pingInterval);
         bc.close();
       });
     }
