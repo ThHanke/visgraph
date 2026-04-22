@@ -90,10 +90,14 @@
     var closeBtn = document.createElement('span');
     closeBtn.textContent = '\u00D7';
     closeBtn.style.cssText = 'cursor:pointer;color:#8b949e;font-size:15px;line-height:1';
-    closeBtn.title = 'Hide badge (relay stays active)';
+    closeBtn.title = 'Close relay';
     closeBtn.addEventListener('click', function (e) {
       e.stopPropagation();
       badge.style.display = 'none';
+      window.__vgRelayActive = false;
+      var p = window.__vgRelayPopup;
+      if (p && !p.closed) p.close();
+      window.__vgRelayPopup = null;
     });
 
     badge.addEventListener('click', function () {
@@ -119,6 +123,20 @@
     } else {
       showBadge();
     }
+  })();
+
+  /* ── Popup-closed watcher — hide badge when user closes the popup ──────── */
+  (function () {
+    var watchTimer = setInterval(function () {
+      var p = window.__vgRelayPopup;
+      if (p && p.closed) {
+        clearInterval(watchTimer);
+        window.__vgRelayActive = false;
+        window.__vgRelayPopup = null;
+        var badge = document.getElementById('vg-relay-badge');
+        if (badge) badge.style.display = 'none';
+      }
+    }, 500);
   })();
 
   /* ── Result toast ──────────────────────────────────────────────────────── */
