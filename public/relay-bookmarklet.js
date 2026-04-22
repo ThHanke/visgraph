@@ -431,11 +431,13 @@
   }
 
   function parseAndEnqueue(el) {
-    if (!el || (el.dataset && el.dataset.vgProcessed)) return;
+    if (!el) return;
     var text = el.innerText || el.textContent || '';
     var calls = extractAllToolCalls(text);
     if (calls.length === 0) return;
-    if (el.dataset) el.dataset.vgProcessed = '1';
+    // Do NOT mark el as processed — deduplication is handled by the
+    // dispatchedSigs set in extractAllToolCalls.  Marking here causes
+    // the container to be skipped when streaming adds more <p> siblings.
     callQueue = callQueue.concat(calls);
     // Wait for DOM to settle before draining — prevents starting while AI is
     // still streaming more tool calls into the message.
@@ -489,7 +491,6 @@
   function collectAncestors(node) {
     var el = node.nodeType === 3 ? node.parentElement : node;
     while (el && el !== document.body) {
-      if (el.dataset && el.dataset.vgProcessed) return;
       var tag = el.tagName ? el.tagName.toLowerCase() : '';
       if (tag === 'p' || tag === 'li') {
         // p/li are inline containers — climb to nearest block ancestor so we
