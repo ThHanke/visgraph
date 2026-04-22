@@ -1230,20 +1230,14 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         useAppConfigStore.getState().removeAdditionalOntology(url);
       } catch (_) { /* ignore */ }
 
-      removed.forEach((o) => {
-        try {
-          rdfManager.removeGraph(o.url);
-        } catch (_) {
-          /* ignore */
-        }
-      });
-
       if (removed.length > 0) {
-        try {
-          if (typeof (rdfManager as any).emitAllSubjects === "function") {
-            (rdfManager as any).emitAllSubjects();
-          }
-        } catch (_) { /* ignore */ }
+        removed.forEach((o) => {
+          try {
+            if (typeof (rdfManager as any).unloadOntologySubjects === "function") {
+              (rdfManager as any).unloadOntologySubjects(o.url);
+            }
+          } catch (_) { /* ignore */ }
+        });
       }
     } catch (err) {
       try {

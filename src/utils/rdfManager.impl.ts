@@ -761,12 +761,14 @@ export class RDFManagerImpl {
     if (typeof rdfContent !== "string" || rdfContent.trim().length === 0) {
       throw new Error("Empty RDF content provided to loadRDFIntoGraph");
     }
+    const targetGraph = graphName || DEFAULT_GRAPH;
     const payload: ImportSerializedPayload = {
       content: rdfContent,
-      graphName: graphName || DEFAULT_GRAPH,
+      graphName: targetGraph,
       contentType: mimeType,
       filename,
       forceGraph,
+      ontologyUrl: targetGraph === "urn:vg:ontologies" && filename ? filename : undefined,
     };
     const result = await this.worker.call("importSerialized", payload);
     if (isPlainObject(result)) {
@@ -777,6 +779,14 @@ export class RDFManagerImpl {
         );
       }
     }
+  }
+
+  async unloadOntologySubjects(ontologyUrl: string): Promise<string[]> {
+    if (!ontologyUrl) return [];
+    const result = await this.worker.call("unloadOntologySubjects", { ontologyUrl });
+    return isPlainObject(result) && Array.isArray((result as any).removedSubjects)
+      ? (result as any).removedSubjects as string[]
+      : [];
   }
 
   /** Fetches a URL, falling back to a user-configured CORS proxy on network/CORS errors. */

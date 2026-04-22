@@ -54,6 +54,8 @@ export interface ImportSerializedPayload {
   baseIri?: string;
   /** If true, remap all quads (including named-graph quads) into graphName. */
   forceGraph?: boolean;
+  /** When set and graphName is urn:vg:ontologies, injects vg:loadedFrom annotations for each subject. */
+  ontologyUrl?: string;
 }
 
 export interface ExportGraphPayload {
@@ -141,6 +143,8 @@ export const RDF_WORKER_COMMANDS = [
   "syncLoad",
   "syncRemoveGraph",
   "syncRemoveAllQuadsForIri",
+  "syncRemoveBatchSubjectsFromGraph",
+  "unloadOntologySubjects",
   "fetchQuadsPage",
   "getQuads",
   "emitAllSubjects",
@@ -552,6 +556,19 @@ const COMMAND_VALIDATORS: Record<RDFWorkerCommandName, CommandValidator> = {
     for (const uri of allNamespaceUris as unknown[]) {
       assertString(uri, "renameNamespaceUri.allNamespaceUris entries must be strings");
     }
+  },
+  syncRemoveBatchSubjectsFromGraph(payload) {
+    assertPlainObject(payload, "syncRemoveBatchSubjectsFromGraph payload must be an object");
+    const { subjects, graphName } = payload as { subjects: unknown; graphName: unknown };
+    assertArray(subjects, "syncRemoveBatchSubjectsFromGraph.subjects must be an array");
+    if (typeof graphName !== "undefined") {
+      assertString(graphName as string, "syncRemoveBatchSubjectsFromGraph.graphName must be a string when provided");
+    }
+  },
+  unloadOntologySubjects(payload) {
+    assertPlainObject(payload, "unloadOntologySubjects payload must be an object");
+    const { ontologyUrl } = payload as { ontologyUrl: unknown };
+    assertString(ontologyUrl as string, "unloadOntologySubjects.ontologyUrl must be a string");
   },
 };
 

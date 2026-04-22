@@ -314,6 +314,8 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
     }
   }
 
+  const VG_LOADED_FROM = "urn:vg:loadedFrom";
+
   function collectWorkerQuadsForSubject(subject: string, store: any, DataFactory: any): WorkerQuad[] {
     try {
       const term =
@@ -324,6 +326,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
       const out: WorkerQuad[] = [];
       for (const q of quads) {
         try {
+          if (q.predicate?.value === VG_LOADED_FROM) continue;
           out.push(serializeQuad(q));
         } catch (err) {
           console.error("[rdfManager.worker] collectWorkerQuadsForSubject serialize failed", err);
@@ -815,6 +818,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
               emission.subjects,
               emission.quadsBySubject,
               emission.snapshot,
+              { reason: "syncLoad", graphName },
             );
           }
 
@@ -854,6 +858,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
                 emission.subjects,
                 emission.quadsBySubject,
                 emission.snapshot,
+                { reason: "removeGraph", graphName },
               );
             }
           }
@@ -933,6 +938,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
                 emission.subjects,
                 emission.quadsBySubject,
                 emission.snapshot,
+                { reason: "removeAllQuadsForIri", graphName },
               );
             }
           }
@@ -954,6 +960,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             contentType,
             filename,
             baseIri,
+            ontologyUrl,
           } = payload as ImportSerializedPayload;
           const graphName =
             typeof requestedGraph === "string" && requestedGraph.length > 0
@@ -1057,6 +1064,18 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             workerNamespaces = { ...workerNamespaces, ...prefixes };
           }
 
+          if (ontologyUrl && touchedSubjects.size > 0) {
+            const ontUrlNode = DataFactory.namedNode(ontologyUrl);
+            const loadedFromNode = DataFactory.namedNode(VG_LOADED_FROM);
+            const ontGraphTerm = DataFactory.namedNode("urn:vg:ontologies");
+            for (const subj of touchedSubjects) {
+              try {
+                const subjNode = DataFactory.namedNode(subj);
+                store.addQuad(DataFactory.quad(subjNode, loadedFromNode, ontUrlNode, ontGraphTerm));
+              } catch (_) { /* ignore */ }
+            }
+          }
+
           if (addedCount > 0) {
             emitChange({ reason: "importSerialized", graphName, added: addedCount });
             const emission = prepareSubjectEmissionFromSet(
@@ -1069,6 +1088,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
                 emission.subjects,
                 emission.quadsBySubject,
                 emission.snapshot,
+                { reason: "importSerialized", graphName },
               );
             }
           }
@@ -1079,6 +1099,98 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             prefixes,
             quads: addedSerialized,
           };
+          break;
+        }
+        case "syncRemoveBatchSubjectsFromGraph": {
+          const { DataFactory } = resolveN3();
+          if (!DataFactory) throw new Error("n3-datafactory-unavailable");
+          const store = getSharedStore();
+          const batchGraphName =
+            payload && typeof payload === "object" && typeof payload.graphName === "string"
+              ? payload.graphName
+              : "urn:vg:ontologies";
+          const batchIris: string[] =
+            payload && typeof payload === "object" && Array.isArray(payload.subjects)
+              ? payload.subjects.map(String).filter(Boolean)
+              : [];
+          const batchGraphTerm = createGraphTerm(batchGraphName, DataFactory);
+          const batchTouched = new Set<string>();
+          let batchRemoved = 0;
+          for (const iri of batchIris) {
+            try {
+              const subjTerm = DataFactory.namedNode(iri);
+              const subjectQuads = store.getQuads(subjTerm, null, null, batchGraphTerm) || [];
+              for (const q of subjectQuads) {
+                store.removeQuad(q);
+                batchRemoved += 1;
+                batchTouched.add(subjectTermToString(q.subject));
+              }
+            } catch (err) {
+              console.error("[rdfManager.worker] syncRemoveBatchSubjectsFromGraph failed for", iri, err);
+            }
+          }
+          if (batchRemoved > 0) {
+            const emission = prepareSubjectEmissionFromSet(batchTouched, store, DataFactory);
+            emitChange({ reason: "removeSubjectsFromGraph", graphName: batchGraphName, removed: batchRemoved });
+            emitSubjects(emission.subjects, emission.quadsBySubject, emission.snapshot, { reason: "removeSubjectsFromGraph", graphName: batchGraphName, removedSubjects: Array.from(batchTouched) });
+          }
+          result = { graphName: batchGraphName, removed: batchRemoved };
+          break;
+        }
+        case "unloadOntologySubjects": {
+          const { DataFactory } = resolveN3();
+          if (!DataFactory) throw new Error("n3-datafactory-unavailable");
+          const store = getSharedStore();
+          const unloadUrl =
+            payload && typeof payload === "object" && typeof payload.ontologyUrl === "string"
+              ? payload.ontologyUrl
+              : "";
+          if (!unloadUrl) { result = { removed: 0, removedSubjects: [] }; break; }
+
+          const ontGraphTerm = DataFactory.namedNode("urn:vg:ontologies");
+          const loadedFromNode = DataFactory.namedNode(VG_LOADED_FROM);
+          const ontUrlNode = DataFactory.namedNode(unloadUrl);
+
+          // Find all subjects annotated with this ontology URL
+          const annotatedSubjects: string[] = [];
+          try {
+            const annQuads = store.getQuads(null, loadedFromNode, ontUrlNode, ontGraphTerm) || [];
+            for (const q of annQuads) {
+              const s = subjectTermToString(q.subject);
+              if (s) annotatedSubjects.push(s);
+            }
+          } catch (_) { /* ignore */ }
+
+          const removedSubjects: string[] = [];
+          const touchedForEmit = new Set<string>();
+
+          for (const subj of annotatedSubjects) {
+            try {
+              const subjNode = DataFactory.namedNode(subj);
+              // Remove this ontology's loadedFrom annotation
+              store.removeQuad(DataFactory.quad(subjNode, loadedFromNode, ontUrlNode, ontGraphTerm));
+              // Check if any other loadedFrom annotation remains
+              const remaining = store.getQuads(subjNode, loadedFromNode, null, ontGraphTerm) || [];
+              if (remaining.length === 0) {
+                // No other ontology claims this subject — remove all its quads from ontologies graph
+                const subjQuads = store.getQuads(subjNode, null, null, ontGraphTerm) || [];
+                for (const q of subjQuads) {
+                  store.removeQuad(q);
+                }
+                removedSubjects.push(subj);
+              }
+              touchedForEmit.add(subj);
+            } catch (err) {
+              console.error("[rdfManager.worker] unloadOntologySubjects failed for", subj, err);
+            }
+          }
+
+          if (touchedForEmit.size > 0) {
+            const emission = prepareSubjectEmissionFromSet(touchedForEmit, store, DataFactory);
+            emitChange({ reason: "unloadOntologySubjects", ontologyUrl: unloadUrl, removed: removedSubjects.length });
+            emitSubjects(emission.subjects, emission.quadsBySubject, emission.snapshot, { reason: "unloadOntologySubjects", ontologyUrl: unloadUrl, removedSubjects });
+          }
+          result = { removed: removedSubjects.length, removedSubjects };
           break;
         }
         case "exportGraph": {
@@ -1494,7 +1606,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             try {
               const s = subjectTermToString(q.subject);
               if (s && !isBlacklistedIri(s)) subjectSet.add(s);
-            } catch (_) {}
+            } catch (_) { /* ignore */ }
           }
           const emission = prepareSubjectEmissionFromSet(subjectSet, store, DataFactory);
           // Diagnostic: log total quad count across all subjects so we can verify inferred quads are included

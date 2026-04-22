@@ -113,6 +113,15 @@ const SEARCH_ALLOWED_GRAPHS = new Set([
   'urn:vg:inferred',
 ]);
 
+// Graphs whose rdf:type declarations are eligible for the class tree (knownElementTypes).
+// Ontology classes live in urn:vg:ontologies; data-graph types are also valid.
+// Workflow/catalog graphs are excluded — their types are not schema definitions.
+const SCHEMA_ALLOWED_GRAPHS = new Set([
+  'urn:vg:data',
+  'urn:vg:inferred',
+  'urn:vg:ontologies',
+]);
+
 // Keep as a private alias so matchesViewMode still compiles:
 const TBOX_TYPES = ALL_TBOX_TYPES;
 
@@ -209,17 +218,19 @@ export class N3DataProvider implements DataProvider {
   addGraph(quads: Iterable<Rdf.Quad>, graphName?: string): void {
     const arr = Array.isArray(quads) ? quads : [...quads];
     const trackInferred = graphName === 'urn:vg:inferred';
-    // Only subjects from allowed graphs enter allSubjects (and therefore Entities search).
-    // Quads from all other graphs (ontologies, workflows, …) are still stored in
-    // this.inner so knownElementTypes sees their owl:Class declarations for the tree.
+    // Only subjects from data/inferred graphs enter allSubjects (Entities search).
+    // Only data/inferred/ontologies graphs feed this.inner (knownElementTypes / class tree).
+    // Workflow and catalog graphs are excluded from both.
     // When graphName is undefined the caller did not specify a graph — treat as data.
     const addToIndex = graphName === undefined || SEARCH_ALLOWED_GRAPHS.has(graphName);
+    const addToSchema = graphName === undefined || SCHEMA_ALLOWED_GRAPHS.has(graphName);
 
     for (const q of arr) {
       if (q.subject.termType === 'NamedNode' && addToIndex) {
         this.allSubjects.add(q.subject.value);
       }
       if (
+        addToSchema &&
         q.predicate.termType === 'NamedNode' &&
         q.predicate.value === RDF_TYPE &&
         q.subject.termType === 'NamedNode' &&
@@ -237,7 +248,11 @@ export class N3DataProvider implements DataProvider {
         entry.triples.add(`${q.predicate.value}\x00${objectKey(q.object)}`);
       }
     }
-    this.inner.addGraph(arr);
+    // Only feed schema-allowed graphs into the inner Reactodia store so
+    // knownElementTypes never surfaces classes from workflows/catalog graphs.
+    if (addToSchema) {
+      this.inner.addGraph(arr);
+    }
   }
 
   /**
@@ -267,6 +282,22 @@ export class N3DataProvider implements DataProvider {
       const toRemove = [...dataset.iterateMatches(null, null, null, graphNode)];
       for (const q of toRemove) {
         dataset.delete(q);
+      }
+    }
+  }
+
+  removeSubjects(iris: string[]): void {
+    const dataset = (this.inner as any).dataset;
+    for (const iri of iris) {
+      this.allSubjects.delete(iri);
+      this.typeMap.delete(iri);
+      this.inferredBySubject.delete(iri);
+      if (dataset && typeof dataset.iterateMatches === 'function' && typeof dataset.delete === 'function') {
+        const node = this.inner.factory.namedNode(iri);
+        const toRemove = [...dataset.iterateMatches(node, null, null)];
+        for (const q of toRemove) {
+          dataset.delete(q);
+        }
       }
     }
   }
