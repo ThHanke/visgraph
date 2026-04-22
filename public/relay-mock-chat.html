@@ -151,8 +151,6 @@
   <button class="scenario" data-scenario="single">Single addNode</button>
   <button class="scenario" data-scenario="batch">Batch (3 nodes)</button>
   <button class="scenario" data-scenario="full">Full: nodes + links + layout</button>
-  <button class="scenario" data-scenario="fenced">Fenced TOOL block</button>
-  <button class="scenario" data-scenario="inline-params">Inline params</button>
   <button class="scenario" data-scenario="prefixed">Prefixed IRIs</button>
   <button class="scenario" data-scenario="unknown-tool">Unknown tool</button>
   <button class="scenario" data-scenario="clear" style="border-color:#f85149;color:#f85149;">Clear chat</button>
@@ -190,31 +188,23 @@
 var SCENARIOS = {
   single: [
     'AI',
-    'TOOL: addNode\niri: http://example.org/Alice\nlabel: Alice\ntypeIri: http://example.org/Person'
+    '`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.org/Alice","label":"Alice","typeIri":"http://example.org/Person"}}}`'
   ],
   batch: [
     'AI',
-    'TOOL: addNode\niri: http://example.org/Alice\nlabel: Alice\ntypeIri: http://example.org/Person\n\nTOOL: addNode\niri: http://example.org/Bob\nlabel: Bob\ntypeIri: http://example.org/Person\n\nTOOL: addNode\niri: http://example.org/Carol\nlabel: Carol\ntypeIri: http://example.org/Person'
+    '`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.org/Alice","label":"Alice","typeIri":"http://example.org/Person"}}}`\n`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.org/Bob","label":"Bob","typeIri":"http://example.org/Person"}}}`\n`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.org/Carol","label":"Carol","typeIri":"http://example.org/Person"}}}`'
   ],
   full: [
     'AI',
-    'First, add the nodes:\n\nTOOL: addNode\niri: http://example.org/Alice\nlabel: Alice\ntypeIri: http://example.org/Person\n\nTOOL: addNode\niri: http://example.org/Bob\nlabel: Bob\ntypeIri: http://example.org/Person\n\nTOOL: runLayout\nalgorithm: dagre-lr\n\nTOOL: fitCanvas\n\nTOOL: exportImage\nformat: svg\nnoCss: true'
-  ],
-  fenced: [
-    'AI',
-    '```\nTOOL: addNode\niri: http://example.org/Fenced\nlabel: FencedNode\ntypeIri: http://example.org/Thing\n```'
-  ],
-  'inline-params': [
-    'AI',
-    'TOOL: addNode iri: http://example.org/Inline label: InlineNode typeIri: http://example.org/Thing'
+    'First, add the nodes:\n\n`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.org/Alice","label":"Alice","typeIri":"http://example.org/Person"}}}`\n`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.org/Bob","label":"Bob","typeIri":"http://example.org/Person"}}}`\n`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"dagre-lr"}}}`\n`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"fitCanvas","arguments":{}}}`\n`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"exportImage","arguments":{"format":"svg","noCss":true}}}`'
   ],
   prefixed: [
     'AI',
-    'TOOL: addNode\niri: ex:PrefixedNode\nlabel: PrefixedNode\ntypeIri: owl:Class'
+    '`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"ex:PrefixedNode","label":"PrefixedNode","typeIri":"owl:Class"}}}`'
   ],
   'unknown-tool': [
     'AI',
-    'TOOL: nonExistentTool\nparam1: value1'
+    '`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"nonExistentTool","arguments":{"param1":"value1"}}}`'
   ],
 };
 
