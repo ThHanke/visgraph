@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { pickDomainClass } from '../../utils/ontologyQueries';
 import { DataFactory } from 'n3';
 const { namedNode } = DataFactory;
 import { useCanvasState } from '../../hooks/useCanvasState';
@@ -64,8 +65,8 @@ export const LinkPropertyEditor = ({
   // classType holds the primary domain class (owl:NamedIndividual excluded).
   // For TBox nodes (classes/properties) classType is the metaclass, which won't
   // match any domain declaration → falls through to properties with no domain restriction.
-  const sourceClassIri: string = String(sourceNode?.classType ?? sourceNode?.rdfTypes?.[0] ?? '');
-  const targetClassIri: string = String(targetNode?.classType ?? targetNode?.rdfTypes?.[0] ?? '');
+  const sourceClassIri: string = pickDomainClass(sourceNode?.rdfTypes) || String(sourceNode?.classType ?? '');
+  const targetClassIri: string = pickDomainClass(targetNode?.rdfTypes) || String(targetNode?.classType ?? '');
 
   // No React Flow selection fallback in this streamlined editor; source/target must be provided via props.
 

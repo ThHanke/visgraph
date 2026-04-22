@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { pickDomainClass } from '../../utils/ontologyQueries';
 import { DataFactory } from 'n3';
 import * as Reactodia from '@reactodia/workspace';
 import { Rdf } from '@reactodia/workspace';
@@ -296,17 +297,71 @@ interface RdfPropertyEditorProps {
   options: Reactodia.PropertyEditorOptions;
 }
 
+interface RuntimeRelationOptions {
+  type: 'relation';
+  target: Reactodia.RelationLink;
+  onChangeTarget: (newTarget: Reactodia.RelationLink) => void;
+  onClose: () => void;
+}
+
+function RelationEditor({ options }: { options: RuntimeRelationOptions }) {
+  const { editor } = Reactodia.useWorkspace();
+  const [predIri, setPredIri] = useState<string>('');
+
+  return (
+    <Reactodia.RelationEditor
+      relation={options.target}
+      onChangeTarget={options.onChangeTarget}
+    >
+      {({ linkSource, linkTarget }) => {
+        const sourceClassIri = pickDomainClass(linkSource?.types);
+        const targetClassIri = pickDomainClass(linkTarget?.types);
+        const link = options.target;
+
+        const handleApply = () => {
+          const newTypeIri = predIri as Reactodia.LinkTypeIri;
+          const isTemporary = editor.temporaryState.links.has(link.data);
+          if (isTemporary) {
+            editor.removeTemporaryCells([link]);
+            editor.createRelation(link);
+            editor.changeRelation(link.data, { ...link.data, linkTypeId: newTypeIri });
+          } else {
+            editor.changeRelation(link.data, { ...link.data, linkTypeId: newTypeIri });
+          }
+          options.onClose();
+        };
+
+        return (
+          <div className="space-y-4 p-1">
+            <div className="space-y-1.5">
+              <Label>Relation type</Label>
+              <EntityAutoComplete
+                mode="properties"
+                dataProvider={dataProvider}
+                sourceClassIri={sourceClassIri}
+                targetClassIri={targetClassIri}
+                value={predIri}
+                onChange={ent => { if (ent?.iri) setPredIri(String(ent.iri)); }}
+                placeholder="Select predicate…"
+                optionsLimit={20}
+                autoOpen
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={options.onClose}>Cancel</Button>
+              <Button size="sm" disabled={!predIri} onClick={handleApply}>Apply</Button>
+            </div>
+          </div>
+        );
+      }}
+    </Reactodia.RelationEditor>
+  );
+}
+
 export function RdfPropertyEditor({ options }: RdfPropertyEditorProps) {
   if (!options) return null;
-  console.debug('[RdfPropertyEditor] options', options);
   if (options.type === 'entity') {
     return <EntityEditor options={options} />;
   }
-  // For relations, use Reactodia's default editor (type-changing + AuthoringState)
-  return (
-    <Reactodia.DefaultPropertyEditor
-      options={options}
-      resolveInput={defaultResolveInput}
-    />
-  );
+  return <RelationEditor options={options as any} />;
 }

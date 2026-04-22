@@ -466,6 +466,12 @@ export default function ReactodiaCanvas() {
       const model = modelRef.current;
       const ctx = contextRef.current;
 
+      // When an ontology is unloaded, remove its subjects from the data provider's
+      // inner dataset so knownElementTypes and lookupAll no longer return stale classes.
+      if (meta?.reason === 'unloadOntologySubjects' && Array.isArray(meta.removedSubjects)) {
+        dataProvider.removeSubjects(meta.removedSubjects as string[]);
+      }
+
       // When a namespace URI is renamed, remove stale canvas elements whose IRIs
       // used the old URI prefix — they would otherwise remain as orphans alongside
       // the newly-created elements under the renamed IRIs.
@@ -804,6 +810,18 @@ export default function ReactodiaCanvas() {
       // ?loadImports=false disables owl:imports auto-loading for this session only.
       const loadImportsParam = u.searchParams.get('loadImports');
       loadImportsEnabledRef.current = loadImportsParam !== 'false';
+      if (startupUrl) {
+        try {
+          const dataUrl = new URL(startupUrl);
+          const label = dataUrl.pathname.split('/').filter(Boolean).pop()?.replace(/\.[^.]+$/, '') || startupUrl;
+          document.title = `Visgraph: ${label}`;
+          if (!window.location.hash) {
+            history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${label}`);
+          }
+        } catch {
+          document.title = `Visgraph: ${startupUrl}`;
+        }
+      }
     } catch {
       startupUrl = '';
     }

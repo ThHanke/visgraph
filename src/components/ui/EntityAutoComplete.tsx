@@ -75,8 +75,10 @@ export default function EntityAutoComplete({
 
   const [open, setOpen] = useState(Boolean(autoOpen));
   const [query, setQuery] = useState('');
+  const [activeIndex, setActiveIndex] = useState(-1);
   const [dropPos, setDropPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { setOpen(Boolean(autoOpen)); }, [autoOpen]);
@@ -121,6 +123,14 @@ export default function EntityAutoComplete({
     return optionsLimit > 0 ? matched.slice(0, optionsLimit) : matched;
   }, [source, query, optionsLimit]);
 
+  useEffect(() => { setActiveIndex(-1); }, [filtered]);
+
+  useLayoutEffect(() => {
+    if (!open || activeIndex < 0 || !listRef.current) return;
+    const items = listRef.current.querySelectorAll('[role="option"]');
+    (items[activeIndex] as HTMLElement | undefined)?.scrollIntoView({ block: 'nearest' });
+  }, [activeIndex, open]);
+
   const hasTiers = filtered.some(e => typeof e.domainRangeScore === 'number');
 
   const handleSelect = (ent: FatMapEntity) => {
@@ -144,32 +154,44 @@ export default function EntityAutoComplete({
 
   const dropdown = open && dropPos && ReactDOM.createPortal(
     <ul
+      ref={listRef}
       role="listbox"
       style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width, zIndex: 9999 }}
       className="max-h-52 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md py-1"
     >
       {filtered.length === 0
         ? <li className="px-2 py-2 text-xs text-muted-foreground text-center">{emptyMessage}</li>
-        : tierGroups.map((group, gi) => (
-          <React.Fragment key={gi}>
-            {group.label && (
-              <li className="px-2 py-0.5 text-[10px] font-medium text-muted-foreground bg-muted/40 select-none">
-                {group.label}
-              </li>
-            )}
-            {group.items.map(ent => (
-              <li
-                key={String(ent.iri || ent.label)}
-                role="option"
-                onMouseDown={e => { e.preventDefault(); handleSelect(ent); }}
-                className="px-2 py-1 text-xs cursor-pointer hover:bg-accent hover:text-accent-foreground"
-              >
-                <div className="font-medium leading-tight">{prefixedIri(String(ent.iri || ''))}</div>
-                {ent.label && <div className="text-[10px] text-muted-foreground leading-tight">{ent.label}</div>}
-              </li>
-            ))}
-          </React.Fragment>
-        ))
+        : (() => {
+          let flatIdx = 0;
+          return tierGroups.map((group, gi) => (
+            <React.Fragment key={gi}>
+              {group.label && (
+                <li className="px-2 py-0.5 text-[10px] font-medium text-muted-foreground bg-muted/40 select-none">
+                  {group.label}
+                </li>
+              )}
+              {group.items.map(ent => {
+                const idx = flatIdx++;
+                return (
+                  <li
+                    key={String(ent.iri || ent.label)}
+                    role="option"
+                    aria-selected={idx === activeIndex}
+                    onMouseDown={e => { e.preventDefault(); handleSelect(ent); }}
+                    onMouseEnter={() => setActiveIndex(idx)}
+                    className={cn(
+                      'px-2 py-1 text-xs cursor-pointer',
+                      idx === activeIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent hover:text-accent-foreground'
+                    )}
+                  >
+                    <div className="font-medium leading-tight">{prefixedIri(String(ent.iri || ''))}</div>
+                    {ent.label && <div className="text-[10px] text-muted-foreground leading-tight">{ent.label}</div>}
+                  </li>
+                );
+              })}
+            </React.Fragment>
+          ));
+        })()
       }
     </ul>,
     document.body
@@ -207,11 +229,24 @@ export default function EntityAutoComplete({
             setQuery('');
           }, 150);
         }}
-        onChange={e => { setQuery(e.target.value); setOpen(true); }}
+        onChange={e => { setQuery(e.target.value); setOpen(true); setActiveIndex(-1); }}
         onKeyDown={e => {
-          if (e.key === 'Escape') { setOpen(false); setQuery(''); }
-          if (e.key === 'Enter' && query.trim() && filtered.length === 0) {
-            if (/^[a-z][a-z0-9+.-]*:/i.test(query.trim())) {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setOpen(true);
+            setActiveIndex(i => Math.min(i + 1, filtered.length - 1));
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setActiveIndex(i => Math.max(i - 1, -1));
+          } else if (e.key === 'Escape') {
+            setOpen(false);
+            setQuery('');
+            setActiveIndex(-1);
+          } else if (e.key === 'Enter') {
+            if (activeIndex >= 0 && filtered[activeIndex]) {
+              e.preventDefault();
+              handleSelect(filtered[activeIndex]);
+            } else if (query.trim() && filtered.length === 0 && /^[a-z][a-z0-9+.-]*:/i.test(query.trim())) {
               onChange?.({ iri: query.trim() } as FatMapEntity);
               setOpen(false);
               setQuery('');
