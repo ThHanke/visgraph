@@ -221,7 +221,45 @@ var SCENARIOS = {
 var stream = document.getElementById('chat-stream');
 var statusBar = document.getElementById('status-bar');
 
-function addMessage(role, text) {
+// ── Chat flow simulation ───────────────────────────────────────────────────
+// Disable the active input + send button so isAiStreaming() returns true.
+function lockInput() {
+  document.getElementById('send-btn').disabled = true;
+  var ta = document.getElementById('user-input');
+  if (ta.style.display !== 'none') ta.disabled = true;
+  var ce = document.getElementById('owui-input');
+  if (ce.style.display !== 'none') ce.setAttribute('aria-disabled', 'true');
+  var gpt = document.getElementById('gpt-input');
+  if (gpt.closest('#gpt-input-wrap').style.display !== 'none') gpt.setAttribute('aria-disabled', 'true');
+}
+function unlockInput() {
+  document.getElementById('send-btn').disabled = false;
+  var ta = document.getElementById('user-input');
+  ta.disabled = false;
+  document.getElementById('owui-input').removeAttribute('aria-disabled');
+  document.getElementById('gpt-input').removeAttribute('aria-disabled');
+}
+
+// Stream text word-by-word into a pre-existing DOM element.
+// Calls onDone() when finished and re-enables the input.
+var STREAM_DELAY_MS = 18; // ms between words — fast enough for tests, visible enough to see
+function streamTextInto(el, text, onDone) {
+  var words = text.split(' ');
+  var i = 0;
+  function next() {
+    if (i >= words.length) {
+      unlockInput();
+      if (onDone) onDone();
+      return;
+    }
+    el.textContent += (i === 0 ? '' : ' ') + words[i];
+    i++;
+    setTimeout(next, STREAM_DELAY_MS);
+  }
+  next();
+}
+
+function addMessage(role, text, onDone) {
   var wrapper = document.createElement('div');
   wrapper.className = 'msg';
 
@@ -235,12 +273,23 @@ function addMessage(role, text) {
 
   var body = document.createElement('div');
   body.className = role === 'user' ? 'msg-user' : 'msg-ai';
-  body.textContent = text;
   wrapper.appendChild(body);
 
   stream.appendChild(wrapper);
   stream.scrollTop = stream.scrollHeight;
-  statusBar.textContent = 'Message added — bookmarklet should detect TOOL blocks automatically.';
+
+  if (role === 'ai') {
+    lockInput();
+    statusBar.textContent = 'AI generating…';
+    streamTextInto(body, text, function() {
+      statusBar.textContent = 'AI done — bookmarklet should detect TOOL blocks now.';
+      if (onDone) onDone();
+    });
+  } else {
+    body.textContent = text;
+    statusBar.textContent = 'Message added.';
+    if (onDone) onDone();
+  }
 }
 
 // ── UI mode switching ───────────────────────────────────────────────────────

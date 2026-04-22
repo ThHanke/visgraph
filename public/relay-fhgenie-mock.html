@@ -79,11 +79,16 @@ userInput.addEventListener('keydown', function(e) {
 // Also fire on programmatic form submit events (bookmarklet uses click on send-btn or submit)
 document.addEventListener('submit', function(e) { e.preventDefault(); submitUserInput(); });
 // Bookmarklet may dispatch a click on a button with id="send-btn" – provide one.
+// It starts disabled (AI idle state), gets disabled again while AI "generates".
 var fakeBtn = document.createElement('button');
 fakeBtn.id = 'send-btn';
 fakeBtn.style.display = 'none';
 fakeBtn.addEventListener('click', submitUserInput);
 document.body.appendChild(fakeBtn);
+
+// ── Chat flow simulation ───────────────────────────────────────────────────
+function lockInput()   { fakeBtn.disabled = true;  userInput.disabled = true; }
+function unlockInput() { fakeBtn.disabled = false; userInput.disabled = false; }
 
 // FhGenie renders AI responses as markdown HTML inside ._body_1gd8t_67
 // These scenarios reproduce the exact HTML a markdown renderer would produce.
@@ -133,6 +138,22 @@ var SCENARIOS = {
   },
 };
 
+// Build child nodes for a scenario body element.
+// For pre scenarios: one <pre> text node.
+// For HTML scenarios: a list of child nodes parsed from the HTML string.
+function buildChildren(s) {
+  if (s.pre) {
+    var pre = document.createElement('pre');
+    pre.textContent = s.html;
+    return [pre];
+  }
+  var tmp = document.createElement('div');
+  tmp.innerHTML = s.html;
+  return Array.from(tmp.childNodes);
+}
+
+// Add an AI message, streaming its child nodes one by one (18ms apart)
+// with input locked — so isAiStreaming() returns true while generating.
 function addAiMessage(scenario) {
   var s = SCENARIOS[scenario];
   if (!s) return;
@@ -147,20 +168,27 @@ function addAiMessage(scenario) {
 
   var body = document.createElement('div');
   body.className = '_body_1gd8t_67';
-
-  if (s.pre) {
-    // Plain text in a pre — closest to raw text rendering
-    var pre = document.createElement('pre');
-    pre.textContent = s.html;
-    body.appendChild(pre);
-  } else {
-    body.innerHTML = s.html;
-  }
-
   outer.appendChild(body);
+
   stream.appendChild(outer);
   stream.scrollTop = stream.scrollHeight;
-  status.textContent = 'Scenario "' + s.label + '" added — load bookmarklet if not done, wait for relay to process.';
+
+  var children = buildChildren(s);
+  lockInput();
+  status.textContent = 'AI generating "' + s.label + '"…';
+
+  var i = 0;
+  function next() {
+    if (i >= children.length) {
+      unlockInput();
+      status.textContent = 'AI done "' + s.label + '" — relay should detect TOOL blocks now.';
+      return;
+    }
+    body.appendChild(children[i]);
+    i++;
+    setTimeout(next, 18);
+  }
+  next();
 }
 
 document.querySelectorAll('button.scenario').forEach(function(btn) {
