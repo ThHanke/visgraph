@@ -164,7 +164,7 @@ export default function EntityAutoComplete({
                 onMouseDown={e => { e.preventDefault(); handleSelect(ent); }}
                 className="px-2 py-1 text-xs cursor-pointer hover:bg-accent hover:text-accent-foreground"
               >
-                <div className="font-medium leading-tight">{(ent as any).prefixed != null ? String((ent as any).prefixed) : String(ent.iri || '')}</div>
+                <div className="font-medium leading-tight">{prefixedIri(String(ent.iri || ''))}</div>
                 {ent.label && <div className="text-[10px] text-muted-foreground leading-tight">{ent.label}</div>}
               </li>
             ))}
