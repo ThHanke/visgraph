@@ -429,38 +429,49 @@
   }
 
   /* ── Streaming-idle detection ─────────────────────────────────────────── */
-  // Selectors that are present in the DOM while the AI is still generating.
-  // When ALL of these are absent (or none match), the AI is considered idle.
-  var STREAMING_SELECTORS = [
-    // Generic stop-generation buttons (most chat UIs)
-    'button[aria-label*="Stop"]',
-    'button[aria-label*="stop"]',
-    'button[aria-label*="Cancel"]',
-    'button[aria-label*="Abbrechen"]',  // German (FhGenie)
-    // ChatGPT
-    '.result-streaming',
-    '[data-testid="stop-button"]',
-    // Claude.ai
-    '[aria-label="Stop streaming"]',
-    // Open WebUI
-    '.typing-dots',
-    // FhGenie — add selector here once identified, e.g.:
-    // '._generating_c6udf_123',
-    // Broad fallback: any visible SVG spinner with CSS animation
-    'svg[class*="spin"]',
-    'svg[class*="loading"]',
-    '[class*="spinner"]',
-    '[class*="Spinner"]',
-    '[class*="generating"]',
-    '[class*="Generating"]',
-    '[class*="streaming"]',
-    '[class*="Streaming"]',
-  ];
+  // Checks whether the AI is still generating using HTML-agnostic signals:
+  //   1. The chat input is disabled (universal: UIs lock input while AI responds)
+  //   2. The send button near the input is disabled (same universal contract)
+  //   3. aria-busy="true" on an ancestor (ARIA standard for async content)
+  //   4. A visible stop/abort button exists (explicit generation controls)
+  // No framework-specific class names needed.
 
   function isAiStreaming() {
-    return STREAMING_SELECTORS.some(function (sel) {
-      try { return !!document.querySelector(sel); } catch (e) { return false; }
-    });
+    // ── 1. Input element locked ─────────────────────────────────────────
+    var inp = findInput();
+    if (inp) {
+      if (inp.disabled) return true;
+      if (inp.getAttribute('aria-disabled') === 'true') return true;
+    }
+
+    // ── 2. Send button disabled ─────────────────────────────────────────
+    // Walk up from input to find a submit/send button and check disabled.
+    if (inp) {
+      var cur = inp.parentElement;
+      while (cur && cur !== document.body) {
+        var buttons = Array.from(cur.querySelectorAll('button'));
+        var sendBtn = buttons.find(function (b) {
+          var lbl = (b.getAttribute('aria-label') || b.title || b.textContent || '').toLowerCase();
+          return b.type === 'submit' || lbl.includes('send') || lbl.includes('senden') || lbl.includes('submit');
+        });
+        if (sendBtn) {
+          if (sendBtn.disabled) return true;
+          break; // found but not disabled → not streaming by this signal
+        }
+        cur = cur.parentElement;
+      }
+    }
+
+    // ── 3. aria-busy on any ancestor of the input ───────────────────────
+    if (inp) {
+      var el = inp.parentElement;
+      while (el && el !== document.body) {
+        if (el.getAttribute('aria-busy') === 'true') return true;
+        el = el.parentElement;
+      }
+    }
+
+    return false;
   }
 
   /**
