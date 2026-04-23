@@ -192,12 +192,13 @@ export function startRelayBridge(): () => void {
   }, PING_CHECK_INTERVAL_MS);
 
   function drainPending(): void {
-    while (pendingCalls.length > 0) {
-      const call = pendingCalls.shift()!;
-      handleCall(channel, call.tool, call.params, call.requestId, call.isLast).catch(err => {
-        console.error('[RelayBridge] Unhandled error in handleCall:', err);
-      });
-    }
+    const call = pendingCalls.shift();
+    if (!call) return;
+    // Mark busy — next drain happens when handleCall posts vg-ready and appReady flips back
+    appReady = false;
+    handleCall(channel, call.tool, call.params, call.requestId, call.isLast).catch(err => {
+      console.error('[RelayBridge] Unhandled error in handleCall:', err);
+    });
   }
 
   channel.onmessage = (event: MessageEvent) => {
@@ -205,10 +206,10 @@ export function startRelayBridge(): () => void {
     console.info('[RelayBridge] BC message received:', msg);
 
     if (msg?.type === 'vg-ready') {
-      // App (or ourselves) signalling readiness — drain any queued calls
-      if (!appReady) {
-        appReady = true;
-        console.info('[RelayBridge] App ready — draining', pendingCalls.length, 'queued call(s)');
+      // App (or ourselves) signalling readiness — dispatch next queued call if any
+      appReady = true;
+      if (pendingCalls.length > 0) {
+        console.info('[RelayBridge] App ready — dispatching next queued call (', pendingCalls.length, 'pending)');
         drainPending();
       }
       return;
@@ -235,6 +236,8 @@ export function startRelayBridge(): () => void {
       return;
     }
 
+    // Mark busy immediately so any subsequent BC messages queue rather than run concurrently
+    appReady = false;
     handleCall(channel, tool, params, requestId, isLast).catch(err => {
       console.error('[RelayBridge] Unhandled error in handleCall:', err);
     });
