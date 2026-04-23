@@ -43,7 +43,7 @@ Key capabilities
 - **Namespace management**: edit namespace URIs directly in the legend panel (rename propagates across all stored triples). Colour-coded namespace badges on nodes and edges.
 - Export the current graph as Turtle, RDF/XML, or JSON-LD.
 - **Workflow catalog**: drag reusable workflow template cards from the sidebar onto the canvas to instantiate connected subgraphs.
-- **MCP support**: exposes a Model Context Protocol server (via the browser's `navigator.modelContext` API) for AI-agent integration. Tools: `loadRdf`, `loadOntology`, `queryGraph`, `exportGraph`, `exportImage`, `addNode`, `removeNode`, `getNodes`, `addLink`, `removeLink`, `getLinks`, `searchEntities`, `autocomplete`, `runLayout`, `runReasoning`, `clearInferred`, `getCapabilities`. MCP manifest at `/.well-known/mcp.json`.
+- **MCP support**: exposes a Model Context Protocol server (via the browser's `navigator.modelContext` API) for AI-agent integration. Tools: `loadRdf`, `loadOntology`, `queryGraph`, `exportGraph`, `exportImage`, `addNode`, `removeNode`, `getNodes`, `addLink`, `removeLink`, `getLinks`, `searchEntities`, `autocomplete`, `runLayout`, `runReasoning`, `clearInferred`, `getCapabilities`, `help`. MCP manifest at `/.well-known/mcp.json`.
 
 Quick start (development)
 -------------------------
@@ -404,32 +404,13 @@ The **AI Relay Bridge** connects any AI chat tab to VisGraph with no server, ext
 **Starter prompt** (paste into your AI chat after clicking the bookmarklet):
 
 ```text
-You are connected to VisGraph via a relay. A script in your browser tab scans your responses for MCP tool calls, executes them in VisGraph, and injects the combined result back as a user message.
+You are connected to VisGraph via a relay. A script in this tab intercepts your tool calls, runs them in VisGraph, and injects results back as a user message.
 
-OUTPUT FORMAT — one MCP JSON-RPC 2.0 request per line, each wrapped in single backticks:
+Output format — one JSON-RPC 2.0 call per line, backtick-wrapped:
 `{"jsonrpc":"2.0","id":<N>,"method":"tools/call","params":{"name":"<toolName>","arguments":{...}}}`
 
-Rules:
-1. You may output multiple tool calls in one response. They run sequentially in order.
-2. Use a different integer id for each call.
-3. Wait for the injected result message before issuing more calls.
-4. Never output a tool call unless you intend it to run — the relay executes everything it finds.
-5. addLink requires both nodes to already exist on canvas — never issue addNode and addLink for the same node in one response.
-
-Reading results:
-The relay injects a message like:
-[VisGraph — N tools ✓]
-`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"<summary>"}]}}`
-
-- Parse each backtick-wrapped line as a JSON-RPC 2.0 response. id matches your request id.
-- result means success; error means failure (check error.message).
-- A Canvas summary line and SVG may follow after the responses.
-
-Common prefixes you can use in argument values: rdf: rdfs: owl: xsd: foaf: skos: dc: dcterms: schema: ex:
-
-Fetch https://thhanke.github.io/visgraph/.well-known/mcp.json for the full tool list with parameter names.
-
-Now build a knowledge graph. What would you like to model?
+Call help first to get full instructions and the tool list:
+`{"jsonrpc":"2.0","id":0,"method":"tools/call","params":{"name":"help","arguments":{}}}`
 ```
 
 The relay handles execution and result feedback automatically — no manual copy-paste needed.

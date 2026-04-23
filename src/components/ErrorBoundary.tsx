@@ -25,41 +25,6 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('[ErrorBoundary] Caught error:', error, errorInfo);
-
-    // Check if this is a localStorage or property access error
-    const isStorageError =
-      error.message?.includes('localStorage') ||
-      error.message?.includes('Cannot read properties of undefined') ||
-      error.message?.includes('Cannot read property') ||
-      error.message?.includes('config');
-
-    if (isStorageError) {
-      console.error('[ErrorBoundary] Detected localStorage corruption, clearing and reloading...');
-      
-      try {
-        // Clear all visgraph localStorage keys
-        const keysToRemove = [
-          'ontology-painter-config',
-          'ontology-painter-settings',
-        ];
-        
-        keysToRemove.forEach((key) => {
-          try {
-            localStorage.removeItem(key);
-            console.log(`[ErrorBoundary] Cleared ${key}`);
-          } catch (e) {
-            console.error(`[ErrorBoundary] Failed to clear ${key}:`, e);
-          }
-        });
-
-        // Reload the page after a brief delay
-        setTimeout(() => {
-          window.location.reload();
-        }, 1000);
-      } catch (e) {
-        console.error('[ErrorBoundary] Failed to clear localStorage:', e);
-      }
-    }
   }
 
   handleReset = () => {

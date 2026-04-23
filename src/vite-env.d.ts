@@ -7,6 +7,10 @@ declare module '*?worker' {
   const WorkerFactory: new (...args: any[]) => Worker;
   export default WorkerFactory;
 }
+declare module 'virtual:relay-bookmarklet' {
+  const bookmarklet: string;
+  export default bookmarklet;
+}
 declare module '*?url' {
   const url: string;
   export default url;

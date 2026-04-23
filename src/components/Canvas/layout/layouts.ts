@@ -33,8 +33,9 @@ export function createDagreLayout(direction: 'LR' | 'TB', spacing: number): Layo
 
 const ELK_ALGORITHM_IDS: Record<string, string> = {
   layered: 'org.eclipse.elk.layered',
-  force: 'org.eclipse.elk.force',
-  stress: 'org.eclipse.elk.stress',
+  force:   'org.eclipse.elk.force',
+  stress:  'org.eclipse.elk.stress',
+  radial:  'org.eclipse.elk.radial',
 };
 
 const ELK_TIMEOUT_MS = 60_000;

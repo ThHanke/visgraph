@@ -3,6 +3,7 @@ import * as Reactodia from '@reactodia/workspace';
 import type { McpTool, McpResult } from '@/mcp/types';
 import { rdfManager } from '@/utils/rdfManager';
 import { getWorkspaceRefs } from '@/mcp/workspaceContext';
+import { mcpManifest, mcpServerDescription } from '@/mcp/manifest';
 
 const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
 function getElementLabel(data: Reactodia.ElementModel | undefined): string {
@@ -239,6 +240,56 @@ const getGraphState: McpTool = {
 };
 
 // ---------------------------------------------------------------------------
+// help
+// ---------------------------------------------------------------------------
+const help: McpTool = {
+  name: 'help',
+  async handler(params): Promise<McpResult> {
+    const { tool } = (params ?? {}) as { tool?: string };
+    if (tool) {
+      const entry = mcpManifest.find(e => e.name === tool);
+      if (!entry) return { success: false, error: `Unknown tool: ${tool}. Call help() with no arguments to list all tools.` };
+      return { success: true, data: { content: JSON.stringify({ name: entry.name, description: entry.description, inputSchema: entry.inputSchema }) } };
+    }
+    const instructions = [
+      mcpServerDescription,
+      '',
+      'RELAY OUTPUT FORMAT',
+      'Emit one MCP JSON-RPC 2.0 request per line, each wrapped in single backtick chars (U+0060).',
+      'Format: BACKTICK{"jsonrpc":"2.0","id":<N>,"method":"tools/call","params":{"name":"<tool>","arguments":{...}}}BACKTICK',
+      'Replace BACKTICK with the actual backtick character (`) and fill in tool name and arguments.',
+      '',
+      'Rules:',
+      '1. Multiple tool calls per response are allowed — they run sequentially.',
+      '2. Use a different integer id for each call.',
+      '3. Wait for the injected result message before issuing more calls.',
+      '4. Never output a tool call unless you intend it to run — the relay executes everything it finds.',
+      '5. addLink requires both nodes to already exist on canvas — never issue addNode and addLink for the same node in one response.',
+      '',
+      'Reading results:',
+      'The relay injects a message starting with [VisGraph — N tools ✓] followed by one backtick-wrapped',
+      'JSON-RPC 2.0 response per call. result.content[0].text holds the outcome summary.',
+      '- result means success; error means failure (check error.message).',
+      '- A Canvas summary line and SVG may follow.',
+      '',
+      'Timeout / late results:',
+      'Long operations (layout, reasoning) may exceed the relay timeout. A timed-out call returns a JSON-RPC',
+      'error with data.lateResult=true. Do NOT retry — a [VisGraph — late result for <tool>] follow-up',
+      'will be injected automatically when the operation completes.',
+      '',
+      'Common namespace prefixes usable in argument values:',
+      'rdf: rdfs: owl: xsd: foaf: skos: dc: dcterms: schema: ex:',
+      '',
+      'TOOLS',
+      ...mcpManifest.map(e => `${e.name} — ${e.description}`),
+      '',
+      'Call help({"tool":"<name>"}) for the full schema of any tool.',
+    ].join('\n');
+    return { success: true, data: { content: instructions } };
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Exports
 // ---------------------------------------------------------------------------
 export const graphTools: McpTool[] = [
@@ -248,4 +299,5 @@ export const graphTools: McpTool[] = [
   exportGraph,
   exportImage,
   getGraphState,
+  help,
 ];

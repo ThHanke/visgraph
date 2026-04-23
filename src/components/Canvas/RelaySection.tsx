@@ -42,7 +42,7 @@ export const RelaySection: React.FC<RelaySectionProps> = ({ bookmarkletHref, con
       <ol className="text-xs text-muted-foreground space-y-1 list-none">
         <li className="flex gap-2"><span className="text-foreground font-medium">1.</span> Drag the button below to your bookmark bar</li>
         <li className="flex gap-2"><span className="text-foreground font-medium">2.</span> Go to your AI chat tab, click the bookmark</li>
-        <li className="flex gap-2"><span className="text-foreground font-medium">3.</span> Paste the starter prompt — tool calls execute here automatically and results appear in the chat input</li>
+        <li className="flex gap-2"><span className="text-foreground font-medium">3.</span> Paste the starter prompt (see README) — the AI calls <code className="text-xs">help()</code> to get full instructions, then tool calls run here automatically</li>
       </ol>
 
       {/* Draggable bookmarklet */}

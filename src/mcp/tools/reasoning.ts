@@ -1,8 +1,7 @@
 // src/mcp/tools/reasoning.ts
 import type { McpTool, McpResult } from '@/mcp/types';
-import { rdfManager } from '@/utils/rdfManager';
 import { getWorkspaceRefs } from '@/mcp/workspaceContext';
-import { VALID_ALGORITHMS, fitCanvasView } from './layout';
+import { VALID_ALGORITHMS } from './layout';
 const EXPORT_FORMATS = ['turtle', 'jsonld', 'rdfxml', 'svg', 'png'];
 
 // ---------------------------------------------------------------------------
@@ -20,22 +19,19 @@ const runReasoning: McpTool = {
   async handler(params): Promise<McpResult> {
     try {
       const { clearBefore = false } = (params ?? {}) as { clearBefore?: boolean };
-      const { ctx, dataProvider } = getWorkspaceRefs();
+      const refs = getWorkspaceRefs();
 
       if (clearBefore) {
-        await dataProvider.clearInferred();
+        await refs.dataProvider.clearInferred();
       }
 
-      // Must pass rulesets from app config — empty array skips all rules
-      const cfg = (await import('@/stores/appConfigStore')).useAppConfigStore.getState().config;
-      const rulesets: string[] = Array.isArray(cfg?.reasoningRulesets) ? cfg.reasoningRulesets : ['best-practice.n3', 'owl-rl.n3'];
-      const result = await rdfManager.runReasoning({ rulesets });
-      const inferredTriples = result.meta?.addedCount ?? result.inferences.length;
+      if (refs.runReasoning) {
+        await refs.runReasoning();
+      } else {
+        return { success: false, error: 'Reasoning not yet available — workspace still initialising' };
+      }
 
-      await ctx.model.requestData();
-      fitCanvasView(ctx);
-
-      return { success: true, data: { inferredTriples } };
+      return { success: true, data: { content: 'Reasoning complete. Inferred triples are now highlighted in orange.' } };
     } catch (e) {
       return { success: false, error: String(e) };
     }

@@ -131,9 +131,20 @@
     }
 
     // Forward BC → opener
+    var lastSessionId = null;
     if (bc) {
       bc.onmessage = function (evt) {
         const data = evt.data;
+
+        // Forward tool-execution heartbeats so bookmarklet can detect app reloads
+        if (data && data.type === 'vg-ping' && data.sessionId) {
+          lastSessionId = data.sessionId;
+          if (window.opener) {
+            try { window.opener.postMessage(data, openerOrigin || '*'); } catch (_) {}
+          }
+          return;
+        }
+
         if (!data || data.type !== 'vg-result') return;
 
         dotBc.className = 'dot ok';
@@ -167,7 +178,9 @@
       bc.postMessage({ type: 'vg-ping' });
       const pingInterval = setInterval(function () {
         if (!bc) { clearInterval(pingInterval); return; }
-        bc.postMessage({ type: 'vg-ping' });
+        // Include sessionId so VisGraph can detect relay reconnects after reload
+        const ping = lastSessionId ? { type: 'vg-ping', sessionId: lastSessionId } : { type: 'vg-ping' };
+        bc.postMessage(ping);
       }, 10000);
 
       window.addEventListener('unload', function () {

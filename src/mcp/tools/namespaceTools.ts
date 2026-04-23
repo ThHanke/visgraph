@@ -105,7 +105,7 @@ const listNamespaces: McpTool = {
       const entries = getRegistry();
       const result: Record<string, string> = {};
       for (const e of entries) result[e.prefix + ':'] = e.uri;
-      return { success: true, data: result };
+      return { success: true, data: { content: JSON.stringify(result) } };
     } catch (e) {
       return { success: false, error: String(e) };
     }

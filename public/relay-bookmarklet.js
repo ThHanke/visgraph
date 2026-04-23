@@ -23,8 +23,8 @@
   'use strict';
 
   /* ── Constants ─────────────────────────────────────────────────────────── */
-  var RELAY_URL    = 'https://thhanke.github.io/visgraph/relay.html';
-  var RELAY_ORIGIN = 'https://thhanke.github.io';
+  var RELAY_URL    = '__RELAY_URL__';
+  var RELAY_ORIGIN = '__RELAY_ORIGIN__';
   var POPUP_NAME   = 'vg-relay';
   var POPUP_OPTS   = 'width=320,height=180,menubar=no,toolbar=no,location=no,resizable=yes';
   var DEBOUNCE_MS  = 800;
@@ -289,7 +289,7 @@
     if (data.added) return 's=' + (data.added.s || '') + ' p=' + (data.added.p || '') + ' o=' + (data.added.o || '');
     if (data.removed !== undefined) return typeof data.removed === 'string' ? 'removed ' + data.removed : JSON.stringify(data.removed);
     if (data.inferredTriples !== undefined) return data.inferredTriples + ' triples inferred';
-    if (data.content !== undefined) return '(' + (data.content.length || 0) + ' chars)';
+    if (data.content !== undefined) return typeof data.content === 'string' ? data.content : '(' + (data.content.length || 0) + ' chars)';
     if (data.expanded !== undefined) return data.expanded + ' nodes expanded';
     return JSON.stringify(data).slice(0, 80);
   }
@@ -331,25 +331,150 @@
   }
 
   /* ── Batch queue state ─────────────────────────────────────────────────── */
-  var callQueue        = [];
-  var batchResults     = [];
-  var isProcessing     = false;
-  var pendingTool      = null;
-  var pendingMcpId     = null;
-  var lastSummary      = null;
+  var callQueue             = [];
+  var batchResults          = [];
+  var isProcessing          = false;
+  var pendingTool           = null;
+  var pendingMcpId          = null;
+  var pendingRequestId      = null;  // requestId of the in-flight call
+  var lastSummary           = null;
+  var callTimeoutTimer      = null;
+  var knownSessionId        = null;  // session hash of the current VisGraph page load
+  var lateResult            = null;  // { requestId, tool, mcpId } — awaiting late delivery
+  var CALL_TIMEOUT_MS       = 30000; // 30 s base; each vg-ping resets it (long ops keep pinging)
+
+  function resetCallTimeout() {
+    clearTimeout(callTimeoutTimer);
+    callTimeoutTimer = setTimeout(function () {
+      if (!isProcessing) return;
+      var timedOutTool      = pendingTool    || '?';
+      var timedOutId        = pendingMcpId;
+      var timedOutRequestId = pendingRequestId;
+      isProcessing   = false;
+      pendingTool    = null;
+      pendingMcpId   = null;
+      pendingRequestId = null;
+
+      // Remember this requestId — if the result arrives later we'll inject it
+      lateResult = { requestId: timedOutRequestId, tool: timedOutTool, mcpId: timedOutId };
+
+      // Flush any results already collected, plus a timeout notice for the stalled tool
+      var results = batchResults.slice();
+      batchResults = [];
+      var summary  = lastSummary;
+      lastSummary  = null;
+      callQueue    = [];
+
+      var timeoutLine = '[VisGraph — ⏱ ' + timedOutTool + ' timed out — result may still arrive as a follow-up]';
+      var resp = JSON.stringify({
+        jsonrpc: '2.0', id: timedOutId != null ? timedOutId : null,
+        error: {
+          code: -32000,
+          message: timedOutTool + ' did not respond within ' + (CALL_TIMEOUT_MS / 1000) + ' s. The tool is likely still running. A follow-up result will be injected automatically when it completes.',
+          data: { tool: timedOutTool, lateResult: true },
+        },
+      });
+      results.push({ tool: timedOutTool, mcpId: timedOutId, ok: false, result: { success: false, error: 'timeout' } });
+
+      // Build and inject: previous results (if any) + timeout notice
+      var lines = [timeoutLine];
+      results.forEach(function (r) {
+        var rResp;
+        if (r.tool === timedOutTool && !r.ok && r.result && r.result.error === 'timeout') {
+          rResp = resp;
+        } else if (r.ok) {
+          rResp = JSON.stringify({
+            jsonrpc: '2.0', id: r.mcpId != null ? r.mcpId : null,
+            result: { content: [{ type: 'text', text: briefData(r.result && r.result.data) }] },
+          });
+        } else {
+          var err = (r.result && r.result.error) || 'failed';
+          rResp = JSON.stringify({
+            jsonrpc: '2.0', id: r.mcpId != null ? r.mcpId : null,
+            error: { code: -32000, message: String(err), data: { tool: r.tool } },
+          });
+        }
+        lines.push('`' + rResp + '`');
+      });
+      if (summary) { lines.push(''); lines.push(summary); }
+      injectResult(lines.join('\n'));
+      showToast('⏱ ' + timedOutTool + ' timed out — awaiting late result', false);
+    }, CALL_TIMEOUT_MS);
+  }
 
   /* ── Result listener (popup → AI tab) ─────────────────────────────────── */
   window.addEventListener('message', function (evt) {
-    if (evt.origin !== RELAY_ORIGIN) return;
+    if (evt.origin !== RELAY_ORIGIN) {
+      var d = evt.data;
+      if (d && (d.type === 'vg-result' || d.type === 'vg-ping')) {
+        console.warn('[vg-relay] Dropped message from unexpected origin:', evt.origin, '— expected:', RELAY_ORIGIN, 'type:', d.type);
+      }
+      return;
+    }
     var data = evt.data;
+
+    // Heartbeat from popup while a long tool (layout, reasoning) is running
+    if (data && data.type === 'vg-ping') {
+      if (data.sessionId) {
+        if (knownSessionId && knownSessionId !== data.sessionId) {
+          // VisGraph reloaded — new session detected
+          showToast('VisGraph reloaded — graph data was lost', false);
+          clearTimeout(callTimeoutTimer);
+          isProcessing   = false;
+          pendingTool    = null;
+          pendingMcpId   = null;
+          pendingRequestId = null;
+          batchResults   = [];
+          callQueue      = [];
+          lastSummary    = null;
+          lateResult     = null;
+        }
+        knownSessionId = data.sessionId;
+      }
+      resetCallTimeout(); // extend deadline
+      return;
+    }
+
     if (!data || data.type !== 'vg-result') return;
+
+    // Late result arriving after a timeout — inject as standalone follow-up
+    if (!isProcessing && lateResult && data.requestId && data.requestId === lateResult.requestId) {
+      var lr = lateResult;
+      lateResult = null;
+      clearTimeout(callTimeoutTimer);
+      var ok = !!(data.result && data.result.success !== false);
+      var lResp;
+      if (ok) {
+        lResp = JSON.stringify({
+          jsonrpc: '2.0', id: lr.mcpId != null ? lr.mcpId : null,
+          result: { content: [{ type: 'text', text: briefData(data.result && data.result.data) }] },
+        });
+      } else {
+        var lErr = (data.result && data.result.error) || 'failed';
+        lResp = JSON.stringify({
+          jsonrpc: '2.0', id: lr.mcpId != null ? lr.mcpId : null,
+          error: { code: -32000, message: String(lErr), data: { tool: lr.tool } },
+        });
+      }
+      var lLines = ['[VisGraph — late result for ' + lr.tool + (ok ? ' ✓' : ' ✗') + ']'];
+      lLines.push('`' + lResp + '`');
+      if (data.summary) { lLines.push(''); lLines.push(data.summary); }
+      if (data.svg) { lLines.push(''); lLines.push('Current graph (SVG):'); lLines.push(data.svg); }
+      injectResult(lLines.join('\n'));
+      showToast('Late result: ' + lr.tool, ok);
+      return;
+    }
+
+    clearTimeout(callTimeoutTimer);
+    lateResult = null; // new result arrived — any previous late-result slot is stale
 
     var ok = !!(data.result && data.result.success !== false);
     batchResults.push({ tool: pendingTool || '?', mcpId: pendingMcpId, ok: ok, result: data.result });
     if (data.summary) lastSummary = data.summary;
-    isProcessing = false;
-    pendingTool  = null;
-    pendingMcpId = null;
+    isProcessing   = false;
+    pendingTool    = null;
+    pendingMcpId   = null;
+    pendingRequestId = null;
 
     if (callQueue.length > 0) {
       processNextInQueue();
@@ -572,9 +697,11 @@
       lastSummary = null;
       return;
     }
-    pendingTool  = item.tool;
-    pendingMcpId = item.mcpId != null ? item.mcpId : null;
-    var requestId = 'rq-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+    pendingTool      = item.tool;
+    pendingMcpId     = item.mcpId != null ? item.mcpId : null;
+    lateResult       = null; // new batch — discard any stale late-result slot
+    var requestId    = 'rq-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+    pendingRequestId = requestId;
     var payload = {
       type: 'vg-call',
       tool: item.tool,
@@ -585,6 +712,7 @@
     setTimeout(function () {
       try {
         popup.postMessage(payload, RELAY_ORIGIN);
+        resetCallTimeout();
       } catch (e) {
         console.warn('[vg-relay] postMessage failed:', e);
         isProcessing = false;

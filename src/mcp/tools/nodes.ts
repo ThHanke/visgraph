@@ -178,7 +178,7 @@ const getNodes: McpTool = {
         types: item.element.types,
       }));
 
-      return { success: true, data: { entities } };
+      return { success: true, data: { content: JSON.stringify(entities) } };
     } catch (e) {
       return { success: false, error: String(e) };
     }

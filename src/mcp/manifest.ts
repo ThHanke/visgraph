@@ -110,7 +110,7 @@ export const mcpManifest: McpToolManifestEntry[] = [
   },
   {
     name: 'getNodes',
-    description: 'Return ABox individuals currently on the canvas with their IRI, label, and rdf:type(s). Optionally filter by type IRI or label substring.',
+    description: 'Return all entities known to the graph (both TBox classes and ABox individuals) with their IRI, label, and rdf:type(s). Use to discover available IRIs before calling addNode/addLink. Optionally filter by type IRI or label substring.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -272,5 +272,15 @@ export const mcpManifest: McpToolManifestEntry[] = [
     name: 'listNamespaces',
     description: 'Return all registered IRI prefixes and their namespace URIs.',
     inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'help',
+    description: 'Call with no arguments to get full relay usage instructions and the complete tool list. Pass {"tool":"<name>"} for the full schema of a specific tool.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tool: { type: 'string', description: 'Tool name to describe. Omit to list all tools.' },
+      },
+    },
   },
 ];

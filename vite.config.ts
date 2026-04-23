@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react-swc";
 import tailwind from "@tailwindcss/vite";
 import path from "path";
 import { mcpManifestPlugin } from './vite-plugin-mcp-manifest';
+import { bookmarkletPlugin } from './vite-plugin-bookmarklet';
 
 
 export default defineConfig({
@@ -19,6 +20,7 @@ export default defineConfig({
     react(),
     tailwind(),
     mcpManifestPlugin(),
+    bookmarkletPlugin(),
   ],
 
   // Ensure worker bundles use ES modules output so Rollup can code-split worker chunks.

@@ -14,7 +14,7 @@ import { RdfMetadataProvider } from '@/providers/RdfMetadataProvider';
 import { RdfValidationProvider } from '@/providers/RdfValidationProvider';
 import { workerQuadsToRdf, type WorkerQuad as ConverterQuad } from '@/providers/quadConverter';
 import type { WorkerQuad } from '@/utils/rdfSerialization';
-import { setWorkspaceContext } from '@/mcp/workspaceContext';
+import { setWorkspaceContext, registerReasoningCallback } from '@/mcp/workspaceContext';
 import { TopBar } from './TopBar';
 import { getWorkspaceRefs } from '@/mcp/workspaceContext';
 import { LeftSidebar } from './LeftSidebar';
@@ -1031,6 +1031,10 @@ export default function ReactodiaCanvas() {
       setIsReasoning(false);
     }
   }, []);
+
+  React.useEffect(() => {
+    registerReasoningCallback(handleRunReasoning);
+  }, [handleRunReasoning]);
 
   const handleFileChange = React.useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
