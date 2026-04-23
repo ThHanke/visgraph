@@ -569,10 +569,11 @@
       for (var k in params) {
         if (typeof params[k] === 'string') params[k] = expandPrefix(params[k]);
       }
-      var sig = tool + ':' + JSON.stringify(params);
+      var mcpId = req.id != null ? req.id : null;
+      var sig = tool + ':' + JSON.stringify(params) + ':' + mcpId;
       if (!dispatchedSigs.has(sig)) {
         dispatchedSigs.add(sig);
-        calls.push({ tool: tool, params: params, mcpId: req.id != null ? req.id : null });
+        calls.push({ tool: tool, params: params, mcpId: mcpId });
       }
     }
     return calls;
