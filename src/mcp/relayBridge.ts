@@ -93,6 +93,7 @@ async function handleCall(
   params: unknown,
   requestId: string,
   isLast: boolean,
+  onDone: () => void,
 ): Promise<void> {
   const tools = await waitForMcpTools(RETRY_COUNT);
 
@@ -102,6 +103,7 @@ async function handleCall(
     channel.postMessage({ type: 'vg-ready' });
     toast.error(`✗ ${tool}: ${error}`);
     notifyCallLog({ tool, success: false, timestamp: Date.now() });
+    onDone();
     return;
   }
 
@@ -112,6 +114,7 @@ async function handleCall(
     channel.postMessage({ type: 'vg-ready' });
     toast.error(`✗ ${tool}: ${error}`);
     notifyCallLog({ tool, success: false, timestamp: Date.now() });
+    onDone();
     return;
   }
 
@@ -131,6 +134,7 @@ async function handleCall(
     channel.postMessage({ type: 'vg-ready' });
     toast.error(`✗ ${tool}: ${error}`);
     notifyCallLog({ tool, success: false, timestamp: Date.now() });
+    onDone();
     return;
   }
   clearInterval(pingInterval);
@@ -160,7 +164,7 @@ async function handleCall(
     ...(svg !== undefined ? { svg } : {}),
   });
 
-  // Signal the relay that the app is idle and ready for the next call
+  // Signal the relay popup that the app is idle
   channel.postMessage({ type: 'vg-ready' });
 
   if (result.success) {
@@ -170,6 +174,9 @@ async function handleCall(
     toast.error(`✗ ${tool}: ${result.error}`);
     notifyCallLog({ tool, success: false, timestamp: Date.now() });
   }
+
+  // Signal internal queue to dispatch next pending call
+  onDone();
 }
 
 const PING_STALE_MS = 15000;
@@ -180,8 +187,10 @@ export function startRelayBridge(): () => void {
   let lastPingAt = 0;
   let isConnected = false;
   let appReady = false;
-  // Calls received before app signals vg-ready are queued here
   const pendingCalls: Array<{ tool: string; params: unknown; requestId: string; isLast: boolean }> = [];
+
+  // Ask the app if it's ready — workspaceContext responds with vg-ready if initialised
+  channel.postMessage({ type: 'vg-ping' });
 
   const staleCheck = setInterval(() => {
     const stale = lastPingAt > 0 && (Date.now() - lastPingAt > PING_STALE_MS);
@@ -191,13 +200,18 @@ export function startRelayBridge(): () => void {
     }
   }, PING_CHECK_INTERVAL_MS);
 
-  function drainPending(): void {
-    const call = pendingCalls.shift();
-    if (!call) return;
-    // Mark busy — next drain happens when handleCall posts vg-ready and appReady flips back
+  function dispatch(tool: string, params: unknown, requestId: string, isLast: boolean): void {
     appReady = false;
-    handleCall(channel, call.tool, call.params, call.requestId, call.isLast).catch(err => {
+    handleCall(channel, tool, params, requestId, isLast, () => {
+      appReady = true;
+      if (pendingCalls.length > 0) {
+        const next = pendingCalls.shift()!;
+        console.info('[RelayBridge] Dispatching next queued call:', next.tool, '(', pendingCalls.length, 'remaining)');
+        dispatch(next.tool, next.params, next.requestId, next.isLast);
+      }
+    }).catch(err => {
       console.error('[RelayBridge] Unhandled error in handleCall:', err);
+      appReady = true;
     });
   }
 
@@ -206,11 +220,14 @@ export function startRelayBridge(): () => void {
     console.info('[RelayBridge] BC message received:', msg);
 
     if (msg?.type === 'vg-ready') {
-      // App (or ourselves) signalling readiness — dispatch next queued call if any
-      appReady = true;
-      if (pendingCalls.length > 0) {
-        console.info('[RelayBridge] App ready — dispatching next queued call (', pendingCalls.length, 'pending)');
-        drainPending();
+      // Initial vg-ready from workspaceContext signals the app is ready for first call
+      if (!appReady) {
+        appReady = true;
+        if (pendingCalls.length > 0) {
+          const next = pendingCalls.shift()!;
+          console.info('[RelayBridge] App ready — dispatching first queued call:', next.tool);
+          dispatch(next.tool, next.params, next.requestId, next.isLast);
+        }
       }
       return;
     }
@@ -236,11 +253,7 @@ export function startRelayBridge(): () => void {
       return;
     }
 
-    // Mark busy immediately so any subsequent BC messages queue rather than run concurrently
-    appReady = false;
-    handleCall(channel, tool, params, requestId, isLast).catch(err => {
-      console.error('[RelayBridge] Unhandled error in handleCall:', err);
-    });
+    dispatch(tool, params, requestId, isLast);
   };
 
   console.info('[RelayBridge] Listening on BroadcastChannel:', CHANNEL_NAME);

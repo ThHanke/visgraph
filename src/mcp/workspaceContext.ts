@@ -15,7 +15,16 @@ let pendingReasoningCallback: (() => Promise<unknown>) | null = null;
 let bc: BroadcastChannel | null = null;
 
 function getChannel(): BroadcastChannel {
-  if (!bc) bc = new BroadcastChannel(CHANNEL_NAME);
+  if (!bc) {
+    bc = new BroadcastChannel(CHANNEL_NAME);
+    // Respond to relay bridge ping (sent on startup) so it can confirm app is ready
+    bc.addEventListener('message', (evt) => {
+      if (evt.data?.type === 'vg-ping' && !evt.data?.requestId) {
+        // A ping without requestId is the relay bridge's startup readiness check
+        maybeNotifyReady();
+      }
+    });
+  }
   return bc;
 }
 
