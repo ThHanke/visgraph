@@ -164,7 +164,7 @@
   /* ── Find the chat input ───────────────────────────────────────────────── */
   function findInput() {
     var candidates = Array.from(document.querySelectorAll(
-      'textarea, div[contenteditable="true"]'
+      'textarea, [contenteditable="true"], [contenteditable=""]'
     )).filter(function (el) {
       var r = el.getBoundingClientRect();
       return r.width > 0 && r.height > 0;
@@ -178,6 +178,7 @@
   }
 
   /* ── Submit the chat input ─────────────────────────────────────────────── */
+  // Returns true if a send button was found and clicked.
   function submitInput(inputEl) {
     var cur = inputEl.parentElement;
     while (cur && cur !== document.body) {
@@ -187,21 +188,29 @@
         var lbl = (b.getAttribute('aria-label') || b.title || b.textContent || '').toLowerCase();
         return b.type === 'submit' || lbl.includes('send') || lbl.includes('submit');
       });
-      if (sendBtn) { sendBtn.click(); return; }
+      if (sendBtn) { sendBtn.click(); break; }
       cur = cur.parentElement;
     }
+    // Always also dispatch Enter — required by textarea-based UIs (FhGenie) that
+    // submit on keydown rather than button click.
     ['keydown', 'keyup'].forEach(function (type) {
       inputEl.dispatchEvent(new KeyboardEvent(type, {
         key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
       }));
     });
+    return true;
   }
 
   /* ── Inject result into chat input and auto-submit ─────────────────────── */
-  // Three-layer fallback for cross-framework compatibility:
-  //   1. Clipboard API + paste event (ProseMirror, TipTap, React controlled inputs)
-  //   2. DataTransfer synthetic paste (synchronous, no permission needed)
-  //   3. Legacy: textarea native setter OR execCommand (last resort)
+  // Two paths by element type:
+  //   textarea        — React native-setter + input event
+  //   contenteditable — try InputEvent(beforeinput/insertFromPaste) first so
+  //                     ProseMirror/TipTap creates a proper transaction and updates
+  //                     the framework's reactive store (enabling the send button).
+  //                     Falls back to ClipboardEvent paste for non-ProseMirror editors.
+  //                     In Firefox, ClipboardEvent.clipboardData.getData() returns ''
+  //                     for non-trusted events (security restriction), so beforeinput
+  //                     is the reliable cross-browser path for ProseMirror.
   function injectResult(text) {
     var el = findInput();
     if (!el) {
@@ -213,54 +222,34 @@
       setTimeout(function () { submitInput(el); }, 500);
     }
 
-    function fallback3() {
-      el.focus();
-      if (el.tagName === 'TEXTAREA') {
-        var setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-        setter.call(el, (el.value ? el.value + '\n' : '') + text);
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      } else {
-        document.execCommand('selectAll');
-        document.execCommand('insertText', false, text);
-      }
-      doSubmit();
-    }
-
-    function fallback2() {
-      try {
-        var dt = new DataTransfer();
-        dt.setData('text/plain', text);
-        el.focus();
-        var snapBefore = el.tagName === 'TEXTAREA' ? el.value : el.textContent;
-        el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-        var snapAfter = el.tagName === 'TEXTAREA' ? el.value : el.textContent;
-        if (snapAfter !== snapBefore) {
-          doSubmit();
-        } else {
-          fallback3();
-        }
-      } catch (e) {
-        fallback3();
-      }
-    }
-
     if (el.tagName === 'TEXTAREA') {
-      // For React-controlled textareas the native-setter + input event is the
-      // only reliable path — it updates React's internal fiber state so the
-      // send button becomes enabled before doSubmit fires.
-      // The clipboard/paste approach injects text into the DOM but bypasses
-      // React's onChange, leaving the button disabled.
-      fallback3();
-    } else if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(function () {
-        el.focus();
-        el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true }));
-        doSubmit();
-      }).catch(function () {
-        fallback2();
-      });
+      el.focus();
+      var setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+      setter.call(el, (el.value ? el.value + '\n' : '') + text);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      doSubmit();
     } else {
-      fallback2();
+      // ProseMirror / TipTap contenteditable.
+      // DataTransfer paste goes through ProseMirror's paste handler → transaction →
+      // reactive store update → send button enabled.
+      // In Firefox, ClipboardEvent.clipboardData.getData() is blocked on non-trusted
+      // events; TipTap's async clipboard extension then reads the OS clipboard instead.
+      // Writing our text to the real clipboard first ensures TipTap reads the right
+      // content regardless of which path it takes.
+      el.focus();
+      function dispatchPaste() {
+        try {
+          var dt = new DataTransfer();
+          dt.setData('text/plain', text);
+          el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+        } catch (e) {}
+        doSubmit();
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(dispatchPaste, dispatchPaste);
+      } else {
+        dispatchPaste();
+      }
     }
 
     return true;
@@ -520,6 +509,8 @@
   // Streaming safety: truncated JSON has unbalanced braces → brace scanner skips it.
   // False-positive guard: validateMcpRequest rejects anything not a valid tools/call.
 
+  // Global dedup for mutation-triggered scans.  Prevents the same streaming AI
+  // message from dispatching the same call multiple times as text arrives.
   var dispatchedSigs = new Set();
 
   function validateMcpRequest(obj) {
@@ -556,7 +547,7 @@
     return objects;
   }
 
-  function extractAllToolCalls(text) {
+  function extractAllToolCalls(text, seen) {
     var calls = [];
     var objects = extractJsonObjects(text);
     for (var i = 0; i < objects.length; i++) {
@@ -571,8 +562,8 @@
       }
       var mcpId = req.id != null ? req.id : null;
       var sig = tool + ':' + JSON.stringify(params) + ':' + mcpId;
-      if (!dispatchedSigs.has(sig)) {
-        dispatchedSigs.add(sig);
+      if (!seen.has(sig)) {
+        seen.add(sig);
         calls.push({ tool: tool, params: params, mcpId: mcpId });
       }
     }
@@ -673,10 +664,11 @@
     }, DEBOUNCE_MS);
   }
 
-  function parseAndEnqueue(el) {
+  function parseAndEnqueue(el, seen) {
     if (!el) return;
     var text = el.innerText || el.textContent || '';
-    var calls = extractAllToolCalls(text);
+    if (text.indexOf('[VisGraph') !== -1) return;
+    var calls = extractAllToolCalls(text, seen || dispatchedSigs);
     if (calls.length === 0) return;
     callQueue = callQueue.concat(calls);
     scheduleDrain(el);
@@ -732,6 +724,12 @@
 
   function collectAncestors(node) {
     var el = node.nodeType === 3 ? node.parentElement : node;
+    // Skip mutations inside editable elements (user typing / relay injection)
+    var check = el;
+    while (check && check !== document.body) {
+      if (check.tagName === 'TEXTAREA' || check.contentEditable === 'true') return;
+      check = check.parentElement;
+    }
     while (el && el !== document.body) {
       var tag = el.tagName ? el.tagName.toLowerCase() : '';
       if (tag === 'p' || tag === 'li') {
@@ -758,17 +756,44 @@
     if (el === document.body) pendingNodes.add(document.body);
   }
 
+  // Start observing the full body.  Once a relevant mutation lands in a specific
+  // subtree (the first div/section/article that gets added to pendingNodes), lock
+  // the observer to that container to reduce noise from unrelated DOM activity.
+  var lockedContainer = null;
+
+  function lockObserverTo(container) {
+    if (lockedContainer || container === document.body) return;
+    lockedContainer = container;
+    observer.disconnect();
+    observer.observe(container, { childList: true, subtree: true, characterData: true });
+  }
+
   var observer = new MutationObserver(function (mutations) {
     mutations.forEach(function (m) {
       m.addedNodes.forEach(function (n) { collectAncestors(n); });
       if (m.type === 'characterData') collectAncestors(m.target);
     });
+    // Lock in to the message container the first time we see a relevant node
+    if (!lockedContainer && pendingNodes.size > 0) {
+      pendingNodes.forEach(function (node) {
+        if (!lockedContainer && node !== document.body) {
+          // Walk up to find a stable ancestor (at least 2 levels up from body)
+          var c = node.parentElement;
+          while (c && c.parentElement && c.parentElement !== document.body) {
+            c = c.parentElement;
+          }
+          if (c && c !== document.body) lockObserverTo(c);
+        }
+      });
+    }
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(flushPending, DEBOUNCE_MS);
   });
 
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });
 
-  setTimeout(function () { parseAndEnqueue(document.body); }, 500);
+  // Initial scan uses a throwaway seen-set so the user's starter-prompt example
+  // tool calls don't pollute dispatchedSigs and block the real AI response.
+  setTimeout(function () { parseAndEnqueue(document.body, new Set()); }, 500);
 
 })();
