@@ -429,6 +429,158 @@
       }
     },
     {
+      "name": "getNodeDetails",
+      "description": "Return all asserted RDF properties (triples) for a specific entity IRI. Only reads from the asserted graph (urn:vg:data) — inferred triples are not included.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "iri"
+        ],
+        "properties": {
+          "iri": {
+            "type": "string",
+            "description": "IRI of the entity to inspect. Prefix notation supported (e.g. ex:Alice)."
+          }
+        }
+      }
+    },
+    {
+      "name": "updateNode",
+      "description": "Update annotation properties of an existing entity without deleting it (preserves all edges). Only modifies asserted triples in urn:vg:data.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "iri"
+        ],
+        "properties": {
+          "iri": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "typeIri": {
+            "type": "string"
+          },
+          "setProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "predicateIri",
+                "value"
+              ],
+              "properties": {
+                "predicateIri": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "removeProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "predicateIri"
+              ],
+              "properties": {
+                "predicateIri": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "getNeighbors",
+      "description": "Traverse the RDF graph by BFS from a start node. Returns neighboring nodes and edges up to the given depth. Use layer=\"abox\" for instance data, \"tbox\" for class/property hierarchy, \"both\" for everything.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "iri"
+        ],
+        "properties": {
+          "iri": {
+            "type": "string"
+          },
+          "depth": {
+            "type": "integer",
+            "default": 2
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "out",
+              "in",
+              "both"
+            ],
+            "default": "both"
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "abox",
+              "tbox",
+              "both"
+            ],
+            "default": "both"
+          }
+        }
+      }
+    },
+    {
+      "name": "findPath",
+      "description": "Find the shortest path between two nodes in the RDF graph using BFS. Crosses ABox and TBox edges freely.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "fromIri",
+          "toIri"
+        ],
+        "properties": {
+          "fromIri": {
+            "type": "string"
+          },
+          "toIri": {
+            "type": "string"
+          },
+          "maxDepth": {
+            "type": "integer",
+            "default": 6
+          }
+        }
+      }
+    },
+    {
+      "name": "loadShacl",
+      "description": "Load SHACL shapes from inline Turtle text into the shapes graph (urn:vg:shapes). Call validateGraph to run validation after loading.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "turtle"
+        ],
+        "properties": {
+          "turtle": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "validateGraph",
+      "description": "Validate the asserted graph (urn:vg:data) against SHACL shapes loaded in urn:vg:shapes. Returns conforms flag and structured violation list.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
       "name": "help",
       "description": "Call with no arguments to get full relay usage instructions and the complete tool list. Pass {\"tool\":\"<name>\"} for the full schema of a specific tool.",
       "inputSchema": {
