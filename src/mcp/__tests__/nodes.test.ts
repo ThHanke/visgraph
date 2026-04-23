@@ -7,6 +7,8 @@ vi.mock('@/utils/rdfManager', () => ({
   rdfManager: {
     addTriple: vi.fn(),
     removeAllQuadsForIri: vi.fn().mockResolvedValue(undefined),
+    fetchQuadsPage: vi.fn(),
+    applyBatch: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -26,10 +28,12 @@ import { nodeTools } from '../tools/nodes';
 const addNode = nodeTools.find((t) => t.name === 'addNode')!;
 const removeNode = nodeTools.find((t) => t.name === 'removeNode')!;
 const getNodes = nodeTools.find((t) => t.name === 'getNodes')!;
+const getNodeDetails = nodeTools.find((t) => t.name === 'getNodeDetails')!;
+const updateNode = nodeTools.find((t) => t.name === 'updateNode')!;
 
 const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
+const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 
-// DataProviderLookupItem shape: { element: ElementModel, ... }
 function makeItem(id: string, label: string | undefined, types: string[]) {
   return {
     element: {
@@ -61,9 +65,11 @@ beforeEach(() => {
   mockModel.requestLinks.mockResolvedValue(undefined);
   mockModel.history.execute.mockReset();
   (getWorkspaceRefs as ReturnType<typeof vi.fn>).mockReturnValue({
-    ctx: { model: mockModel },
+    ctx: { model: mockModel, view: {} },
     dataProvider: { lookupAll: mockLookupAll },
   });
+  (rdfManager.fetchQuadsPage as ReturnType<typeof vi.fn>).mockResolvedValue({ items: [], total: 0, offset: 0, limit: 0 });
+  (rdfManager.applyBatch as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
 });
 
 describe('addNode', () => {
@@ -80,7 +86,6 @@ describe('addNode', () => {
       'http://www.w3.org/1999/02/22-rdf-syntax-ns#type',
       'http://www.w3.org/2002/07/owl#Class'
     );
-    // label stored without wrapping quotes
     expect(rdfManager.addTriple).toHaveBeenCalledWith(
       'http://example.org/foo',
       'http://www.w3.org/2000/01/rdf-schema#label',
@@ -111,37 +116,161 @@ describe('getNodes', () => {
     makeItem('http://example.org/c', 'Gamma', ['http://www.w3.org/2002/07/owl#Class']),
   ];
 
-  it('returns all entities mapped from lookupAll', async () => {
+  it('returns all entities as JSON in content field', async () => {
     mockLookupAll.mockResolvedValue(sampleItems);
-    const result = await getNodes.handler({});
+    const result = await getNodes.handler({}) as { success: true; data: { content: string } };
+    expect(result.success).toBe(true);
+    const entities = JSON.parse(result.data.content);
+    expect(entities).toHaveLength(3);
+    expect(entities[0]).toEqual({ iri: 'http://example.org/a', label: 'Alpha', types: ['http://www.w3.org/2002/07/owl#Class'] });
+  });
+
+  it('filters by labelContains (case-insensitive)', async () => {
+    mockLookupAll.mockResolvedValue(sampleItems);
+    const result = await getNodes.handler({ labelContains: 'alp' }) as { success: true; data: { content: string } };
+    expect(result.success).toBe(true);
+    const entities = JSON.parse(result.data.content);
+    expect(entities).toHaveLength(1);
+    expect(entities[0].iri).toBe('http://example.org/a');
+  });
+
+  it('filters by typeIri', async () => {
+    mockLookupAll.mockResolvedValue(sampleItems);
+    const result = await getNodes.handler({ typeIri: 'http://www.w3.org/2002/07/owl#NamedIndividual' }) as { success: true; data: { content: string } };
+    expect(result.success).toBe(true);
+    const entities = JSON.parse(result.data.content);
+    expect(entities).toHaveLength(1);
+    expect(entities[0].iri).toBe('http://example.org/b');
+  });
+});
+
+describe('getNodeDetails', () => {
+  it('returns label, types, and all properties from asserted graph', async () => {
+    (rdfManager.fetchQuadsPage as ReturnType<typeof vi.fn>).mockResolvedValue({
+      items: [
+        { subject: 'http://example.org/Alice', predicate: RDF_TYPE, object: 'http://example.org/Person', graph: 'urn:vg:data' },
+        { subject: 'http://example.org/Alice', predicate: RDFS_LABEL, object: 'Alice', graph: 'urn:vg:data' },
+        { subject: 'http://example.org/Alice', predicate: 'http://example.org/age', object: '30', graph: 'urn:vg:data' },
+      ],
+      total: 3,
+    });
+
+    const result = await getNodeDetails.handler({ iri: 'http://example.org/Alice' });
     expect(result).toEqual({
       success: true,
       data: {
-        entities: [
-          { iri: 'http://example.org/a', label: 'Alpha', types: ['http://www.w3.org/2002/07/owl#Class'] },
-          { iri: 'http://example.org/b', label: 'Beta', types: ['http://www.w3.org/2002/07/owl#NamedIndividual'] },
-          { iri: 'http://example.org/c', label: 'Gamma', types: ['http://www.w3.org/2002/07/owl#Class'] },
+        iri: 'http://example.org/Alice',
+        label: 'Alice',
+        types: ['http://example.org/Person'],
+        properties: [
+          { predicate: RDF_TYPE, object: 'http://example.org/Person', objectType: 'iri' },
+          { predicate: RDFS_LABEL, object: 'Alice', objectType: 'literal' },
+          { predicate: 'http://example.org/age', object: '30', objectType: 'literal' },
         ],
       },
     });
   });
 
-  it('filters by labelContains (case-insensitive)', async () => {
-    mockLookupAll.mockResolvedValue(sampleItems);
-    const result = await getNodes.handler({ labelContains: 'alp' });
+  it('returns empty properties array for node with no triples', async () => {
+    (rdfManager.fetchQuadsPage as ReturnType<typeof vi.fn>).mockResolvedValue({ items: [], total: 0 });
+    const result = await getNodeDetails.handler({ iri: 'http://example.org/Empty' });
     expect(result).toEqual({
       success: true,
-      data: {
-        entities: [{ iri: 'http://example.org/a', label: 'Alpha', types: ['http://www.w3.org/2002/07/owl#Class'] }],
-      },
+      data: { iri: 'http://example.org/Empty', label: '', types: [], properties: [] },
     });
   });
 
-  it('filters by typeIri', async () => {
-    mockLookupAll.mockResolvedValue(sampleItems);
-    const result = await getNodes.handler({ typeIri: 'http://www.w3.org/2002/07/owl#NamedIndividual' }) as { success: true; data: { entities: unknown[] } };
-    expect(result.success).toBe(true);
-    expect((result as any).data.entities).toHaveLength(1);
-    expect((result as any).data.entities[0].iri).toBe('http://example.org/b');
+  it('returns error when iri is missing', async () => {
+    const result = await getNodeDetails.handler({});
+    expect(result).toEqual({ success: false, error: 'iri is required' });
+  });
+
+  it('expands prefixed IRI before querying', async () => {
+    (rdfManager.fetchQuadsPage as ReturnType<typeof vi.fn>).mockResolvedValue({ items: [], total: 0 });
+    await getNodeDetails.handler({ iri: 'ex:Alice' });
+    expect(rdfManager.fetchQuadsPage).toHaveBeenCalledWith(
+      expect.objectContaining({ filter: { subject: 'http://example.org/Alice' } })
+    );
+  });
+
+  it('classifies blank-node objects correctly', async () => {
+    (rdfManager.fetchQuadsPage as ReturnType<typeof vi.fn>).mockResolvedValue({
+      items: [
+        { subject: 'http://example.org/X', predicate: 'http://example.org/p', object: '_:b0', graph: 'urn:vg:data' },
+      ],
+      total: 1,
+    });
+    const result = await getNodeDetails.handler({ iri: 'http://example.org/X' }) as any;
+    expect(result.data.properties[0].objectType).toBe('bnode');
+  });
+});
+
+describe('updateNode', () => {
+  it('updates label via applyBatch and refreshes canvas', async () => {
+    const result = await updateNode.handler({
+      iri: 'http://example.org/Alice',
+      label: 'Alicia',
+    });
+
+    expect(rdfManager.applyBatch).toHaveBeenCalledWith(
+      {
+        removes: [{ s: 'http://example.org/Alice', p: RDFS_LABEL }],
+        adds: [{ s: 'http://example.org/Alice', p: RDFS_LABEL, o: 'Alicia' }],
+      },
+      'urn:vg:data'
+    );
+    expect(mockModel.requestElementData).toHaveBeenCalledWith(['http://example.org/Alice']);
+    expect(result).toEqual({
+      success: true,
+      data: { updated: 'http://example.org/Alice', changed: [RDFS_LABEL] },
+    });
+  });
+
+  it('replaces typeIri', async () => {
+    await updateNode.handler({ iri: 'http://example.org/Bob', typeIri: 'http://example.org/Director' });
+    expect(rdfManager.applyBatch).toHaveBeenCalledWith(
+      {
+        removes: [{ s: 'http://example.org/Bob', p: RDF_TYPE }],
+        adds: [{ s: 'http://example.org/Bob', p: RDF_TYPE, o: 'http://example.org/Director' }],
+      },
+      'urn:vg:data'
+    );
+  });
+
+  it('handles setProperties and removeProperties', async () => {
+    await updateNode.handler({
+      iri: 'http://example.org/Carol',
+      setProperties: [{ predicateIri: 'http://example.org/age', value: '35' }],
+      removeProperties: [{ predicateIri: 'http://example.org/retired' }],
+    });
+
+    const call = (rdfManager.applyBatch as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.removes).toContainEqual({ s: 'http://example.org/Carol', p: 'http://example.org/age' });
+    expect(call.removes).toContainEqual({ s: 'http://example.org/Carol', p: 'http://example.org/retired' });
+    expect(call.adds).toContainEqual({ s: 'http://example.org/Carol', p: 'http://example.org/age', o: '35' });
+    expect(call.adds).not.toContainEqual(expect.objectContaining({ p: 'http://example.org/retired' }));
+  });
+
+  it('returns error when no mutation fields are provided', async () => {
+    const result = await updateNode.handler({ iri: 'http://example.org/Alice' });
+    expect(result).toEqual({
+      success: false,
+      error: expect.stringContaining('at least one field'),
+    });
+    expect(rdfManager.applyBatch).not.toHaveBeenCalled();
+  });
+
+  it('returns error when iri is missing', async () => {
+    const result = await updateNode.handler({});
+    expect(result).toEqual({ success: false, error: 'iri is required' });
+  });
+
+  it('returns error for unknown prefix in predicateIri', async () => {
+    const result = await updateNode.handler({
+      iri: 'http://example.org/Alice',
+      setProperties: [{ predicateIri: 'unknownns:prop', value: 'x' }],
+    });
+    expect(result.success).toBe(false);
+    expect((result as any).error).toContain('Unknown prefix');
   });
 });

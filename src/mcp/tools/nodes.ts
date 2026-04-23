@@ -185,4 +185,157 @@ const getNodes: McpTool = {
   },
 };
 
-export const nodeTools: McpTool[] = [addNode, removeNode, expandNode, expandAll, getNodes];
+const RDFS_LABEL_IRI = RDFS_LABEL;
+const RDF_TYPE_IRI = RDF_TYPE;
+
+/** Heuristic: does this string value look like an IRI or blank node? */
+function classifyObject(value: string): 'iri' | 'literal' | 'bnode' {
+  if (value.startsWith('_:')) return 'bnode';
+  if (/^[a-zA-Z][a-zA-Z0-9+\-.]*:/.test(value)) return 'iri';
+  return 'literal';
+}
+
+const getNodeDetails: McpTool = {
+  name: 'getNodeDetails',
+  description: 'Return all asserted RDF properties (triples) for a specific entity IRI. Only reads from the asserted graph (urn:vg:data) — inferred triples are not included.',
+  inputSchema: {
+    type: 'object',
+    required: ['iri'],
+    properties: {
+      iri: { type: 'string', description: 'IRI of the entity to inspect. Prefix notation supported (e.g. ex:Alice).' },
+    },
+  },
+  handler: async (params) => {
+    try {
+      const raw = params as { iri?: string };
+      if (!raw.iri) return { success: false, error: 'iri is required' };
+      const iri = expandIri(raw.iri);
+      if (iri.startsWith('Unknown prefix:')) return { success: false, error: iri };
+
+      const { items } = await rdfManager.fetchQuadsPage({
+        graphName: 'urn:vg:data',
+        filter: { subject: iri },
+        limit: 0,
+      });
+
+      let label = '';
+      const types: string[] = [];
+      const properties: Array<{ predicate: string; object: string; objectType: 'iri' | 'literal' | 'bnode' }> = [];
+
+      for (const q of (items ?? [])) {
+        const objectType = classifyObject(q.object);
+        properties.push({ predicate: q.predicate, object: q.object, objectType });
+        if (q.predicate === RDFS_LABEL_IRI && !label) label = q.object;
+        if (q.predicate === RDF_TYPE_IRI) types.push(q.object);
+      }
+
+      return { success: true, data: { iri, label, types, properties } };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  },
+};
+
+const updateNode: McpTool = {
+  name: 'updateNode',
+  description: 'Update annotation properties of an existing entity without deleting it (preserves all edges). Only modifies asserted triples in urn:vg:data — inferred triples are never touched.',
+  inputSchema: {
+    type: 'object',
+    required: ['iri'],
+    properties: {
+      iri: { type: 'string', description: 'IRI of the entity to update.' },
+      label: { type: 'string', description: 'New rdfs:label value.' },
+      typeIri: { type: 'string', description: 'Replace rdf:type with this IRI.' },
+      setProperties: {
+        type: 'array',
+        description: 'Predicate/value pairs to set (replaces existing values for each predicate).',
+        items: {
+          type: 'object',
+          required: ['predicateIri', 'value'],
+          properties: {
+            predicateIri: { type: 'string' },
+            value: { type: 'string' },
+          },
+        },
+      },
+      removeProperties: {
+        type: 'array',
+        description: 'Predicates whose values should be removed entirely.',
+        items: {
+          type: 'object',
+          required: ['predicateIri'],
+          properties: {
+            predicateIri: { type: 'string' },
+          },
+        },
+      },
+    },
+  },
+  handler: async (params) => {
+    try {
+      const raw = params as {
+        iri?: string;
+        label?: string;
+        typeIri?: string;
+        setProperties?: Array<{ predicateIri: string; value: string }>;
+        removeProperties?: Array<{ predicateIri: string }>;
+      };
+
+      if (!raw.iri) return { success: false, error: 'iri is required' };
+      const iri = expandIri(raw.iri);
+      if (iri.startsWith('Unknown prefix:')) return { success: false, error: iri };
+
+      const hasChanges =
+        raw.label !== undefined ||
+        raw.typeIri !== undefined ||
+        (raw.setProperties && raw.setProperties.length > 0) ||
+        (raw.removeProperties && raw.removeProperties.length > 0);
+      if (!hasChanges) return { success: false, error: 'Provide at least one field to update (label, typeIri, setProperties, or removeProperties)' };
+
+      // Build (predicate → newValue | null) map; null = remove only
+      const changes = new Map<string, string | null>();
+
+      if (raw.label !== undefined) changes.set(RDFS_LABEL_IRI, raw.label);
+
+      if (raw.typeIri !== undefined) {
+        const typeIri = expandIri(raw.typeIri);
+        if (typeIri.startsWith('Unknown prefix:')) return { success: false, error: typeIri };
+        changes.set(RDF_TYPE_IRI, typeIri);
+      }
+
+      for (const entry of raw.setProperties ?? []) {
+        const pred = expandIri(entry.predicateIri);
+        if (pred.startsWith('Unknown prefix:')) return { success: false, error: pred };
+        changes.set(pred, entry.value);
+      }
+
+      for (const entry of raw.removeProperties ?? []) {
+        const pred = expandIri(entry.predicateIri);
+        if (pred.startsWith('Unknown prefix:')) return { success: false, error: pred };
+        if (!changes.has(pred)) changes.set(pred, null);
+      }
+
+      // Build batch: remove existing values for each touched predicate, then add new ones
+      const removes: Array<{ s: string; p: string }> = [];
+      const adds: Array<{ s: string; p: string; o: string }> = [];
+
+      for (const [pred, newValue] of changes) {
+        removes.push({ s: iri, p: pred });
+        if (newValue !== null) adds.push({ s: iri, p: pred, o: newValue });
+      }
+
+      await rdfManager.applyBatch({ removes, adds }, 'urn:vg:data');
+
+      // Refresh canvas node card
+      const { ctx } = getWorkspaceRefs();
+      await ctx.model.requestElementData([iri as Reactodia.ElementIri]);
+
+      const changedPredicates = [...changes.keys()];
+      return { success: true, data: { updated: iri, changed: changedPredicates } };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  },
+};
+
+export const nodeTools: McpTool[] = [addNode, removeNode, expandNode, expandAll, getNodes, getNodeDetails, updateNode];
