@@ -150,26 +150,37 @@ const getNodes: McpTool = {
       typeIri: { type: 'string' },
       labelContains: { type: 'string' },
       limit: { type: 'integer', default: 100 },
+      focusFirst: { type: 'boolean', default: false },
     },
   },
   handler: async (params) => {
     try {
-      const { typeIri, labelContains, limit = 100 } = params as {
+      const { typeIri, labelContains, limit = 100, focusFirst = false } = params as {
         typeIri?: string;
         labelContains?: string;
         limit?: number;
+        focusFirst?: boolean;
       };
-      const { dataProvider } = getWorkspaceRefs();
+      const { dataProvider, ctx } = getWorkspaceRefs();
       let items = await dataProvider.lookupAll();
+      let fuzzyFallback = false;
 
       if (typeIri) {
         items = items.filter((item) => item.element.types?.includes(typeIri));
       }
       if (labelContains) {
         const lower = labelContains.toLowerCase();
-        items = items.filter((item) =>
+        const exact = items.filter((item) =>
           getLabel(item.element).toLowerCase().includes(lower)
         );
+        if (exact.length > 0) {
+          items = exact;
+        } else {
+          // Fuzzy fallback: prefix lookup via dataProvider
+          const fallback = await dataProvider.lookup({ text: labelContains, limit: 1 });
+          items = fallback;
+          fuzzyFallback = true;
+        }
       }
 
       const entities = items.slice(0, limit).map((item) => ({
@@ -178,7 +189,22 @@ const getNodes: McpTool = {
         types: item.element.types,
       }));
 
-      return { success: true, data: { content: JSON.stringify(entities) } };
+      if (focusFirst) {
+        const canvasMatch = entities.find(e =>
+          ctx.model.elements.some(
+            el => el instanceof Reactodia.EntityElement && (el as Reactodia.EntityElement).iri === e.iri
+          )
+        );
+        if (canvasMatch) {
+          const el = findEntityElement(canvasMatch.iri, ctx.model);
+          if (el) focusElementOnCanvas(el, ctx);
+        }
+      }
+
+      const result: Record<string, unknown> = { content: JSON.stringify(entities) };
+      if (fuzzyFallback) result.fuzzyFallback = true;
+
+      return { success: true, data: result };
     } catch (e) {
       return { success: false, error: String(e) };
     }

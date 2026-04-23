@@ -4,7 +4,7 @@
   "tools": [
     {
       "name": "loadRdf",
-      "description": "Load RDF instance data (ABox) into the canvas from a URL or a Turtle string. Creates canvas nodes for each subject.",
+      "description": "Load ABox instance data — subjects appear as canvas nodes. Use for individual/data triples. To load a schema or ontology without adding canvas nodes, use loadOntology instead.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -31,7 +31,7 @@
     },
     {
       "name": "loadOntology",
-      "description": "Load an ontology (TBox) by URL. Feeds rdf:type autocomplete, domain/range hints, and OWL-RL reasoning. Does NOT add canvas nodes.",
+      "description": "Load TBox ontology for type hints and reasoning support. Does NOT add canvas nodes. Use for schema/class definitions. To load instance data as canvas nodes, use loadRdf instead.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -46,7 +46,7 @@
     },
     {
       "name": "queryGraph",
-      "description": "Run a SPARQL SELECT query against the in-memory RDF store. Returns rows as JSON.",
+      "description": "Run SPARQL SELECT or CONSTRUCT against asserted data (urn:vg:data). CONSTRUCT adds new asserted triples to the store. Use SELECT to read; use CONSTRUCT for explicit derivations. For full OWL-RL inference, use runReasoning instead.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -136,7 +136,7 @@
     },
     {
       "name": "expandNode",
-      "description": "Expand a canvas node to reveal its annotation properties (rdfs:label, rdf:type, datatype values). Nodes start collapsed — call this to make the property card visible. Pass expand=false to collapse.",
+      "description": "Expand one canvas node to show its annotation property card. Use when you need to reveal properties on a specific node. To expand every node at once, use expandAll — do not loop this tool.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -155,14 +155,14 @@
     },
     {
       "name": "expandAll",
-      "description": "Expand all canvas nodes to reveal their annotation property cards.",
+      "description": "Expand every canvas node in one call. Use instead of looping expandNode when you want all property cards visible.",
       "inputSchema": {
         "type": "object"
       }
     },
     {
       "name": "getNodes",
-      "description": "Return all entities known to the graph (both TBox classes and ABox individuals) with their IRI, label, and rdf:type(s). Use to discover available IRIs before calling addNode/addLink. Optionally filter by type IRI or label substring.",
+      "description": "Discover or filter all known entities (TBox classes and ABox individuals). Use labelContains to find by name — falls back to fuzzy match if nothing found (response includes fuzzyFallback:true). Use typeIri to filter by class, focusFirst:true to pan the viewport to the first canvas match. Use this before addNode/addLink to resolve IRIs.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -175,6 +175,10 @@
           "limit": {
             "type": "integer",
             "default": 100
+          },
+          "focusFirst": {
+            "type": "boolean",
+            "default": false
           }
         }
       }
@@ -249,44 +253,6 @@
       }
     },
     {
-      "name": "searchEntities",
-      "description": "Search ABox individuals and ontology classes by label or IRI substring. Returns IRI + label pairs. Use before addNode/addLink to resolve the correct full IRI.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string"
-          },
-          "limit": {
-            "type": "integer",
-            "default": 20
-          }
-        },
-        "required": [
-          "query"
-        ]
-      }
-    },
-    {
-      "name": "autocomplete",
-      "description": "Autocomplete entity IRIs by partial label or IRI text. Use before authoring to get the exact IRI for a known entity.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "type": "string"
-          },
-          "limit": {
-            "type": "integer",
-            "default": 10
-          }
-        },
-        "required": [
-          "text"
-        ]
-      }
-    },
-    {
       "name": "runLayout",
       "description": "Apply a layout algorithm to reposition canvas nodes.",
       "inputSchema": {
@@ -311,7 +277,7 @@
     },
     {
       "name": "focusNode",
-      "description": "Pan and zoom the canvas viewport to centre on a specific node by IRI.",
+      "description": "Pan and zoom to one specific node. Use when you know which node to highlight. To fit all nodes into view, use fitCanvas instead.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -326,14 +292,14 @@
     },
     {
       "name": "fitCanvas",
-      "description": "Zoom the canvas viewport to fit all nodes. Call before exportImage to ensure all nodes are visible.",
+      "description": "Zoom out to fit all nodes in the viewport. Use before exportImage or for a full overview. To centre on one node, use focusNode instead.",
       "inputSchema": {
         "type": "object"
       }
     },
     {
       "name": "runReasoning",
-      "description": "Run OWL-RL inference over the loaded graph and refresh the canvas with inferred types and properties. Returns count of new inferred triples. Pass clearBefore=true to discard previous inferences first.",
+      "description": "Apply OWL-RL inference to derive implicit types and relationships from the loaded ontology. Use after loading an ontology to materialise inferred triples. For explicit one-off derived triples, use queryGraph with CONSTRUCT instead.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -430,7 +396,7 @@
     },
     {
       "name": "getNodeDetails",
-      "description": "Return all asserted RDF properties (triples) for a specific entity IRI. Only reads from the asserted graph (urn:vg:data) — inferred triples are not included.",
+      "description": "Fetch every asserted triple for one entity (from urn:vg:data only, not inferred). Use when you need property values, not just the IRI — call getNodes first to find the IRI.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -499,7 +465,7 @@
     },
     {
       "name": "getNeighbors",
-      "description": "Traverse the RDF graph by BFS from a start node. Returns neighboring nodes and edges up to the given depth. Use layer=\"abox\" for instance data, \"tbox\" for class/property hierarchy, \"both\" for everything.",
+      "description": "Explore the graph around one node — returns all reachable nodes and edges up to depth hops. Use when you don't know what's connected. For a direct connection between two known nodes, use findPath instead.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -536,7 +502,7 @@
     },
     {
       "name": "findPath",
-      "description": "Find the shortest path between two nodes in the RDF graph using BFS. Crosses ABox and TBox edges freely.",
+      "description": "Find the shortest route between two specific nodes. Use when you know both endpoints and want the connecting hop sequence. For open-ended neighbourhood exploration, use getNeighbors instead.",
       "inputSchema": {
         "type": "object",
         "required": [

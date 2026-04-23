@@ -3,7 +3,6 @@ import { mcpManifest } from './manifest';
 import { graphTools } from './tools/graph';
 import { nodeTools } from './tools/nodes';
 import { linkTools } from './tools/links';
-import { searchTools } from './tools/search';
 import { layoutTools } from './tools/layout';
 import { reasoningTools } from './tools/reasoning';
 import { namespaceTools } from './tools/namespaceTools';
@@ -15,7 +14,6 @@ const allTools: McpTool[] = [
   ...graphTools,
   ...nodeTools,
   ...linkTools,
-  ...searchTools,
   ...layoutTools,
   ...reasoningTools,
   ...namespaceTools,

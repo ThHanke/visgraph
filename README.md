@@ -43,7 +43,7 @@ Key capabilities
 - **Namespace management**: edit namespace URIs directly in the legend panel (rename propagates across all stored triples). Colour-coded namespace badges on nodes and edges.
 - Export the current graph as Turtle, RDF/XML, or JSON-LD.
 - **Workflow catalog**: drag reusable workflow template cards from the sidebar onto the canvas to instantiate connected subgraphs.
-- **MCP support**: exposes a Model Context Protocol server (via the browser's `navigator.modelContext` API) for AI-agent integration. Tools: `loadRdf`, `loadOntology`, `queryGraph`, `exportGraph`, `exportImage`, `addNode`, `removeNode`, `getNodes`, `addLink`, `removeLink`, `getLinks`, `searchEntities`, `autocomplete`, `runLayout`, `runReasoning`, `clearInferred`, `getCapabilities`, `help`. MCP manifest at `/.well-known/mcp.json`.
+- **MCP support**: exposes a Model Context Protocol server (via the browser's `navigator.modelContext` API) for AI-agent integration. Tools: `loadRdf`, `loadOntology`, `queryGraph`, `exportGraph`, `exportImage`, `addNode`, `removeNode`, `getNodes`, `addLink`, `removeLink`, `getLinks`, `runLayout`, `focusNode`, `fitCanvas`, `runReasoning`, `clearInferred`, `getNeighbors`, `findPath`, `getNodeDetails`, `updateNode`, `getGraphState`, `addNamespace`, `updateNamespace`, `removeNamespace`, `listNamespaces`, `loadShacl`, `validateGraph`, `getCapabilities`, `help`. MCP manifest at `/.well-known/mcp.json`.
 
 Quick start (development)
 -------------------------

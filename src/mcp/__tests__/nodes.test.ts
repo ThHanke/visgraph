@@ -47,9 +47,10 @@ function makeItem(id: string, label: string | undefined, types: string[]) {
 }
 
 const mockLookupAll = vi.fn();
+const mockLookup = vi.fn();
 
 const mockModel = {
-  elements: [],
+  elements: [] as any[],
   createElement: vi.fn(),
   removeElement: vi.fn(),
   requestElementData: vi.fn().mockResolvedValue(undefined),
@@ -59,6 +60,7 @@ const mockModel = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockModel.elements = [];
   mockModel.createElement.mockReset();
   mockModel.removeElement.mockReset();
   mockModel.requestElementData.mockResolvedValue(undefined);
@@ -66,7 +68,7 @@ beforeEach(() => {
   mockModel.history.execute.mockReset();
   (getWorkspaceRefs as ReturnType<typeof vi.fn>).mockReturnValue({
     ctx: { model: mockModel, view: {} },
-    dataProvider: { lookupAll: mockLookupAll },
+    dataProvider: { lookupAll: mockLookupAll, lookup: mockLookup },
   });
   (rdfManager.fetchQuadsPage as ReturnType<typeof vi.fn>).mockResolvedValue({ items: [], total: 0, offset: 0, limit: 0 });
   (rdfManager.applyBatch as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
@@ -141,6 +143,44 @@ describe('getNodes', () => {
     const entities = JSON.parse(result.data.content);
     expect(entities).toHaveLength(1);
     expect(entities[0].iri).toBe('http://example.org/b');
+  });
+
+  it('falls back to fuzzy lookup when labelContains finds nothing, sets fuzzyFallback:true', async () => {
+    mockLookupAll.mockResolvedValue(sampleItems);
+    mockLookup.mockResolvedValue([makeItem('http://example.org/a', 'Alpha', [])]);
+    const result = await getNodes.handler({ labelContains: 'Alphx' }) as { success: true; data: { content: string; fuzzyFallback?: boolean } };
+    expect(result.success).toBe(true);
+    expect(result.data.fuzzyFallback).toBe(true);
+    const entities = JSON.parse(result.data.content);
+    expect(entities).toHaveLength(1);
+    expect(entities[0].iri).toBe('http://example.org/a');
+    expect(mockLookup).toHaveBeenCalledWith({ text: 'Alphx', limit: 1 });
+  });
+
+  it('does not set fuzzyFallback when exact labelContains match found', async () => {
+    mockLookupAll.mockResolvedValue(sampleItems);
+    const result = await getNodes.handler({ labelContains: 'Alpha' }) as { success: true; data: { content: string; fuzzyFallback?: boolean } };
+    expect(result.success).toBe(true);
+    expect(result.data.fuzzyFallback).toBeUndefined();
+    expect(mockLookup).not.toHaveBeenCalled();
+  });
+
+  it('returns empty list with fuzzyFallback:true when fuzzy also finds nothing', async () => {
+    mockLookupAll.mockResolvedValue(sampleItems);
+    mockLookup.mockResolvedValue([]);
+    const result = await getNodes.handler({ labelContains: 'zzz' }) as { success: true; data: { content: string; fuzzyFallback?: boolean } };
+    expect(result.success).toBe(true);
+    expect(result.data.fuzzyFallback).toBe(true);
+    const entities = JSON.parse(result.data.content);
+    expect(entities).toHaveLength(0);
+  });
+
+  it('does not run fuzzy fallback when no labelContains provided', async () => {
+    mockLookupAll.mockResolvedValue([]);
+    const result = await getNodes.handler({}) as { success: true; data: { content: string; fuzzyFallback?: boolean } };
+    expect(result.success).toBe(true);
+    expect(result.data.fuzzyFallback).toBeUndefined();
+    expect(mockLookup).not.toHaveBeenCalled();
   });
 });
 
