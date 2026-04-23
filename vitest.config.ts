@@ -1,7 +1,18 @@
 import { defineConfig } from 'vitest/config';
 import path from 'path';
 
+const virtualBookmarkletPlugin = {
+  name: 'virtual-relay-bookmarklet-mock',
+  resolveId(id: string) {
+    if (id === 'virtual:relay-bookmarklet') return '\0virtual:relay-bookmarklet';
+  },
+  load(id: string) {
+    if (id === '\0virtual:relay-bookmarklet') return 'export default "";';
+  },
+};
+
 export default defineConfig({
+  plugins: [virtualBookmarkletPlugin],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),

@@ -184,7 +184,7 @@ export default function EntityAutoComplete({
                       idx === activeIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent hover:text-accent-foreground'
                     )}
                   >
-                    <div className="font-medium leading-tight">{prefixedIri(String(ent.iri || ''))}</div>
+                    <div className="font-medium leading-tight">{(ent as any).prefixed || prefixedIri(String(ent.iri || ''))}</div>
                     {ent.label && <div className="text-[10px] text-muted-foreground leading-tight">{ent.label}</div>}
                   </li>
                 );

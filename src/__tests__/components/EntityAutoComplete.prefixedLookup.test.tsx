@@ -77,9 +77,8 @@ describe("EntityAutoComplete - prefixed & IRI lookup", () => {
     // Typing a fragment of the IRI should match
     fireEvent.change(input!, { target: { value: "OtherClass" } });
     await waitFor(() => {
-      // The component displays ent.prefixed || ent.iri in the list;
-      // since prefixed is absent, it will show the full IRI.
-      expect(screen.getByText("http://example.org/iof#OtherClass")).toBeTruthy();
+      // No prefixed form — component shows local name via prefixShorten fallback.
+      expect(screen.getByText("OtherClass")).toBeTruthy();
     });
   });
 });
@@ -101,7 +100,8 @@ describe('EntityAutoComplete - dataProvider mode', () => {
     const input = container.querySelector('input')!;
     fireEvent.focus(input);
     await waitFor(() => {
-      expect(screen.getByText('knows')).toBeTruthy();
+      // 'knows' appears as both the shortened IRI and the label — use getAllByText
+      expect(screen.getAllByText('knows').length).toBeGreaterThan(0);
     });
   });
 
