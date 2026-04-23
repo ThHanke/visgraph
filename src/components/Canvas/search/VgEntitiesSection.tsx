@@ -25,7 +25,7 @@ export function VgEntitiesSection() {
   const { shouldRender, setSectionActive, searchStore } =
     Reactodia.useUnifiedSearchSection({ searchTimeout: 0 });
 
-  const { filteredEntities, activeFilter, clearFilter, searchText, setSearchText, currentIndex } =
+  const { filteredEntities, activeFilter, clearFilter, searchText, setSearchText, currentIndex, onSelectEntity } =
     useSearchIndexContext();
 
   const { model, translation, getCommandBus } = Reactodia.useWorkspace();
@@ -97,6 +97,8 @@ export function VgEntitiesSection() {
                     isCurrent && 'reactodia-list-element-view--selected'
                   )}
                   title={`${label} <${entity.id}>\nTypes: ${types}`}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => onSelectEntity(i)}
                 >
                   <div className="reactodia-list-element-view__label">
                     {highlightSubstring(label, searchText, {

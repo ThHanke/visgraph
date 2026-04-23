@@ -174,5 +174,7 @@ export function useSearchIndex(): SearchIndexContext {
     clearFilter,
     currentIndex,
     setCurrentIndex,
+    // Overridden by SearchMatchCounterInner once navigate is available.
+    onSelectEntity: (_index: number) => {},
   };
 }

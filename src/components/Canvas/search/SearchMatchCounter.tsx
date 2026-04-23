@@ -76,7 +76,7 @@ function SearchMatchCounterInner() {
   const { model, view } = Reactodia.useWorkspace();
   const { state: canvasState, actions: canvasActions } = useCanvasState();
 
-  const { filteredEntities, activeFilter, setCurrentIndex, iriViewMap } = useSearchIndexContext();
+  const { filteredEntities, activeFilter, setCurrentIndex, iriViewMap, onSelectEntity } = useSearchIndexContext();
 
   const [current, setCurrent] = React.useState(-1);
   const wrapperRef = React.useRef<HTMLDivElement>(null);
@@ -228,9 +228,18 @@ function SearchMatchCounterInner() {
     onNext();
   }, [onNext]);
 
+  const ctx = useSearchIndexContext();
+  const ctxWithNavigate = React.useMemo(
+    () => ({ ...ctx, onSelectEntity: navigate }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ctx, navigate]
+  );
+
   return (
     <div ref={wrapperRef} className="vg-search-counter-wrapper" onKeyDown={onKeyDown}>
-      <Reactodia.UnifiedSearch sections={SECTIONS} />
+      <SearchIndexProvider value={ctxWithNavigate}>
+        <Reactodia.UnifiedSearch sections={SECTIONS} />
+      </SearchIndexProvider>
       {toggleEl && total > 0 &&
         ReactDOM.createPortal(
           <Counter total={total} current={current} onPrev={onPrev} onNext={onNext} />,

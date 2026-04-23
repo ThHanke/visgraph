@@ -41,6 +41,8 @@ export interface SearchIndexActions {
   /** Index into filteredEntities of the currently navigated match (-1 = none). */
   readonly currentIndex: number;
   readonly setCurrentIndex: (index: number) => void;
+  /** Called when the user clicks an entity in the list — navigates the canvas to it. */
+  readonly onSelectEntity: (index: number) => void;
 }
 
 export interface SearchIndexContext extends SearchIndexState, SearchIndexActions {}
