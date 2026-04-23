@@ -298,6 +298,7 @@ function setMode(mode) {
   document.getElementById(activeId).style.borderColor = '#58a6ff';
   document.getElementById(activeId).style.color = '#58a6ff';
   statusBar.textContent = 'Mode: ' + mode + '. Load the bookmarklet, then click a scenario.';
+  document.getElementById('send-btn').disabled = (mode === 'openwebui');
 }
 document.getElementById('mode-fhgenie').addEventListener('click', function() { setMode('fhgenie'); });
 document.getElementById('mode-openwebui').addEventListener('click', function() { setMode('openwebui'); });
@@ -350,11 +351,9 @@ document.getElementById('gpt-input').addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('send-btn').click(); }
 });
 
-// Handle synthetic paste events dispatched by the relay bookmarklet.
-// Non-trusted paste events don't update contenteditable automatically in all browsers,
-// so we explicitly read clipboardData and update innerText when available.
+// ── ChatGPT ProseMirror paste (Chrome path: clipboardData accessible) ────────
 function handleSyntheticPaste(e) {
-  if (e.isTrusted) return; // let the browser handle trusted paste normally
+  if (e.isTrusted) return;
   var cd = e.clipboardData;
   if (cd) {
     var text = cd.getData('text/plain');
@@ -364,8 +363,55 @@ function handleSyntheticPaste(e) {
     }
   }
 }
-document.getElementById('owui-input').addEventListener('paste', handleSyntheticPaste);
 document.getElementById('gpt-input').addEventListener('paste', handleSyntheticPaste);
+
+// ── OpenWebUI TipTap paste — simulates real TipTap + Svelte reactive binding ──
+// Send button starts disabled; enabled only when editor has content (like OpenWebUI).
+// Paste path mirrors real TipTap in Firefox:
+//   1. Try e.clipboardData.getData() — Chrome allows this; Firefox blocks non-trusted
+//   2. If empty, fall back to navigator.clipboard.readText() (async) — in Firefox this
+//      reads the OS clipboard, which may have stale content → UUID bug
+// This lets us reproduce and test the real injection failure.
+(function () {
+  var owuiEl = document.getElementById('owui-input');
+  var sendBtn = document.getElementById('send-btn');
+
+  function updateSendBtn() {
+    if (currentMode !== 'openwebui') return;
+    sendBtn.disabled = !(owuiEl.innerText || '').trim();
+  }
+
+  owuiEl.addEventListener('input', updateSendBtn);
+
+  // Also disable send when switching to OpenWebUI mode
+  var origSetMode = window.setMode || null;
+  document.getElementById('mode-openwebui').addEventListener('click', function () {
+    setTimeout(updateSendBtn, 0);
+  });
+  document.getElementById('mode-fhgenie').addEventListener('click', function () {
+    setTimeout(function () { sendBtn.disabled = false; }, 0);
+  });
+  document.getElementById('mode-chatgpt').addEventListener('click', function () {
+    setTimeout(function () { sendBtn.disabled = false; }, 0);
+  });
+
+  // Simulate TipTap's beforeinput handler: execCommand('insertText') fires
+  // beforeinput(inputType='insertText') which TipTap handles by inserting text
+  // and updating its document state, enabling the send button.
+  // The bookmarklet now uses this path (no synthetic paste events).
+  owuiEl.addEventListener('beforeinput', function (e) {
+    if (e.inputType === 'insertText' && e.data) {
+      // TipTap would handle this; our mock just lets the browser default handle it
+      // (browser inserts text into contenteditable, then 'input' event fires → button updates)
+    }
+  });
+
+  // Keep paste handler for real user pastes (trusted events).
+  owuiEl.addEventListener('paste', function (e) {
+    if (!e.isTrusted) return; // non-trusted synthetic paste — ignore (bookmarklet uses insertText now)
+    // Real paste: browser handles clipboardData, input event fires → button updates
+  });
+})();
 </script>
 </body>
 </html>

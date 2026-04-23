@@ -1,20 +1,14 @@
 /**
  * VisGraph Relay Bookmarklet — full readable source
  *
- * This script is injected into the AI chat tab (ChatGPT, Claude.ai, Gemini, etc.)
- * via a bookmarklet.  It:
+ * Injected into an AI chat tab.  It:
  *   1. Opens (or reuses) the relay popup window (relay.html).
  *   2. Watches the page for new assistant messages via MutationObserver.
  *   3. Extracts MCP JSON-RPC 2.0 tool calls from backtick-wrapped inline code.
  *   4. Forwards parsed tool calls to the relay popup via postMessage.
- *   5. Receives results back and injects backtick-wrapped JSON-RPC responses
- *      into the chat input so the AI can read them.
+ *   5. Receives results back and injects JSON-RPC responses into the chat input.
  *
- * The minified `javascript:` URL version of this script is what goes in the
- * draggable bookmarklet anchor (see Unit 5 sidebar).  The full source here is
- * kept readable for maintenance and updates.
- *
- * Message formats (shared with relay.html and the VisGraph app):
+ * Message formats:
  *   To popup:   { type: 'vg-call', tool, params, requestId, isLast }
  *   From popup: { type: 'vg-result', requestId, result, summary?, svg? }
  */
@@ -22,12 +16,30 @@
 (function () {
   'use strict';
 
-  /* ── Constants ─────────────────────────────────────────────────────────── */
   var RELAY_URL    = '__RELAY_URL__';
   var RELAY_ORIGIN = '__RELAY_ORIGIN__';
   var POPUP_NAME   = 'vg-relay';
   var POPUP_OPTS   = 'width=320,height=180,menubar=no,toolbar=no,location=no,resizable=yes';
   var DEBOUNCE_MS  = 800;
+
+  /* ── Kill any previous instance ───────────────────────────────────────── */
+  // Disconnect old MutationObserver so it stops enqueuing calls.
+  if (window.__vgRelayObserver) {
+    try { window.__vgRelayObserver.disconnect(); } catch (_) {}
+    window.__vgRelayObserver = null;
+  }
+  // Clear old popup-closed watcher.
+  if (window.__vgRelayWatcher) {
+    clearInterval(window.__vgRelayWatcher);
+    window.__vgRelayWatcher = null;
+  }
+
+  /* ── Instance ID — deactivates old message listeners ──────────────────── */
+  // Every click stamps a new ID.  The message listener checks at runtime and
+  // ignores messages if a newer instance has taken over.
+  var instanceId = Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+  window.__vgRelayInstanceId = instanceId;
+  window.__vgRelayActive = true;
 
   /* ── Popup management ──────────────────────────────────────────────────── */
   function openPopup() {
@@ -37,26 +49,13 @@
     return window.__vgRelayPopup;
   }
 
-  /* ── Idempotency guard ─────────────────────────────────────────────────── */
-  if (window.__vgRelayActive) {
-    // Re-open popup if closed, then re-show badge.
-    var existingPopup = openPopup();
-    showBadge();
-    if (!existingPopup) {
-      showToast('Popup blocked — allow popups for this site, then click the badge to retry', false);
-      var existingBadge = document.getElementById('vg-relay-badge');
-      if (existingBadge) existingBadge.style.animation = 'vg-pulse 0.6s ease 3';
-    }
-    return;
-  }
-  window.__vgRelayActive = true;
-
-  /* ── Inject pulse keyframe for blocked-popup feedback ─────────────────── */
-  (function () {
+  /* ── Inject keyframe (once per page load) ─────────────────────────────── */
+  if (!document.getElementById('vg-relay-style')) {
     var style = document.createElement('style');
+    style.id = 'vg-relay-style';
     style.textContent = '@keyframes vg-pulse{0%,100%{outline:2px solid #3fb950}50%{outline:4px solid #f0883e}}';
     document.head.appendChild(style);
-  })();
+  }
 
   /* ── "Relay Active" badge ──────────────────────────────────────────────── */
   function showBadge() {
@@ -66,35 +65,24 @@
     var badge = document.createElement('div');
     badge.id = 'vg-relay-badge';
     badge.style.cssText = [
-      'position:fixed',
-      'top:12px',
-      'right:12px',
-      'z-index:2147483647',
-      'background:#0d1117',
-      'color:#3fb950',
-      'border:1px solid #3fb950',
-      'border-radius:6px',
-      'padding:6px 10px',
-      'font:13px/1.4 monospace',
-      'display:flex',
-      'align-items:center',
-      'gap:8px',
-      'box-shadow:0 2px 8px rgba(0,0,0,.5)',
-      'cursor:pointer',
+      'position:fixed', 'top:12px', 'right:12px', 'z-index:2147483647',
+      'background:#0d1117', 'color:#3fb950', 'border:1px solid #3fb950',
+      'border-radius:6px', 'padding:6px 10px', 'font:13px/1.4 monospace',
+      'display:flex', 'align-items:center', 'gap:8px',
+      'box-shadow:0 2px 8px rgba(0,0,0,.5)', 'cursor:pointer',
     ].join(';');
     badge.title = 'Click to reopen relay popup';
 
-    var text = document.createElement('span');
-    text.textContent = '\uD83D\uDFE2 VisGraph Relay Active';
+    var span = document.createElement('span');
+    span.textContent = '🟢 VisGraph Relay Active';
 
-    var closeBtn = document.createElement('span');
-    closeBtn.textContent = '\u00D7';
-    closeBtn.style.cssText = 'cursor:pointer;color:#8b949e;font-size:15px;line-height:1';
-    closeBtn.title = 'Close relay';
-    closeBtn.addEventListener('click', function (e) {
+    var x = document.createElement('span');
+    x.textContent = '×';
+    x.style.cssText = 'cursor:pointer;color:#8b949e;font-size:15px;line-height:1';
+    x.title = 'Close relay';
+    x.addEventListener('click', function (e) {
       e.stopPropagation();
       badge.style.display = 'none';
-      window.__vgRelayActive = false;
       var p = window.__vgRelayPopup;
       if (p && !p.closed) p.close();
       window.__vgRelayPopup = null;
@@ -103,71 +91,78 @@
     badge.addEventListener('click', function () {
       var p = openPopup();
       if (!p) {
-        showToast('Popup blocked — allow popups for this site, then click the badge to retry', false);
+        showToast('Popup blocked — allow popups for this site', false);
         badge.style.animation = 'vg-pulse 0.6s ease 3';
       }
     });
-    badge.appendChild(text);
-    badge.appendChild(closeBtn);
+    badge.appendChild(span);
+    badge.appendChild(x);
     document.body.appendChild(badge);
   }
 
-  /* ── Initial popup open with blocked-popup detection ──────────────────── */
+  /* ── Toast ─────────────────────────────────────────────────────────────── */
+  function showToast(msg, ok) {
+    var t = document.createElement('div');
+    t.style.cssText = [
+      'position:fixed', 'bottom:20px', 'right:12px', 'z-index:2147483647',
+      'background:#0d1117',
+      'color:' + (ok ? '#3fb950' : '#f85149'),
+      'border:1px solid ' + (ok ? '#3fb950' : '#f85149'),
+      'border-radius:6px', 'padding:8px 12px', 'font:12px monospace',
+      'max-width:340px', 'box-shadow:0 2px 8px rgba(0,0,0,.5)',
+    ].join(';');
+    t.textContent = (ok ? '✓ ' : '✗ ') + msg.slice(0, 120);
+    document.body.appendChild(t);
+    setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 4000);
+  }
+
+  /* ── Open popup + badge ────────────────────────────────────────────────── */
   (function () {
     var popup = openPopup();
+    showBadge();
     if (!popup) {
-      showBadge();
-      showToast('Popup blocked — allow popups for this site, then click the badge to retry', false);
+      showToast('Popup blocked — allow popups for this site', false);
       var b = document.getElementById('vg-relay-badge');
       if (b) b.style.animation = 'vg-pulse 0.6s ease 3';
-    } else {
-      showBadge();
     }
   })();
 
-  /* ── Popup-closed watcher — hide badge when user closes the popup ──────── */
+  /* ── Popup-closed watcher ──────────────────────────────────────────────── */
   (function () {
-    var watchTimer = setInterval(function () {
+    var watcher = setInterval(function () {
+      if (window.__vgRelayInstanceId !== instanceId) { clearInterval(watcher); return; }
       var p = window.__vgRelayPopup;
       if (p && p.closed) {
-        clearInterval(watchTimer);
-        window.__vgRelayActive = false;
+        clearInterval(watcher);
+        window.__vgRelayWatcher = null;
         window.__vgRelayPopup = null;
         var badge = document.getElementById('vg-relay-badge');
         if (badge) badge.style.display = 'none';
       }
     }, 500);
+    window.__vgRelayWatcher = watcher;
   })();
-
-  /* ── Result toast ──────────────────────────────────────────────────────── */
-  function showToast(text, ok) {
-    var t = document.createElement('div');
-    t.style.cssText = [
-      'position:fixed',
-      'bottom:20px',
-      'right:12px',
-      'z-index:2147483647',
-      'background:#0d1117',
-      'color:' + (ok ? '#3fb950' : '#f85149'),
-      'border:1px solid ' + (ok ? '#3fb950' : '#f85149'),
-      'border-radius:6px',
-      'padding:8px 12px',
-      'font:12px monospace',
-      'max-width:340px',
-      'box-shadow:0 2px 8px rgba(0,0,0,.5)',
-    ].join(';');
-    t.textContent = (ok ? '✓ ' : '✗ ') + text.slice(0, 120);
-    document.body.appendChild(t);
-    setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 4000);
-  }
 
   /* ── Find the chat input ───────────────────────────────────────────────── */
   function findInput() {
+    // OpenWebUI uses id="chat-input"
+    var byId = document.getElementById('chat-input');
+    if (byId) {
+      var r0 = byId.getBoundingClientRect();
+      if (r0.width > 0 && r0.height > 0) return byId;
+    }
     var candidates = Array.from(document.querySelectorAll(
       'textarea, [contenteditable="true"], [contenteditable=""]'
     )).filter(function (el) {
       var r = el.getBoundingClientRect();
-      return r.width > 0 && r.height > 0;
+      if (r.width === 0 || r.height === 0) return false;
+      // Exclude CodeMirror editors
+      var p = el;
+      while (p && p !== document.body) {
+        if (p.classList && (p.classList.contains('cm-editor') || p.classList.contains('cm-content'))) return false;
+        p = p.parentElement;
+      }
+      return true;
     });
     if (!candidates.length) return null;
     var textareas = candidates.filter(function (e) { return e.tagName === 'TEXTAREA'; });
@@ -178,48 +173,50 @@
   }
 
   /* ── Submit the chat input ─────────────────────────────────────────────── */
-  // Returns true if a send button was found and clicked.
   function submitInput(inputEl) {
+    var foundBtn = false;
     var cur = inputEl.parentElement;
     while (cur && cur !== document.body) {
       var btns = Array.from(cur.querySelectorAll('button'));
       var sendBtn = btns.find(function (b) {
         if (b.disabled) return false;
         var lbl = (b.getAttribute('aria-label') || b.title || b.textContent || '').toLowerCase();
-        return b.type === 'submit' || lbl.includes('send') || lbl.includes('submit');
+        return b.type === 'submit' || lbl.includes('send') || lbl.includes('senden') || lbl.includes('submit');
       });
-      if (sendBtn) { sendBtn.click(); break; }
+      if (sendBtn) { sendBtn.click(); foundBtn = true; break; }
       cur = cur.parentElement;
     }
-    // Always also dispatch Enter — required by textarea-based UIs (FhGenie) that
-    // submit on keydown rather than button click.
-    ['keydown', 'keyup'].forEach(function (type) {
-      inputEl.dispatchEvent(new KeyboardEvent(type, {
-        key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
-      }));
-    });
-    return true;
+    // Dispatch Enter only for textarea UIs (FhGenie submits on keydown).
+    // For contenteditable editors (TipTap/ProseMirror), Enter means "new paragraph",
+    // not "submit" — dispatching it would corrupt the editor state.
+    if (inputEl.tagName === 'TEXTAREA' || !foundBtn) {
+      ['keydown', 'keyup'].forEach(function (type) {
+        inputEl.dispatchEvent(new KeyboardEvent(type, {
+          key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true,
+        }));
+      });
+    }
   }
 
   /* ── Inject result into chat input and auto-submit ─────────────────────── */
-  // Two paths by element type:
-  //   textarea        — React native-setter + input event
-  //   contenteditable — try InputEvent(beforeinput/insertFromPaste) first so
-  //                     ProseMirror/TipTap creates a proper transaction and updates
-  //                     the framework's reactive store (enabling the send button).
-  //                     Falls back to ClipboardEvent paste for non-ProseMirror editors.
-  //                     In Firefox, ClipboardEvent.clipboardData.getData() returns ''
-  //                     for non-trusted events (security restriction), so beforeinput
-  //                     is the reliable cross-browser path for ProseMirror.
+  var injectInProgress = false;
+
   function injectResult(text) {
+    if (injectInProgress) return false;
+    injectInProgress = true;
+
     var el = findInput();
     if (!el) {
+      injectInProgress = false;
       showToast('Could not find chat input', false);
       return false;
     }
 
     function doSubmit() {
-      setTimeout(function () { submitInput(el); }, 500);
+      setTimeout(function () {
+        submitInput(el);
+        injectInProgress = false;
+      }, 500);
     }
 
     if (el.tagName === 'TEXTAREA') {
@@ -229,49 +226,96 @@
       el.dispatchEvent(new Event('input', { bubbles: true }));
       doSubmit();
     } else {
-      // ProseMirror / TipTap contenteditable.
-      // DataTransfer paste goes through ProseMirror's paste handler → transaction →
-      // reactive store update → send button enabled.
-      // In Firefox, ClipboardEvent.clipboardData.getData() is blocked on non-trusted
-      // events; TipTap's async clipboard extension then reads the OS clipboard instead.
-      // Writing our text to the real clipboard first ensures TipTap reads the right
-      // content regardless of which path it takes.
-      el.focus();
-      function dispatchPaste() {
+      // ProseMirror / TipTap contenteditable (OpenWebUI, ChatGPT…)
+      //
+      // Three-path strategy, most reliable first:
+      //
+      // Path 1: Direct ProseMirror view dispatch via element.pmViewDesc.view.
+      //   TipTap attaches the ProseMirror EditorView to the DOM element.
+      //   Dispatching a transaction through it updates both PM state and Svelte
+      //   store atomically — no DOM reconciliation, no race conditions.
+      //
+      // Path 2: Synthetic beforeinput(insertFromPaste) with DataTransfer.
+      //   ProseMirror handles this through its beforeinput handler, reading
+      //   event.dataTransfer.  Falls back to this if Path 1 isn't available.
+      //
+      // Path 3: beforeinput(insertText) with data field — last resort.
+      //
+      // Focus first, defer 50 ms so ProseMirror has an active selection.
+      var live = findInput() || el;
+      live.focus();
+      el = live;
+
+      setTimeout(function () {
+        var target = findInput() || el;
+        target.focus();
+        var dispatched = false;
+
+        // ── Path 1: ProseMirror view dispatch ───────────────────────────
         try {
-          var dt = new DataTransfer();
-          dt.setData('text/plain', text);
-          el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-        } catch (e) {}
+          var pmView = target.pmViewDesc && target.pmViewDesc.view;
+          if (pmView && pmView.state && pmView.dispatch) {
+            var state = pmView.state;
+            // Replace all content with our text (pos 1 = inside first paragraph)
+            var tr = state.tr.insertText(text, 1, state.doc.content.size - 1);
+            pmView.dispatch(tr);
+            dispatched = true;
+          }
+        } catch (_) {}
+
+        // ── Path 2: beforeinput insertFromPaste with DataTransfer ───────
+        if (!dispatched) {
+          try {
+            var dt = new DataTransfer();
+            dt.setData('text/plain', text);
+            target.dispatchEvent(new InputEvent('beforeinput', {
+              inputType: 'insertFromPaste',
+              dataTransfer: dt,
+              bubbles: true,
+              cancelable: true,
+            }));
+            dispatched = true;
+          } catch (_) {}
+        }
+
+        // ── Path 3: beforeinput insertText ──────────────────────────────
+        if (!dispatched) {
+          try {
+            target.dispatchEvent(new InputEvent('beforeinput', {
+              inputType: 'insertText',
+              data: text,
+              bubbles: true,
+              cancelable: true,
+            }));
+          } catch (_) {}
+        }
+
+        // Belt-and-suspenders: fire input so Svelte bindings notice any change
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+        el = target;
         doSubmit();
-      }
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(dispatchPaste, dispatchPaste);
-      } else {
-        dispatchPaste();
-      }
+      }, 50);
     }
 
     return true;
   }
 
-  /* ── Compact data summary for success results ──────────────────────────── */
+  /* ── Compact result summary ────────────────────────────────────────────── */
   function briefData(data) {
     if (!data) return 'ok';
     if (typeof data === 'string') return data.slice(0, 80);
     if (data.iri) return data.iri;
     if (data.loaded !== undefined) {
       var brief = String(data.loaded);
-      if (data.newEntitiesAvailable && data.newEntitiesAvailable.length) {
+      if (data.newEntitiesAvailable && data.newEntitiesAvailable.length)
         brief += ' — ' + data.newEntitiesAvailable.length + ' new entities available';
-      }
       return brief;
     }
     if (data.entities) return data.entities.length + ' entities';
     if (data.links) return data.links.length + ' links';
     if (data.results) {
       var onCanvas = data.results.filter(function (r) { return r.onCanvas; });
-      return data.results.length + ' results' + (onCanvas.length ? ', ' + onCanvas.length + ' on canvas (auto-focused)' : '');
+      return data.results.length + ' results' + (onCanvas.length ? ', ' + onCanvas.length + ' on canvas' : '');
     }
     if (data.completions) return data.completions.length + ' completions';
     if (data.nodeCount !== undefined) return data.nodeCount + ' nodes, ' + data.linkCount + ' links';
@@ -287,7 +331,6 @@
   function injectCombinedResult(results, finalSummary, finalSvg) {
     var allOk = results.every(function (r) { return r.ok; });
     var lines = ['[VisGraph — ' + results.length + ' tool' + (results.length !== 1 ? 's' : '') + (allOk ? ' ✓' : ' (some failed)') + ']'];
-    // MCP JSON-RPC 2.0 responses — one backtick-wrapped compact JSON per tool call
     results.forEach(function (r) {
       var resp;
       if (r.ok) {
@@ -304,33 +347,24 @@
       }
       lines.push('`' + resp + '`');
     });
-    if (finalSummary) {
-      lines.push('');
-      lines.push(finalSummary);
-    }
-    if (finalSvg && typeof finalSvg === 'string') {
-      lines.push('');
-      lines.push('Current graph (SVG):');
-      lines.push(finalSvg);
-    }
-    var text   = lines.join('\n');
-    var toastMsg = 'Done: ' + results.length + ' tool' + (results.length !== 1 ? 's' : '');
-    injectResult(text);
-    showToast(toastMsg, allOk);
+    if (finalSummary) { lines.push(''); lines.push(finalSummary); }
+    if (finalSvg && typeof finalSvg === 'string') { lines.push(''); lines.push('Current graph (SVG):'); lines.push(finalSvg); }
+    injectResult(lines.join('\n'));
+    showToast('Done: ' + results.length + ' tool' + (results.length !== 1 ? 's' : ''), allOk);
   }
 
   /* ── Batch queue state ─────────────────────────────────────────────────── */
-  var callQueue             = [];
-  var batchResults          = [];
-  var isProcessing          = false;
-  var pendingTool           = null;
-  var pendingMcpId          = null;
-  var pendingRequestId      = null;  // requestId of the in-flight call
-  var lastSummary           = null;
-  var callTimeoutTimer      = null;
-  var knownSessionId        = null;  // session hash of the current VisGraph page load
-  var lateResult            = null;  // { requestId, tool, mcpId } — awaiting late delivery
-  var CALL_TIMEOUT_MS       = 30000; // 30 s base; each vg-ping resets it (long ops keep pinging)
+  var callQueue        = [];
+  var batchResults     = [];
+  var isProcessing     = false;
+  var pendingTool      = null;
+  var pendingMcpId     = null;
+  var pendingRequestId = null;
+  var lastSummary      = null;
+  var callTimeoutTimer = null;
+  var knownSessionId   = null;
+  var lateResult       = null;
+  var CALL_TIMEOUT_MS  = 30000;
 
   function resetCallTimeout() {
     clearTimeout(callTimeoutTimer);
@@ -339,178 +373,107 @@
       var timedOutTool      = pendingTool    || '?';
       var timedOutId        = pendingMcpId;
       var timedOutRequestId = pendingRequestId;
-      isProcessing   = false;
-      pendingTool    = null;
-      pendingMcpId   = null;
+      isProcessing     = false;
+      pendingTool      = null;
+      pendingMcpId     = null;
       pendingRequestId = null;
-
-      // Remember this requestId — if the result arrives later we'll inject it
       lateResult = { requestId: timedOutRequestId, tool: timedOutTool, mcpId: timedOutId };
-
-      // Flush any results already collected, plus a timeout notice for the stalled tool
-      var results = batchResults.slice();
-      batchResults = [];
-      var summary  = lastSummary;
-      lastSummary  = null;
-      callQueue    = [];
-
-      var timeoutLine = '[VisGraph — ⏱ ' + timedOutTool + ' timed out — result may still arrive as a follow-up]';
+      var results = batchResults.slice(); batchResults = [];
+      var summary = lastSummary; lastSummary = null;
+      callQueue = [];
       var resp = JSON.stringify({
         jsonrpc: '2.0', id: timedOutId != null ? timedOutId : null,
-        error: {
-          code: -32000,
-          message: timedOutTool + ' did not respond within ' + (CALL_TIMEOUT_MS / 1000) + ' s. The tool is likely still running. A follow-up result will be injected automatically when it completes.',
-          data: { tool: timedOutTool, lateResult: true },
-        },
+        error: { code: -32000, message: timedOutTool + ' did not respond within ' + (CALL_TIMEOUT_MS / 1000) + ' s. A follow-up result will be injected automatically.', data: { tool: timedOutTool, lateResult: true } },
       });
       results.push({ tool: timedOutTool, mcpId: timedOutId, ok: false, result: { success: false, error: 'timeout' } });
-
-      // Build and inject: previous results (if any) + timeout notice
-      var lines = [timeoutLine];
+      var lines = ['[VisGraph — ⏱ ' + timedOutTool + ' timed out]'];
       results.forEach(function (r) {
-        var rResp;
-        if (r.tool === timedOutTool && !r.ok && r.result && r.result.error === 'timeout') {
-          rResp = resp;
-        } else if (r.ok) {
-          rResp = JSON.stringify({
-            jsonrpc: '2.0', id: r.mcpId != null ? r.mcpId : null,
-            result: { content: [{ type: 'text', text: briefData(r.result && r.result.data) }] },
-          });
-        } else {
-          var err = (r.result && r.result.error) || 'failed';
-          rResp = JSON.stringify({
-            jsonrpc: '2.0', id: r.mcpId != null ? r.mcpId : null,
-            error: { code: -32000, message: String(err), data: { tool: r.tool } },
-          });
-        }
-        lines.push('`' + rResp + '`');
+        var rr = (r.tool === timedOutTool && !r.ok) ? resp : r.ok
+          ? JSON.stringify({ jsonrpc: '2.0', id: r.mcpId != null ? r.mcpId : null, result: { content: [{ type: 'text', text: briefData(r.result && r.result.data) }] } })
+          : JSON.stringify({ jsonrpc: '2.0', id: r.mcpId != null ? r.mcpId : null, error: { code: -32000, message: String((r.result && r.result.error) || 'failed'), data: { tool: r.tool } } });
+        lines.push('`' + rr + '`');
       });
       if (summary) { lines.push(''); lines.push(summary); }
       injectResult(lines.join('\n'));
-      showToast('⏱ ' + timedOutTool + ' timed out — awaiting late result', false);
+      showToast('⏱ ' + timedOutTool + ' timed out', false);
     }, CALL_TIMEOUT_MS);
   }
 
-  /* ── Result listener (popup → AI tab) ─────────────────────────────────── */
+  /* ── Result listener (popup → chat tab) ───────────────────────────────── */
   window.addEventListener('message', function (evt) {
-    if (evt.origin !== RELAY_ORIGIN) {
-      var d = evt.data;
-      if (d && (d.type === 'vg-result' || d.type === 'vg-ping')) {
-        console.warn('[vg-relay] Dropped message from unexpected origin:', evt.origin, '— expected:', RELAY_ORIGIN, 'type:', d.type);
-      }
-      return;
-    }
+    if (window.__vgRelayInstanceId !== instanceId) return; // stale instance
+    if (evt.origin !== RELAY_ORIGIN) return;
     var data = evt.data;
 
-    // Heartbeat from popup while a long tool (layout, reasoning) is running
     if (data && data.type === 'vg-ping') {
       if (data.sessionId) {
         if (knownSessionId && knownSessionId !== data.sessionId) {
-          // VisGraph reloaded — new session detected
           showToast('VisGraph reloaded — graph data was lost', false);
           clearTimeout(callTimeoutTimer);
-          isProcessing   = false;
-          pendingTool    = null;
-          pendingMcpId   = null;
-          pendingRequestId = null;
-          batchResults   = [];
-          callQueue      = [];
-          lastSummary    = null;
-          lateResult     = null;
+          isProcessing = false; pendingTool = null; pendingMcpId = null; pendingRequestId = null;
+          batchResults = []; callQueue = []; lastSummary = null; lateResult = null;
         }
         knownSessionId = data.sessionId;
       }
-      resetCallTimeout(); // extend deadline
+      resetCallTimeout();
       return;
     }
 
     if (!data || data.type !== 'vg-result') return;
 
-    // Late result arriving after a timeout — inject as standalone follow-up
+    // Late result after timeout
     if (!isProcessing && lateResult && data.requestId && data.requestId === lateResult.requestId) {
-      var lr = lateResult;
-      lateResult = null;
+      var lr = lateResult; lateResult = null;
       clearTimeout(callTimeoutTimer);
-      var ok = !!(data.result && data.result.success !== false);
-      var lResp;
-      if (ok) {
-        lResp = JSON.stringify({
-          jsonrpc: '2.0', id: lr.mcpId != null ? lr.mcpId : null,
-          result: { content: [{ type: 'text', text: briefData(data.result && data.result.data) }] },
-        });
-      } else {
-        var lErr = (data.result && data.result.error) || 'failed';
-        lResp = JSON.stringify({
-          jsonrpc: '2.0', id: lr.mcpId != null ? lr.mcpId : null,
-          error: { code: -32000, message: String(lErr), data: { tool: lr.tool } },
-        });
-      }
-      var lLines = ['[VisGraph — late result for ' + lr.tool + (ok ? ' ✓' : ' ✗') + ']'];
-      lLines.push('`' + lResp + '`');
-      if (data.summary) { lLines.push(''); lLines.push(data.summary); }
-      if (data.svg) { lLines.push(''); lLines.push('Current graph (SVG):'); lLines.push(data.svg); }
-      injectResult(lLines.join('\n'));
-      showToast('Late result: ' + lr.tool, ok);
+      var lok = !!(data.result && data.result.success !== false);
+      var lresp = lok
+        ? JSON.stringify({ jsonrpc: '2.0', id: lr.mcpId != null ? lr.mcpId : null, result: { content: [{ type: 'text', text: briefData(data.result && data.result.data) }] } })
+        : JSON.stringify({ jsonrpc: '2.0', id: lr.mcpId != null ? lr.mcpId : null, error: { code: -32000, message: String((data.result && data.result.error) || 'failed'), data: { tool: lr.tool } } });
+      var ll = ['[VisGraph — late result for ' + lr.tool + (lok ? ' ✓' : ' ✗') + ']', '`' + lresp + '`'];
+      if (data.summary) { ll.push(''); ll.push(data.summary); }
+      if (data.svg) { ll.push(''); ll.push('Current graph (SVG):'); ll.push(data.svg); }
+      injectResult(ll.join('\n'));
+      showToast('Late result: ' + lr.tool, lok);
       return;
     }
 
     clearTimeout(callTimeoutTimer);
-    lateResult = null; // new result arrived — any previous late-result slot is stale
-
+    lateResult = null;
     var ok = !!(data.result && data.result.success !== false);
     batchResults.push({ tool: pendingTool || '?', mcpId: pendingMcpId, ok: ok, result: data.result });
     if (data.summary) lastSummary = data.summary;
-    isProcessing   = false;
-    pendingTool    = null;
-    pendingMcpId   = null;
-    pendingRequestId = null;
+    isProcessing = false; pendingTool = null; pendingMcpId = null; pendingRequestId = null;
 
     if (callQueue.length > 0) {
       processNextInQueue();
     } else {
-      var results = batchResults.slice();
-      var summary = lastSummary;
-      batchResults = [];
-      lastSummary  = null;
+      var results = batchResults.slice(); var summary = lastSummary;
+      batchResults = []; lastSummary = null;
       injectCombinedResult(results, summary, data.svg);
     }
   });
 
-  /* ── Common RDF prefix expansion ──────────────────────────────────────── */
+  /* ── RDF prefix expansion ──────────────────────────────────────────────── */
   var KNOWN_PREFIXES = {
-    'rdf:'     : 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
-    'rdfs:'    : 'http://www.w3.org/2000/01/rdf-schema#',
-    'owl:'     : 'http://www.w3.org/2002/07/owl#',
-    'xsd:'     : 'http://www.w3.org/2001/XMLSchema#',
-    'foaf:'    : 'http://xmlns.com/foaf/0.1/',
-    'skos:'    : 'http://www.w3.org/2004/02/skos/core#',
-    'dc:'      : 'http://purl.org/dc/elements/1.1/',
-    'dcterms:' : 'http://purl.org/dc/terms/',
-    'schema:'  : 'https://schema.org/',
-    'ex:'      : 'http://example.org/',
+    'rdf:': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
+    'rdfs:': 'http://www.w3.org/2000/01/rdf-schema#',
+    'owl:': 'http://www.w3.org/2002/07/owl#',
+    'xsd:': 'http://www.w3.org/2001/XMLSchema#',
+    'foaf:': 'http://xmlns.com/foaf/0.1/',
+    'skos:': 'http://www.w3.org/2004/02/skos/core#',
+    'dc:': 'http://purl.org/dc/elements/1.1/',
+    'dcterms:': 'http://purl.org/dc/terms/',
+    'schema:': 'https://schema.org/',
+    'ex:': 'http://example.org/',
   };
-
   function expandPrefix(val) {
     for (var p in KNOWN_PREFIXES) {
-      if (val.indexOf(p) === 0) {
-        return KNOWN_PREFIXES[p] + val.slice(p.length);
-      }
+      if (val.indexOf(p) === 0) return KNOWN_PREFIXES[p] + val.slice(p.length);
     }
     return val;
   }
 
-  /* ── Tool-call extractor ───────────────────────────────────────────────── */
-  //
-  // Detects MCP JSON-RPC 2.0 tool calls written as single-backtick inline code:
-  //   `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"addNode","arguments":{...}}}`
-  //
-  // Works on both raw text (backticks present) and rendered HTML where the
-  // backtick content lands in <code> element text (no backticks in innerText).
-  // Streaming safety: truncated JSON has unbalanced braces → brace scanner skips it.
-  // False-positive guard: validateMcpRequest rejects anything not a valid tools/call.
-
-  // Global dedup for mutation-triggered scans.  Prevents the same streaming AI
-  // message from dispatching the same call multiple times as text arrives.
+  /* ── Tool-call parser ──────────────────────────────────────────────────── */
   var dispatchedSigs = new Set();
 
   function validateMcpRequest(obj) {
@@ -520,11 +483,8 @@
     return true;
   }
 
-  // Scan text for balanced top-level {...} JSON objects via brace depth tracking.
-  // Handles both raw text (backtick-wrapped) and rendered text (plain JSON in <code>).
   function extractJsonObjects(text) {
-    var objects = [];
-    var i = 0, n = text.length;
+    var objects = [], i = 0, n = text.length;
     while (i < n) {
       var start = text.indexOf('{', i);
       if (start === -1) break;
@@ -542,7 +502,7 @@
           }
         }
       }
-      if (!complete) break; // truncated JSON — stop scanning
+      if (!complete) break;
     }
     return objects;
   }
@@ -556,119 +516,66 @@
       if (!validateMcpRequest(req)) continue;
       var tool = req.params.name;
       var params = req.params.arguments || {};
-      // Expand known RDF prefixes in string argument values
       for (var k in params) {
         if (typeof params[k] === 'string') params[k] = expandPrefix(params[k]);
       }
       var mcpId = req.id != null ? req.id : null;
       var sig = tool + ':' + JSON.stringify(params) + ':' + mcpId;
-      if (!seen.has(sig)) {
-        seen.add(sig);
-        calls.push({ tool: tool, params: params, mcpId: mcpId });
-      }
+      if (!seen.has(sig)) { seen.add(sig); calls.push({ tool: tool, params: params, mcpId: mcpId }); }
     }
     return calls;
   }
 
-  /* ── Streaming-idle detection ─────────────────────────────────────────── */
-  // Checks whether the AI is still generating using HTML-agnostic signals:
-  //   1. The chat input is disabled (universal: UIs lock input while AI responds)
-  //   2. The send button near the input is disabled (same universal contract)
-  //   3. aria-busy="true" on an ancestor (ARIA standard for async content)
-  //   4. A visible stop/abort button exists (explicit generation controls)
-  // No framework-specific class names needed.
-
+  /* ── Streaming-idle detection ──────────────────────────────────────────── */
   function isAiStreaming() {
-    // ── 1. Input element locked ─────────────────────────────────────────
     var inp = findInput();
     if (inp) {
       if (inp.disabled) return true;
       if (inp.getAttribute('aria-disabled') === 'true') return true;
-    }
-
-    // ── 2. Send button disabled ─────────────────────────────────────────
-    // Walk up from input to find a submit/send button and check disabled.
-    if (inp) {
       var cur = inp.parentElement;
       while (cur && cur !== document.body) {
-        var buttons = Array.from(cur.querySelectorAll('button'));
-        var sendBtn = buttons.find(function (b) {
+        var btns = Array.from(cur.querySelectorAll('button'));
+        var sendBtn = btns.find(function (b) {
           var lbl = (b.getAttribute('aria-label') || b.title || b.textContent || '').toLowerCase();
           return b.type === 'submit' || lbl.includes('send') || lbl.includes('senden') || lbl.includes('submit');
         });
-        if (sendBtn) {
-          if (sendBtn.disabled) return true;
-          break; // found but not disabled → not streaming by this signal
-        }
+        if (sendBtn) { if (sendBtn.disabled) return true; break; }
         cur = cur.parentElement;
       }
-    }
-
-    // ── 3. aria-busy on any ancestor of the input ───────────────────────
-    if (inp) {
       var el = inp.parentElement;
       while (el && el !== document.body) {
         if (el.getAttribute('aria-busy') === 'true') return true;
         el = el.parentElement;
       }
     }
-
     return false;
   }
 
-  /**
-   * Wait until the AI appears idle (streaming indicators gone AND the
-   * container text has stopped growing), then call callback.
-   * Falls back after MAX_WAIT_MS regardless.
-   */
   function waitForIdle(container, callback) {
-    var MAX_WAIT_MS  = 30000;
-    var POLL_MS      = 200;
-    var STABLE_TICKS = 3;   // text must be same length for 3 polls (600 ms)
-    var elapsed      = 0;
-    var lastLen      = -1;
-    var stableCount  = 0;
-
+    var MAX_WAIT_MS = 30000, POLL_MS = 200, STABLE_TICKS = 3;
+    var elapsed = 0, lastLen = -1, stableCount = 0;
     function poll() {
       elapsed += POLL_MS;
       var len = (container.innerText || container.textContent || '').length;
-
-      if (len !== lastLen) {
-        lastLen     = len;
-        stableCount = 0;
-      } else {
-        stableCount++;
-      }
-
-      var streaming = isAiStreaming();
-      var stable    = stableCount >= STABLE_TICKS;
-
-      if ((!streaming && stable) || elapsed >= MAX_WAIT_MS) {
-        callback();
-      } else {
-        setTimeout(poll, POLL_MS);
-      }
+      if (len !== lastLen) { lastLen = len; stableCount = 0; } else { stableCount++; }
+      if ((!isAiStreaming() && stableCount >= STABLE_TICKS) || elapsed >= MAX_WAIT_MS) callback();
+      else setTimeout(poll, POLL_MS);
     }
-
     setTimeout(poll, POLL_MS);
   }
 
   var drainTimer = null;
-
   function scheduleDrain(container) {
     clearTimeout(drainTimer);
     drainTimer = setTimeout(function () {
-      waitForIdle(container, function () {
-        if (!isProcessing) processNextInQueue();
-      });
+      waitForIdle(container, function () { if (!isProcessing) processNextInQueue(); });
     }, DEBOUNCE_MS);
   }
 
-  function parseAndEnqueue(el, seen) {
+  function parseAndEnqueue(el) {
     if (!el) return;
     var text = el.innerText || el.textContent || '';
-    if (text.indexOf('[VisGraph') !== -1) return;
-    var calls = extractAllToolCalls(text, seen || dispatchedSigs);
+    var calls = extractAllToolCalls(text, dispatchedSigs);
     if (calls.length === 0) return;
     callQueue = callQueue.concat(calls);
     scheduleDrain(el);
@@ -678,42 +585,26 @@
     if (isProcessing || callQueue.length === 0) return;
     isProcessing = true;
     var item = callQueue.shift();
-    var isLast = callQueue.length === 0; // last item in this batch
-
+    var isLast = callQueue.length === 0;
     var popup = window.__vgRelayPopup;
     if (!popup || popup.closed) popup = openPopup();
     if (!popup) {
       showToast('Relay popup could not open', false);
-      isProcessing = false;
-      callQueue = [];
-      batchResults = [];
-      lastSummary = null;
+      isProcessing = false; callQueue = []; batchResults = []; lastSummary = null;
       return;
     }
-    pendingTool      = item.tool;
-    pendingMcpId     = item.mcpId != null ? item.mcpId : null;
-    lateResult       = null; // new batch — discard any stale late-result slot
-    var requestId    = 'rq-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+    pendingTool = item.tool;
+    pendingMcpId = item.mcpId != null ? item.mcpId : null;
+    lateResult = null;
+    var requestId = 'rq-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
     pendingRequestId = requestId;
-    var payload = {
-      type: 'vg-call',
-      tool: item.tool,
-      params: item.params,
-      requestId: requestId,
-      isLast: isLast,
-    };
     setTimeout(function () {
-      try {
-        popup.postMessage(payload, RELAY_ORIGIN);
-        resetCallTimeout();
-      } catch (e) {
-        console.warn('[vg-relay] postMessage failed:', e);
-        isProcessing = false;
-      }
+      try { popup.postMessage({ type: 'vg-call', tool: item.tool, params: item.params, requestId: requestId, isLast: isLast }, RELAY_ORIGIN); resetCallTimeout(); }
+      catch (e) { console.warn('[vg-relay] postMessage failed:', e); isProcessing = false; }
     }, 200);
   }
 
-  /* ── MutationObserver — scan every new/changed node ───────────────────── */
+  /* ── MutationObserver ──────────────────────────────────────────────────── */
   var debounceTimer = null;
   var pendingNodes = new Set();
 
@@ -724,30 +615,20 @@
 
   function collectAncestors(node) {
     var el = node.nodeType === 3 ? node.parentElement : node;
-    // Skip mutations inside editable elements (user typing / relay injection)
+    // Ignore mutations inside editable elements (user typing / our inject)
     var check = el;
     while (check && check !== document.body) {
       if (check.tagName === 'TEXTAREA' || check.contentEditable === 'true') return;
       check = check.parentElement;
     }
+    // Stop at the NEAREST block element — do not climb to large chat-stream
+    // containers that also contain user messages with example tool calls.
+    // MCP tool calls are always in a single <code> block; the nearest p/code/div
+    // is sufficient to find them.
     while (el && el !== document.body) {
       var tag = el.tagName ? el.tagName.toLowerCase() : '';
-      if (tag === 'p' || tag === 'li') {
-        // p/li are inline containers — climb to nearest block ancestor so we
-        // scan the whole message (params may be in sibling <p> elements).
-        var parent = el.parentElement;
-        while (parent && parent !== document.body) {
-          var ptag = parent.tagName ? parent.tagName.toLowerCase() : '';
-          if (ptag === 'div' || ptag === 'section' || ptag === 'article') {
-            pendingNodes.add(parent);
-            return;
-          }
-          parent = parent.parentElement;
-        }
-        pendingNodes.add(el);
-        return;
-      }
-      if (tag === 'div' || tag === 'section' || tag === 'article') {
+      if (tag === 'p' || tag === 'li' || tag === 'pre' || tag === 'code' ||
+          tag === 'div' || tag === 'section' || tag === 'article') {
         pendingNodes.add(el);
         return;
       }
@@ -756,44 +637,24 @@
     if (el === document.body) pendingNodes.add(document.body);
   }
 
-  // Start observing the full body.  Once a relevant mutation lands in a specific
-  // subtree (the first div/section/article that gets added to pendingNodes), lock
-  // the observer to that container to reduce noise from unrelated DOM activity.
-  var lockedContainer = null;
-
-  function lockObserverTo(container) {
-    if (lockedContainer || container === document.body) return;
-    lockedContainer = container;
-    observer.disconnect();
-    observer.observe(container, { childList: true, subtree: true, characterData: true });
-  }
-
   var observer = new MutationObserver(function (mutations) {
     mutations.forEach(function (m) {
       m.addedNodes.forEach(function (n) { collectAncestors(n); });
       if (m.type === 'characterData') collectAncestors(m.target);
     });
-    // Lock in to the message container the first time we see a relevant node
-    if (!lockedContainer && pendingNodes.size > 0) {
-      pendingNodes.forEach(function (node) {
-        if (!lockedContainer && node !== document.body) {
-          // Walk up to find a stable ancestor (at least 2 levels up from body)
-          var c = node.parentElement;
-          while (c && c.parentElement && c.parentElement !== document.body) {
-            c = c.parentElement;
-          }
-          if (c && c !== document.body) lockObserverTo(c);
-        }
-      });
-    }
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(flushPending, DEBOUNCE_MS);
   });
 
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  window.__vgRelayObserver = observer;
 
-  // Initial scan uses a throwaway seen-set so the user's starter-prompt example
-  // tool calls don't pollute dispatchedSigs and block the real AI response.
-  setTimeout(function () { parseAndEnqueue(document.body, new Set()); }, 500);
+  // Pre-seed dispatchedSigs with all tool calls already visible on the page.
+  // This prevents user system-prompt examples (id:0 etc.) from being dispatched
+  // when the observer first fires for a real AI response.
+  // We add to dispatchedSigs but do NOT enqueue — no actual dispatch happens.
+  setTimeout(function () {
+    extractAllToolCalls(document.body.innerText || document.body.textContent || '', dispatchedSigs);
+  }, 300);
 
 })();
