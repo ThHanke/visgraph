@@ -1,5 +1,6 @@
 // src/mcp/tools/reasoning.ts
 import type { McpTool, McpResult } from '@/mcp/types';
+import { rdfManager } from '@/utils/rdfManager';
 import { getWorkspaceRefs } from '@/mcp/workspaceContext';
 import { VALID_ALGORITHMS } from './layout';
 const EXPORT_FORMATS = ['turtle', 'jsonld', 'rdfxml', 'svg', 'png'];
@@ -25,13 +26,15 @@ const runReasoning: McpTool = {
         await refs.dataProvider.clearInferred();
       }
 
+      const result = await rdfManager.runReasoning({ rulesets: [] });
+      const inferredTriples = result?.meta?.addedCount ?? result?.inferences?.length ?? 0;
+
+      // Trigger canvas refresh via registered callback if available
       if (refs.runReasoning) {
-        await refs.runReasoning();
-      } else {
-        return { success: false, error: 'Reasoning not yet available — workspace still initialising' };
+        await refs.runReasoning().catch(() => {/* canvas not required for count */});
       }
 
-      return { success: true, data: { content: 'Reasoning complete. Inferred triples are now highlighted in orange.' } };
+      return { success: true, data: { inferredTriples } };
     } catch (e) {
       return { success: false, error: String(e) };
     }
