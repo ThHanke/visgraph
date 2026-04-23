@@ -175,20 +175,40 @@
   /* ── Submit the chat input ─────────────────────────────────────────────── */
   function submitInput(inputEl) {
     var foundBtn = false;
-    var cur = inputEl.parentElement;
-    while (cur && cur !== document.body) {
-      var btns = Array.from(cur.querySelectorAll('button'));
-      var sendBtn = btns.find(function (b) {
-        if (b.disabled) return false;
-        var lbl = (b.getAttribute('aria-label') || b.title || b.textContent || '').toLowerCase();
-        return b.type === 'submit' || lbl.includes('send') || lbl.includes('senden') || lbl.includes('submit');
-      });
-      if (sendBtn) { sendBtn.click(); foundBtn = true; break; }
-      cur = cur.parentElement;
+
+    // 1. Direct id — OpenWebUI's known send button
+    var directBtn = document.getElementById('send-message-button');
+    if (directBtn && !directBtn.disabled) { directBtn.click(); foundBtn = true; }
+
+    // 2. Climb parent tree for other UIs
+    if (!foundBtn) {
+      var cur = inputEl.parentElement;
+      while (cur && cur !== document.body) {
+        var btns = Array.from(cur.querySelectorAll('button'));
+        var sendBtn = btns.find(function (b) {
+          if (b.disabled) return false;
+          var lbl = (b.getAttribute('aria-label') || b.title || b.textContent || '').toLowerCase();
+          return b.type === 'submit' || lbl.includes('send') || lbl.includes('senden') || lbl.includes('submit');
+        });
+        if (sendBtn) { sendBtn.click(); foundBtn = true; break; }
+        cur = cur.parentElement;
+      }
     }
-    // Dispatch Enter only for textarea UIs (FhGenie submits on keydown).
-    // For contenteditable editors (TipTap/ProseMirror), Enter means "new paragraph",
-    // not "submit" — dispatching it would corrupt the editor state.
+
+    // 3. requestSubmit() on the form — fires Svelte's on:submit handler even if
+    //    the send button is still disabled (Svelte render hasn't flushed yet)
+    if (!foundBtn) {
+      var form = inputEl.closest('form') ||
+                 (directBtn && directBtn.closest('form'));
+      if (form) {
+        try { form.requestSubmit(); foundBtn = true; } catch (_) {
+          form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+          foundBtn = true;
+        }
+      }
+    }
+
+    // 4. Enter keydown — textarea UIs only (TipTap: Enter = new paragraph)
     if (inputEl.tagName === 'TEXTAREA' || !foundBtn) {
       ['keydown', 'keyup'].forEach(function (type) {
         inputEl.dispatchEvent(new KeyboardEvent(type, {
@@ -212,11 +232,33 @@
       return false;
     }
 
+    // Wait until the send button is enabled (Svelte/TipTap state flushed) then submit.
+    // Poll up to 3 s in 50 ms steps; fall through to requestSubmit() on timeout.
     function doSubmit() {
-      setTimeout(function () {
-        submitInput(el);
-        injectInProgress = false;
-      }, 500);
+      var deadline = Date.now() + 3000;
+      (function poll() {
+        var directBtn = document.getElementById('send-message-button');
+        var btnEnabled = directBtn && !directBtn.disabled;
+        if (!btnEnabled) {
+          // Also check tree-climbed send button
+          var cur = el.parentElement;
+          while (cur && cur !== document.body && !btnEnabled) {
+            var found = Array.from(cur.querySelectorAll('button')).find(function (b) {
+              if (b.disabled) return false;
+              var lbl = (b.getAttribute('aria-label') || b.title || b.textContent || '').toLowerCase();
+              return b.type === 'submit' || lbl.includes('send') || lbl.includes('senden') || lbl.includes('submit');
+            });
+            if (found) btnEnabled = true;
+            cur = cur.parentElement;
+          }
+        }
+        if (btnEnabled || Date.now() >= deadline) {
+          submitInput(el);
+          injectInProgress = false;
+        } else {
+          setTimeout(poll, 50);
+        }
+      })();
     }
 
     if (el.tagName === 'TEXTAREA') {
@@ -251,15 +293,53 @@
         target.focus();
         var dispatched = false;
 
-        // ── Path 1: ProseMirror view dispatch ───────────────────────────
+        // ── Path 1: TipTap / ProseMirror dispatch ───────────────────────
+        // Strategies (most reliable first):
+        //   a) tiptap.commands.setContent — full TipTap pipeline, fires onTransaction
+        //      → onChange → Svelte prompt update → send button enables
+        //   b) pmView.dispatch (raw PM transaction) — fallback for older TipTap
+        //   c) own-property scan for EditorView-shaped objects (minified builds)
         try {
-          var pmView = target.pmViewDesc && target.pmViewDesc.view;
-          if (pmView && pmView.state && pmView.dispatch) {
-            var state = pmView.state;
-            // Replace all content with our text (pos 1 = inside first paragraph)
-            var tr = state.tr.insertText(text, 1, state.doc.content.size - 1);
-            pmView.dispatch(tr);
-            dispatched = true;
+          var tiptap = target.editor;
+
+          // (a) TipTap high-level API — preferred; goes through full callback chain
+          if (tiptap && tiptap.commands && typeof tiptap.commands.setContent === 'function') {
+            try {
+              tiptap.commands.focus();
+              // setContent(content, emitUpdate) — emitUpdate=true fires onTransaction
+              tiptap.commands.setContent(text, true);
+              dispatched = (tiptap.state || tiptap.view.state).doc.textContent.length > 0;
+            } catch (_) {}
+          }
+
+          // (b) raw PM dispatch — works when tiptap.commands unavailable
+          if (!dispatched) {
+            var pmView = null;
+            if (tiptap && tiptap.view && typeof tiptap.view.dispatch === 'function') {
+              pmView = tiptap.view;
+            }
+            if (!pmView) {
+              var desc = target.pmViewDesc;
+              if (desc && desc.view && typeof desc.view.dispatch === 'function') pmView = desc.view;
+            }
+            if (!pmView) {
+              var ownKeys = Object.keys(target);
+              for (var oi = 0; oi < ownKeys.length; oi++) {
+                try {
+                  var ov = target[ownKeys[oi]];
+                  if (ov && typeof ov === 'object' && typeof ov.dispatch === 'function' &&
+                      ov.state && typeof ov.state.tr === 'object') { pmView = ov; break; }
+                } catch (_) {}
+              }
+            }
+            if (pmView) {
+              var state = pmView.state;
+              var docSize = state.doc.content.size;
+              var endPos = docSize > 2 ? docSize - 1 : 1;
+              var pmTr = state.tr.insertText(text, 1, endPos);
+              pmView.dispatch(pmTr);
+              dispatched = pmView.state.doc.textContent.length > 0;
+            }
           }
         } catch (_) {}
 
@@ -530,23 +610,18 @@
   function isAiStreaming() {
     var inp = findInput();
     if (inp) {
-      if (inp.disabled) return true;
+      // Textarea-specific: disabled during generation
+      if (inp.tagName === 'TEXTAREA' && inp.disabled) return true;
       if (inp.getAttribute('aria-disabled') === 'true') return true;
-      var cur = inp.parentElement;
-      while (cur && cur !== document.body) {
-        var btns = Array.from(cur.querySelectorAll('button'));
-        var sendBtn = btns.find(function (b) {
-          var lbl = (b.getAttribute('aria-label') || b.title || b.textContent || '').toLowerCase();
-          return b.type === 'submit' || lbl.includes('send') || lbl.includes('senden') || lbl.includes('submit');
-        });
-        if (sendBtn) { if (sendBtn.disabled) return true; break; }
-        cur = cur.parentElement;
-      }
+      // aria-busy on any ancestor signals generation in progress
       var el = inp.parentElement;
       while (el && el !== document.body) {
         if (el.getAttribute('aria-busy') === 'true') return true;
         el = el.parentElement;
       }
+      // NOTE: we intentionally do NOT check the send button's disabled state here.
+      // TipTap/ProseMirror UIs disable the send button when the editor is empty,
+      // which is the normal idle state — not a streaming indicator.
     }
     return false;
   }
@@ -646,15 +721,12 @@
     debounceTimer = setTimeout(flushPending, DEBOUNCE_MS);
   });
 
+  // Pre-seed dispatchedSigs with all tool calls already visible on the page
+  // BEFORE starting the observer, so newly-arriving AI messages are not seeded.
+  // This prevents system-prompt examples (id:0 etc.) from being dispatched.
+  extractAllToolCalls(document.body.innerText || document.body.textContent || '', dispatchedSigs);
+
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });
   window.__vgRelayObserver = observer;
-
-  // Pre-seed dispatchedSigs with all tool calls already visible on the page.
-  // This prevents user system-prompt examples (id:0 etc.) from being dispatched
-  // when the observer first fires for a real AI response.
-  // We add to dispatchedSigs but do NOT enqueue — no actual dispatch happens.
-  setTimeout(function () {
-    extractAllToolCalls(document.body.innerText || document.body.textContent || '', dispatchedSigs);
-  }, 300);
 
 })();
