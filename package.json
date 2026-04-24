@@ -1,7 +1,7 @@
 {
   "name": "visgraph",
   "description": "Browser-based interactive RDF/ontology knowledge graph editor — authoring, OWL-RL reasoning, clustering, multi-algorithm layout, and MCP support. Runs entirely client-side.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "license": "Apache-2.0",
   "author": "Thomas Hanke <thomas.hnke82@gmail.com> (https://github.com/ThHanke)",
   "homepage": "https://thhanke.github.io/visgraph/",
