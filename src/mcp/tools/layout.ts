@@ -207,4 +207,163 @@ const clusterCanvas: McpTool = {
   },
 };
 
-export const layoutTools: McpTool[] = [runLayout, focusNode, fitCanvas, clusterCanvas];
+// ---------------------------------------------------------------------------
+// layoutNodes
+// ---------------------------------------------------------------------------
+const layoutNodes: McpTool = {
+  name: 'layoutNodes',
+  description: 'Lay out a named subset of canvas nodes together in a free area, pan the viewport to them, and return the bounding box. Fails if any IRI is not on the canvas or is inside a cluster.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      iris: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'IRIs of the canvas nodes to lay out together.',
+      },
+      algorithm: {
+        type: 'string',
+        description: 'Layout algorithm to apply to the subset.',
+        enum: [...VALID_ALGORITHMS],
+      },
+    },
+    required: ['iris', 'algorithm'],
+  },
+  async handler(params): Promise<McpResult> {
+    try {
+      const p = params as { iris?: string[]; algorithm?: string };
+      const iris = p.iris ?? [];
+      if (iris.length === 0) {
+        return { success: false, error: 'iris must be a non-empty array' };
+      }
+
+      // Resolve algorithm
+      const ALIASES: Record<string, string> = { dagre: 'dagre-lr', elk: 'elk-layered' };
+      const raw = p.algorithm ?? '';
+      const algorithm = ALIASES[raw] ?? raw;
+      if (!(VALID_ALGORITHMS as readonly string[]).includes(algorithm)) {
+        return {
+          success: false,
+          error: `Unknown algorithm: ${raw}. Valid: ${VALID_ALGORITHMS.join(', ')}`,
+        };
+      }
+
+      const { ctx } = getWorkspaceRefs();
+
+      // Build cluster membership map
+      const clusterMap = new Map<string, string>();
+      for (const el of ctx.model.elements) {
+        if (el instanceof Reactodia.EntityGroup) {
+          for (const member of el.items) {
+            if (member.data.id) clusterMap.set(member.data.id, el.id);
+          }
+        }
+      }
+
+      // Validate: all IRIs must be EntityElement on canvas
+      const entityElements = new Map<string, Reactodia.EntityElement>();
+      for (const el of ctx.model.elements) {
+        if (el instanceof Reactodia.EntityElement) {
+          entityElements.set((el as Reactodia.EntityElement).iri, el as Reactodia.EntityElement);
+        }
+      }
+
+      const nonCanvas: string[] = [];
+      for (const iri of iris) {
+        if (!entityElements.has(iri)) nonCanvas.push(iri);
+      }
+      if (nonCanvas.length > 0) {
+        return { success: false, error: `IRIs not on canvas: ${nonCanvas.join(', ')}` };
+      }
+
+      // Validate: none may be in a cluster
+      const clustered: { iri: string; clusterId: string }[] = [];
+      for (const iri of iris) {
+        const clusterId = clusterMap.get(iri);
+        if (clusterId) clustered.push({ iri, clusterId });
+      }
+      if (clustered.length > 0) {
+        return { success: false, error: `Some nodes are inside clusters: ${JSON.stringify(clustered)}` };
+      }
+
+      const selectedElements = iris.map(iri => entityElements.get(iri)!);
+
+      // Resolve layout function
+      const { createDagreLayout, createElkLayout } = await import(
+        '@/components/Canvas/layout/layouts'
+      );
+      const spacing = 120;
+      let layoutFunction;
+      switch (algorithm as Algorithm) {
+        case 'dagre-lr':
+          layoutFunction = createDagreLayout('LR', spacing);
+          break;
+        case 'dagre-tb':
+          layoutFunction = createDagreLayout('TB', spacing);
+          break;
+        case 'elk-layered':
+          layoutFunction = createElkLayout('layered', spacing);
+          break;
+        case 'elk-force':
+          layoutFunction = createElkLayout('force', spacing);
+          break;
+        case 'elk-stress':
+          layoutFunction = createElkLayout('stress', spacing);
+          break;
+        case 'elk-radial':
+          layoutFunction = createElkLayout('radial', spacing);
+          break;
+      }
+
+      // Run layout on subset
+      await ctx.performLayout({ layoutFunction, animate: true, selectedElements });
+
+      const canvas = ctx.view.findAnyCanvas();
+      if (!canvas) return { success: false, error: 'No canvas available' };
+
+      // Compute bounding box of all other elements
+      const iriSet = new Set(iris);
+      const otherElements = ctx.model.elements.filter(
+        el => el instanceof Reactodia.EntityElement && !iriSet.has((el as Reactodia.EntityElement).iri)
+      ) as Reactodia.Element[];
+      // Links between other elements only (approximate: use all non-subset links)
+      const otherLinks = ctx.model.links.filter(
+        lk => !iriSet.has((lk.sourceId as unknown as string)) && !iriSet.has((lk.targetId as unknown as string))
+      );
+
+      if (otherElements.length > 0) {
+        const otherBbox = Reactodia.getContentFittingBox(otherElements, otherLinks, canvas.renderingState);
+        const subsetBbox = Reactodia.getContentFittingBox(selectedElements, [], canvas.renderingState);
+        const dx = (otherBbox.x + otherBbox.width + 120) - subsetBbox.x;
+        const dy = otherBbox.y - subsetBbox.y;
+
+        await canvas.animateGraph(() => {
+          for (const el of selectedElements) {
+            el.setPosition({ x: el.position.x + dx, y: el.position.y + dy });
+          }
+        });
+      }
+
+      // Compute final bbox of subset for viewport
+      const finalBbox = Reactodia.getContentFittingBox(selectedElements, [], canvas.renderingState);
+      const PAD = 40;
+      void canvas.zoomToFitRect(
+        { x: finalBbox.x - PAD, y: finalBbox.y - PAD, width: finalBbox.width + PAD * 2, height: finalBbox.height + PAD * 2 },
+        { animate: true, duration: 350 }
+      );
+
+      return {
+        success: true,
+        data: {
+          placed: iris,
+          boundingBox: finalBbox,
+          suggestedFocusIri: iris[0],
+        },
+      };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  },
+};
+
+export const layoutTools: McpTool[] = [runLayout, focusNode, fitCanvas, clusterCanvas, layoutNodes];
