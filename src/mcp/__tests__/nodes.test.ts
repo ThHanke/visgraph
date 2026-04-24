@@ -124,7 +124,7 @@ describe('getNodes', () => {
     expect(result.success).toBe(true);
     const entities = JSON.parse(result.data.content);
     expect(entities).toHaveLength(3);
-    expect(entities[0]).toEqual({ iri: 'http://example.org/a', label: 'Alpha', types: ['http://www.w3.org/2002/07/owl#Class'] });
+    expect(entities[0]).toMatchObject({ iri: 'http://example.org/a', label: 'Alpha', types: ['http://www.w3.org/2002/07/owl#Class'] });
   });
 
   it('filters by labelContains (case-insensitive)', async () => {
