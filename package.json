@@ -43,6 +43,7 @@
     "test:e2e": "playwright test",
     "test:e2e:real": "playwright test e2e/relay-bookmarklet.real.spec.ts",
     "generate:mcp": "node scripts/generate-mcp-json.mjs",
+    "demo": "node scripts/run-demo.mjs",
     "callgraph:generate": "node scripts/generate_call_graph_ts_morph.js",
     "callgraph:merge": "node scripts/merge_call_graphs.js",
     "callgraph:regen": "npm run callgraph:generate && npm run callgraph:merge",

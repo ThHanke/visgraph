@@ -24,13 +24,7 @@ each other:
 `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.com/reasoning-demo#Executive","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"Executive"}}}`
 
 ```tool-result
-[VisGraph — 4 tools ✓]
-✓ addNode: http://example.com/reasoning-demo#Person
-✓ addNode: http://example.com/reasoning-demo#Employee
-✓ addNode: http://example.com/reasoning-demo#Manager
-✓ addNode: http://example.com/reasoning-demo#Executive
-
-Canvas: 4 nodes, 0 links
+<!-- runner fills this in -->
 ```
 
 ---
@@ -47,16 +41,7 @@ so I batch them:
 `{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.com/reasoning-demo#jobTitle","typeIri":"http://www.w3.org/2002/07/owl#AnnotationProperty","label":"jobTitle"}}}`
 
 ```tool-result
-[VisGraph — 7 tools ✓]
-✓ addNode: http://example.com/reasoning-demo#knows
-✓ addNode: http://example.com/reasoning-demo#hasFriend
-✓ addNode: http://example.com/reasoning-demo#manages
-✓ addNode: http://example.com/reasoning-demo#isManagedBy
-✓ addNode: http://example.com/reasoning-demo#isColleagueOf
-✓ addNode: http://example.com/reasoning-demo#hasSupervisor
-✓ addNode: http://example.com/reasoning-demo#jobTitle
-
-Canvas: 11 nodes, 0 links
+<!-- runner fills this in -->
 ```
 
 ---
@@ -82,26 +67,13 @@ Canvas: 11 nodes, 0 links
 `{"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"expandAll","arguments":{}}}`
 
 ```tool-result
-[VisGraph — 14 tools ✓]
-✓ addLink: s=Employee p=subClassOf o=Person
-✓ addLink: s=Manager p=subClassOf o=Employee
-✓ addLink: s=Executive p=subClassOf o=Manager
-✓ addLink: s=hasFriend p=subPropertyOf o=knows
-✓ addLink: s=isManagedBy p=inverseOf o=manages
-✓ addLink: s=isColleagueOf p=type o=SymmetricProperty
-✓ addLink: s=hasSupervisor p=type o=TransitiveProperty
-✓ addLink: s=manages p=domain o=Manager
-✓ addLink: s=manages p=range o=Employee
-✓ addLink: s=knows p=domain o=Person
-✓ addLink: s=knows p=range o=Person
-✓ addLink: s=jobTitle p=subPropertyOf o=comment
-✓ runLayout: dagre-tb
-✓ expandAll
-
-Canvas: 11 nodes, 9 links
+<!-- runner fills this in -->
 ```
 
-![TBox — classes and properties on canvas](./reasoning-demo/01-tbox.svg)
+```snapshot
+caption: TBox — classes and properties on canvas
+slug: tbox
+```
 
 ---
 
@@ -117,13 +89,7 @@ inferred from the `manages rdfs:domain Manager` axiom once he asserts a `manages
 `{"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.com/reasoning-demo#dave","label":"Dave"}}}`
 
 ```tool-result
-[VisGraph — 4 tools ✓]
-✓ addNode: http://example.com/reasoning-demo#alice
-✓ addNode: http://example.com/reasoning-demo#bob
-✓ addNode: http://example.com/reasoning-demo#carol
-✓ addNode: http://example.com/reasoning-demo#dave
-
-Canvas: 15 nodes, 12 links
+<!-- runner fills this in -->
 ```
 
 ---
@@ -136,10 +102,7 @@ subproperty of `rdfs:comment`, the reasoner will infer `rdfs:comment` values for
 `{"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"loadRdf","arguments":{"turtle":"@prefix ex: <http://example.com/reasoning-demo#> .\nex:alice ex:jobTitle \"Chief Executive\" .\nex:dave  ex:jobTitle \"Division Manager\" ."}}}`
 
 ```tool-result
-[VisGraph — 1 tool ✓]
-✓ loadRdf: loaded
-
-Canvas: 15 nodes, 12 links
+<!-- runner fills this in -->
 ```
 
 ---
@@ -160,20 +123,13 @@ export at the end to confirm the ABox shape before we run the reasoner:
 `{"jsonrpc":"2.0","id":38,"method":"tools/call","params":{"name":"expandAll","arguments":{}}}`
 
 ```tool-result
-[VisGraph — 8 tools ✓]
-✓ addLink: s=alice p=manages o=carol
-✓ addLink: s=dave p=manages o=bob
-✓ addLink: s=alice p=hasFriend o=bob
-✓ addLink: s=bob p=isColleagueOf o=carol
-✓ addLink: s=carol p=hasSupervisor o=bob
-✓ addLink: s=bob p=hasSupervisor o=alice
-✓ runLayout: dagre-lr
-✓ expandAll
-
-Canvas: 15 nodes, 18 links
+<!-- runner fills this in -->
 ```
 
-![Full graph before reasoning](./reasoning-demo/02-before-reasoning.svg)
+```snapshot
+caption: Full graph before reasoning
+slug: before-reasoning
+```
 
 ---
 
@@ -187,15 +143,13 @@ inferred edges appear:
 `{"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"expandAll","arguments":{}}}`
 
 ```tool-result
-[VisGraph — 3 tools ✓]
-✓ runReasoning: 0 triples inferred
-✓ runLayout: dagre-lr
-✓ expandAll
-
-Canvas: 15 nodes, 80 links
+<!-- runner fills this in -->
 ```
 
-![Graph after reasoning — inferred edges and types visible](./reasoning-demo/03-after-reasoning.svg)
+```snapshot
+caption: Graph after reasoning — inferred edges and types visible
+slug: after-reasoning
+```
 
 ---
 
@@ -207,14 +161,13 @@ Canvas: 15 nodes, 80 links
 `{"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"expandNode","arguments":{"iri":"http://example.com/reasoning-demo#dave","expand":true}}}`
 
 ```tool-result
-[VisGraph — 2 tools ✓]
-✓ focusNode
-✓ expandNode
-
-Canvas: 15 nodes, 80 links
+<!-- runner fills this in -->
 ```
 
-![Dave's node — inferred types visible in annotation card](./reasoning-demo/04-dave-focus.svg)
+```snapshot
+caption: Dave's node — inferred types visible in annotation card
+slug: dave-focus
+```
 
 ---
 
@@ -226,8 +179,5 @@ not included here.
 `{"jsonrpc":"2.0","id":44,"method":"tools/call","params":{"name":"exportGraph","arguments":{"format":"turtle"}}}`
 
 ```tool-result
-[VisGraph — 1 tool ✓]
-✓ exportGraph: 4091 chars
-
-Canvas: 15 nodes, 80 links
+<!-- runner fills this in -->
 ```
