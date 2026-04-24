@@ -190,7 +190,7 @@ const clusterCanvas: McpTool = {
       }
       if (clusterMap.size > 0) {
         const conflicts = [...clusterMap.entries()].map(([iri, clusterId]) => ({ iri, clusterId }));
-        return { success: false, error: 'Some nodes are already in clusters', conflicts };
+        return { success: false, error: `Some nodes are already in clusters: ${JSON.stringify(conflicts)}` };
       }
 
       const canvas = ctx.view.findAnyCanvas();
