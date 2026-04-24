@@ -186,9 +186,8 @@ const getNodes: McpTool = {
       const clusterMap = new Map<string, string>();
       for (const el of ctx.model.elements) {
         if (el instanceof Reactodia.EntityGroup) {
-          const group = el as Reactodia.EntityGroup;
-          for (const member of group.items) {
-            clusterMap.set(member.data.id, group.id);
+          for (const member of el.items) {
+            if (member.data.id) clusterMap.set(member.data.id, el.id);
           }
         }
       }
