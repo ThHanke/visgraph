@@ -162,7 +162,7 @@
     },
     {
       "name": "getNodes",
-      "description": "Discover or filter all known entities (TBox classes and ABox individuals). Use labelContains to find by name — falls back to fuzzy match if nothing found (response includes fuzzyFallback:true). Use typeIri to filter by class, focusFirst:true to pan the viewport to the first canvas match. Use this before addNode/addLink to resolve IRIs. Each result item includes: iri, label, types, and clusterId (the id of the EntityGroup containing this node on the canvas, or null if not grouped).",
+      "description": "Discover or filter all known entities (TBox classes and ABox individuals). Use labelContains to find by name — falls back to fuzzy match if nothing found (response includes fuzzyFallback:true). Use typeIri to filter by class, focusFirst:true to pan the viewport to the first canvas match. Use this before addNode/addLink to resolve IRIs.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -544,55 +544,6 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
-      }
-    },
-    {
-      "name": "clusterNodes",
-      "description": "Group canvas nodes into clusters. Provide `iris` to group exactly those nodes directly, or provide `algorithm` to run community-detection on all canvas nodes. Fails if any target node is already in a cluster.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "iris": {
-            "type": "array",
-            "items": { "type": "string" },
-            "description": "Optional subset of node IRIs to group. When provided, groups exactly these nodes without running a community algorithm."
-          },
-          "algorithm": {
-            "type": "string",
-            "enum": [
-              "label-propagation",
-              "louvain",
-              "kmeans"
-            ],
-            "description": "Community-detection algorithm. Required when iris is not provided."
-          }
-        }
-      }
-    },
-    {
-      "name": "layoutNodes",
-      "description": "Lay out a named subset of canvas nodes together using a layout algorithm, place them in a free area beside other nodes, and pan the viewport to them. Returns the bounding box of the placed subset. Fails if any IRI is not on the canvas or is inside a cluster.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "iris": {
-            "type": "array",
-            "items": { "type": "string" },
-            "description": "IRIs of the canvas nodes to lay out together."
-          },
-          "algorithm": {
-            "type": "string",
-            "enum": [
-              "dagre-lr",
-              "dagre-tb",
-              "elk-layered",
-              "elk-force",
-              "elk-stress",
-              "elk-radial"
-            ]
-          }
-        },
-        "required": ["iris", "algorithm"]
       }
     },
     {
