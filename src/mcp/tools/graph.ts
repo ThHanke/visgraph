@@ -5,7 +5,7 @@ import { rdfManager } from '@/utils/rdfManager';
 import { getWorkspaceRefs } from '@/mcp/workspaceContext';
 import { mcpManifest, mcpServerDescription } from '@/mcp/manifest';
 import { Parser as SparqlParser } from 'sparqljs';
-import { resolveOntologyLoadUrl } from '@/utils/wellKnownOntologies';
+import { resolveOntologyLoadUrl, WELL_KNOWN_PREFIXES } from '@/utils/wellKnownOntologies';
 
 const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
 function getElementLabel(data: Reactodia.ElementModel | undefined): string {
@@ -76,28 +76,46 @@ const loadRdf: McpTool = {
 const loadOntology: McpTool = {
   name: 'loadOntology',
   description:
-    'Load a well-known ontology by prefix name (e.g. "bfo", "ro", "iao", "foaf", "pmdco") ' +
-    'or by a direct ontology URL. Prefix names are resolved to the canonical ontology file via ' +
-    'the built-in well-known ontology registry.',
+    'Load a well-known ontology by prefix name (e.g. "bfo", "ro", "iao", "foaf", "pmdco"), ' +
+    'by its namespace URL, or by any direct ontology file URL. ' +
+    'Call with url="" or omit url to list all available well-known ontologies.',
   inputSchema: {
     type: 'object',
-    required: ['url'],
     properties: {
       url: {
         type: 'string',
         description:
-          'Well-known prefix name (e.g. "bfo", "ro", "iao", "foaf") or a direct ontology URL.',
+          'Prefix name (e.g. "bfo"), namespace IRI, or direct ontology URL. ' +
+          'Leave empty to list available well-known ontologies.',
       },
     },
   },
   async handler(params): Promise<McpResult> {
+    const { url = '' } = (params ?? {}) as { url?: string };
+
+    // Empty call — return registry listing
+    if (!url.trim()) {
+      const known = WELL_KNOWN_PREFIXES
+        .filter(p => (p as any).ontologyUrl || p.url)
+        .map(p => ({ prefix: p.prefix, name: p.name, namespace: p.url, ontologyUrl: (p as any).ontologyUrl ?? p.url }));
+      return { success: true, data: { availableOntologies: known } };
+    }
+
+    const resolvedUrl = resolveOntologyLoadUrl(url);
     try {
-      const { url } = params as { url: string };
-      const resolvedUrl = resolveOntologyLoadUrl(url);
       await rdfManager.loadRDFFromUrl(resolvedUrl);
-      return { success: true, data: { loaded: resolvedUrl, requestedAs: url } };
+      return { success: true, data: { loaded: resolvedUrl, requestedAs: url !== resolvedUrl ? url : undefined } };
     } catch (e) {
-      return { success: false, error: String(e) };
+      // Suggest close matches from the registry
+      const q = url.toLowerCase();
+      const suggestions = WELL_KNOWN_PREFIXES
+        .filter(p => p.prefix.includes(q) || p.name.toLowerCase().includes(q))
+        .map(p => p.prefix);
+      return {
+        success: false,
+        error: String(e),
+        ...(suggestions.length ? { suggestions } : {}),
+      };
     }
   },
 };

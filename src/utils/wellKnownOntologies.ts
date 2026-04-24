@@ -176,10 +176,13 @@ export const WELL_KNOWN_BY_PREFIX: Record<
  * Unrecognised strings are returned as-is so callers can pass raw URIs directly.
  */
 export function resolveOntologyLoadUrl(prefixOrUri: string): string {
-  const entry = WELL_KNOWN_BY_PREFIX[prefixOrUri];
-  if (entry) {
-    return (entry as any).ontologyUrl ?? entry.url;
-  }
+  // Match by prefix name first
+  const byPrefix = WELL_KNOWN_BY_PREFIX[prefixOrUri];
+  if (byPrefix) return (byPrefix as any).ontologyUrl ?? byPrefix.url;
+  // Match by namespace URL (e.g. full IRI passed instead of prefix)
+  const byUrl = WELL_KNOWN_PREFIXES.find(p => p.url === prefixOrUri);
+  if (byUrl) return (byUrl as any).ontologyUrl ?? byUrl.url;
+  // Unknown — pass through as-is
   return prefixOrUri;
 }
 
