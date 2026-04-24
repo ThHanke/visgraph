@@ -4,6 +4,14 @@ VisGraph — Browser-based RDF Knowledge Graph Editor
 [![DOI](https://zenodo.org/badge/1049705027.svg)](https://doi.org/10.5281/zenodo.19605270)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
+| I want to… | Start here |
+|------------|------------|
+| Try the live demo | [Open VisGraph ↗](https://thhanke.github.io/visgraph) |
+| Connect an AI agent | [AI / MCP Integration](#ai--mcp-integration) |
+| Run it locally | [Quick start (development)](#quick-start-development) |
+| Load my own data | [Startup / URL parameters](#startup--url-parameters) |
+| Contribute code | [Contributing](#contributing--development-notes) |
+
 ## Table of Contents
 
 - [Overview](#overview)
@@ -190,6 +198,10 @@ Workarounds:
 
 Using the UI
 ------------
+
+<details>
+<summary>Expand annotated UI reference (human operators)</summary>
+
 The annotated diagram below identifies the numbered UI elements described in this section.
 
 ![VisGraph UI overview](public/ui-overview.svg)
@@ -273,6 +285,8 @@ When the sidebar is expanded (click the **›** toggle), the file operation butt
 - Namespace legend panel: enable via **1** View menu → Show Legend. Click a namespace entry's pencil icon to rename its URI; renames propagate across all stored triples.
 - Use the fit-view button in the canvas controls (left side, zoom icon group) to reset the viewport.
 
+</details>
+
 Developer utilities (window globals)
 ------------------------------------
 The following debug flags can be set in the browser console to enable diagnostic output. All are gated — they only activate when `window.__VG_DEBUG__` is truthy (or `config.debugAll` is enabled in Settings):
@@ -338,6 +352,12 @@ await page.evaluate(async ([name, params]) => window.__mcpTools[name](params),
 
 In a browser with native `navigator.modelContext`, tools register automatically on app load.
 
+### Example output
+
+An AI agent built this from scratch in one session — [full demo with tool calls →](docs/mcp-demo/foaf-social-network.md)
+
+[![FOAF social network](docs/mcp-demo/foaf-social-network/02-links.svg)](docs/mcp-demo/foaf-social-network.md)
+
 ### Recommended workflow
 
 ```text
@@ -361,16 +381,18 @@ loadOntology (TBox)
 
 ### Demo
 
-| Demo | Description |
+| Demo | Final state |
 |------|-------------|
-| [FOAF social network](docs/mcp-demo/foaf-social-network.md) | Build a social network from scratch, run reasoning, add people |
-| [OWL-RL reasoning](docs/mcp-demo/reasoning-demo.md) | Build a full TBox + ABox, then watch the reasoner infer types and relationships |
+| **[FOAF social network](docs/mcp-demo/foaf-social-network.md)**<br>Build a social network, extend FOAF with employment classes, run reasoning | [![FOAF social network final state](docs/mcp-demo/foaf-social-network/05-eve-added.svg)](docs/mcp-demo/foaf-social-network.md) |
+| **[OWL-RL reasoning](docs/mcp-demo/reasoning-demo.md)**<br>Build TBox + ABox, infer types via domain/range and transitivity | [![OWL-RL reasoning demo final state](docs/mcp-demo/reasoning-demo/04-dave-focus.svg)](docs/mcp-demo/reasoning-demo.md) |
+| **[Scene ontology](docs/mcp-demo/scene-ontology.md)**<br>Load an external ontology, author individuals, export Turtle | [![Scene ontology demo final state](docs/mcp-demo/scene-ontology/04-jake-focus.svg)](docs/mcp-demo/scene-ontology.md) |
 
 Regenerate:
 
 ```sh
-node scripts/mcp-demo-foaf.mjs
-node scripts/mcp-demo-reasoning.mjs
+node scripts/run-demo.mjs docs/mcp-demo/seeds/foaf-social-network.md
+node scripts/run-demo.mjs docs/mcp-demo/seeds/reasoning-demo.md
+node scripts/run-demo.mjs docs/mcp-demo/seeds/scene-ontology.md
 ```
 
 Full tool declarations with input schemas: [public/.well-known/mcp.json](public/.well-known/mcp.json)

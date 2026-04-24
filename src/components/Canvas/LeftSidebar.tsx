@@ -39,6 +39,16 @@ import { useRelayBridge } from '../../hooks/useRelayBridge';
 import { RelaySection } from './RelaySection';
 import { cn } from '../../lib/utils';
 import bookmarkletTemplate from 'virtual:relay-bookmarklet';
+import readmeSrc from '../../../README.md?raw';
+
+function parseTocLinks(markdown: string): [string, string][] {
+  const match = markdown.match(/## Table of Contents\n([\s\S]*?)(?=\n[A-Za-z]|\n##)/);
+  if (!match) return [];
+  return [...match[1].matchAll(/^- \[([^\]]+)\]\(#([^)]+)\)/gm)]
+    .map(m => [m[1], `#${m[2]}`] as [string, string]);
+}
+
+const README_TOC = parseTocLinks(readmeSrc);
 
 export type RdfExportFormat = 'turtle' | 'json-ld' | 'rdf-xml';
 
@@ -489,15 +499,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 </AccordionTrigger>
                 <AccordionContent className="pb-2">
                   <nav className="px-3 py-1 space-y-1">
-                    {([
-                      ['Overview', '#overview'],
-                      ['Key capabilities', '#key-capabilities'],
-                      ['Startup / URL parameters', '#startup--url-parameters'],
-                      ['Using the UI', '#using-the-ui'],
-                      ['AI / MCP integration', '#ai--mcp-integration'],
-                      ['AI Relay Bridge', '#chatgpt-gemini-claudeai--ai-relay-bridge'],
-                      ['Playwright / headless', '#setup-playwright--headless'],
-                    ] as [string, string][]).map(([label, anchor]) => (
+                    {README_TOC.map(([label, anchor]) => (
                       <a
                         key={anchor}
                         href={`https://github.com/ThHanke/visgraph${anchor}`}

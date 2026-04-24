@@ -165,9 +165,53 @@ Example:
 https://thhanke.github.io/visgraph/?rdfUrl=https://example.org/data.ttl&reasoning=true
 ```
 
+## Discovering property IRIs
+
+Do **not** assume property names from ontology labels. Query first:
+
+```sparql
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT DISTINCT ?prop ?label WHERE {
+  ?prop a owl:ObjectProperty .
+  OPTIONAL { ?prop rdfs:label ?label }
+} LIMIT 50
+```
+
+## SPARQL caveats
+
+- Every query needs explicit `PREFIX` declarations — there are no implicit prefixes.
+- `FILTER(STRSTARTS(STR(?s), '...'))` in SELECT/CONSTRUCT does **not** reliably filter triples (N3.js limitation) — returns full store. Use named graphs or check `urn:vg:inferred` instead.
+- Inferred triples are stored in the `urn:vg:inferred` named graph.
+
+## Showing the user the graph
+
+| Method | What it captures | Note |
+|--------|-----------------|------|
+| `browser_take_screenshot` | Current visible viewport | Small PNG, best for chat |
+| `exportImage({ format: 'svg' })` | Full canvas (all nodes, ignores zoom) | Can be large |
+| `exportGraph({ format: 'turtle' })` | Full RDF store (incl. loaded ontologies) | Can be large |
+
+To show a subgraph: call `focusNode({ iri })` first, then `browser_take_screenshot`.
+
+## PMDCO chemical composition pattern
+
+Key IRIs for modeling material compositions with PMDCO v3:
+
+| Concept | IRI |
+|---------|-----|
+| portion of matter | `https://w3id.org/pmd/co/PMD_0000001` |
+| object (BFO) | `http://purl.obolibrary.org/obo/BFO_0000030` |
+| quality (BFO) | `http://purl.obolibrary.org/obo/BFO_0000019` |
+| has part | `http://purl.obolibrary.org/obo/BFO_0000051` |
+| has quality | `http://purl.obolibrary.org/obo/RO_0000086` |
+| iron atom | `http://purl.obolibrary.org/obo/CHEBI_18248` |
+| carbon atom | `http://purl.obolibrary.org/obo/CHEBI_27594` |
+
+After `loadOntology`, `pmd:` registers as `https://w3id.org/pmd/co/`. Check with `listNamespaces({})`. All SPARQL queries still need full `PREFIX` declarations.
+
 ## More reading
 
-- [AGENT.md](AGENT.md) — detailed tool reference, SPARQL caveats, PMDCO patterns
 - [docs/relay-bridge.md](docs/relay-bridge.md) — relay bridge setup guide
 - [public/.well-known/mcp.json](public/.well-known/mcp.json) — machine-readable tool manifest
 - [README.md](README.md) — full feature docs and quick start
