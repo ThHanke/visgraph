@@ -6,7 +6,8 @@ export const mcpServerName = 'VisGraph';
 export const mcpServerDescription =
   'Interactive RDF/ontology knowledge graph editor — ABox authoring, OWL-RL reasoning, layout, and export. All client-side, no backend.\n\n' +
   'Architecture for AI agents: The app has two coupled layers. (1) N3 RDF store — the source of truth for all triples. Tools like addNode/addLink write triples here first. (2) Reactodia canvas — a visual model that mirrors a subset of the store as draggable node cards (subjects with annotations) and arrows (object-property triples). Canvas nodes are NOT created automatically when triples are added — you must call addNode to place a subject on canvas. After adding triples, the canvas refreshes links automatically. Nodes start collapsed; call expandNode or expandAll to reveal annotation property cards. OWL-RL reasoning writes inferred triples back to the store and refreshes the canvas.\n\n' +
-  'Recommended workflow: loadOntology (TBox) → addNode ×N (ABox individuals) → addLink ×N (object properties) → runLayout → expandAll → runReasoning → fitCanvas → exportImage(svg) → exportGraph(turtle).';
+  'Recommended workflow: loadOntology (TBox) → addNode ×N (ABox individuals) → addLink ×N (object properties) → runLayout → runReasoning → fitCanvas → exportImage(svg) → exportGraph(turtle).\n\n' +
+  'Agent integration: (1) Claude Code / Playwright — call window.__mcpTools[name](params) via browser_evaluate. (2) AI Relay Bridge — any AI chat (ChatGPT, Claude.ai, Gemini) can control VisGraph via a bookmarklet relay that intercepts JSON-RPC 2.0 tool calls and injects results back automatically; see docs/relay-bridge.md. Full agent guide: AGENTS.md. Example sessions with SVG snapshots: docs/mcp-demo/.';
 
 export const mcpManifest: McpToolManifestEntry[] = [
   {
