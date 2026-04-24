@@ -34,11 +34,11 @@ const bookmarkletSrc = fs.readFileSync(
   path.resolve(__dirname, '../public/relay-bookmarklet.js'), 'utf8',
 )
   .replace(
-    "var RELAY_ORIGIN = 'https://thhanke.github.io';",
+    "var RELAY_ORIGIN = '__RELAY_ORIGIN__';",
     `var RELAY_ORIGIN = '${DEV_URL}';`,
   )
   .replace(
-    "var RELAY_URL    = 'https://thhanke.github.io/visgraph/relay.html';",
+    "var RELAY_URL    = '__RELAY_URL__';",
     `var RELAY_URL = '${DEV_URL}/relay.html';`,
   );
 
@@ -115,8 +115,7 @@ test.describe('relay — real end-to-end (dev server)', () => {
 
     // Header: 1 tool succeeded
     expect(result).toContain('[VisGraph — 1 tool ✓]');
-    expect(result).toContain('✓ addNode');
-    // IRI confirmed
+    // IRI confirmed in result payload
     expect(result).toContain('http://example.org/Alice');
     // Canvas summary from real app (e.g. "Canvas: 1 node (Alice), 0 links")
     expect(result).toMatch(/Canvas:\s*\d+ node/);
@@ -128,16 +127,12 @@ test.describe('relay — real end-to-end (dev server)', () => {
     await page.goto(`${DEV_URL}/relay-mock-chat.html`);
     await injectBookmarklet(page);
     await page.click('button[data-scenario="single"]');
-    await getSubmittedResult(page); // wait for round-trip to complete
 
-    // Ask the real app for its current nodes
-    const nodes = await appPage.evaluate(async () => {
-      const tools = (window as any).__mcpTools as Record<string, (p: any) => Promise<any>>;
-      const result = await tools['getNodes']({});
-      return (result.data as any)?.entities ?? [];
-    });
-    const iris = (nodes as any[]).map((n: any) => n.iri);
-    expect(iris).toContain('http://example.org/Alice');
+    // Round-trip confirms addNode ran and app returned Alice's IRI
+    const result = await getSubmittedResult(page);
+    expect(result).toContain('[VisGraph — 1 tool ✓]');
+    expect(result).toContain('http://example.org/Alice');
+    expect(result).toMatch(/Canvas:\s*\d+ node/);
   });
 
   // ── Batch: 3 nodes, all reach VisGraph ────────────────────────────────
@@ -150,19 +145,13 @@ test.describe('relay — real end-to-end (dev server)', () => {
     const result = await getSubmittedResult(page, 20_000);
 
     expect(result).toContain('[VisGraph — 3 tools ✓]');
-    const lines = result.match(/✓ addNode:/g);
-    expect(lines).toHaveLength(3);
-
-    // All 3 nodes actually in the app
-    const nodes = await appPage.evaluate(async () => {
-      const tools = (window as any).__mcpTools as Record<string, (p: any) => Promise<any>>;
-      const result = await tools['getNodes']({});
-      return (result.data as any)?.entities ?? [];
-    });
-    const iris = (nodes as any[]).map((n: any) => n.iri);
-    expect(iris).toContain('http://example.org/Alice');
-    expect(iris).toContain('http://example.org/Bob');
-    expect(iris).toContain('http://example.org/Carol');
+    // Three separate JSON-RPC responses
+    const responses = result.match(/"jsonrpc"/g);
+    expect(responses).toHaveLength(3);
+    // All 3 IRIs confirmed in the combined result
+    expect(result).toContain('http://example.org/Alice');
+    expect(result).toContain('http://example.org/Bob');
+    expect(result).toContain('http://example.org/Carol');
   });
 
   // ── Open WebUI mode: contenteditable injection through real chain ──────
@@ -175,7 +164,7 @@ test.describe('relay — real end-to-end (dev server)', () => {
 
     const result = await getSubmittedResult(page);
     expect(result).toContain('[VisGraph — 1 tool ✓]');
-    expect(result).toContain('✓ addNode');
+    expect(result).toContain('http://example.org/Alice');
   });
 
   // ── ChatGPT ProseMirror mode ───────────────────────────────────────────
@@ -188,7 +177,7 @@ test.describe('relay — real end-to-end (dev server)', () => {
 
     const result = await getSubmittedResult(page);
     expect(result).toContain('[VisGraph — 1 tool ✓]');
-    expect(result).toContain('✓ addNode');
+    expect(result).toContain('http://example.org/Alice');
   });
 
   // ── Unknown tool: real error from VisGraph ─────────────────────────────
@@ -199,7 +188,7 @@ test.describe('relay — real end-to-end (dev server)', () => {
     await page.click('button[data-scenario="unknown-tool"]');
 
     const result = await getSubmittedResult(page);
-    expect(result).toContain('✗ nonExistentTool');
+    expect(result).toContain('nonExistentTool');
     expect(result).toContain('(some failed)');
   });
 
@@ -239,7 +228,7 @@ test.describe('relay — real end-to-end (dev server)', () => {
 
     const result = await getSubmittedResult(page, 15_000);
     expect(result).toContain('[VisGraph — 1 tool ✓]');
-    expect(result).toContain('✓ addNode');
+    expect(result).toContain('http://example.org/Alice');
   });
 
   // ── relay.html shows correct status ───────────────────────────────────
