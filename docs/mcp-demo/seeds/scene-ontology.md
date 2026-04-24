@@ -11,11 +11,9 @@
 
 **You:** I want to build a small ontology for classifying film scenes — scene types, character roles, locations. Let's use BFO and RO as the upper ontology so we get reasoning for free.
 
-**Assistant:** Good choice. Loading BFO 2, RO, and IAO first — these are registered in the known ontologies list so no manual URLs needed.
+**Assistant:** Good choice. Loading minimal BFO 2 and RO inline — the classes and properties we need: `BFO:process`, `BFO:independent_continuant`, `BFO:site`, `BFO:role`, `BFO:realizes`, `RO:has_participant`, `RO:occurs_in`, `RO:has_role`.
 
-`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"loadOntology","arguments":{"url":"ro"}}}`
-`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"loadOntology","arguments":{"url":"bfo"}}}`
-`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"loadOntology","arguments":{"url":"iao"}}}`
+`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"loadRdf","arguments":{"turtle":"@prefix obo: <http://purl.obolibrary.org/obo/> .\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\nobo:BFO_0000001 a owl:Class ; rdfs:label \"entity\" .\nobo:BFO_0000002 a owl:Class ; rdfs:label \"continuant\" ; rdfs:subClassOf obo:BFO_0000001 .\nobo:BFO_0000003 a owl:Class ; rdfs:label \"occurrent\" ; rdfs:subClassOf obo:BFO_0000001 .\nobo:BFO_0000004 a owl:Class ; rdfs:label \"independent continuant\" ; rdfs:subClassOf obo:BFO_0000002 .\nobo:BFO_0000015 a owl:Class ; rdfs:label \"process\" ; rdfs:subClassOf obo:BFO_0000003 .\nobo:BFO_0000017 a owl:Class ; rdfs:label \"realizable entity\" ; rdfs:subClassOf obo:BFO_0000002 .\nobo:BFO_0000023 a owl:Class ; rdfs:label \"role\" ; rdfs:subClassOf obo:BFO_0000017 .\nobo:BFO_0000029 a owl:Class ; rdfs:label \"site\" ; rdfs:subClassOf obo:BFO_0000004 .\nobo:BFO_0000055 a owl:ObjectProperty ; rdfs:label \"realizes\" ; rdfs:domain obo:BFO_0000015 ; rdfs:range obo:BFO_0000017 .\nobo:RO_0000057 a owl:ObjectProperty ; rdfs:label \"has participant\" ; rdfs:domain obo:BFO_0000015 ; rdfs:range obo:BFO_0000004 .\nobo:RO_0000066 a owl:ObjectProperty ; rdfs:label \"occurs in\" ; rdfs:domain obo:BFO_0000015 ; rdfs:range obo:BFO_0000029 .\nobo:RO_0000087 a owl:ObjectProperty ; rdfs:label \"has role\" ; rdfs:domain obo:BFO_0000004 ; rdfs:range obo:BFO_0000023 ."}}}`
 
 ```tool-result
 <!-- runner fills this in -->

@@ -11,17 +11,13 @@
 
 **You:** I want to build a small ontology for classifying film scenes — scene types, character roles, locations. Let's use BFO and RO as the upper ontology so we get reasoning for free.
 
-**Assistant:** Good choice. Loading BFO 2, RO, and IAO first — these are registered in the known ontologies list so no manual URLs needed.
+**Assistant:** Good choice. Loading minimal BFO 2 and RO inline — the classes and properties we need: `BFO:process`, `BFO:independent_continuant`, `BFO:site`, `BFO:role`, `BFO:realizes`, `RO:has_participant`, `RO:occurs_in`, `RO:has_role`.
 
-`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"loadOntology","arguments":{"url":"ro"}}}`
-`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"loadOntology","arguments":{"url":"bfo"}}}`
-`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"loadOntology","arguments":{"url":"iao"}}}`
+`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"loadRdf","arguments":{"turtle":"@prefix obo: <http://purl.obolibrary.org/obo/> .\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\nobo:BFO_0000001 a owl:Class ; rdfs:label \"entity\" .\nobo:BFO_0000002 a owl:Class ; rdfs:label \"continuant\" ; rdfs:subClassOf obo:BFO_0000001 .\nobo:BFO_0000003 a owl:Class ; rdfs:label \"occurrent\" ; rdfs:subClassOf obo:BFO_0000001 .\nobo:BFO_0000004 a owl:Class ; rdfs:label \"independent continuant\" ; rdfs:subClassOf obo:BFO_0000002 .\nobo:BFO_0000015 a owl:Class ; rdfs:label \"process\" ; rdfs:subClassOf obo:BFO_0000003 .\nobo:BFO_0000017 a owl:Class ; rdfs:label \"realizable entity\" ; rdfs:subClassOf obo:BFO_0000002 .\nobo:BFO_0000023 a owl:Class ; rdfs:label \"role\" ; rdfs:subClassOf obo:BFO_0000017 .\nobo:BFO_0000029 a owl:Class ; rdfs:label \"site\" ; rdfs:subClassOf obo:BFO_0000004 .\nobo:BFO_0000055 a owl:ObjectProperty ; rdfs:label \"realizes\" ; rdfs:domain obo:BFO_0000015 ; rdfs:range obo:BFO_0000017 .\nobo:RO_0000057 a owl:ObjectProperty ; rdfs:label \"has participant\" ; rdfs:domain obo:BFO_0000015 ; rdfs:range obo:BFO_0000004 .\nobo:RO_0000066 a owl:ObjectProperty ; rdfs:label \"occurs in\" ; rdfs:domain obo:BFO_0000015 ; rdfs:range obo:BFO_0000029 .\nobo:RO_0000087 a owl:ObjectProperty ; rdfs:label \"has role\" ; rdfs:domain obo:BFO_0000004 ; rdfs:range obo:BFO_0000023 ."}}}`
 
 ```tool-result
-[VisGraph — 3 tools 0/3 ✓]
-✗ loadOntology: TypeError: Failed to fetch
-✗ loadOntology: TypeError: Failed to fetch
-✗ loadOntology: TypeError: Failed to fetch
+[VisGraph — 1 tool ✓]
+✓ loadRdf: loaded
 
 Canvas: 0 nodes, 0 links
 ```
@@ -130,7 +126,7 @@ Canvas: 9 nodes, 6 links
 ✓ runLayout: dagre-tb
 ✓ expandAll
 
-Canvas: 16 nodes, 15 links
+Canvas: 13 nodes, 9 links
 ```
 
 ![TBox — scene types, characters, locations, and roles](./scene-ontology/01-tbox.svg)
@@ -165,7 +161,7 @@ Canvas: 16 nodes, 15 links
 ✓ addNode: http://example.com/scene-ontology#veraAntagonistRole
 ✓ addNode: http://example.com/scene-ontology#samSupportingRole
 
-Canvas: 26 nodes, 25 links
+Canvas: 23 nodes, 19 links
 ```
 
 ---
@@ -208,7 +204,7 @@ Canvas: 26 nodes, 25 links
 ✓ layoutNodes
 ✓ expandAll
 
-Canvas: 26 nodes, 37 links
+Canvas: 23 nodes, 31 links
 ```
 
 ![Full graph — TBox and ABox before reasoning](./scene-ontology/02-abox-full.svg)
@@ -229,7 +225,7 @@ Canvas: 26 nodes, 37 links
 ✓ runLayout: dagre-lr
 ✓ expandAll
 
-Canvas: 26 nodes, 99 links
+Canvas: 23 nodes, 90 links
 ```
 
 ![Graph after reasoning — inferred superclass memberships visible](./scene-ontology/03-after-reasoning.svg)
@@ -248,7 +244,7 @@ Canvas: 26 nodes, 99 links
 ✓ focusNode
 ✓ expandNode
 
-Canvas: 26 nodes, 99 links
+Canvas: 23 nodes, 90 links
 ```
 
 ![Jake — inferred types from BFO subclass chain](./scene-ontology/04-jake-focus.svg)
@@ -263,9 +259,9 @@ Canvas: 26 nodes, 99 links
 
 ```tool-result
 [VisGraph — 1 tool ✓]
-✓ exportGraph: 10843 chars
+✓ exportGraph: 13401 chars
 
-Canvas: 26 nodes, 99 links
+Canvas: 23 nodes, 90 links
 
 ```turtle
 @prefix dc: <http://purl.org/dc/elements/1.1/>.
@@ -280,13 +276,53 @@ Canvas: 26 nodes, 99 links
 @prefix spw: <https://thhanke.github.io/PyodideSemanticWorkflow#>.
 @prefix dcterms: <http://purl.org/dc/terms/>.
 @prefix p-plan: <http://purl.org/net/p-plan#>.
+@prefix obo: <http://purl.obolibrary.org/obo/>.
 @prefix dtype: <http://www.linkedmodel.org/schema/dtype#>.
 @prefix qudt: <http://qudt.org/schema/qudt/>.
 @prefix skos: <http://www.w3.org/2004/02/skos/core#>.
 @prefix vaem: <http://www.linkedmodel.org/schema/vaem#>.
 @prefix voag: <http://voag.linkedmodel.org/schema/voag#>.
 
-<http://example.com/scene-ontology#Scene> rdfs:subClassOf <http://purl.obolibrary.org/obo/BFO_0000015>;
+obo:BFO_0000001 a owl:Class;
+    rdfs:label "entity".
+obo:BFO_0000002 rdfs:subClassOf obo:BFO_0000001;
+    a owl:Class;
+    rdfs:label "continuant".
+obo:BFO_0000003 rdfs:subClassOf obo:BFO_0000001;
+    a owl:Class;
+    rdfs:label "occurrent".
+obo:BFO_0000004 rdfs:subClassOf obo:BFO_0000002;
+    a owl:Class;
+    rdfs:label "independent continuant".
+obo:BFO_0000015 rdfs:subClassOf obo:BFO_0000003;
+    a owl:Class;
+    rdfs:label "process".
+obo:BFO_0000017 rdfs:subClassOf obo:BFO_0000002;
+    a owl:Class;
+    rdfs:label "realizable entity".
+obo:BFO_0000023 rdfs:subClassOf obo:BFO_0000017;
+    a owl:Class;
+    rdfs:label "role".
+obo:BFO_0000029 rdfs:subClassOf obo:BFO_0000004;
+    a owl:Class;
+    rdfs:label "site".
+obo:BFO_0000055 rdfs:domain obo:BFO_0000015;
+    rdfs:range obo:BFO_0000017;
+    a owl:ObjectProperty;
+    rdfs:label "realizes".
+obo:RO_0000057 rdfs:domain obo:BFO_0000015, <http://example.com/scene-ontology#Scene>;
+    rdfs:range obo:BFO_0000004, <http://example.com/scene-ontology#Character>;
+    a owl:ObjectProperty;
+    rdfs:label "has participant".
+obo:RO_0000066 rdfs:domain obo:BFO_0000015, <http://example.com/scene-ontology#Scene>;
+    rdfs:range obo:BFO_0000029, <http://example.com/scene-ontology#Location>;
+    a owl:ObjectProperty;
+    rdfs:label "occurs in".
+obo:RO_0000087 rdfs:domain obo:BFO_0000004, <http://example.com/scene-ontology#Character>;
+    rdfs:range obo:BFO_0000023, <http://example.com/scene-ontology#SceneRole>;
+    a owl:ObjectProperty;
+    rdfs:label "has role".
+<http://example.com/scene-ontology#Scene> rdfs:subClassOf obo:BFO_0000015;
     a owl:Class;
     rdfs:label "Scene".
 <http://example.com/scene-ontology#ActionScene> rdfs:subClassOf <http://example.com/scene-ontology#Scene>;
@@ -301,10 +337,10 @@ Canvas: 26 nodes, 99 links
 <http://example.com/scene-ontology#ConfrontationScene> rdfs:subClassOf <http://example.com/scene-ontology#ActionScene>;
     a owl:Class;
     rdfs:label "ConfrontationScene".
-<http://example.com/scene-ontology#Character> rdfs:subClassOf <http://purl.obolibrary.org/obo/BFO_0000004>;
+<http://example.com/scene-ontology#Character> rdfs:subClassOf obo:BFO_0000004;
     a owl:Class;
     rdfs:label "Character".
-<http://example.com/scene-ontology#Location> rdfs:subClassOf <http://purl.obolibrary.org/obo/BFO_0000029>;
+<http://example.com/scene-ontology#Location> rdfs:subClassOf obo:BFO_0000029;
     a owl:Class;
     rdfs:label "Location".
 <http://example.com/scene-ontology#ExteriorLocation> rdfs:subClassOf <http://example.com/scene-ontology#Location>;
@@ -313,7 +349,7 @@ Canvas: 26 nodes, 99 links
 <http://example.com/scene-ontology#InteriorLocation> rdfs:subClassOf <http://example.com/scene-ontology#Location>;
     a owl:Class;
     rdfs:label "InteriorLocation".
-<http://example.com/scene-ontology#SceneRole> rdfs:subClassOf <http://purl.obolibrary.org/obo/BFO_0000023>;
+<http://example.com/scene-ontology#SceneRole> rdfs:subClassOf obo:BFO_0000023;
     a owl:Class;
     rdfs:label "SceneRole".
 <http://example.com/scene-ontology#ProtagonistRole> rdfs:subClassOf <http://example.com/scene-ontology#SceneRole>;
@@ -325,83 +361,107 @@ Canvas: 26 nodes, 99 links
 <http://example.com/scene-ontology#SupportingRole> rdfs:subClassOf <http://example.com/scene-ontology#SceneRole>;
     a owl:Class;
     rdfs:label "SupportingRole".
-<http://purl.obolibrary.org/obo/RO_0000087> rdfs:domain <http://example.com/scene-ontology#Character>;
-    rdfs:range <http://example.com/scene-ontology#SceneRole>.
-<http://purl.obolibrary.org/obo/RO_0000057> rdfs:domain <http://example.com/scene-ontology#Scene>;
-    rdfs:range <http://example.com/scene-ontology#Character>.
-<http://purl.obolibrary.org/obo/RO_0000066> rdfs:domain <http://example.com/scene-ontology#Scene>;
-    rdfs:range <http://example.com/scene-ontology#Location>.
 <http://example.com/scene-ontology#rooftop> a <http://example.com/scene-ontology#ExteriorLocation>;
     rdfs:label "Rooftop".
 <http://example.com/scene-ontology#cafe> a <http://example.com/scene-ontology#InteriorLocation>;
     rdfs:label "Café".
 <http://example.com/scene-ontology#jake> a <http://example.com/scene-ontology#Character>;
     rdfs:label "Jake";
-    <http://purl.obolibrary.org/obo/RO_0000087> <http://example.com/scene-ontology#jakeProtagonistRole>.
+    obo:RO_0000087 <http://example.com/scene-ontology#jakeProtagonistRole>.
 <http://example.com/scene-ontology#vera> a <http://example.com/scene-ontology#Character>;
     rdfs:label "Vera";
-    <http://purl.obolibrary.org/obo/RO_0000087> <http://example.com/scene-ontology#veraAntagonistRole>.
+    obo:RO_0000087 <http://example.com/scene-ontology#veraAntagonistRole>.
 <http://example.com/scene-ontology#sam> a <http://example.com/scene-ontology#Character>;
     rdfs:label "Sam";
-    <http://purl.obolibrary.org/obo/RO_0000087> <http://example.com/scene-ontology#samSupportingRole>.
+    obo:RO_0000087 <http://example.com/scene-ontology#samSupportingRole>.
 <http://example.com/scene-ontology#rooftopChase> a <http://example.com/scene-ontology#ChaseScene>;
     rdfs:label "Rooftop Chase";
-    <http://purl.obolibrary.org/obo/RO_0000057> <http://example.com/scene-ontology#jake>, <http://example.com/scene-ontology#vera>;
-    <http://purl.obolibrary.org/obo/RO_0000066> <http://example.com/scene-ontology#rooftop>;
-    <http://purl.obolibrary.org/obo/BFO_0000055> <http://example.com/scene-ontology#jakeProtagonistRole>, <http://example.com/scene-ontology#veraAntagonistRole>.
+    obo:BFO_0000055 <http://example.com/scene-ontology#jakeProtagonistRole>, <http://example.com/scene-ontology#veraAntagonistRole>;
+    obo:RO_0000057 <http://example.com/scene-ontology#jake>, <http://example.com/scene-ontology#vera>;
+    obo:RO_0000066 <http://example.com/scene-ontology#rooftop>.
 <http://example.com/scene-ontology#cafeDialogue> a <http://example.com/scene-ontology#DialogueScene>;
     rdfs:label "Café Dialogue";
-    <http://purl.obolibrary.org/obo/RO_0000057> <http://example.com/scene-ontology#jake>, <http://example.com/scene-ontology#sam>;
-    <http://purl.obolibrary.org/obo/RO_0000066> <http://example.com/scene-ontology#cafe>;
-    <http://purl.obolibrary.org/obo/BFO_0000055> <http://example.com/scene-ontology#samSupportingRole>.
+    obo:BFO_0000055 <http://example.com/scene-ontology#samSupportingRole>;
+    obo:RO_0000057 <http://example.com/scene-ontology#jake>, <http://example.com/scene-ontology#sam>;
+    obo:RO_0000066 <http://example.com/scene-ontology#cafe>.
 <http://example.com/scene-ontology#jakeProtagonistRole> a <http://example.com/scene-ontology#ProtagonistRole>;
     rdfs:label "Jake — Protagonist".
 <http://example.com/scene-ontology#veraAntagonistRole> a <http://example.com/scene-ontology#AntagonistRole>;
     rdfs:label "Vera — Antagonist".
 <http://example.com/scene-ontology#samSupportingRole> a <http://example.com/scene-ontology#SupportingRole>;
     rdfs:label "Sam — Supporting".
-<http://example.com/scene-ontology#Scene> rdfs:subClassOf owl:Thing, <http://example.com/scene-ontology#Scene>;
+obo:BFO_0000001 rdfs:subClassOf owl:Thing, obo:BFO_0000001;
+    owl:equivalentClass obo:BFO_0000001.
+obo:BFO_0000002 rdfs:subClassOf owl:Thing, obo:BFO_0000002;
+    owl:equivalentClass obo:BFO_0000002.
+obo:BFO_0000003 rdfs:subClassOf owl:Thing, obo:BFO_0000003;
+    owl:equivalentClass obo:BFO_0000003.
+obo:BFO_0000004 rdfs:subClassOf owl:Thing, obo:BFO_0000001, obo:BFO_0000004;
+    owl:equivalentClass obo:BFO_0000004.
+obo:BFO_0000015 rdfs:subClassOf owl:Thing, obo:BFO_0000001, obo:BFO_0000015;
+    owl:equivalentClass obo:BFO_0000015.
+obo:BFO_0000017 rdfs:subClassOf owl:Thing, obo:BFO_0000001, obo:BFO_0000017;
+    owl:equivalentClass obo:BFO_0000017.
+obo:BFO_0000023 rdfs:subClassOf owl:Thing, obo:BFO_0000001, obo:BFO_0000002, obo:BFO_0000023;
+    owl:equivalentClass obo:BFO_0000023.
+obo:BFO_0000029 rdfs:subClassOf owl:Thing, obo:BFO_0000001, obo:BFO_0000002, obo:BFO_0000029;
+    owl:equivalentClass obo:BFO_0000029.
+obo:BFO_0000055 rdfs:domain owl:Thing, obo:BFO_0000001, obo:BFO_0000003;
+    rdfs:range owl:Thing, obo:BFO_0000001, obo:BFO_0000002;
+    rdfs:subPropertyOf obo:BFO_0000055;
+    owl:equivalentProperty obo:BFO_0000055;
+    owl:subPropertyOf obo:BFO_0000055.
+obo:RO_0000057 rdfs:domain owl:Thing, obo:BFO_0000001, obo:BFO_0000003;
+    rdfs:range owl:Thing, obo:BFO_0000001, obo:BFO_0000002;
+    rdfs:subPropertyOf obo:RO_0000057;
+    owl:equivalentProperty obo:RO_0000057;
+    owl:subPropertyOf obo:RO_0000057.
+obo:RO_0000066 rdfs:domain owl:Thing, obo:BFO_0000001, obo:BFO_0000003;
+    rdfs:range owl:Thing, obo:BFO_0000001, obo:BFO_0000002, obo:BFO_0000004;
+    rdfs:subPropertyOf obo:RO_0000066;
+    owl:equivalentProperty obo:RO_0000066;
+    owl:subPropertyOf obo:RO_0000066.
+obo:RO_0000087 rdfs:domain owl:Thing, obo:BFO_0000001, obo:BFO_0000002;
+    rdfs:range owl:Thing, obo:BFO_0000001, obo:BFO_0000002, obo:BFO_0000017;
+    rdfs:subPropertyOf obo:RO_0000087;
+    owl:equivalentProperty obo:RO_0000087;
+    owl:subPropertyOf obo:RO_0000087.
+<http://example.com/scene-ontology#Scene> rdfs:subClassOf owl:Thing, obo:BFO_0000001, obo:BFO_0000003, <http://example.com/scene-ontology#Scene>;
     owl:equivalentClass <http://example.com/scene-ontology#Scene>.
-<http://example.com/scene-ontology#ActionScene> rdfs:subClassOf owl:Thing, <http://example.com/scene-ontology#ActionScene>, <http://purl.obolibrary.org/obo/BFO_0000015>;
+<http://example.com/scene-ontology#ActionScene> rdfs:subClassOf owl:Thing, obo:BFO_0000001, obo:BFO_0000003, obo:BFO_0000015, <http://example.com/scene-ontology#ActionScene>;
     owl:equivalentClass <http://example.com/scene-ontology#ActionScene>.
-<http://example.com/scene-ontology#DialogueScene> rdfs:subClassOf owl:Thing, <http://example.com/scene-ontology#DialogueScene>, <http://purl.obolibrary.org/obo/BFO_0000015>;
+<http://example.com/scene-ontology#DialogueScene> rdfs:subClassOf owl:Thing, obo:BFO_0000001, obo:BFO_0000003, obo:BFO_0000015, <http://example.com/scene-ontology#DialogueScene>;
     owl:equivalentClass <http://example.com/scene-ontology#DialogueScene>.
-<http://example.com/scene-ontology#ChaseScene> rdfs:subClassOf owl:Thing, <http://example.com/scene-ontology#Scene>, <http://example.com/scene-ontology#ChaseScene>, <http://purl.obolibrary.org/obo/BFO_0000015>;
+<http://example.com/scene-ontology#ChaseScene> rdfs:subClassOf owl:Thing, obo:BFO_0000001, obo:BFO_0000003, obo:BFO_0000015, <http://example.com/scene-ontology#Scene>, <http://example.com/scene-ontology#ChaseScene>;
     owl:equivalentClass <http://example.com/scene-ontology#ChaseScene>.
-<http://example.com/scene-ontology#ConfrontationScene> rdfs:subClassOf owl:Thing, <http://example.com/scene-ontology#Scene>, <http://example.com/scene-ontology#ConfrontationScene>, <http://purl.obolibrary.org/obo/BFO_0000015>;
+<http://example.com/scene-ontology#ConfrontationScene> rdfs:subClassOf owl:Thing, obo:BFO_0000001, obo:BFO_0000003, obo:BFO_0000015, <http://example.com/scene-ontology#Scene>, <http://example.com/scene-ontology#ConfrontationScene>;
     owl:equivalentClass <http://example.com/scene-ontology#ConfrontationScene>.
-<http://example.com/scene-ontology#Character> rdfs:subClassOf owl:Thing, <http://example.com/scene-ontology#Character>;
+<http://example.com/scene-ontology#Character> rdfs:subClassOf owl:Thing, obo:BFO_0000001, obo:BFO_0000002, <http://example.com/scene-ontology#Character>;
     owl:equivalentClass <http://example.com/scene-ontology#Character>.
-<http://example.com/scene-ontology#Location> rdfs:subClassOf owl:Thing, <http://example.com/scene-ontology#Location>;
+<http://example.com/scene-ontology#Location> rdfs:subClassOf owl:Thing, obo:BFO_0000001, obo:BFO_0000002, obo:BFO_0000004, <http://example.com/scene-ontology#Location>;
     owl:equivalentClass <http://example.com/scene-ontology#Location>.
-<http://example.com/scene-ontology#ExteriorLocation> rdfs:subClassOf owl:Thing, <http://example.com/scene-ontology#ExteriorLocation>, <http://purl.obolibrary.org/obo/BFO_0000029>;
+<http://example.com/scene-ontology#ExteriorLocation> rdfs:subClassOf owl:Thing, obo:BFO_0000001, obo:BFO_0000002, obo:BFO_0000004, obo:BFO_0000029, <http://example.com/scene-ontology#ExteriorLocation>;
     owl:equivalentClass <http://example.com/scene-ontology#ExteriorLocation>.
-<http://example.com/scene-ontology#InteriorLocation> rdfs:subClassOf owl:Thing, <http://example.com/scene-ontology#InteriorLocation>, <http://purl.obolibrary.org/obo/BFO_0000029>;
+<http://example.com/scene-ontology#InteriorLocation> rdfs:subClassOf owl:Thing, obo:BFO_0000001, obo:BFO_0000002, obo:BFO_0000004, obo:BFO_0000029, <http://example.com/scene-ontology#InteriorLocation>;
     owl:equivalentClass <http://example.com/scene-ontology#InteriorLocation>.
-<http://example.com/scene-ontology#SceneRole> rdfs:subClassOf owl:Thing, <http://example.com/scene-ontology#SceneRole>;
+<http://example.com/scene-ontology#SceneRole> rdfs:subClassOf owl:Thing, obo:BFO_0000001, obo:BFO_0000002, obo:BFO_0000017, <http://example.com/scene-ontology#SceneRole>;
     owl:equivalentClass <http://example.com/scene-ontology#SceneRole>.
-<http://example.com/scene-ontology#ProtagonistRole> rdfs:subClassOf owl:Thing, <http://example.com/scene-ontology#ProtagonistRole>, <http://purl.obolibrary.org/obo/BFO_0000023>;
+<http://example.com/scene-ontology#ProtagonistRole> rdfs:subClassOf owl:Thing, obo:BFO_0000001, obo:BFO_0000002, obo:BFO_0000017, obo:BFO_0000023, <http://example.com/scene-ontology#ProtagonistRole>;
     owl:equivalentClass <http://example.com/scene-ontology#ProtagonistRole>.
-<http://example.com/scene-ontology#AntagonistRole> rdfs:subClassOf owl:Thing, <http://example.com/scene-ontology#AntagonistRole>, <http://purl.obolibrary.org/obo/BFO_0000023>;
+<http://example.com/scene-ontology#AntagonistRole> rdfs:subClassOf owl:Thing, obo:BFO_0000001, obo:BFO_0000002, obo:BFO_0000017, obo:BFO_0000023, <http://example.com/scene-ontology#AntagonistRole>;
     owl:equivalentClass <http://example.com/scene-ontology#AntagonistRole>.
-<http://example.com/scene-ontology#SupportingRole> rdfs:subClassOf owl:Thing, <http://example.com/scene-ontology#SupportingRole>, <http://purl.obolibrary.org/obo/BFO_0000023>;
+<http://example.com/scene-ontology#SupportingRole> rdfs:subClassOf owl:Thing, obo:BFO_0000001, obo:BFO_0000002, obo:BFO_0000017, obo:BFO_0000023, <http://example.com/scene-ontology#SupportingRole>;
     owl:equivalentClass <http://example.com/scene-ontology#SupportingRole>.
-<http://purl.obolibrary.org/obo/RO_0000087> rdfs:domain owl:Thing, <http://purl.obolibrary.org/obo/BFO_0000004>;
-    rdfs:range owl:Thing, <http://purl.obolibrary.org/obo/BFO_0000023>.
-<http://purl.obolibrary.org/obo/RO_0000057> rdfs:domain owl:Thing, <http://purl.obolibrary.org/obo/BFO_0000015>;
-    rdfs:range owl:Thing, <http://purl.obolibrary.org/obo/BFO_0000004>.
-<http://purl.obolibrary.org/obo/RO_0000066> rdfs:domain owl:Thing, <http://purl.obolibrary.org/obo/BFO_0000015>;
-    rdfs:range owl:Thing, <http://purl.obolibrary.org/obo/BFO_0000029>.
-<http://example.com/scene-ontology#rooftop> a owl:Thing, <http://example.com/scene-ontology#Location>, <http://purl.obolibrary.org/obo/BFO_0000029>.
-<http://example.com/scene-ontology#cafe> a owl:Thing, <http://example.com/scene-ontology#Location>, <http://purl.obolibrary.org/obo/BFO_0000029>.
-<http://example.com/scene-ontology#jake> a owl:Thing, <http://purl.obolibrary.org/obo/BFO_0000004>.
-<http://example.com/scene-ontology#vera> a owl:Thing, <http://purl.obolibrary.org/obo/BFO_0000004>.
-<http://example.com/scene-ontology#sam> a owl:Thing, <http://purl.obolibrary.org/obo/BFO_0000004>.
-<http://example.com/scene-ontology#rooftopChase> a owl:Thing, <http://example.com/scene-ontology#Scene>, <http://example.com/scene-ontology#ActionScene>, <http://purl.obolibrary.org/obo/BFO_0000015>.
-<http://example.com/scene-ontology#cafeDialogue> a owl:Thing, <http://example.com/scene-ontology#Scene>, <http://purl.obolibrary.org/obo/BFO_0000015>.
-<http://example.com/scene-ontology#jakeProtagonistRole> a owl:Thing, <http://example.com/scene-ontology#SceneRole>, <http://purl.obolibrary.org/obo/BFO_0000023>.
-<http://example.com/scene-ontology#veraAntagonistRole> a owl:Thing, <http://example.com/scene-ontology#SceneRole>, <http://purl.obolibrary.org/obo/BFO_0000023>.
-<http://example.com/scene-ontology#samSupportingRole> a owl:Thing, <http://example.com/scene-ontology#SceneRole>, <http://purl.obolibrary.org/obo/BFO_0000023>.
+<http://example.com/scene-ontology#rooftop> a owl:Thing, obo:BFO_0000001, obo:BFO_0000002, obo:BFO_0000004, obo:BFO_0000029, <http://example.com/scene-ontology#Location>.
+<http://example.com/scene-ontology#cafe> a owl:Thing, obo:BFO_0000001, obo:BFO_0000002, obo:BFO_0000004, obo:BFO_0000029, <http://example.com/scene-ontology#Location>.
+<http://example.com/scene-ontology#jake> a owl:Thing, obo:BFO_0000001, obo:BFO_0000002, obo:BFO_0000004.
+<http://example.com/scene-ontology#vera> a owl:Thing, obo:BFO_0000001, obo:BFO_0000002, obo:BFO_0000004.
+<http://example.com/scene-ontology#sam> a owl:Thing, obo:BFO_0000001, obo:BFO_0000002, obo:BFO_0000004.
+<http://example.com/scene-ontology#rooftopChase> a owl:Thing, obo:BFO_0000001, obo:BFO_0000003, obo:BFO_0000015, <http://example.com/scene-ontology#Scene>, <http://example.com/scene-ontology#ActionScene>.
+<http://example.com/scene-ontology#cafeDialogue> a owl:Thing, obo:BFO_0000001, obo:BFO_0000003, obo:BFO_0000015, <http://example.com/scene-ontology#Scene>.
+<http://example.com/scene-ontology#jakeProtagonistRole> a owl:Thing, obo:BFO_0000001, obo:BFO_0000002, obo:BFO_0000017, obo:BFO_0000023, <http://example.com/scene-ontology#SceneRole>.
+<http://example.com/scene-ontology#veraAntagonistRole> a owl:Thing, obo:BFO_0000001, obo:BFO_0000002, obo:BFO_0000017, obo:BFO_0000023, <http://example.com/scene-ontology#SceneRole>.
+<http://example.com/scene-ontology#samSupportingRole> a owl:Thing, obo:BFO_0000001, obo:BFO_0000002, obo:BFO_0000017, obo:BFO_0000023, <http://example.com/scene-ontology#SceneRole>.
 
 ```
 
