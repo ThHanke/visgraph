@@ -547,23 +547,26 @@
       }
     },
     {
-      "name": "clusterCanvas",
-      "description": "Group canvas nodes into clusters using a graph-community algorithm (label-propagation, louvain, or kmeans). Returns an error listing conflicts if any node is already in a cluster — no clustering runs in that case.",
+      "name": "clusterNodes",
+      "description": "Group canvas nodes into clusters. Provide `iris` to group exactly those nodes directly, or provide `algorithm` to run community-detection on all canvas nodes. Fails if any target node is already in a cluster.",
       "inputSchema": {
         "type": "object",
         "properties": {
+          "iris": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Optional subset of node IRIs to group. When provided, groups exactly these nodes without running a community algorithm."
+          },
           "algorithm": {
             "type": "string",
             "enum": [
               "label-propagation",
               "louvain",
               "kmeans"
-            ]
+            ],
+            "description": "Community-detection algorithm. Required when iris is not provided."
           }
-        },
-        "required": [
-          "algorithm"
-        ]
+        }
       }
     },
     {

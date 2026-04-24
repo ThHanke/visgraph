@@ -148,59 +148,105 @@ const fitCanvas: McpTool = {
 };
 
 // ---------------------------------------------------------------------------
-// clusterCanvas
+// clusterNodes
 // ---------------------------------------------------------------------------
 const VALID_CLUSTER_ALGORITHMS = ['label-propagation', 'louvain', 'kmeans'] as const;
 type ClusterAlgorithm = typeof VALID_CLUSTER_ALGORITHMS[number];
 
-const clusterCanvas: McpTool = {
-  name: 'clusterCanvas',
-  description: 'Group canvas nodes into clusters using a graph-community algorithm. Fails if any node is already in a cluster.',
+const clusterNodes: McpTool = {
+  name: 'clusterNodes',
+  description: 'Group canvas nodes into clusters. Provide `iris` to group exactly those nodes directly, or provide `algorithm` to run community-detection on all canvas nodes. Fails if any target node is already in a cluster.',
   inputSchema: {
     type: 'object',
     properties: {
+      iris: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Optional subset of node IRIs to group. When provided, groups exactly these nodes without running a community algorithm.',
+      },
       algorithm: {
         type: 'string',
-        description: 'Clustering algorithm to apply.',
+        description: 'Community-detection algorithm. Required when iris is not provided.',
         enum: [...VALID_CLUSTER_ALGORITHMS],
       },
     },
-    required: ['algorithm'],
   },
   async handler(params): Promise<McpResult> {
     try {
-      const { algorithm } = params as { algorithm: string };
-      if (!(VALID_CLUSTER_ALGORITHMS as readonly string[]).includes(algorithm)) {
-        return {
-          success: false,
-          error: `Unknown algorithm: ${algorithm}. Valid: ${VALID_CLUSTER_ALGORITHMS.join(', ')}`,
-        };
-      }
-
+      const p = params as { iris?: string[]; algorithm?: string };
       const { ctx } = getWorkspaceRefs();
 
-      // Guard: check if any node is already in an EntityGroup
-      const clusterMap = new Map<string, string>();
-      for (const el of ctx.model.elements) {
-        if (el instanceof Reactodia.EntityGroup) {
-          for (const member of el.items) {
-            if (member.data.id) clusterMap.set(member.data.id, el.id);
+      if (p.iris !== undefined) {
+        // --- Direct grouping by IRI subset ---
+        const iris = p.iris;
+
+        // Validate: all IRIs must be EntityElement on canvas
+        const nonCanvas: string[] = [];
+        const members: Reactodia.EntityElement[] = [];
+        for (const iri of iris) {
+          const el = ctx.model.elements.find(
+            e => e instanceof Reactodia.EntityElement && (e as Reactodia.EntityElement).iri === iri
+          ) as Reactodia.EntityElement | undefined;
+          if (!el) nonCanvas.push(iri);
+          else members.push(el);
+        }
+        if (nonCanvas.length > 0) {
+          return { success: false, error: `IRIs not on canvas: ${nonCanvas.join(', ')}` };
+        }
+
+        // Validate: none already in a cluster
+        const conflicts: { iri: string; clusterId: string }[] = [];
+        for (const el of ctx.model.elements) {
+          if (el instanceof Reactodia.EntityGroup) {
+            for (const member of el.items) {
+              if (member.data.id && iris.includes(member.data.id)) {
+                conflicts.push({ iri: member.data.id, clusterId: el.id });
+              }
+            }
           }
         }
+        if (conflicts.length > 0) {
+          return { success: false, error: `Some nodes are already in clusters: ${JSON.stringify(conflicts)}` };
+        }
+
+        ctx.model.group(members);
+        return { success: true, data: { grouped: iris } };
+      } else {
+        // --- Community-detection algorithm on all canvas nodes ---
+        const { algorithm } = p;
+        if (!algorithm) {
+          return { success: false, error: 'Either `iris` or `algorithm` must be provided.' };
+        }
+        if (!(VALID_CLUSTER_ALGORITHMS as readonly string[]).includes(algorithm)) {
+          return {
+            success: false,
+            error: `Unknown algorithm: ${algorithm}. Valid: ${VALID_CLUSTER_ALGORITHMS.join(', ')}`,
+          };
+        }
+
+        // Guard: check if any node is already in an EntityGroup
+        const clusterMap = new Map<string, string>();
+        for (const el of ctx.model.elements) {
+          if (el instanceof Reactodia.EntityGroup) {
+            for (const member of el.items) {
+              if (member.data.id) clusterMap.set(member.data.id, el.id);
+            }
+          }
+        }
+        if (clusterMap.size > 0) {
+          const conflictsList = [...clusterMap.entries()].map(([iri, clusterId]) => ({ iri, clusterId }));
+          return { success: false, error: `Some nodes are already in clusters: ${JSON.stringify(conflictsList)}` };
+        }
+
+        const canvas = ctx.view.findAnyCanvas();
+        if (!canvas) return { success: false, error: 'No canvas available' };
+
+        const { applyCanvasClustering } = await import('@/components/Canvas/core/clusteringService');
+        const { createDagreLayout } = await import('@/components/Canvas/layout/layouts');
+        await applyCanvasClustering(ctx, canvas, algorithm as ClusterAlgorithm, createDagreLayout('LR', 120), true);
+
+        return { success: true, data: { algorithm } };
       }
-      if (clusterMap.size > 0) {
-        const conflicts = [...clusterMap.entries()].map(([iri, clusterId]) => ({ iri, clusterId }));
-        return { success: false, error: `Some nodes are already in clusters: ${JSON.stringify(conflicts)}` };
-      }
-
-      const canvas = ctx.view.findAnyCanvas();
-      if (!canvas) return { success: false, error: 'No canvas available' };
-
-      const { applyCanvasClustering } = await import('@/components/Canvas/core/clusteringService');
-      const { createDagreLayout } = await import('@/components/Canvas/layout/layouts');
-      await applyCanvasClustering(ctx, canvas, algorithm as ClusterAlgorithm, createDagreLayout('LR', 120), true);
-
-      return { success: true, data: { algorithm } };
     } catch (e) {
       return { success: false, error: String(e) };
     }
@@ -366,4 +412,4 @@ const layoutNodes: McpTool = {
   },
 };
 
-export const layoutTools: McpTool[] = [runLayout, focusNode, fitCanvas, clusterCanvas, layoutNodes];
+export const layoutTools: McpTool[] = [runLayout, focusNode, fitCanvas, clusterNodes, layoutNodes];
