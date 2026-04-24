@@ -13,9 +13,9 @@
 
 **Assistant:** Good choice. Loading BFO 2, RO, and IAO first — these are registered in the known ontologies list so no manual URLs needed.
 
-`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"loadOntology","arguments":{"url":"http://purl.obolibrary.org/obo/RO_"}}}`
-`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"loadOntology","arguments":{"url":"http://purl.obolibrary.org/obo/BFO_"}}}`
-`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"loadOntology","arguments":{"url":"http://purl.obolibrary.org/obo/IAO_"}}}`
+`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"loadOntology","arguments":{"url":"ro"}}}`
+`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"loadOntology","arguments":{"url":"bfo"}}}`
+`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"loadOntology","arguments":{"url":"iao"}}}`
 
 ```tool-result
 <!-- runner fills this in -->

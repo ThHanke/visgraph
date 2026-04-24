@@ -5,6 +5,7 @@ import { rdfManager } from '@/utils/rdfManager';
 import { getWorkspaceRefs } from '@/mcp/workspaceContext';
 import { mcpManifest, mcpServerDescription } from '@/mcp/manifest';
 import { Parser as SparqlParser } from 'sparqljs';
+import { resolveOntologyLoadUrl } from '@/utils/wellKnownOntologies';
 
 const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
 function getElementLabel(data: Reactodia.ElementModel | undefined): string {
@@ -74,19 +75,27 @@ const loadRdf: McpTool = {
 // ---------------------------------------------------------------------------
 const loadOntology: McpTool = {
   name: 'loadOntology',
-  description: 'Load an ontology from a URL into the graph.',
+  description:
+    'Load a well-known ontology by prefix name (e.g. "bfo", "ro", "iao", "foaf", "pmdco") ' +
+    'or by a direct ontology URL. Prefix names are resolved to the canonical ontology file via ' +
+    'the built-in well-known ontology registry.',
   inputSchema: {
     type: 'object',
     required: ['url'],
     properties: {
-      url: { type: 'string', description: 'URL of the ontology to load.' },
+      url: {
+        type: 'string',
+        description:
+          'Well-known prefix name (e.g. "bfo", "ro", "iao", "foaf") or a direct ontology URL.',
+      },
     },
   },
   async handler(params): Promise<McpResult> {
     try {
       const { url } = params as { url: string };
-      await rdfManager.loadRDFFromUrl(url);
-      return { success: true, data: { loaded: url } };
+      const resolvedUrl = resolveOntologyLoadUrl(url);
+      await rdfManager.loadRDFFromUrl(resolvedUrl);
+      return { success: true, data: { loaded: resolvedUrl, requestedAs: url } };
     } catch (e) {
       return { success: false, error: String(e) };
     }

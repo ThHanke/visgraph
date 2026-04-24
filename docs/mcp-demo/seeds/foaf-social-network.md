@@ -11,7 +11,7 @@
 
 **Assistant:** Sure! Loading the FOAF vocabulary first — that gives us `foaf:Person`, `foaf:Organization`, `foaf:knows`, and `foaf:member`.
 
-`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"loadOntology","arguments":{"url":"http://xmlns.com/foaf/0.1/"}}}`
+`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"loadOntology","arguments":{"url":"foaf"}}}`
 
 ```tool-result
 <!-- runner fills this in -->
