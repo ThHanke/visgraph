@@ -356,7 +356,7 @@ In a browser with native `navigator.modelContext`, tools register automatically 
 
 An AI agent built this from scratch in one session — [full demo with tool calls →](docs/mcp-demo/foaf-social-network.md)
 
-[![FOAF social network](docs/mcp-demo/foaf-social-network/02-links.svg)](docs/mcp-demo/foaf-social-network.md)
+[![FOAF social network](docs/mcp-demo/foaf-social-network/04-frank-focus.svg)](docs/mcp-demo/foaf-social-network.md)
 
 ### Recommended workflow
 
