@@ -38,7 +38,7 @@ export const mcpManifest: McpToolManifestEntry[] = [
   },
   {
     name: 'queryGraph',
-    description: 'Run SPARQL SELECT or CONSTRUCT against asserted data (urn:vg:data). CONSTRUCT adds new asserted triples to the store. Use SELECT to read; use CONSTRUCT for explicit derivations. For full OWL-RL inference, use runReasoning instead.',
+    description: 'Run a SPARQL query or update against asserted data (urn:vg:data). Workspace namespace prefixes are injected automatically. Supported forms: SELECT (return bindings), CONSTRUCT (return triples, read-only), INSERT DATA, DELETE DATA, DELETE WHERE, DELETE...INSERT...WHERE. For OWL-RL inference use runReasoning instead.',
     inputSchema: {
       type: 'object',
       properties: {

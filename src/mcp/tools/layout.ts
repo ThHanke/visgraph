@@ -44,18 +44,17 @@ const runLayout: McpTool = {
     properties: {
       algorithm: {
         type: 'string',
-        description: 'Layout algorithm to apply.',
+        description: 'Layout algorithm to apply. Defaults to elk-layered.',
         enum: [...VALID_ALGORITHMS],
       },
     },
-    required: ['algorithm'],
   },
   async handler(params): Promise<McpResult> {
     try {
       const p = params as { algorithm?: string };
       // Normalise common short forms: "dagre" → "dagre-lr", "elk" → "elk-layered"
       const ALIASES: Record<string, string> = { dagre: 'dagre-lr', elk: 'elk-layered' };
-      const raw = p.algorithm ?? '';
+      const raw = p.algorithm ?? 'elk-layered';
       const algorithm = ALIASES[raw] ?? raw;
       if (!(VALID_ALGORITHMS as readonly string[]).includes(algorithm)) {
         return {
@@ -269,11 +268,11 @@ const layoutNodes: McpTool = {
       },
       algorithm: {
         type: 'string',
-        description: 'Layout algorithm to apply to the subset.',
+        description: 'Layout algorithm to apply to the subset. Defaults to elk-layered.',
         enum: [...VALID_ALGORITHMS],
       },
     },
-    required: ['iris', 'algorithm'],
+    required: ['iris'],
   },
   async handler(params): Promise<McpResult> {
     try {
@@ -285,7 +284,7 @@ const layoutNodes: McpTool = {
 
       // Resolve algorithm
       const ALIASES: Record<string, string> = { dagre: 'dagre-lr', elk: 'elk-layered' };
-      const raw = p.algorithm ?? '';
+      const raw = p.algorithm ?? 'elk-layered';
       const algorithm = ALIASES[raw] ?? raw;
       if (!(VALID_ALGORITHMS as readonly string[]).includes(algorithm)) {
         return {

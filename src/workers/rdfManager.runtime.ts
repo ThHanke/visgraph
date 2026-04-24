@@ -1839,6 +1839,59 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           result = { added, removed };
           break;
         }
+        case "sparqlQuery": {
+          const payload = msg.payload as RDFWorkerCommandPayloads["sparqlQuery"];
+          const sparql = payload?.sparql;
+          if (!sparql) throw new Error("sparqlQuery: sparql string required");
+          const limit = typeof payload?.limit === "number" ? payload.limit : 200;
+
+          const { QueryEngine } = await import("@comunica/query-sparql-rdfjs");
+          const store = getSharedStore();
+          const engine = new QueryEngine();
+          const queryResult = await engine.query(sparql, { sources: [store] });
+
+          if (queryResult.resultType === "bindings") {
+            const bindingsStream = await queryResult.execute();
+            const rows: Array<Record<string, string>> = [];
+            for await (const binding of bindingsStream) {
+              if (rows.length >= limit) break;
+              const row: Record<string, string> = {};
+              for (const [variable, term] of binding) {
+                row[variable.value] = term.value;
+              }
+              rows.push(row);
+            }
+            result = { type: "select", rows };
+          } else if (queryResult.resultType === "quads") {
+            const quadStream = await queryResult.execute();
+            const triples: Array<{ s: string; p: string; o: string }> = [];
+            for await (const quad of quadStream) {
+              if (triples.length >= limit) break;
+              triples.push({ s: quad.subject.value, p: quad.predicate.value, o: quad.object.value });
+            }
+            result = { type: "construct", triples };
+          } else if (queryResult.resultType === "void") {
+            await queryResult.execute();
+            // Trigger the normal subject-emission pipeline so the canvas refreshes
+            const { DataFactory } = resolveN3();
+            if (DataFactory) {
+              const graphTerm = createGraphTerm("urn:vg:data", DataFactory);
+              const graphQuads = store.getQuads(null, null, null, graphTerm) || [];
+              const subjectSet = new Set<string>();
+              for (const q of graphQuads) {
+                try { const s = subjectTermToString(q.subject); if (s && !isBlacklistedIri(s)) subjectSet.add(s); } catch (_) { /* ignore */ }
+              }
+              const emission = prepareSubjectEmissionFromSet(subjectSet, store, DataFactory);
+              if (emission.subjects.length > 0) {
+                emitSubjects(emission.subjects, emission.quadsBySubject, emission.snapshot, { reason: "sparqlUpdate" });
+              }
+            }
+            result = { type: "update" };
+          } else {
+            throw new Error(`Unsupported result type: ${queryResult.resultType}`);
+          }
+          break;
+        }
         case "runReasoning": {
           const payload = msg.payload as RDFWorkerCommandPayloads["runReasoning"];
           const reasoningId = payload.reasoningId;

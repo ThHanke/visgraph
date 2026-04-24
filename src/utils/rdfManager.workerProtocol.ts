@@ -129,6 +129,11 @@ export type RDFWorkerCommandPayloads = {
   removeQuadsByNamespace: RemoveQuadsByNamespacePayload;
   purgeNamespace: PurgeNamespacePayload;
   renameNamespaceUri: RenameNamespaceUriPayload;
+  sparqlQuery: {
+    sparql: string;
+    graphName?: string;
+    limit?: number;
+  };
 };
 
 export const RDF_WORKER_COMMANDS = [
@@ -155,6 +160,7 @@ export const RDF_WORKER_COMMANDS = [
   "removeQuadsByNamespace",
   "purgeNamespace",
   "renameNamespaceUri",
+  "sparqlQuery",
 ] as const;
 
 export type RDFWorkerCommandName = (typeof RDF_WORKER_COMMANDS)[number];

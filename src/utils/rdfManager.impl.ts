@@ -903,6 +903,10 @@ export class RDFManagerImpl {
     void this.emitAllSubjects().catch(() => {});
   }
 
+  async sparqlQuery(sparql: string, options?: { graphName?: string; limit?: number }): Promise<any> {
+    return this.worker.call("sparqlQuery", { sparql, graphName: options?.graphName, limit: options?.limit });
+  }
+
   async removeAllQuadsForIri(
     iri: string,
     graphName: string = DEFAULT_GRAPH,

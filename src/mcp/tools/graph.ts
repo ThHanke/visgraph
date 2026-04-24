@@ -8,6 +8,17 @@ import { Parser as SparqlParser } from 'sparqljs';
 import { resolveOntologyLoadUrl, WELL_KNOWN_PREFIXES } from '@/utils/wellKnownOntologies';
 import { useSettingsStore } from '@/stores/settingsStore';
 
+/** Prepend PREFIX declarations from the namespace map for any prefix not already declared in the query. */
+function injectPrefixes(sparql: string): string {
+  const namespaces = rdfManager.getNamespaces();
+  const declared = new Set<string>();
+  for (const m of sparql.matchAll(/(?:PREFIX|BASE)\s+(\S+)\s*:/gi)) declared.add(m[1].toLowerCase());
+  const lines = namespaces
+    .filter(ns => ns.prefix && ns.uri && !declared.has(ns.prefix.toLowerCase()))
+    .map(ns => `PREFIX ${ns.prefix}: <${ns.uri}>`);
+  return lines.length ? `${lines.join('\n')}\n${sparql}` : sparql;
+}
+
 const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
 function getElementLabel(data: Reactodia.ElementModel | undefined): string {
   return (data?.properties?.[RDFS_LABEL]?.[0] as { value?: string } | undefined)?.value ?? '';
@@ -123,148 +134,64 @@ const loadOntology: McpTool = {
 };
 
 // ---------------------------------------------------------------------------
-// SPARQL BGP evaluator (main-thread, operates on quads fetched from worker)
-// ---------------------------------------------------------------------------
-
-type Binding = Record<string, string>;
-
-/** Return IRI or literal string for an RDF/JS-like term from sparqljs. */
-function termValue(t: any): string {
-  if (!t) return '';
-  if (t.termType === 'NamedNode') return t.value;
-  if (t.termType === 'Literal') return t.value;
-  if (t.termType === 'BlankNode') return `_:${t.value}`;
-  return String(t.value ?? t);
-}
-
-/** Apply one binding to a triple pattern term, returning null if the term is an unbound variable. */
-function applyBinding(term: any, binding: Binding): string | null {
-  if (term.termType === 'Variable') return binding[term.value] ?? null;
-  return termValue(term);
-}
-
-/** Evaluate a list of BGP triple patterns against a flat quad array. Returns all bindings. */
-function evalBGP(
-  patterns: Array<{ subject: any; predicate: any; object: any }>,
-  quads: Array<{ subject: string; predicate: string; object: string }>,
-): Binding[] {
-  let bindings: Binding[] = [{}];
-  for (const pat of patterns) {
-    const next: Binding[] = [];
-    for (const b of bindings) {
-      const s = applyBinding(pat.subject, b);
-      const p = applyBinding(pat.predicate, b);
-      const o = applyBinding(pat.object, b);
-      for (const q of quads) {
-        if (s !== null && s !== q.subject) continue;
-        if (p !== null && p !== q.predicate) continue;
-        if (o !== null && o !== q.object) continue;
-        const extended: Binding = { ...b };
-        if (pat.subject.termType === 'Variable') extended[pat.subject.value] = q.subject;
-        if (pat.predicate.termType === 'Variable') extended[pat.predicate.value] = q.predicate;
-        if (pat.object.termType === 'Variable') extended[pat.object.value] = q.object;
-        next.push(extended);
-      }
-    }
-    bindings = next;
-  }
-  return bindings;
-}
-
-/** Recursively collect BGP triple patterns from a parsed WHERE clause. */
-function collectPatterns(groups: any[]): Array<{ subject: any; predicate: any; object: any }> {
-  const patterns: Array<{ subject: any; predicate: any; object: any }> = [];
-  for (const g of groups ?? []) {
-    if (g.type === 'bgp') patterns.push(...(g.triples ?? []));
-    else if (g.patterns || g.triples) patterns.push(...collectPatterns(g.patterns ?? g.triples ?? []));
-  }
-  return patterns;
-}
-
-// ---------------------------------------------------------------------------
 // queryGraph
 // ---------------------------------------------------------------------------
 const queryGraph: McpTool = {
   name: 'queryGraph',
-  description: 'Run a SPARQL SELECT or CONSTRUCT query against the asserted graph (urn:vg:data). Inferred triples are not included unless queried via GRAPH urn:vg:inferred.',
+  description: 'Run a SPARQL query or update against asserted data (urn:vg:data). Namespace prefixes are injected automatically. Supported: SELECT (return bindings), CONSTRUCT (return triples, read-only), INSERT DATA, DELETE DATA, DELETE WHERE, DELETE...INSERT...WHERE. Inferred triples are in GRAPH urn:vg:inferred.',
   inputSchema: {
     type: 'object',
     required: ['sparql'],
     properties: {
-      sparql: { type: 'string', description: 'SPARQL SELECT or CONSTRUCT query.' },
+      sparql: { type: 'string', description: 'SPARQL query or update string.' },
       limit: { type: 'integer', default: 200, description: 'Max rows/triples to return (default 200).' },
     },
   },
   async handler(params): Promise<McpResult> {
     try {
-      const { sparql, limit = 200 } = params as { sparql: string; limit?: number };
-      if (!sparql) return { success: false, error: 'sparql is required' };
+      const { sparql: rawSparql, limit = 200 } = params as { sparql: string; limit?: number };
+      if (!rawSparql) return { success: false, error: 'sparql is required' };
 
+      const sparql = injectPrefixes(rawSparql);
+
+      // Validate parse before sending to worker (gives better error messages)
       let parsed: any;
       try {
-        const parser = new SparqlParser();
-        parsed = parser.parse(sparql);
+        parsed = new SparqlParser().parse(sparql);
       } catch (e) {
         return { success: false, error: `SPARQL parse error: ${String(e)}` };
       }
-
-      if (parsed.type !== 'query') return { success: false, error: 'Only SELECT and CONSTRUCT queries are supported' };
-      if (parsed.queryType !== 'SELECT' && parsed.queryType !== 'CONSTRUCT') {
-        return { success: false, error: `Only SELECT and CONSTRUCT supported, got: ${parsed.queryType}` };
+      if (parsed.type === 'query' && parsed.queryType === 'ASK') {
+        return { success: false, error: 'ASK queries are not supported. Use SELECT or CONSTRUCT.' };
       }
 
-      // Fetch all asserted quads
-      const { items: quads } = await rdfManager.fetchQuadsPage({ graphName: 'urn:vg:data', limit: 0 });
-      const patterns = collectPatterns(parsed.where ?? []);
-      const bindings = evalBGP(patterns, quads ?? []);
+      const workerResult = await rdfManager.sparqlQuery(sparql, { limit });
 
-      if (parsed.queryType === 'SELECT') {
-        // sparqljs encodes SELECT * as variables containing a Wildcard term
-        const isSelectStar = !parsed.variables ||
-          (Array.isArray(parsed.variables) && parsed.variables.some((v: any) => v?.termType === 'Wildcard' || v === '*'));
-        const allVarNames: string[] = isSelectStar
-          ? [...new Set(patterns.flatMap(p =>
-              [p.subject, p.predicate, p.object]
-                .filter((t: any) => t?.termType === 'Variable')
-                .map((t: any) => t.value)
-            ))]
-          : (parsed.variables as any[]).map((v: any) => v?.value ?? String(v));
-
-        const rows = bindings.slice(0, limit).map(b =>
-          Object.fromEntries(allVarNames.map((v: string) => [v, b[v] ?? null]))
-        );
-        return { success: true, data: { rows, total: bindings.length, truncated: bindings.length > limit } };
+      if (workerResult.type === 'select') {
+        const rows: Array<Record<string, string>> = workerResult.rows ?? [];
+        return { success: true, data: { rows, total: rows.length, truncated: rows.length >= limit } };
       }
 
-      // CONSTRUCT
-      const template: Array<{ subject: any; predicate: any; object: any }> = parsed.template ?? [];
-      const newTriples: Array<{ s: string; p: string; o: string }> = [];
-      for (const b of bindings) {
-        for (const t of template) {
-          const s = applyBinding(t.subject, b);
-          const p = applyBinding(t.predicate, b);
-          const o = applyBinding(t.object, b);
-          if (s && p && o) newTriples.push({ s, p, o });
-        }
+      if (workerResult.type === 'construct') {
+        const triples: Array<{ s: string; p: string; o: string }> = workerResult.triples ?? [];
+        return {
+          success: true,
+          data: {
+            triples,
+            total: triples.length,
+            truncated: triples.length >= limit,
+            ...(triples.length === 0
+              ? { notice: 'CONSTRUCT matched 0 triples. Check that WHERE patterns match asserted data.' }
+              : {}),
+          },
+        };
       }
 
-      const uniqueTriples = newTriples.slice(0, limit);
-      // Add to store
-      const { ctx } = getWorkspaceRefs();
-      for (const t of uniqueTriples) {
-        rdfManager.addTriple(t.s, t.p, t.o);
-      }
-      // Refresh canvas for any new subjects
-      const newSubjects = [...new Set(uniqueTriples.map(t => t.s))] as Reactodia.ElementIri[];
-      if (newSubjects.length) {
-        await ctx.model.requestElementData(newSubjects);
-        await ctx.model.requestLinks({ addedElements: newSubjects });
+      if (workerResult.type === 'update') {
+        return { success: true, data: { updated: true } };
       }
 
-      return {
-        success: true,
-        data: { added: uniqueTriples.length, truncated: newTriples.length > limit, triples: uniqueTriples },
-      };
+      return { success: false, error: `Unexpected result type from worker: ${(workerResult as any)?.type}` };
     } catch (e) {
       return { success: false, error: String(e) };
     }
