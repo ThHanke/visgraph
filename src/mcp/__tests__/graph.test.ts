@@ -11,7 +11,8 @@ vi.mock('@/utils/rdfManager', () => ({
     exportToJsonLD: vi.fn().mockResolvedValue('{}'),
     exportToRdfXml: vi.fn().mockResolvedValue('<rdf:RDF/>'),
     fetchQuadsPage: vi.fn().mockResolvedValue({ items: [], total: 0, offset: 0, limit: 0 }),
-    addTriple: vi.fn(),
+    sparqlQuery: vi.fn().mockResolvedValue({ type: 'select', rows: [] }),
+    getNamespaces: vi.fn().mockReturnValue([]),
   },
 }));
 
@@ -119,14 +120,22 @@ describe('queryGraph', () => {
   const EX = 'http://example.org/';
   const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
 
-  function mockQuads(items: Array<{ subject: string; predicate: string; object: string }>) {
-    (rdfManager.fetchQuadsPage as ReturnType<typeof vi.fn>).mockResolvedValue({ items, total: items.length });
+  function mockSelect(rows: Array<Record<string, string>>) {
+    (rdfManager.sparqlQuery as ReturnType<typeof vi.fn>).mockResolvedValue({ type: 'select', rows });
+  }
+
+  function mockConstruct(triples: Array<{ s: string; p: string; o: string }>) {
+    (rdfManager.sparqlQuery as ReturnType<typeof vi.fn>).mockResolvedValue({ type: 'construct', triples });
+  }
+
+  function mockUpdate() {
+    (rdfManager.sparqlQuery as ReturnType<typeof vi.fn>).mockResolvedValue({ type: 'update' });
   }
 
   it('returns rows for SELECT *', async () => {
-    mockQuads([
-      { subject: EX + 'Alice', predicate: RDFS_LABEL, object: 'Alice' },
-      { subject: EX + 'Bob', predicate: RDFS_LABEL, object: 'Bob' },
+    mockSelect([
+      { s: EX + 'Alice', p: RDFS_LABEL, o: 'Alice' },
+      { s: EX + 'Bob', p: RDFS_LABEL, o: 'Bob' },
     ]);
     const result = await tool('queryGraph').handler({ sparql: 'SELECT * WHERE { ?s ?p ?o }' }) as any;
     expect(result.success).toBe(true);
@@ -135,10 +144,9 @@ describe('queryGraph', () => {
   });
 
   it('SELECT with bound subject returns matching rows', async () => {
-    mockQuads([
-      { subject: EX + 'Alice', predicate: RDFS_LABEL, object: 'Alice' },
-      { subject: EX + 'Alice', predicate: EX + 'age', object: '30' },
-      { subject: EX + 'Bob', predicate: RDFS_LABEL, object: 'Bob' },
+    mockSelect([
+      { p: RDFS_LABEL, o: 'Alice' },
+      { p: EX + 'age', o: '30' },
     ]);
     const result = await tool('queryGraph').handler({
       sparql: `SELECT ?p ?o WHERE { <${EX}Alice> ?p ?o }`,
@@ -149,15 +157,12 @@ describe('queryGraph', () => {
   });
 
   it('truncates results when limit is exceeded', async () => {
-    const items = Array.from({ length: 10 }, (_, i) => ({
-      subject: EX + `s${i}`, predicate: EX + 'p', object: `v${i}`,
-    }));
-    mockQuads(items);
+    const rows = Array.from({ length: 3 }, (_, i) => ({ s: EX + `s${i}`, p: EX + 'p', o: `v${i}` }));
+    mockSelect(rows);
     const result = await tool('queryGraph').handler({ sparql: 'SELECT * WHERE { ?s ?p ?o }', limit: 3 }) as any;
     expect(result.success).toBe(true);
     expect(result.data.rows).toHaveLength(3);
     expect(result.data.truncated).toBe(true);
-    expect(result.data.total).toBe(10);
   });
 
   it('returns parse error for invalid SPARQL', async () => {
@@ -169,22 +174,74 @@ describe('queryGraph', () => {
   it('rejects ASK queries', async () => {
     const result = await tool('queryGraph').handler({ sparql: `ASK { <${EX}Alice> ?p ?o }` });
     expect(result.success).toBe(false);
-    expect((result as any).error).toContain('SELECT and CONSTRUCT');
+    expect((result as any).error).toContain('ASK');
   });
 
-  it('CONSTRUCT adds triples to store', async () => {
+  it('CONSTRUCT returns triples without writing to store', async () => {
     const EX_MANAGES = EX + 'manages';
     const EX_MANAGED_BY = EX + 'managedBy';
-    mockQuads([
-      { subject: EX + 'Alice', predicate: EX_MANAGES, object: EX + 'Team' },
-    ]);
+    mockConstruct([{ s: EX + 'Team', p: EX_MANAGED_BY, o: EX + 'Alice' }]);
     const result = await tool('queryGraph').handler({
       sparql: `CONSTRUCT { ?team <${EX_MANAGED_BY}> ?mgr } WHERE { ?mgr <${EX_MANAGES}> ?team }`,
     }) as any;
     expect(result.success).toBe(true);
-    expect(result.data.added).toBe(1);
+    expect(result.data.triples).toHaveLength(1);
     expect(result.data.triples[0]).toEqual({ s: EX + 'Team', p: EX_MANAGED_BY, o: EX + 'Alice' });
-    expect(rdfManager.addTriple).toHaveBeenCalledWith(EX + 'Team', EX_MANAGED_BY, EX + 'Alice');
+  });
+
+  it('CONSTRUCT returns notice when 0 triples matched', async () => {
+    mockConstruct([]);
+    const result = await tool('queryGraph').handler({
+      sparql: `CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }`,
+    }) as any;
+    expect(result.success).toBe(true);
+    expect(result.data.triples).toHaveLength(0);
+    expect(result.data.notice).toMatch(/0 triples/);
+  });
+
+  it('INSERT DATA returns updated:true', async () => {
+    mockUpdate();
+    const result = await tool('queryGraph').handler({
+      sparql: `INSERT DATA { <${EX}Alice> <${RDFS_LABEL}> "Alice" }`,
+    }) as any;
+    expect(result.success).toBe(true);
+    expect(result.data.updated).toBe(true);
+  });
+
+  it('DELETE DATA returns updated:true', async () => {
+    mockUpdate();
+    const result = await tool('queryGraph').handler({
+      sparql: `DELETE DATA { <${EX}Alice> <${RDFS_LABEL}> "Alice" }`,
+    }) as any;
+    expect(result.success).toBe(true);
+    expect(result.data.updated).toBe(true);
+  });
+
+  it('DELETE WHERE returns updated:true', async () => {
+    mockUpdate();
+    const result = await tool('queryGraph').handler({
+      sparql: `DELETE WHERE { <${EX}Alice> ?p ?o }`,
+    }) as any;
+    expect(result.success).toBe(true);
+    expect(result.data.updated).toBe(true);
+  });
+
+  it('DELETE...INSERT...WHERE returns updated:true', async () => {
+    mockUpdate();
+    const result = await tool('queryGraph').handler({
+      sparql: `DELETE { <${EX}Alice> <${EX}name> ?old } INSERT { <${EX}Alice> <${EX}name> "Alicia" } WHERE { <${EX}Alice> <${EX}name> ?old }`,
+    }) as any;
+    expect(result.success).toBe(true);
+    expect(result.data.updated).toBe(true);
+  });
+
+  it('passes injected prefixes + limit to sparqlQuery worker', async () => {
+    mockSelect([]);
+    await tool('queryGraph').handler({ sparql: 'SELECT * WHERE { ?s ?p ?o }', limit: 50 });
+    expect(rdfManager.sparqlQuery).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ limit: 50 }),
+    );
   });
 });
 
