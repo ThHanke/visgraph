@@ -9,9 +9,9 @@
 
 **You:** I'd like to model a social network using FOAF. Can you get that set up?
 
-**Assistant:** Sure! Loading the FOAF vocabulary first — that gives us `foaf:Person`, `foaf:Organization`, `foaf:knows`, and `foaf:member`.
+**Assistant:** Sure! Loading a minimal FOAF vocabulary inline — `foaf:Person`, `foaf:Organization`, `foaf:Agent`, `foaf:knows`, and `foaf:member` with their subclass and domain/range axioms.
 
-`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"loadOntology","arguments":{"url":"foaf"}}}`
+`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"loadRdf","arguments":{"turtle":"@prefix foaf: <http://xmlns.com/foaf/0.1/> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n@prefix owl:  <http://www.w3.org/2002/07/owl#> .\nfoaf:Person a owl:Class ; rdfs:label \"Person\" .\nfoaf:Organization a owl:Class ; rdfs:label \"Organization\" .\nfoaf:Agent a owl:Class ; rdfs:label \"Agent\" .\nfoaf:Person rdfs:subClassOf foaf:Agent .\nfoaf:Organization rdfs:subClassOf foaf:Agent .\nfoaf:knows a owl:ObjectProperty ; rdfs:domain foaf:Person ; rdfs:range foaf:Person ; rdfs:label \"knows\" .\nfoaf:member a owl:ObjectProperty ; rdfs:domain foaf:Agent ; rdfs:range foaf:Organization ; rdfs:label \"member of\" .\nfoaf:name a owl:DatatypeProperty ; rdfs:domain foaf:Agent ; rdfs:label \"name\" ."}}}`
 
 ```tool-result
 <!-- runner fills this in -->

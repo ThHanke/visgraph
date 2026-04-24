@@ -9,13 +9,13 @@
 
 **You:** I'd like to model a social network using FOAF. Can you get that set up?
 
-**Assistant:** Sure! Loading the FOAF vocabulary first — that gives us `foaf:Person`, `foaf:Organization`, `foaf:knows`, and `foaf:member`.
+**Assistant:** Sure! Loading a minimal FOAF vocabulary inline — `foaf:Person`, `foaf:Organization`, `foaf:Agent`, `foaf:knows`, and `foaf:member` with their subclass and domain/range axioms.
 
-`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"loadOntology","arguments":{"url":"foaf"}}}`
+`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"loadRdf","arguments":{"turtle":"@prefix foaf: <http://xmlns.com/foaf/0.1/> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n@prefix owl:  <http://www.w3.org/2002/07/owl#> .\nfoaf:Person a owl:Class ; rdfs:label \"Person\" .\nfoaf:Organization a owl:Class ; rdfs:label \"Organization\" .\nfoaf:Agent a owl:Class ; rdfs:label \"Agent\" .\nfoaf:Person rdfs:subClassOf foaf:Agent .\nfoaf:Organization rdfs:subClassOf foaf:Agent .\nfoaf:knows a owl:ObjectProperty ; rdfs:domain foaf:Person ; rdfs:range foaf:Person ; rdfs:label \"knows\" .\nfoaf:member a owl:ObjectProperty ; rdfs:domain foaf:Agent ; rdfs:range foaf:Organization ; rdfs:label \"member of\" .\nfoaf:name a owl:DatatypeProperty ; rdfs:domain foaf:Agent ; rdfs:label \"name\" ."}}}`
 
 ```tool-result
-[VisGraph — 1 tool 0/1 ✓]
-✗ loadOntology: TypeError: Failed to fetch
+[VisGraph — 1 tool ✓]
+✓ loadRdf: loaded
 
 Canvas: 0 nodes, 0 links
 ```
@@ -155,7 +155,7 @@ Canvas: 7 nodes, 16 links
 
 ```tool-result
 [VisGraph — 1 tool ✓]
-✓ exportGraph: 2144 chars
+✓ exportGraph: 3470 chars
 
 Canvas: 7 nodes, 16 links
 
@@ -172,35 +172,81 @@ Canvas: 7 nodes, 16 links
 @prefix spw: <https://thhanke.github.io/PyodideSemanticWorkflow#>.
 @prefix dcterms: <http://purl.org/dc/terms/>.
 @prefix p-plan: <http://purl.org/net/p-plan#>.
+@prefix foaf: <http://xmlns.com/foaf/0.1/>.
 @prefix dtype: <http://www.linkedmodel.org/schema/dtype#>.
 @prefix qudt: <http://qudt.org/schema/qudt/>.
 @prefix skos: <http://www.w3.org/2004/02/skos/core#>.
 @prefix vaem: <http://www.linkedmodel.org/schema/vaem#>.
 @prefix voag: <http://voag.linkedmodel.org/schema/voag#>.
 
-<http://example.org/alice> a <http://xmlns.com/foaf/0.1/Person>;
+foaf:Person rdfs:subClassOf foaf:Agent;
+    a owl:Class;
+    rdfs:label "Person".
+foaf:Organization rdfs:subClassOf foaf:Agent;
+    a owl:Class;
+    rdfs:label "Organization".
+foaf:Agent a owl:Class;
+    rdfs:label "Agent".
+foaf:knows rdfs:domain foaf:Person;
+    rdfs:range foaf:Person;
+    a owl:ObjectProperty;
+    rdfs:label "knows".
+foaf:member rdfs:domain foaf:Agent;
+    rdfs:range foaf:Organization;
+    a owl:ObjectProperty;
+    rdfs:label "member of".
+foaf:name rdfs:domain foaf:Agent;
+    a owl:DatatypeProperty;
+    rdfs:label "name".
+<http://example.org/alice> a foaf:Person;
     rdfs:label "Alice (PI)";
-    <http://xmlns.com/foaf/0.1/knows> <http://example.org/bob>, <http://example.org/carol>;
-    <http://xmlns.com/foaf/0.1/member> <http://example.org/acme>.
-<http://example.org/bob> a <http://xmlns.com/foaf/0.1/Person>;
+    foaf:knows <http://example.org/bob>, <http://example.org/carol>;
+    foaf:member <http://example.org/acme>.
+<http://example.org/bob> a foaf:Person;
     rdfs:label "Bob";
-    <http://xmlns.com/foaf/0.1/knows> <http://example.org/carol>;
-    <http://xmlns.com/foaf/0.1/member> <http://example.org/acme>.
-<http://example.org/carol> a <http://xmlns.com/foaf/0.1/Person>;
+    foaf:knows <http://example.org/carol>;
+    foaf:member <http://example.org/acme>.
+<http://example.org/carol> a foaf:Person;
     rdfs:label "Carol";
-    <http://xmlns.com/foaf/0.1/member> <http://example.org/labs>.
-<http://example.org/dave> a <http://xmlns.com/foaf/0.1/Person>;
+    foaf:member <http://example.org/labs>.
+<http://example.org/dave> a foaf:Person;
     rdfs:label "Dave";
-    <http://xmlns.com/foaf/0.1/knows> <http://example.org/alice>;
-    <http://xmlns.com/foaf/0.1/member> <http://example.org/labs>.
-<http://example.org/acme> a <http://xmlns.com/foaf/0.1/Organization>;
+    foaf:knows <http://example.org/alice>;
+    foaf:member <http://example.org/labs>.
+<http://example.org/acme> a foaf:Organization;
     rdfs:label "ACME Corp".
-<http://example.org/labs> a <http://xmlns.com/foaf/0.1/Organization>;
+<http://example.org/labs> a foaf:Organization;
     rdfs:label "Research Labs".
-<http://example.org/eve> a <http://xmlns.com/foaf/0.1/Person>;
+<http://example.org/eve> a foaf:Person;
     rdfs:label "Eve";
-    <http://xmlns.com/foaf/0.1/knows> <http://example.org/bob>;
-    <http://xmlns.com/foaf/0.1/member> <http://example.org/labs>.
+    foaf:knows <http://example.org/bob>;
+    foaf:member <http://example.org/labs>.
+foaf:Person rdfs:subClassOf owl:Thing, foaf:Person;
+    owl:equivalentClass foaf:Person.
+foaf:Organization rdfs:subClassOf owl:Thing, foaf:Organization;
+    owl:equivalentClass foaf:Organization.
+foaf:Agent rdfs:subClassOf owl:Thing, foaf:Agent;
+    owl:equivalentClass foaf:Agent.
+foaf:knows rdfs:domain owl:Thing, foaf:Agent;
+    rdfs:range owl:Thing, foaf:Agent;
+    rdfs:subPropertyOf foaf:knows;
+    owl:equivalentProperty foaf:knows;
+    owl:subPropertyOf foaf:knows.
+foaf:member rdfs:domain owl:Thing;
+    rdfs:range owl:Thing, foaf:Agent;
+    rdfs:subPropertyOf foaf:member;
+    owl:equivalentProperty foaf:member;
+    owl:subPropertyOf foaf:member.
+foaf:name rdfs:domain owl:Thing;
+    rdfs:subPropertyOf foaf:name;
+    owl:equivalentProperty foaf:name;
+    owl:subPropertyOf foaf:name.
+<http://example.org/alice> a owl:Thing, foaf:Agent.
+<http://example.org/bob> a owl:Thing, foaf:Agent.
+<http://example.org/carol> a owl:Thing, foaf:Agent.
+<http://example.org/dave> a owl:Thing, foaf:Agent.
+<http://example.org/acme> a owl:Thing, foaf:Agent.
+<http://example.org/labs> a owl:Thing, foaf:Agent.
 
 ```
 

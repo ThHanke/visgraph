@@ -6,6 +6,7 @@ import { getWorkspaceRefs } from '@/mcp/workspaceContext';
 import { mcpManifest, mcpServerDescription } from '@/mcp/manifest';
 import { Parser as SparqlParser } from 'sparqljs';
 import { resolveOntologyLoadUrl, WELL_KNOWN_PREFIXES } from '@/utils/wellKnownOntologies';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
 function getElementLabel(data: Reactodia.ElementModel | undefined): string {
@@ -102,8 +103,9 @@ const loadOntology: McpTool = {
     }
 
     const resolvedUrl = resolveOntologyLoadUrl(url);
+    const corsProxyUrl = useSettingsStore.getState().settings.corsProxyUrl;
     try {
-      await rdfManager.loadRDFFromUrl(resolvedUrl);
+      await rdfManager.loadRDFFromUrl(resolvedUrl, { corsProxyUrl });
       return { success: true, data: { loaded: resolvedUrl, requestedAs: url !== resolvedUrl ? url : undefined } };
     } catch (e) {
       // Suggest close matches from the registry
