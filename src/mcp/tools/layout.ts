@@ -147,4 +147,64 @@ const fitCanvas: McpTool = {
   },
 };
 
-export const layoutTools: McpTool[] = [runLayout, focusNode, fitCanvas];
+// ---------------------------------------------------------------------------
+// clusterCanvas
+// ---------------------------------------------------------------------------
+const VALID_CLUSTER_ALGORITHMS = ['label-propagation', 'louvain', 'kmeans'] as const;
+type ClusterAlgorithm = typeof VALID_CLUSTER_ALGORITHMS[number];
+
+const clusterCanvas: McpTool = {
+  name: 'clusterCanvas',
+  description: 'Group canvas nodes into clusters using a graph-community algorithm. Fails if any node is already in a cluster.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      algorithm: {
+        type: 'string',
+        description: 'Clustering algorithm to apply.',
+        enum: [...VALID_CLUSTER_ALGORITHMS],
+      },
+    },
+    required: ['algorithm'],
+  },
+  async handler(params): Promise<McpResult> {
+    try {
+      const { algorithm } = params as { algorithm: string };
+      if (!(VALID_CLUSTER_ALGORITHMS as readonly string[]).includes(algorithm)) {
+        return {
+          success: false,
+          error: `Unknown algorithm: ${algorithm}. Valid: ${VALID_CLUSTER_ALGORITHMS.join(', ')}`,
+        };
+      }
+
+      const { ctx } = getWorkspaceRefs();
+
+      // Guard: check if any node is already in an EntityGroup
+      const clusterMap = new Map<string, string>();
+      for (const el of ctx.model.elements) {
+        if (el instanceof Reactodia.EntityGroup) {
+          for (const member of el.items) {
+            if (member.data.id) clusterMap.set(member.data.id, el.id);
+          }
+        }
+      }
+      if (clusterMap.size > 0) {
+        const conflicts = [...clusterMap.entries()].map(([iri, clusterId]) => ({ iri, clusterId }));
+        return { success: false, error: 'Some nodes are already in clusters', conflicts };
+      }
+
+      const canvas = ctx.view.findAnyCanvas();
+      if (!canvas) return { success: false, error: 'No canvas available' };
+
+      const { applyCanvasClustering } = await import('@/components/Canvas/core/clusteringService');
+      const { createDagreLayout } = await import('@/components/Canvas/layout/layouts');
+      await applyCanvasClustering(ctx, canvas, algorithm as ClusterAlgorithm, createDagreLayout('LR', 120), true);
+
+      return { success: true, data: { algorithm } };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  },
+};
+
+export const layoutTools: McpTool[] = [runLayout, focusNode, fitCanvas, clusterCanvas];
