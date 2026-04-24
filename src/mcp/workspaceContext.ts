@@ -8,6 +8,7 @@ interface WorkspaceRefs {
   ctx: Reactodia.WorkspaceContext;
   dataProvider: N3DataProvider;
   runReasoning?: () => Promise<unknown>;
+  navigateToIri?: (iri: string) => void;
 }
 
 let refs: WorkspaceRefs | null = null;
@@ -57,6 +58,10 @@ export function registerReasoningCallback(fn: () => Promise<unknown>): void {
     pendingReasoningCallback = fn;
   }
   maybeNotifyReady();
+}
+
+export function registerNavigateToIri(fn: (iri: string) => void): void {
+  if (refs) refs.navigateToIri = fn;
 }
 
 export function getWorkspaceRefs(): WorkspaceRefs {

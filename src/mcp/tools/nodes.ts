@@ -233,7 +233,7 @@ function classifyObject(value: string): 'iri' | 'literal' | 'bnode' {
 
 const getNodeDetails: McpTool = {
   name: 'getNodeDetails',
-  description: 'Return all asserted RDF properties (triples) for a specific entity IRI. Only reads from the asserted graph (urn:vg:data) — inferred triples are not included.',
+  description: 'Return all asserted RDF properties (triples) for a specific entity IRI. Also navigates the canvas to the node, switching between ABox/TBox views if needed. Only reads from the asserted graph (urn:vg:data) — inferred triples are not included.',
   inputSchema: {
     type: 'object',
     required: ['iri'],
@@ -264,6 +264,9 @@ const getNodeDetails: McpTool = {
         if (q.predicate === RDFS_LABEL_IRI && !label) label = q.object;
         if (q.predicate === RDF_TYPE_IRI) types.push(q.object);
       }
+
+      const { navigateToIri } = getWorkspaceRefs();
+      navigateToIri?.(iri);
 
       return { success: true, data: { iri, label, types, properties } };
     } catch (e) {

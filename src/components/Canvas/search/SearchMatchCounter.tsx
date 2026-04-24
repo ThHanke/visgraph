@@ -10,6 +10,7 @@ import { useCanvasState } from '../../../hooks/useCanvasState';
 import { useSearchIndex } from './useSearchIndex';
 import { VgClassesSection } from './VgClassesSection';
 import { VgEntitiesSection } from './VgEntitiesSection';
+import { registerNavigateToIri } from '../../../mcp/workspaceContext';
 
 // ─── Section definitions ────────────────────────────────────────────────────
 
@@ -211,6 +212,23 @@ function SearchMatchCounterInner() {
     setCurrentIndex(next);
     navigateTo(next);
   }, [navigateTo, setCurrentIndex]);
+
+  // Register MCP navigation callback so tools can jump to any IRI regardless of view.
+  React.useEffect(() => {
+    registerNavigateToIri((iri: string) => {
+      const canvasEl = lookupIri(iri);
+      if (canvasEl) {
+        zoomToElement(view.findAnyCanvas(), canvasEl);
+      } else {
+        const targetView = iriViewMap.get(iri);
+        if (targetView && targetView !== canvasState.viewMode) {
+          pendingIriRef.current = iri;
+          canvasActions.setCanvasReady(false);
+          canvasActions.setViewMode(targetView);
+        }
+      }
+    });
+  }, [lookupIri, iriViewMap, view, canvasState.viewMode, canvasActions]);
 
   const onPrev = React.useCallback(() =>
     navigate(current <= 0 ? total - 1 : current - 1),
