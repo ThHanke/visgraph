@@ -36,29 +36,59 @@ foaf:member rdfs:domain foaf:Agent;
 foaf:name rdfs:domain foaf:Agent;
     a owl:DatatypeProperty;
     rdfs:label "name".
-<http://example.org/alice> a foaf:Person;
-    rdfs:label "Alice (PI)";
-    foaf:knows <http://example.org/bob>, <http://example.org/carol>;
-    foaf:member <http://example.org/acme>.
-<http://example.org/bob> a foaf:Person;
+<http://example.org/ex#Employee> rdfs:subClassOf foaf:Person;
+    a owl:Class;
+    rdfs:label "Employee".
+<http://example.org/ex#Manager> rdfs:subClassOf <http://example.org/ex#Employee>;
+    a owl:Class;
+    rdfs:label "Manager".
+<http://example.org/ex#Executive> rdfs:subClassOf <http://example.org/ex#Manager>;
+    a owl:Class;
+    rdfs:label "Executive".
+<http://example.org/ex#Department> rdfs:subClassOf foaf:Organization;
+    a owl:Class;
+    rdfs:label "Department".
+<http://example.org/ex#manages> rdfs:domain <http://example.org/ex#Manager>;
+    rdfs:range <http://example.org/ex#Employee>;
+    a owl:ObjectProperty;
+    rdfs:label "manages".
+<http://example.org/ex#reportsTo> rdfs:domain <http://example.org/ex#Employee>;
+    rdfs:range <http://example.org/ex#Manager>;
+    a owl:ObjectProperty;
+    rdfs:label "reportsTo".
+<http://example.org/ex#collaboratesWith> rdfs:domain <http://example.org/ex#Employee>;
+    rdfs:range <http://example.org/ex#Employee>;
+    a owl:ObjectProperty, owl:SymmetricProperty;
+    rdfs:label "collaboratesWith".
+<http://example.org/alice> a <http://example.org/ex#Executive>;
+    rdfs:label "Alice";
+    foaf:knows <http://example.org/eve>;
+    foaf:member <http://example.org/engineering>;
+    <http://example.org/ex#manages> <http://example.org/bob>, <http://example.org/frank>.
+<http://example.org/bob> a <http://example.org/ex#Manager>;
     rdfs:label "Bob";
     foaf:knows <http://example.org/carol>;
-    foaf:member <http://example.org/acme>.
-<http://example.org/carol> a foaf:Person;
+    foaf:member <http://example.org/engineering>;
+    <http://example.org/ex#manages> <http://example.org/carol>, <http://example.org/dave>.
+<http://example.org/carol> a <http://example.org/ex#Employee>;
     rdfs:label "Carol";
-    foaf:member <http://example.org/labs>.
-<http://example.org/dave> a foaf:Person;
+    foaf:member <http://example.org/engineering>;
+    <http://example.org/ex#reportsTo> <http://example.org/bob>.
+<http://example.org/dave> a <http://example.org/ex#Employee>;
     rdfs:label "Dave";
-    foaf:knows <http://example.org/alice>;
-    foaf:member <http://example.org/labs>.
-<http://example.org/acme> a foaf:Organization;
-    rdfs:label "ACME Corp".
-<http://example.org/labs> a foaf:Organization;
-    rdfs:label "Research Labs".
-<http://example.org/eve> a foaf:Person;
+    foaf:member <http://example.org/research>;
+    <http://example.org/ex#reportsTo> <http://example.org/bob>;
+    <http://example.org/ex#collaboratesWith> <http://example.org/eve>.
+<http://example.org/eve> a <http://example.org/ex#Employee>;
     rdfs:label "Eve";
-    foaf:knows <http://example.org/bob>;
-    foaf:member <http://example.org/labs>.
+    foaf:member <http://example.org/research>;
+    <http://example.org/ex#reportsTo> <http://example.org/alice>.
+<http://example.org/frank> rdfs:label "Frank";
+    foaf:member <http://example.org/research>.
+<http://example.org/engineering> a <http://example.org/ex#Department>;
+    rdfs:label "Engineering".
+<http://example.org/research> a <http://example.org/ex#Department>;
+    rdfs:label "Research".
 foaf:Person rdfs:subClassOf owl:Thing, foaf:Person;
     owl:equivalentClass foaf:Person.
 foaf:Organization rdfs:subClassOf owl:Thing, foaf:Organization;
@@ -79,9 +109,35 @@ foaf:name rdfs:domain owl:Thing;
     rdfs:subPropertyOf foaf:name;
     owl:equivalentProperty foaf:name;
     owl:subPropertyOf foaf:name.
-<http://example.org/alice> a owl:Thing, foaf:Agent.
-<http://example.org/bob> a owl:Thing, foaf:Agent.
-<http://example.org/carol> a owl:Thing, foaf:Agent.
-<http://example.org/dave> a owl:Thing, foaf:Agent.
-<http://example.org/acme> a owl:Thing, foaf:Agent.
-<http://example.org/labs> a owl:Thing, foaf:Agent.
+<http://example.org/ex#Employee> rdfs:subClassOf owl:Thing, foaf:Agent, <http://example.org/ex#Employee>;
+    owl:equivalentClass <http://example.org/ex#Employee>.
+<http://example.org/ex#Manager> rdfs:subClassOf owl:Thing, foaf:Person, foaf:Agent, <http://example.org/ex#Manager>;
+    owl:equivalentClass <http://example.org/ex#Manager>.
+<http://example.org/ex#Executive> rdfs:subClassOf owl:Thing, foaf:Person, foaf:Agent, <http://example.org/ex#Employee>, <http://example.org/ex#Executive>;
+    owl:equivalentClass <http://example.org/ex#Executive>.
+<http://example.org/ex#Department> rdfs:subClassOf owl:Thing, foaf:Agent, <http://example.org/ex#Department>;
+    owl:equivalentClass <http://example.org/ex#Department>.
+<http://example.org/ex#manages> rdfs:domain owl:Thing, foaf:Person, foaf:Agent, <http://example.org/ex#Employee>;
+    rdfs:range owl:Thing, foaf:Person, foaf:Agent;
+    rdfs:subPropertyOf <http://example.org/ex#manages>;
+    owl:equivalentProperty <http://example.org/ex#manages>;
+    owl:subPropertyOf <http://example.org/ex#manages>.
+<http://example.org/ex#reportsTo> rdfs:domain owl:Thing, foaf:Person, foaf:Agent;
+    rdfs:range owl:Thing, foaf:Person, foaf:Agent, <http://example.org/ex#Employee>;
+    rdfs:subPropertyOf <http://example.org/ex#reportsTo>;
+    owl:equivalentProperty <http://example.org/ex#reportsTo>;
+    owl:subPropertyOf <http://example.org/ex#reportsTo>.
+<http://example.org/ex#collaboratesWith> rdfs:domain owl:Thing, foaf:Person, foaf:Agent;
+    rdfs:range owl:Thing, foaf:Person, foaf:Agent;
+    rdfs:subPropertyOf <http://example.org/ex#collaboratesWith>;
+    owl:equivalentProperty <http://example.org/ex#collaboratesWith>;
+    owl:subPropertyOf <http://example.org/ex#collaboratesWith>.
+<http://example.org/alice> a owl:Thing, foaf:Person, foaf:Agent, <http://example.org/ex#Employee>, <http://example.org/ex#Manager>.
+<http://example.org/bob> a owl:Thing, foaf:Person, foaf:Agent, <http://example.org/ex#Employee>.
+<http://example.org/carol> a owl:Thing, foaf:Person, foaf:Agent.
+<http://example.org/dave> a owl:Thing, foaf:Person, foaf:Agent.
+<http://example.org/eve> a owl:Thing, foaf:Person, foaf:Agent;
+    <http://example.org/ex#collaboratesWith> <http://example.org/dave>.
+<http://example.org/frank> a owl:Thing, foaf:Person, foaf:Agent, <http://example.org/ex#Employee>.
+<http://example.org/engineering> a owl:Thing, foaf:Organization, foaf:Agent.
+<http://example.org/research> a owl:Thing, foaf:Organization, foaf:Agent.
