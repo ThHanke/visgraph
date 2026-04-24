@@ -351,19 +351,27 @@ document.getElementById('gpt-input').addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('send-btn').click(); }
 });
 
-// ── ChatGPT ProseMirror paste (Chrome path: clipboardData accessible) ────────
-function handleSyntheticPaste(e) {
+// ── ChatGPT ProseMirror synthetic input handling ──────────────────────────
+// Real ProseMirror handles beforeinput internally. For synthetic (non-trusted)
+// events the browser won't apply the default action, so insert text explicitly.
+document.getElementById('gpt-input').addEventListener('beforeinput', function (e) {
   if (e.isTrusted) return;
-  var cd = e.clipboardData;
-  if (cd) {
-    var text = cd.getData('text/plain');
-    if (text) {
-      e.preventDefault();
-      document.execCommand('insertText', false, text);
-    }
+  var text = null;
+  if (e.inputType === 'insertText' && e.data) {
+    text = e.data;
+  } else if (e.inputType === 'insertFromPaste' && e.dataTransfer) {
+    text = e.dataTransfer.getData('text/plain');
   }
-}
-document.getElementById('gpt-input').addEventListener('paste', handleSyntheticPaste);
+  if (!text) return;
+  e.preventDefault();
+  var el = document.getElementById('gpt-input');
+  el.textContent = (el.innerText || '') + text;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+});
+document.getElementById('gpt-input').addEventListener('paste', function (e) {
+  if (!e.isTrusted) return;
+  // Real paste: browser handles clipboardData
+});
 
 // ── OpenWebUI TipTap paste — simulates real TipTap + Svelte reactive binding ──
 // Send button starts disabled; enabled only when editor has content (like OpenWebUI).
@@ -395,21 +403,22 @@ document.getElementById('gpt-input').addEventListener('paste', handleSyntheticPa
     setTimeout(function () { sendBtn.disabled = false; }, 0);
   });
 
-  // Simulate TipTap's beforeinput handler: execCommand('insertText') fires
-  // beforeinput(inputType='insertText') which TipTap handles by inserting text
-  // and updating its document state, enabling the send button.
-  // The bookmarklet now uses this path (no synthetic paste events).
+  // Simulate TipTap's beforeinput handler. Real TipTap inserts text and fires
+  // onTransaction → onChange → Svelte prompt update → send button enables.
+  // For synthetic (non-trusted) events the browser won't apply the default action,
+  // so we must insert text explicitly — mirrors what TipTap does internally.
   owuiEl.addEventListener('beforeinput', function (e) {
+    if (e.isTrusted) return; // real typing: browser default handles it
+    var text = null;
     if (e.inputType === 'insertText' && e.data) {
-      // TipTap would handle this; our mock just lets the browser default handle it
-      // (browser inserts text into contenteditable, then 'input' event fires → button updates)
+      text = e.data;
+    } else if (e.inputType === 'insertFromPaste' && e.dataTransfer) {
+      text = e.dataTransfer.getData('text/plain');
     }
-  });
-
-  // Keep paste handler for real user pastes (trusted events).
-  owuiEl.addEventListener('paste', function (e) {
-    if (!e.isTrusted) return; // non-trusted synthetic paste — ignore (bookmarklet uses insertText now)
-    // Real paste: browser handles clipboardData, input event fires → button updates
+    if (!text) return;
+    e.preventDefault();
+    owuiEl.textContent = (owuiEl.innerText || '') + text;
+    owuiEl.dispatchEvent(new Event('input', { bubbles: true }));
   });
 })();
 </script>
