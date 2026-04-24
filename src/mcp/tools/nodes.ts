@@ -183,10 +183,21 @@ const getNodes: McpTool = {
         }
       }
 
+      const clusterMap = new Map<string, string>();
+      for (const el of ctx.model.elements) {
+        if (el instanceof Reactodia.EntityGroup) {
+          const group = el as Reactodia.EntityGroup;
+          for (const member of group.items) {
+            clusterMap.set(member.data.id, group.id);
+          }
+        }
+      }
+
       const entities = items.slice(0, limit).map((item) => ({
         iri: item.element.id,
         label: getLabel(item.element),
         types: item.element.types,
+        clusterId: clusterMap.get(item.element.id) ?? null,
       }));
 
       if (focusFirst) {
