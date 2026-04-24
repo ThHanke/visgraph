@@ -30,6 +30,15 @@ scripts/outputs/
 # Claude Code
 .claude/
 
+# AI-assisted planning artifacts (brainstorms, ideation, plans) — local only
+docs/brainstorms/
+docs/ideation/
+docs/plans/
+AGENT.md
+
+# Generated demo screenshots
+docs/mcp-demo/**/*.svg
+
 # Local test/dev HTML pages (bookmarklet testing, not for the repo)
 public/relay-test.html
 *.png
