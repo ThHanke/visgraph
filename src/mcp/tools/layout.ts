@@ -361,11 +361,24 @@ const layoutNodes: McpTool = {
           break;
       }
 
-      // Run layout on subset
-      await ctx.performLayout({ layoutFunction, animate: true, selectedElements });
+      // Run layout on subset — performLayout expects ReadonlySet<Element>, not IRIs
+      // animate:false so positions are committed synchronously before we compute bboxes
+      const selectedElementSet = new Set<Reactodia.Element>(selectedElements);
+      await ctx.performLayout({ layoutFunction, animate: false, selectedElements: selectedElementSet });
 
       const canvas = ctx.view.findAnyCanvas();
       if (!canvas) return { success: false, error: 'No canvas available' };
+
+      // Wait for layout spinner to clear, then flush rendering state
+      await new Promise<void>(resolve => {
+        const check = () => {
+          const s = (globalThis as any).__VG_LAST_CANVAS_LOADING;
+          if (!s || !s.loading) { resolve(); return; }
+          setTimeout(check, 100);
+        };
+        setTimeout(check, 100);
+      });
+      canvas.renderingState.syncUpdate();
 
       // Compute bounding box of all other elements
       const iriSet = new Set(iris);
