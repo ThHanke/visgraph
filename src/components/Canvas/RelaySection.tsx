@@ -35,7 +35,7 @@ export const RelaySection: React.FC<RelaySectionProps> = ({ bookmarkletHref, con
     <div className="px-3 py-2 space-y-3">
       {/* Description */}
       <p className="text-xs text-muted-foreground leading-relaxed">
-        Connect ChatGPT, Claude, or Gemini to this graph — no server or extension needed. The AI outputs <code className="text-xs">TOOL:</code> / <code className="text-xs">PARAMS:</code> blocks; the relay executes them here and injects results back into the chat automatically.
+        Connect ChatGPT, Claude, or Gemini to this graph — no server or extension needed. The AI outputs backtick-wrapped JSON-RPC 2.0 tool calls; the relay executes them here and injects results back into the chat automatically.
       </p>
 
       {/* Setup steps */}

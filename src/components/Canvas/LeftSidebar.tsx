@@ -493,7 +493,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                       ['Overview', '#overview'],
                       ['Key capabilities', '#key-capabilities'],
                       ['Startup / URL parameters', '#startup--url-parameters'],
-                      ['Left sidebar', '#left-sidebar'],
+                      ['Using the UI', '#using-the-ui'],
                       ['AI / MCP integration', '#ai--mcp-integration'],
                       ['AI Relay Bridge', '#chatgpt-gemini-claudeai--ai-relay-bridge'],
                       ['Playwright / headless', '#setup-playwright--headless'],

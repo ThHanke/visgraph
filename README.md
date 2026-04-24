@@ -43,7 +43,7 @@ Key capabilities
 - **Namespace management**: edit namespace URIs directly in the legend panel (rename propagates across all stored triples). Colour-coded namespace badges on nodes and edges.
 - Export the current graph as Turtle, RDF/XML, or JSON-LD.
 - **Workflow catalog**: drag reusable workflow template cards from the sidebar onto the canvas to instantiate connected subgraphs.
-- **MCP support**: exposes a Model Context Protocol server (via the browser's `navigator.modelContext` API) for AI-agent integration. Tools: `loadRdf`, `loadOntology`, `queryGraph`, `exportGraph`, `exportImage`, `addNode`, `removeNode`, `getNodes`, `addLink`, `removeLink`, `getLinks`, `runLayout`, `focusNode`, `fitCanvas`, `runReasoning`, `clearInferred`, `getNeighbors`, `findPath`, `getNodeDetails`, `updateNode`, `getGraphState`, `addNamespace`, `updateNamespace`, `removeNamespace`, `listNamespaces`, `loadShacl`, `validateGraph`, `getCapabilities`, `help`. MCP manifest at `/.well-known/mcp.json`.
+- **MCP support**: exposes a Model Context Protocol server (via the browser's `navigator.modelContext` API) for AI-agent integration. Tools: `loadRdf`, `loadOntology`, `queryGraph`, `exportGraph`, `exportImage`, `addNode`, `removeNode`, `expandNode`, `expandAll`, `getNodes`, `addLink`, `removeLink`, `getLinks`, `runLayout`, `clusterNodes`, `layoutNodes`, `focusNode`, `fitCanvas`, `runReasoning`, `clearInferred`, `getNeighbors`, `findPath`, `getNodeDetails`, `updateNode`, `getGraphState`, `addNamespace`, `updateNamespace`, `removeNamespace`, `listNamespaces`, `loadShacl`, `validateGraph`, `getCapabilities`, `help`. MCP manifest at `/.well-known/mcp.json`.
 
 Quick start (development)
 -------------------------
@@ -392,7 +392,7 @@ The script opens a headless browser, navigates to the URL, registers the MCP too
 
 #### ChatGPT, Gemini, Claude.ai — AI Relay Bridge
 
-The **AI Relay Bridge** connects any AI chat tab to VisGraph with no server, extension, or copy-paste. A bookmarklet watches the AI's output for `TOOL:` / `PARAMS:` blocks, executes them in VisGraph via a BroadcastChannel popup, and injects results back into the chat input automatically.
+The **AI Relay Bridge** connects any AI chat tab to VisGraph with no server, extension, or copy-paste. A bookmarklet watches the AI's output for backtick-wrapped JSON-RPC 2.0 tool calls, executes them in VisGraph via a BroadcastChannel popup, and injects JSON-RPC responses back into the chat input automatically.
 
 ➡️ **[Full setup guide: docs/relay-bridge.md](docs/relay-bridge.md)**
 
