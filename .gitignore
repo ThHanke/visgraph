@@ -24,6 +24,7 @@ dist-ssr
 *.sw?
 
 playwright-reports
+test-results
 .playwright-mcp
 scripts/outputs/
 
