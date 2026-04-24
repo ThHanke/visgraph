@@ -78,7 +78,7 @@ export const WELL_KNOWN_PREFIXES = [
     url: "http://purl.org/dc/elements/1.1/",
     name: "Dublin Core",
   },
-  { prefix: "foaf", url: "http://xmlns.com/foaf/0.1/", name: "FOAF" },
+  { prefix: "foaf", url: "http://xmlns.com/foaf/0.1/", name: "FOAF", ontologyUrl: "https://xmlns.com/foaf/spec/index.rdf" },
   {
     prefix: "org",
     url: "http://www.w3.org/ns/org#",

@@ -186,7 +186,7 @@ function fmtResult(name, args, result) {
   return summary;
 }
 
-function buildResultBlock(batch, stateAfter) {
+function buildResultBlock(batch, stateAfter, { imgDir, demoName } = {}) {
   const total = batch.length;
   const ok = batch.filter(b => b.result?.success).length;
   const lines = [`[VisGraph — ${total} tool${total === 1 ? '' : 's'} ${ok === total ? '✓' : `${ok}/${total} ✓`}]`];
@@ -198,7 +198,22 @@ function buildResultBlock(batch, stateAfter) {
     lines.push('');
     lines.push(`Canvas: ${d.nodeCount ?? '?'} nodes, ${d.linkCount ?? '?'} links`);
   }
-  return lines.join('\n');
+  const block = lines.join('\n');
+
+  // Append full Turtle export if present
+  const exportCall = batch.find(b => b.name === 'exportGraph' && b.result?.success && b.result?.data?.content);
+  if (exportCall && imgDir && demoName) {
+    const turtle = exportCall.result.data.content;
+    const ttlFile = 'graph.ttl';
+    fs.writeFileSync(path.join(imgDir, ttlFile), turtle, 'utf8');
+    const rawUrl = `https://raw.githubusercontent.com/ThHanke/visgraph/main/docs/mcp-demo/${demoName}/${ttlFile}`;
+    const appUrl = `https://thhanke.github.io/visgraph/?url=${encodeURIComponent(rawUrl)}`;
+    return block
+      + `\n\n\`\`\`turtle\n${turtle}\n\`\`\``
+      + `\n\n[Open this graph in VisGraph ↗](${appUrl})`;
+  }
+
+  return block;
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────
@@ -247,7 +262,7 @@ async function run() {
       if (pendingBatch) {
         const { batch, stateAfter } = pendingBatch;
         pendingBatch = null;
-        const content = buildResultBlock(batch, stateAfter);
+        const content = buildResultBlock(batch, stateAfter, { imgDir, demoName });
         outputParts.push('```tool-result\n' + content + '\n```');
       } else {
         // No pending batch — copy verbatim

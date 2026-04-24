@@ -14,10 +14,7 @@
 `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"loadOntology","arguments":{"url":"http://xmlns.com/foaf/0.1/"}}}`
 
 ```tool-result
-[VisGraph — 1 tool 0/1 ✓]
-✗ loadOntology: TypeError: Failed to fetch
-
-Canvas: 0 nodes, 0 links
+<!-- runner fills this in -->
 ```
 
 ---
@@ -36,20 +33,13 @@ Canvas: 0 nodes, 0 links
 `{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"expandAll","arguments":{}}}`
 
 ```tool-result
-[VisGraph — 8 tools ✓]
-✓ addNode: http://example.org/alice
-✓ addNode: http://example.org/bob
-✓ addNode: http://example.org/carol
-✓ addNode: http://example.org/dave
-✓ addNode: http://example.org/acme
-✓ addNode: http://example.org/labs
-✓ runLayout: dagre-lr
-✓ expandAll
-
-Canvas: 6 nodes, 0 links
+<!-- runner fills this in -->
 ```
 
-![Six nodes on canvas](./foaf-social-network/01-nodes.svg)
+```snapshot
+caption: Six nodes on canvas
+slug: nodes
+```
 
 ---
 
@@ -67,20 +57,13 @@ Canvas: 6 nodes, 0 links
 `{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/dave","predicateIri":"http://xmlns.com/foaf/0.1/member","objectIri":"http://example.org/labs"}}}`
 
 ```tool-result
-[VisGraph — 8 tools ✓]
-✓ addLink: s=alice p=knows o=bob
-✓ addLink: s=alice p=knows o=carol
-✓ addLink: s=bob p=knows o=carol
-✓ addLink: s=dave p=knows o=alice
-✓ addLink: s=alice p=member o=acme
-✓ addLink: s=bob p=member o=acme
-✓ addLink: s=carol p=member o=labs
-✓ addLink: s=dave p=member o=labs
-
-Canvas: 6 nodes, 8 links
+<!-- runner fills this in -->
 ```
 
-![Network with knows and member relationships](./foaf-social-network/02-links.svg)
+```snapshot
+caption: Network with knows and member relationships
+slug: links
+```
 
 ---
 
@@ -93,15 +76,13 @@ Canvas: 6 nodes, 8 links
 `{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"expandAll","arguments":{}}}`
 
 ```tool-result
-[VisGraph — 3 tools ✓]
-✓ runReasoning: 0 triples inferred
-✓ runLayout: dagre-lr
-✓ expandAll
-
-Canvas: 6 nodes, 14 links
+<!-- runner fills this in -->
 ```
 
-![Graph after reasoning — Agent types inferred](./foaf-social-network/03-after-reasoning.svg)
+```snapshot
+caption: Graph after reasoning — Agent types inferred
+slug: after-reasoning
+```
 
 ---
 
@@ -113,14 +94,13 @@ Canvas: 6 nodes, 14 links
 `{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"expandNode","arguments":{"iri":"http://example.org/acme","expand":true}}}`
 
 ```tool-result
-[VisGraph — 2 tools ✓]
-✓ focusNode
-✓ expandNode
-
-Canvas: 6 nodes, 14 links
+<!-- runner fills this in -->
 ```
 
-![ACME Corp and its members](./foaf-social-network/04-acme-focus.svg)
+```snapshot
+caption: ACME Corp and its members
+slug: acme-focus
+```
 
 ---
 
@@ -134,16 +114,13 @@ Canvas: 6 nodes, 14 links
 `{"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"focusNode","arguments":{"iri":"http://example.org/eve"}}}`
 
 ```tool-result
-[VisGraph — 4 tools ✓]
-✓ addNode: http://example.org/eve
-✓ addLink: s=eve p=knows o=bob
-✓ addLink: s=eve p=member o=labs
-✓ focusNode
-
-Canvas: 7 nodes, 16 links
+<!-- runner fills this in -->
 ```
 
-![Eve added — knows Bob, member of Research Labs](./foaf-social-network/05-eve-added.svg)
+```snapshot
+caption: Eve added — knows Bob, member of Research Labs
+slug: eve-added
+```
 
 ---
 
@@ -154,55 +131,5 @@ Canvas: 7 nodes, 16 links
 `{"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"exportGraph","arguments":{"format":"turtle"}}}`
 
 ```tool-result
-[VisGraph — 1 tool ✓]
-✓ exportGraph: 2144 chars
-
-Canvas: 7 nodes, 16 links
-
-```turtle
-@prefix dc: <http://purl.org/dc/elements/1.1/>.
-@prefix grddl: <http://www.w3.org/2003/g/data-view#>.
-@prefix owl: <http://www.w3.org/2002/07/owl#>.
-@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>.
-@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
-@prefix xml: <http://www.w3.org/XML/1998/namespace>.
-@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
-@prefix : <http://www.w3.org/ns/prov#>.
-@prefix prov: <http://www.w3.org/ns/prov#>.
-@prefix spw: <https://thhanke.github.io/PyodideSemanticWorkflow#>.
-@prefix dcterms: <http://purl.org/dc/terms/>.
-@prefix p-plan: <http://purl.org/net/p-plan#>.
-@prefix dtype: <http://www.linkedmodel.org/schema/dtype#>.
-@prefix qudt: <http://qudt.org/schema/qudt/>.
-@prefix skos: <http://www.w3.org/2004/02/skos/core#>.
-@prefix vaem: <http://www.linkedmodel.org/schema/vaem#>.
-@prefix voag: <http://voag.linkedmodel.org/schema/voag#>.
-
-<http://example.org/alice> a <http://xmlns.com/foaf/0.1/Person>;
-    rdfs:label "Alice (PI)";
-    <http://xmlns.com/foaf/0.1/knows> <http://example.org/bob>, <http://example.org/carol>;
-    <http://xmlns.com/foaf/0.1/member> <http://example.org/acme>.
-<http://example.org/bob> a <http://xmlns.com/foaf/0.1/Person>;
-    rdfs:label "Bob";
-    <http://xmlns.com/foaf/0.1/knows> <http://example.org/carol>;
-    <http://xmlns.com/foaf/0.1/member> <http://example.org/acme>.
-<http://example.org/carol> a <http://xmlns.com/foaf/0.1/Person>;
-    rdfs:label "Carol";
-    <http://xmlns.com/foaf/0.1/member> <http://example.org/labs>.
-<http://example.org/dave> a <http://xmlns.com/foaf/0.1/Person>;
-    rdfs:label "Dave";
-    <http://xmlns.com/foaf/0.1/knows> <http://example.org/alice>;
-    <http://xmlns.com/foaf/0.1/member> <http://example.org/labs>.
-<http://example.org/acme> a <http://xmlns.com/foaf/0.1/Organization>;
-    rdfs:label "ACME Corp".
-<http://example.org/labs> a <http://xmlns.com/foaf/0.1/Organization>;
-    rdfs:label "Research Labs".
-<http://example.org/eve> a <http://xmlns.com/foaf/0.1/Person>;
-    rdfs:label "Eve";
-    <http://xmlns.com/foaf/0.1/knows> <http://example.org/bob>;
-    <http://xmlns.com/foaf/0.1/member> <http://example.org/labs>.
-
-```
-
-[Open this graph in VisGraph ↗](https://thhanke.github.io/visgraph/?url=https%3A%2F%2Fraw.githubusercontent.com%2FThHanke%2Fvisgraph%2Fmain%2Fdocs%2Fmcp-demo%2Ffoaf-social-network%2Fgraph.ttl)
+<!-- runner fills this in -->
 ```
