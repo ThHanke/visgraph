@@ -311,7 +311,7 @@
         (function waitSubmit() {
           var btn = findSendButton(findInput() || target);
           if (btn && !btn.disabled) {
-            if (++stableTicks >= 2) {
+            if (++stableTicks >= 3) {
               el = target; btn.click(); injectInProgress = false; return;
             }
           } else {
