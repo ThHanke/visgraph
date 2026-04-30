@@ -201,7 +201,9 @@
         var sendBtn = btns.find(function (b) {
           if (b.disabled) return false;
           var lbl = (b.getAttribute('aria-label') || b.title || b.textContent || '').toLowerCase();
-          return b.type === 'submit' || lbl.includes('send') || lbl.includes('senden') || lbl.includes('submit');
+          var cls = (b.className || '').toLowerCase();
+          return b.type === 'submit' || lbl.includes('send') || lbl.includes('senden') ||
+                 lbl.includes('submit') || cls.includes('send') || cls.includes('submit');
         });
         if (sendBtn) { sendBtn.click(); foundBtn = true; break; }
         cur = cur.parentElement;
@@ -547,8 +549,12 @@
     }
 
     // 3. Stop/abort affordance visible → generating.
-    //    Match both aria-label AND visible text content (exact word match to avoid false positives).
+    //    a) Text/aria-label match (OWUI, ChatGPT, etc.)
+    //    b) Icon-only stop buttons: SVG path prefix match (e.g. FhGenie uses Fluent UI
+    //       Dismiss24Regular icon — same button element swaps arrow→X during generation;
+    //       no aria-label or text, detected via path d attribute).
     var STOP_WORDS = ['stop', 'stopp', 'cancel', 'abort', 'halt', 'abbrechen', 'arrêter', 'interrompi'];
+    var STOP_SVG_D = ['M8.22 8.22']; // Fluent UI Dismiss24Regular (X icon)
     var btns = document.querySelectorAll('button:not([disabled])');
     for (var bi = 0; bi < btns.length; bi++) {
       var b = btns[bi];
@@ -557,6 +563,13 @@
       var txt = b.textContent.trim().toLowerCase();
       for (var wi = 0; wi < STOP_WORDS.length; wi++) {
         if (lbl.indexOf(STOP_WORDS[wi]) !== -1 || txt === STOP_WORDS[wi]) return true;
+      }
+      var paths = b.querySelectorAll('path[d]');
+      for (var pi = 0; pi < paths.length; pi++) {
+        var d = paths[pi].getAttribute('d') || '';
+        for (var di = 0; di < STOP_SVG_D.length; di++) {
+          if (d.indexOf(STOP_SVG_D[di]) === 0) return true;
+        }
       }
     }
 
