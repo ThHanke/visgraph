@@ -665,16 +665,17 @@
   }
 
   /* ── Fire-on-idle poll ─────────────────────────────────────────────────── */
-  // Polls every 500 ms. When isAiStreaming() transitions to false, scans the
-  // full page text and dispatches any tool calls not already in dispatchedSigs.
-  // dispatchedSigs is pre-seeded at inject time so calls already on the page
-  // never re-fire. Calls are identified by tool+params+id — the AI must vary
-  // the id to re-invoke the same tool in a later turn.
+  // Polls every 500 ms. Dispatches tool calls only on a streaming→idle transition
+  // so user messages (including the pasted starter prompt) are never processed —
+  // they arrive while idle and never trigger a streaming state.
   var idlePollTimer = null;
+  var prevStreaming = false;
 
   function idlePoll() {
     if (window.__vgRelayInstanceId !== instanceId) return; // stale instance
-    if (!isAiStreaming() && !isProcessing && callQueue.length === 0) {
+    var streaming = isAiStreaming();
+    // Only dispatch on the tick where streaming just ended
+    if (!streaming && prevStreaming && !isProcessing && callQueue.length === 0) {
       var text = document.body.innerText || document.body.textContent || '';
       var calls = extractAllToolCalls(text, dispatchedSigs);
       if (calls.length > 0) {
@@ -682,6 +683,7 @@
         processNextInQueue();
       }
     }
+    prevStreaming = streaming;
     idlePollTimer = setTimeout(idlePoll, 500);
   }
 
