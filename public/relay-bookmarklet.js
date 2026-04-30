@@ -221,16 +221,16 @@
       }
     }
 
-    // 4. Enter keydown — always dispatch for all input types.
-    // For contenteditable TipTap UIs (e.g. OWUI), the Enter key handler reads
-    // TipTap state directly, while btn.click() reads Svelte's async-updated
-    // prompt — which may not have flushed yet after setContent(). Enter is
-    // therefore the reliable submit path for these UIs.
-    ['keydown', 'keyup'].forEach(function (type) {
-      inputEl.dispatchEvent(new KeyboardEvent(type, {
-        key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true,
-      }));
-    });
+    // 4. Enter keydown — textarea UIs only, or when no button found.
+    // TipTap (OWUI) maps Enter → new paragraph, NOT submit. Button click is
+    // the correct submit path. Only fall back to Enter for non-TipTap UIs.
+    if (inputEl.tagName === 'TEXTAREA' || !foundBtn) {
+      ['keydown', 'keyup'].forEach(function (type) {
+        inputEl.dispatchEvent(new KeyboardEvent(type, {
+          key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true,
+        }));
+      });
+    }
   }
 
   /* ── Inject result into chat input and auto-submit ─────────────────────── */
@@ -317,13 +317,41 @@
         target.focus();
         var dispatched = false;
 
-        // ── Path 1: TipTap setContent (primary for OWUI/TipTap) ────────
-        // setContent(text, true) REPLACES all existing editor content — critical
-        // because OWUI sometimes pre-fills the editor with [RESPONSE] <uuid> as
-        // internal state. insertFromPaste appends; setContent replaces.
-        // Enter-based submit reads TipTap state directly so Svelte sync timing
-        // doesn't matter here.
+        // ── Step 0: Clear any pre-existing editor content ───────────────
+        // OWUI sometimes pre-fills TipTap with [RESPONSE] <uuid> internal state.
+        // Clear first so subsequent paste appends to empty = clean replace.
         try {
+          var tiptapClear = target.editor;
+          if (tiptapClear && tiptapClear.view && tiptapClear.view.dispatch) {
+            var cs = tiptapClear.view.state;
+            if (cs.doc.content.size > 2) { // >2 means non-empty (empty doc = 2 bytes)
+              tiptapClear.view.dispatch(cs.tr.delete(0, cs.doc.content.size));
+            }
+          }
+        } catch (_) {}
+
+        // ── Path 1: insertFromPaste (primary for OWUI/TipTap) ──────────
+        // Fires TipTap's handlePaste → updates TipTap AND syncs Svelte prompt
+        // synchronously → send button becomes enabled → btn.click() works.
+        // Editor was just cleared above so this appends to empty = clean insert.
+        // (setContent doesn't sync Svelte → button stays disabled → Enter fires
+        //  → TipTap maps Enter to new paragraph, not submit → no-op submit.)
+        try {
+          var dt0 = new DataTransfer();
+          dt0.setData('text/plain', text);
+          target.dispatchEvent(new InputEvent('beforeinput', {
+            inputType: 'insertFromPaste',
+            dataTransfer: dt0,
+            bubbles: true,
+            cancelable: true,
+          }));
+          dispatched = (target.editor
+            ? (target.editor.state || target.editor.view.state).doc.textContent.length > 0
+            : target.textContent.length > 0);
+        } catch (_) {}
+
+        // ── Path 2: TipTap setContent / raw PM dispatch (fallback) ──────
+        if (!dispatched) try {
           var tiptap = target.editor;
 
           // (a) TipTap high-level API
@@ -356,17 +384,16 @@
               }
             }
             if (pmView) {
-              var state = pmView.state;
-              var docSize = state.doc.content.size;
+              var pmState = pmView.state;
+              var docSize = pmState.doc.content.size;
               var endPos = docSize > 2 ? docSize - 1 : 1;
-              var pmTr = state.tr.insertText(text, 1, endPos);
-              pmView.dispatch(pmTr);
+              pmView.dispatch(pmState.tr.insertText(text, 1, endPos));
               dispatched = pmView.state.doc.textContent.length > 0;
             }
           }
         } catch (_) {}
 
-        // ── Path 2: beforeinput insertFromPaste with DataTransfer ───────
+        // ── Path 3: beforeinput insertFromPaste (last resort) ───────────
         if (!dispatched) {
           try {
             var dt = new DataTransfer();
