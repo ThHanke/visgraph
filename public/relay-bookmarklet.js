@@ -327,22 +327,29 @@
 
         tiptap.commands.focus();
         tiptap.commands.setContent(text, true);
-        var submitDeadline = Date.now() + 5000;
-        var stableTicks = 0;
-        (function waitSubmit() {
-          var btn = findSendButton(findInput() || target);
-          if (btn && !btn.disabled) {
-            if (++stableTicks >= 3) {
-              el = target; btn.click(); injectInProgress = false; return;
-            }
-          } else {
-            stableTicks = 0;
+        var submitDeadline = Date.now() + 10000;
+
+        // Try to submit, then check whether the editor was cleared.
+        // A cleared editor = OWUI accepted the submit. Retry every 300ms until
+        // it works or deadline. Only click when isAiStreaming() is false so we
+        // don't submit into a mid-think or post-stream annotation window.
+        // Initial 600ms grace period lets OWUI finish its post-stream annotation
+        // phase — no generic DOM/network signal reliably marks the end of it.
+        setTimeout(function trySubmit() {
+          var inp = findInput() || target;
+          var tp = inp.editor || tiptap;
+          var isEmpty = tp.isEmpty !== undefined ? tp.isEmpty
+            : !(tp.getText ? tp.getText().trim() : (inp.innerText || inp.textContent || '').trim());
+          if (isEmpty) { injectInProgress = false; return; }
+
+          if (!isAiStreaming()) {
+            var btn = findSendButton(inp);
+            if (btn && !btn.disabled) { el = inp; btn.click(); }
           }
-          if (Date.now() >= submitDeadline) {
-            el = target; submitInput(target); injectInProgress = false; return;
-          }
-          setTimeout(waitSubmit, 100);
-        })();
+
+          if (Date.now() >= submitDeadline) { injectInProgress = false; return; }
+          setTimeout(trySubmit, 300);
+        }, 600);
       })();
     }
 
