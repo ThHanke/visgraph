@@ -250,13 +250,13 @@
     }
 
     if (el.tagName === 'TEXTAREA') {
-      // Textarea: value setter is synchronous — submit immediately after.
+      // Textarea: set value via native setter + input event, then defer submit one
+      // render cycle so React/framework state updates before the button is clicked.
       el.focus();
       var setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
       setter.call(el, (el.value ? el.value + '\n' : '') + text);
       el.dispatchEvent(new Event('input', { bubbles: true }));
-      submitInput(el);
-      injectInProgress = false;
+      setTimeout(function () { submitInput(el); injectInProgress = false; }, 50);
     } else {
       // TipTap/ProseMirror contenteditable (OWUI).
       // setContent(text, true) atomically replaces all content — no UUID pre-fill survives.
