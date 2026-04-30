@@ -304,20 +304,24 @@
           return;
         }
 
-        var done = false;
-        function finish() {
-          if (done) return;
-          done = true;
-          try { tiptap.off('transaction', finish); } catch (_) {}
-          el = target;
-          submitInput(target);
-          injectInProgress = false;
-        }
-
-        tiptap.on('transaction', finish);
-        setTimeout(finish, 300);
         tiptap.commands.focus();
         tiptap.commands.setContent(text, true);
+        var submitDeadline = Date.now() + 5000;
+        var stableTicks = 0;
+        (function waitSubmit() {
+          var btn = findSendButton(findInput() || target);
+          if (btn && !btn.disabled) {
+            if (++stableTicks >= 2) {
+              el = target; btn.click(); injectInProgress = false; return;
+            }
+          } else {
+            stableTicks = 0;
+          }
+          if (Date.now() >= submitDeadline) {
+            el = target; submitInput(target); injectInProgress = false; return;
+          }
+          setTimeout(waitSubmit, 100);
+        })();
       })();
     }
 
@@ -586,13 +590,7 @@
       var xPath = sendBtn.querySelector('path[d^="M8.22 8.22"]');
       if (xPath && sendBtn.offsetWidth > 0) return true;
 
-      // Disabled while input has content = generating (OWUI pattern)
-      if (sendBtn.disabled && inp) {
-        var content = inp.tagName === 'TEXTAREA'
-          ? inp.value
-          : (inp.innerText || inp.textContent || '');
-        if (content.trim().length > 0) return true;
-      }
+      if (sendBtn.disabled) return true;   // disabled for any reason = not ready
 
       // Send button present, enabled, no stop icon → idle
       return false;
