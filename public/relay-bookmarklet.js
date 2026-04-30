@@ -317,31 +317,13 @@
         target.focus();
         var dispatched = false;
 
-        // ── Path 1: beforeinput insertFromPaste with DataTransfer ──────
-        // Simulates a real Ctrl+V paste — fires TipTap's handlePaste which
-        // updates both TipTap state AND Svelte's prompt synchronously.
-        // Preferred over setContent because btn.click() reads Svelte state,
-        // and setContent's onTransaction fires as a microtask (too late for click).
+        // ── Path 1: TipTap setContent (primary for OWUI/TipTap) ────────
+        // setContent(text, true) REPLACES all existing editor content — critical
+        // because OWUI sometimes pre-fills the editor with [RESPONSE] <uuid> as
+        // internal state. insertFromPaste appends; setContent replaces.
+        // Enter-based submit reads TipTap state directly so Svelte sync timing
+        // doesn't matter here.
         try {
-          var dt = new DataTransfer();
-          dt.setData('text/plain', text);
-          target.dispatchEvent(new InputEvent('beforeinput', {
-            inputType: 'insertFromPaste',
-            dataTransfer: dt,
-            bubbles: true,
-            cancelable: true,
-          }));
-          dispatched = (target.editor
-            ? (target.editor.state || target.editor.view.state).doc.textContent.length > 0
-            : target.textContent.length > 0);
-        } catch (_) {}
-
-        // ── Path 2: TipTap / ProseMirror dispatch (fallback) ────────────
-        // Used when insertFromPaste isn't handled (non-OWUI TipTap builds).
-        //   a) tiptap.commands.setContent — full TipTap pipeline
-        //   b) pmView.dispatch (raw PM transaction) — older TipTap
-        //   c) own-property scan for EditorView-shaped objects (minified)
-        if (!dispatched) try {
           var tiptap = target.editor;
 
           // (a) TipTap high-level API
