@@ -1,10 +1,15 @@
 async (page) => {
   const TASK = "Build a pizza ontology. Add these three OWL classes:\n- Pizza (IRI: http://www.pizza-ontology.com/pizza.owl#Pizza)\n- PizzaBase (IRI: http://www.pizza-ontology.com/pizza.owl#PizzaBase)\n- PizzaTopping (IRI: http://www.pizza-ontology.com/pizza.owl#PizzaTopping)\n\nAll typeIri: http://www.w3.org/2002/07/owl#Class. After all three are added, run a layered layout with spacing 200.";
 
+  // Wait for model idle using rating buttons — more reliable than __vgIsStreaming for qwen3.
+  await page.waitForSelector('button[aria-label="Good Response"]', { timeout: 120000 })
+    .catch(() => {});
+  // Extra guard: wait for __vgIsStreaming if available
   await page.waitForFunction(
-    () => typeof window.__vgIsStreaming === 'function' && !window.__vgIsStreaming(),
-    { timeout: 60000, polling: 500 }
+    () => typeof window.__vgIsStreaming !== 'function' || !window.__vgIsStreaming(),
+    { timeout: 30000, polling: 500 }
   ).catch(() => {});
+  await page.waitForTimeout(500);
 
   const injected = await page.evaluate((text) => {
     if (typeof window.__vgInjectResult !== 'function') return false;

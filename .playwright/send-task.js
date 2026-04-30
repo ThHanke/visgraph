@@ -6,11 +6,13 @@ async (page, TASK) => {
   //   const sendTask = await fs.readFile('.playwright/send-task.js', 'utf8');
   //   await page.evaluate(new Function('page', sendTask), TASK);
 
-  // Wait for model to be idle
+  // Wait for model idle — rating buttons are reliable for qwen3 (no false negatives during think phase)
+  await page.waitForSelector('button[aria-label="Good Response"]', { timeout: 120000 }).catch(() => {});
   await page.waitForFunction(
-    () => typeof window.__vgIsStreaming === 'function' && !window.__vgIsStreaming(),
-    { timeout: 60000, polling: 500 }
+    () => typeof window.__vgIsStreaming !== 'function' || !window.__vgIsStreaming(),
+    { timeout: 30000, polling: 500 }
   ).catch(() => {});
+  await page.waitForTimeout(500);
 
   const injected = await page.evaluate((text) => {
     if (typeof window.__vgInjectResult !== 'function') return false;

@@ -14,14 +14,17 @@ async (page) => {
   await page.waitForTimeout(400);
 
   const searchInput = await page.$('input[placeholder*="Search" i], input[placeholder*="search" i]');
+  // MODEL: mistral-small3.1 — no thinking mode, reliable instruction following
+  // Change to 'qwen3' for qwen3:8b (requires high num_predict to avoid truncation)
+  const MODEL = 'mistral-small3.1';
   if (searchInput) {
-    await searchInput.fill('qwen3');
+    await searchInput.fill(MODEL);
     await page.waitForTimeout(400);
   }
 
-  const qwenBtn = await page.$('button:has-text("qwen3:8b"), [data-value*="qwen3"]');
-  if (qwenBtn) {
-    await qwenBtn.click();
+  const modelBtn2 = await page.$(`button:has-text("${MODEL}"), [data-value*="${MODEL}"]`);
+  if (modelBtn2) {
+    await modelBtn2.click();
     await page.waitForTimeout(400);
   }
 

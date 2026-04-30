@@ -747,54 +747,35 @@
     }, 200);
   }
 
-  /* ── MutationObserver ──────────────────────────────────────────────────── */
-  var debounceTimer = null;
-  var pendingNodes = new Set();
+  /* ── Fire-on-idle poll ─────────────────────────────────────────────────── */
+  // Replaces MutationObserver mid-stream dispatch.
+  // Waits for isAiStreaming() = false, then reads the complete page text and
+  // extracts tool calls. dispatchedSigs deduplicates across turns.
+  var lastIdleText = '';
+  var idlePollTimer = null;
 
-  function flushPending() {
-    pendingNodes.forEach(function (node) { parseAndEnqueue(node); });
-    pendingNodes.clear();
-  }
-
-  function collectAncestors(node) {
-    var el = node.nodeType === 3 ? node.parentElement : node;
-    // Ignore mutations inside editable elements (user typing / our inject)
-    var check = el;
-    while (check && check !== document.body) {
-      if (check.tagName === 'TEXTAREA' || check.contentEditable === 'true') return;
-      check = check.parentElement;
-    }
-    // Stop at the NEAREST block element — do not climb to large chat-stream
-    // containers that also contain user messages with example tool calls.
-    // MCP tool calls are always in a single <code> block; the nearest p/code/div
-    // is sufficient to find them.
-    while (el && el !== document.body) {
-      var tag = el.tagName ? el.tagName.toLowerCase() : '';
-      if (tag === 'p' || tag === 'li' || tag === 'pre' || tag === 'code' ||
-          tag === 'div' || tag === 'section' || tag === 'article') {
-        pendingNodes.add(el);
-        return;
+  function idlePoll() {
+    if (window.__vgRelayInstanceId !== instanceId) return; // stale instance
+    if (!isAiStreaming() && !isProcessing && callQueue.length === 0) {
+      var text = document.body.innerText || document.body.textContent || '';
+      if (text !== lastIdleText) {
+        lastIdleText = text;
+        var calls = extractAllToolCalls(text, dispatchedSigs);
+        if (calls.length > 0) {
+          callQueue = callQueue.concat(calls);
+          processNextInQueue();
+        }
       }
-      el = el.parentElement;
     }
-    if (el === document.body) pendingNodes.add(document.body);
+    idlePollTimer = setTimeout(idlePoll, 500);
   }
 
-  var observer = new MutationObserver(function (mutations) {
-    mutations.forEach(function (m) {
-      m.addedNodes.forEach(function (n) { collectAncestors(n); });
-      if (m.type === 'characterData') collectAncestors(m.target);
-    });
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(flushPending, DEBOUNCE_MS);
-  });
-
-  // Pre-seed dispatchedSigs with all tool calls already visible on the page
-  // BEFORE starting the observer, so newly-arriving AI messages are not seeded.
-  // This prevents system-prompt examples (id:0 etc.) from being dispatched.
+  // Pre-seed dispatchedSigs with everything already on the page (prevents
+  // re-dispatching example calls from system prompts or INSTR messages).
   extractAllToolCalls(document.body.innerText || document.body.textContent || '', dispatchedSigs);
+  lastIdleText = document.body.innerText || document.body.textContent || '';
 
-  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-  window.__vgRelayObserver = observer;
+  idlePoll();
+  window.__vgRelayObserver = { disconnect: function () { clearTimeout(idlePollTimer); idlePollTimer = null; } };
 
 })();
