@@ -270,13 +270,7 @@
             cur = cur.parentElement;
           }
         }
-        // Also fire if TipTap already has content — Enter reads TipTap state directly,
-        // bypassing Svelte's async prompt sync entirely.
-        var tiptap = el.editor;
-        var hasContent = tiptap
-          ? ((tiptap.state || (tiptap.view && tiptap.view.state) || {}).doc || {}).textContent.length > 0
-          : el.textContent.length > 0;
-        if (btnEnabled || hasContent || Date.now() >= deadline) {
+        if (btnEnabled || Date.now() >= deadline) {
           submitInput(el);
           injectInProgress = false;
         } else {
@@ -317,41 +311,13 @@
         target.focus();
         var dispatched = false;
 
-        // ── Step 0: Clear any pre-existing editor content ───────────────
-        // OWUI sometimes pre-fills TipTap with [RESPONSE] <uuid> internal state.
-        // Clear first so subsequent paste appends to empty = clean replace.
+        // ── Path 1: TipTap setContent (primary for OWUI/TipTap) ────────
+        // setContent(text, true) atomically REPLACES all editor content —
+        // no UUID pre-fill survives. Fires onTransaction as a microtask so
+        // Svelte syncs the prompt and enables the send button by the next
+        // setTimeout tick (~50 ms). doSubmit polls for btnEnabled so it
+        // waits for that sync rather than firing prematurely.
         try {
-          var tiptapClear = target.editor;
-          if (tiptapClear && tiptapClear.view && tiptapClear.view.dispatch) {
-            var cs = tiptapClear.view.state;
-            if (cs.doc.content.size > 2) { // >2 means non-empty (empty doc = 2 bytes)
-              tiptapClear.view.dispatch(cs.tr.delete(0, cs.doc.content.size));
-            }
-          }
-        } catch (_) {}
-
-        // ── Path 1: insertFromPaste (primary for OWUI/TipTap) ──────────
-        // Fires TipTap's handlePaste → updates TipTap AND syncs Svelte prompt
-        // synchronously → send button becomes enabled → btn.click() works.
-        // Editor was just cleared above so this appends to empty = clean insert.
-        // (setContent doesn't sync Svelte → button stays disabled → Enter fires
-        //  → TipTap maps Enter to new paragraph, not submit → no-op submit.)
-        try {
-          var dt0 = new DataTransfer();
-          dt0.setData('text/plain', text);
-          target.dispatchEvent(new InputEvent('beforeinput', {
-            inputType: 'insertFromPaste',
-            dataTransfer: dt0,
-            bubbles: true,
-            cancelable: true,
-          }));
-          dispatched = (target.editor
-            ? (target.editor.state || target.editor.view.state).doc.textContent.length > 0
-            : target.textContent.length > 0);
-        } catch (_) {}
-
-        // ── Path 2: TipTap setContent / raw PM dispatch (fallback) ──────
-        if (!dispatched) try {
           var tiptap = target.editor;
 
           // (a) TipTap high-level API
