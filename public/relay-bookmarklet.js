@@ -590,10 +590,19 @@
       var xPath = sendBtn.querySelector('path[d^="M8.22 8.22"]');
       if (xPath && sendBtn.offsetWidth > 0) return true;
 
-      if (sendBtn.disabled) return true;   // disabled for any reason = not ready
+      // Button enabled = UI is ready → idle
+      if (!sendBtn.disabled) return false;
 
-      // Send button present, enabled, no stop icon → idle
-      return false;
+      // Button disabled + has content = generating (OWUI pattern)
+      if (inp) {
+        var content = inp.tagName === 'TEXTAREA'
+          ? inp.value
+          : (inp.innerText || inp.textContent || '');
+        if (content.trim().length > 0) return true;
+      }
+      // Button disabled + empty input: fall through to generic signals.
+      // Handles FhGenie (disabled when no content, not streaming) vs
+      // OWUI thinking (disabled + empty but spinner present below).
     }
 
     // Fallback for UIs without a discoverable send button
