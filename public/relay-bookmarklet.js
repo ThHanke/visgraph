@@ -247,149 +247,47 @@
       return false;
     }
 
-    // Wait for send button to be enabled (or TipTap content present), then submit.
-    // Do NOT re-check isAiStreaming() here — we're already post-generation (called from
-    // injectCombinedResult after fire-on-idle confirmed idle). Checking isAiStreaming()
-    // here would block submission: content injection itself causes DOM mutations that
-    // make isAiStreaming() return true for STREAM_QUIET_MS (4 s), deadlocking the poll.
-    function doSubmit() {
-      var deadline = Date.now() + 5000;
-      (function poll() {
-        var directBtn = document.getElementById('send-message-button');
-        var btnEnabled = directBtn && !directBtn.disabled;
-        if (!btnEnabled) {
-          // Also check tree-climbed send button
-          var cur = el.parentElement;
-          while (cur && cur !== document.body && !btnEnabled) {
-            var found = Array.from(cur.querySelectorAll('button')).find(function (b) {
-              if (b.disabled) return false;
-              var lbl = (b.getAttribute('aria-label') || b.title || b.textContent || '').toLowerCase();
-              return b.type === 'submit' || lbl.includes('send') || lbl.includes('senden') || lbl.includes('submit');
-            });
-            if (found) btnEnabled = true;
-            cur = cur.parentElement;
-          }
-        }
-        if (btnEnabled || Date.now() >= deadline) {
-          submitInput(el);
-          injectInProgress = false;
-        } else {
-          setTimeout(poll, 50);
-        }
-      })();
-    }
-
     if (el.tagName === 'TEXTAREA') {
+      // Textarea: value setter is synchronous — submit immediately after.
       el.focus();
       var setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
       setter.call(el, (el.value ? el.value + '\n' : '') + text);
       el.dispatchEvent(new Event('input', { bubbles: true }));
-      doSubmit();
+      submitInput(el);
+      injectInProgress = false;
     } else {
-      // ProseMirror / TipTap contenteditable (OpenWebUI, ChatGPT…)
-      //
-      // Three-path strategy, most reliable first:
-      //
-      // Path 1: Direct ProseMirror view dispatch via element.pmViewDesc.view.
-      //   TipTap attaches the ProseMirror EditorView to the DOM element.
-      //   Dispatching a transaction through it updates both PM state and Svelte
-      //   store atomically — no DOM reconciliation, no race conditions.
-      //
-      // Path 2: Synthetic beforeinput(insertFromPaste) with DataTransfer.
-      //   ProseMirror handles this through its beforeinput handler, reading
-      //   event.dataTransfer.  Falls back to this if Path 1 isn't available.
-      //
-      // Path 3: beforeinput(insertText) with data field — last resort.
-      //
-      // Focus first, defer 50 ms so ProseMirror has an active selection.
+      // TipTap/ProseMirror contenteditable (OWUI).
+      // setContent(text, true) atomically replaces all content — no UUID pre-fill survives.
+      // TipTap emits 'transaction' after all onTransaction callbacks complete (including
+      // Svelte's prompt sync), so the send button is enabled when finish() fires.
+      // 300 ms safety timeout handles edge cases where the event never fires.
       var live = findInput() || el;
       live.focus();
       el = live;
 
       setTimeout(function () {
         var target = findInput() || el;
-        target.focus();
-        var dispatched = false;
+        var tiptap = target.editor;
 
-        // ── Path 1: TipTap setContent (primary for OWUI/TipTap) ────────
-        // setContent(text, true) atomically REPLACES all editor content —
-        // no UUID pre-fill survives. Fires onTransaction as a microtask so
-        // Svelte syncs the prompt and enables the send button by the next
-        // setTimeout tick (~50 ms). doSubmit polls for btnEnabled so it
-        // waits for that sync rather than firing prematurely.
-        try {
-          var tiptap = target.editor;
-
-          // (a) TipTap high-level API
-          if (tiptap && tiptap.commands && typeof tiptap.commands.setContent === 'function') {
-            try {
-              tiptap.commands.focus();
-              tiptap.commands.setContent(text, true);
-              dispatched = (tiptap.state || tiptap.view.state).doc.textContent.length > 0;
-            } catch (_) {}
-          }
-
-          // (b) raw PM dispatch
-          if (!dispatched) {
-            var pmView = null;
-            if (tiptap && tiptap.view && typeof tiptap.view.dispatch === 'function') {
-              pmView = tiptap.view;
-            }
-            if (!pmView) {
-              var desc = target.pmViewDesc;
-              if (desc && desc.view && typeof desc.view.dispatch === 'function') pmView = desc.view;
-            }
-            if (!pmView) {
-              var ownKeys = Object.keys(target);
-              for (var oi = 0; oi < ownKeys.length; oi++) {
-                try {
-                  var ov = target[ownKeys[oi]];
-                  if (ov && typeof ov === 'object' && typeof ov.dispatch === 'function' &&
-                      ov.state && typeof ov.state.tr === 'object') { pmView = ov; break; }
-                } catch (_) {}
-              }
-            }
-            if (pmView) {
-              var pmState = pmView.state;
-              var docSize = pmState.doc.content.size;
-              var endPos = docSize > 2 ? docSize - 1 : 1;
-              pmView.dispatch(pmState.tr.insertText(text, 1, endPos));
-              dispatched = pmView.state.doc.textContent.length > 0;
-            }
-          }
-        } catch (_) {}
-
-        // ── Path 3: beforeinput insertFromPaste (last resort) ───────────
-        if (!dispatched) {
-          try {
-            var dt = new DataTransfer();
-            dt.setData('text/plain', text);
-            target.dispatchEvent(new InputEvent('beforeinput', {
-              inputType: 'insertFromPaste',
-              dataTransfer: dt,
-              bubbles: true,
-              cancelable: true,
-            }));
-            dispatched = true;
-          } catch (_) {}
+        if (!tiptap || !tiptap.commands || typeof tiptap.commands.setContent !== 'function') {
+          injectInProgress = false;
+          return;
         }
 
-        // ── Path 3: beforeinput insertText ──────────────────────────────
-        if (!dispatched) {
-          try {
-            target.dispatchEvent(new InputEvent('beforeinput', {
-              inputType: 'insertText',
-              data: text,
-              bubbles: true,
-              cancelable: true,
-            }));
-          } catch (_) {}
+        var done = false;
+        function finish() {
+          if (done) return;
+          done = true;
+          try { tiptap.off('transaction', finish); } catch (_) {}
+          el = target;
+          submitInput(target);
+          injectInProgress = false;
         }
 
-        // Belt-and-suspenders: fire input so Svelte bindings notice any change
-        target.dispatchEvent(new Event('input', { bubbles: true }));
-        el = target;
-        doSubmit();
+        tiptap.on('transaction', finish);
+        setTimeout(finish, 300);
+        tiptap.commands.focus();
+        tiptap.commands.setContent(text, true);
       }, 50);
     }
 
