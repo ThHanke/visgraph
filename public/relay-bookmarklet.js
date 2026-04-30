@@ -623,19 +623,41 @@
   }
 
   /* ── Fire-on-idle poll ─────────────────────────────────────────────────── */
-  // Replaces MutationObserver mid-stream dispatch.
-  // Waits for isAiStreaming() = false, then reads the complete page text and
-  // extracts tool calls. dispatchedSigs deduplicates across turns.
+  // Waits until the AI has stopped generating, then reads the new page text
+  // (delta since last snapshot) and dispatches any tool calls found in it.
+  //
+  // Idle detection uses two independent signals (either is sufficient):
+  //   a) isAiStreaming() = false  (signal-based: aria, spinners, stop button, DOM rate)
+  //   b) Text stability: page innerText unchanged for STREAM_QUIET_MS
+  //      → catches UIs (e.g. FhGenie) whose background DOM mutations keep (a) stuck
+  //
+  // Delta extraction (text.slice(lastIdleText.length)) means:
+  //   • Same call in a later turn re-fires — "call it again" works
+  //   • Calls from previous turns are never re-dispatched
+  //   • Per-turn Set deduplicates duplicate calls within one response
   var lastIdleText = '';
+  var lastCheckedText = '';
+  var lastTextChangeTime = 0;
   var idlePollTimer = null;
 
   function idlePoll() {
     if (window.__vgRelayInstanceId !== instanceId) return; // stale instance
-    if (!isAiStreaming() && !isProcessing && callQueue.length === 0) {
-      var text = document.body.innerText || document.body.textContent || '';
+    var text = document.body.innerText || document.body.textContent || '';
+    var now = Date.now();
+
+    // Track text stability (independent of general DOM mutation rate)
+    if (text !== lastCheckedText) {
+      lastCheckedText = text;
+      lastTextChangeTime = now;
+    }
+    var textStable = lastTextChangeTime > 0 && (now - lastTextChangeTime) >= STREAM_QUIET_MS;
+
+    if ((!isAiStreaming() || textStable) && !isProcessing && callQueue.length === 0) {
       if (text !== lastIdleText) {
+        var delta = text.slice(lastIdleText.length); // only new text since last snapshot
         lastIdleText = text;
-        var calls = extractAllToolCalls(text, dispatchedSigs);
+        var turnSeen = new Set(); // per-turn dedup only — same call fires again next turn
+        var calls = extractAllToolCalls(delta, turnSeen);
         if (calls.length > 0) {
           callQueue = callQueue.concat(calls);
           processNextInQueue();
@@ -645,10 +667,10 @@
     idlePollTimer = setTimeout(idlePoll, 500);
   }
 
-  // Pre-seed dispatchedSigs with everything already on the page (prevents
-  // re-dispatching example calls from system prompts or INSTR messages).
-  extractAllToolCalls(document.body.innerText || document.body.textContent || '', dispatchedSigs);
+  // Baseline: set text snapshot so pre-existing page content is never dispatched.
   lastIdleText = document.body.innerText || document.body.textContent || '';
+  lastCheckedText = lastIdleText;
+  lastTextChangeTime = Date.now();
 
   idlePoll();
   window.__vgRelayObserver = { disconnect: function () { clearTimeout(idlePollTimer); idlePollTimer = null; } };
