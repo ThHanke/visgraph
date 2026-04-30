@@ -247,12 +247,14 @@
       return false;
     }
 
-    // Wait for model to finish (isAiStreaming) then for send button to be enabled.
-    // Deadline 60 s to handle long thinking phases.
+    // Wait for send button to be enabled (or TipTap content present), then submit.
+    // Do NOT re-check isAiStreaming() here — we're already post-generation (called from
+    // injectCombinedResult after fire-on-idle confirmed idle). Checking isAiStreaming()
+    // here would block submission: content injection itself causes DOM mutations that
+    // make isAiStreaming() return true for STREAM_QUIET_MS (4 s), deadlocking the poll.
     function doSubmit() {
-      var deadline = Date.now() + 60000;
+      var deadline = Date.now() + 5000;
       (function poll() {
-        if (isAiStreaming()) { setTimeout(poll, 300); return; }
         var directBtn = document.getElementById('send-message-button');
         var btnEnabled = directBtn && !directBtn.disabled;
         if (!btnEnabled) {

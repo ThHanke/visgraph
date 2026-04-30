@@ -20,7 +20,9 @@ export function bookmarkletPlugin(): Plugin {
     async load(id) {
       if (id !== RESOLVED_ID) return;
 
-      const src = readFileSync(resolve(root, 'public/relay-bookmarklet.js'), 'utf8');
+      const filePath = resolve(root, 'public/relay-bookmarklet.js');
+      this.addWatchFile(filePath); // invalidate virtual module when source changes
+      const src = readFileSync(filePath, 'utf8');
       const { code } = await transform(src, {
         minify: true,
         target: 'es2015',
