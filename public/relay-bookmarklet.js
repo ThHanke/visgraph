@@ -34,6 +34,19 @@
     window.__vgRelayWatcher = null;
   }
 
+  /* ── Streaming detector — mutation-rate based, no UI-specific selectors ── */
+  // Records timestamp of last DOM mutation. isAiStreaming() uses this as a
+  // generic fallback: if the page mutated recently, generation is likely active.
+  var STREAM_QUIET_MS = 1500; // ms of DOM silence before we consider generation done
+  window.__vgLastMutation = window.__vgLastMutation || 0;
+  var streamObserver = new MutationObserver(function () {
+    window.__vgLastMutation = Date.now();
+  });
+  streamObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
+  // Re-register under the relay observer slot so it's killed on next inject.
+  if (window.__vgStreamObserver) { try { window.__vgStreamObserver.disconnect(); } catch (_) {} }
+  window.__vgStreamObserver = streamObserver;
+
   /* ── Instance ID — deactivates old message listeners ──────────────────── */
   // Every click stamps a new ID.  The message listener checks at runtime and
   // ignores messages if a newer instance has taken over.
@@ -208,14 +221,16 @@
       }
     }
 
-    // 4. Enter keydown — textarea UIs only (TipTap: Enter = new paragraph)
-    if (inputEl.tagName === 'TEXTAREA' || !foundBtn) {
-      ['keydown', 'keyup'].forEach(function (type) {
-        inputEl.dispatchEvent(new KeyboardEvent(type, {
-          key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true,
-        }));
-      });
-    }
+    // 4. Enter keydown — always dispatch for all input types.
+    // For contenteditable TipTap UIs (e.g. OWUI), the Enter key handler reads
+    // TipTap state directly, while btn.click() reads Svelte's async-updated
+    // prompt — which may not have flushed yet after setContent(). Enter is
+    // therefore the reliable submit path for these UIs.
+    ['keydown', 'keyup'].forEach(function (type) {
+      inputEl.dispatchEvent(new KeyboardEvent(type, {
+        key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true,
+      }));
+    });
   }
 
   /* ── Inject result into chat input and auto-submit ─────────────────────── */
@@ -232,11 +247,12 @@
       return false;
     }
 
-    // Wait until the send button is enabled (Svelte/TipTap state flushed) then submit.
-    // Poll up to 3 s in 50 ms steps; fall through to requestSubmit() on timeout.
+    // Wait for model to finish (isAiStreaming) then for send button to be enabled.
+    // Deadline 60 s to handle long thinking phases.
     function doSubmit() {
-      var deadline = Date.now() + 3000;
+      var deadline = Date.now() + 60000;
       (function poll() {
+        if (isAiStreaming()) { setTimeout(poll, 300); return; }
         var directBtn = document.getElementById('send-message-button');
         var btnEnabled = directBtn && !directBtn.disabled;
         if (!btnEnabled) {
@@ -252,7 +268,13 @@
             cur = cur.parentElement;
           }
         }
-        if (btnEnabled || Date.now() >= deadline) {
+        // Also fire if TipTap already has content — Enter reads TipTap state directly,
+        // bypassing Svelte's async prompt sync entirely.
+        var tiptap = el.editor;
+        var hasContent = tiptap
+          ? ((tiptap.state || (tiptap.view && tiptap.view.state) || {}).doc || {}).textContent.length > 0
+          : el.textContent.length > 0;
+        if (btnEnabled || hasContent || Date.now() >= deadline) {
           submitInput(el);
           injectInProgress = false;
         } else {
@@ -293,26 +315,43 @@
         target.focus();
         var dispatched = false;
 
-        // ── Path 1: TipTap / ProseMirror dispatch ───────────────────────
-        // Strategies (most reliable first):
-        //   a) tiptap.commands.setContent — full TipTap pipeline, fires onTransaction
-        //      → onChange → Svelte prompt update → send button enables
-        //   b) pmView.dispatch (raw PM transaction) — fallback for older TipTap
-        //   c) own-property scan for EditorView-shaped objects (minified builds)
+        // ── Path 1: beforeinput insertFromPaste with DataTransfer ──────
+        // Simulates a real Ctrl+V paste — fires TipTap's handlePaste which
+        // updates both TipTap state AND Svelte's prompt synchronously.
+        // Preferred over setContent because btn.click() reads Svelte state,
+        // and setContent's onTransaction fires as a microtask (too late for click).
         try {
+          var dt = new DataTransfer();
+          dt.setData('text/plain', text);
+          target.dispatchEvent(new InputEvent('beforeinput', {
+            inputType: 'insertFromPaste',
+            dataTransfer: dt,
+            bubbles: true,
+            cancelable: true,
+          }));
+          dispatched = (target.editor
+            ? (target.editor.state || target.editor.view.state).doc.textContent.length > 0
+            : target.textContent.length > 0);
+        } catch (_) {}
+
+        // ── Path 2: TipTap / ProseMirror dispatch (fallback) ────────────
+        // Used when insertFromPaste isn't handled (non-OWUI TipTap builds).
+        //   a) tiptap.commands.setContent — full TipTap pipeline
+        //   b) pmView.dispatch (raw PM transaction) — older TipTap
+        //   c) own-property scan for EditorView-shaped objects (minified)
+        if (!dispatched) try {
           var tiptap = target.editor;
 
-          // (a) TipTap high-level API — preferred; goes through full callback chain
+          // (a) TipTap high-level API
           if (tiptap && tiptap.commands && typeof tiptap.commands.setContent === 'function') {
             try {
               tiptap.commands.focus();
-              // setContent(content, emitUpdate) — emitUpdate=true fires onTransaction
               tiptap.commands.setContent(text, true);
               dispatched = (tiptap.state || tiptap.view.state).doc.textContent.length > 0;
             } catch (_) {}
           }
 
-          // (b) raw PM dispatch — works when tiptap.commands unavailable
+          // (b) raw PM dispatch
           if (!dispatched) {
             var pmView = null;
             if (tiptap && tiptap.view && typeof tiptap.view.dispatch === 'function') {
@@ -609,20 +648,49 @@
   /* ── Streaming-idle detection ──────────────────────────────────────────── */
   function isAiStreaming() {
     var inp = findInput();
+
+    // 1. Input disabled or aria-disabled/busy → generating (textarea-based UIs)
     if (inp) {
-      // Textarea-specific: disabled during generation
       if (inp.tagName === 'TEXTAREA' && inp.disabled) return true;
       if (inp.getAttribute('aria-disabled') === 'true') return true;
-      // aria-busy on any ancestor signals generation in progress
       var el = inp.parentElement;
       while (el && el !== document.body) {
         if (el.getAttribute('aria-busy') === 'true') return true;
         el = el.parentElement;
       }
-      // NOTE: we intentionally do NOT check the send button's disabled state here.
-      // TipTap/ProseMirror UIs disable the send button when the editor is empty,
-      // which is the normal idle state — not a streaming indicator.
     }
+
+    // 2. Visible spinner/animation element outside the input → generating.
+    var SPINNER_SEL = '[class*="spinner" i],[class*="loading" i],[class*="typing" i],' +
+                      '[class*="thinking" i],[class*="generating" i],[class*="streaming" i],' +
+                      '[class*="skeleton" i]';
+    var spinnerEls = document.querySelectorAll(SPINNER_SEL);
+    for (var si = 0; si < spinnerEls.length; si++) {
+      var sp = spinnerEls[si];
+      if (inp && inp.contains(sp)) continue;
+      if (sp.offsetWidth > 0 || sp.offsetHeight > 0) return true;
+    }
+
+    // 3. Stop/abort affordance visible → generating.
+    //    Match both aria-label AND visible text content (exact word match to avoid false positives).
+    var STOP_WORDS = ['stop', 'stopp', 'cancel', 'abort', 'halt', 'abbrechen', 'arrêter', 'interrompi'];
+    var btns = document.querySelectorAll('button:not([disabled])');
+    for (var bi = 0; bi < btns.length; bi++) {
+      var b = btns[bi];
+      if (b.offsetWidth === 0 && b.offsetHeight === 0) continue;
+      var lbl = (b.getAttribute('aria-label') || b.title || '').toLowerCase();
+      var txt = b.textContent.trim().toLowerCase();
+      for (var wi = 0; wi < STOP_WORDS.length; wi++) {
+        if (lbl.indexOf(STOP_WORDS[wi]) !== -1 || txt === STOP_WORDS[wi]) return true;
+      }
+    }
+
+    // 4. Recent DOM mutations → generating (generic fallback).
+    //    Catches UIs where none of the above fire (icon-only stop buttons,
+    //    non-standard spinners, etc.). Any chat UI producing streaming output
+    //    mutates the DOM continuously; silence for STREAM_QUIET_MS = done.
+    if (window.__vgLastMutation && Date.now() - window.__vgLastMutation < STREAM_QUIET_MS) return true;
+
     return false;
   }
 
