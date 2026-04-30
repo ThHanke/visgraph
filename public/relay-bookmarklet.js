@@ -590,19 +590,18 @@
       var xPath = sendBtn.querySelector('path[d^="M8.22 8.22"]');
       if (xPath && sendBtn.offsetWidth > 0) return true;
 
-      // Button enabled = UI is ready → idle
+      // Enabled = idle; disabled + has content = generating (OWUI pattern).
+      // Disabled + empty = idle (FhGenie: send button disabled when input empty).
+      // OWUI during generation: send button is replaced by a stop button, so
+      // findSendButton() returns null and the fallback signals below handle it.
       if (!sendBtn.disabled) return false;
-
-      // Button disabled + has content = generating (OWUI pattern)
       if (inp) {
         var content = inp.tagName === 'TEXTAREA'
           ? inp.value
           : (inp.innerText || inp.textContent || '');
         if (content.trim().length > 0) return true;
       }
-      // Button disabled + empty input: fall through to generic signals.
-      // Handles FhGenie (disabled when no content, not streaming) vs
-      // OWUI thinking (disabled + empty but spinner present below).
+      return false;
     }
 
     // Fallback for UIs without a discoverable send button
@@ -697,16 +696,26 @@
   /* ── Fire-on-idle poll ─────────────────────────────────────────────────── */
   // Polls every 500 ms. getPageText() excludes input field content so typed
   // or pasted text never triggers dispatch.
+  // Requires 2 consecutive idle ticks (1 s) before extracting tool calls.
+  // This prevents user-message examples from being dispatched in the brief
+  // window between user submit and the model starting to stream.
   var idlePollTimer = null;
+  var idleConsecutive = 0;
 
   function idlePoll() {
     if (window.__vgRelayInstanceId !== instanceId) return; // stale instance
     if (!isAiStreaming() && !isProcessing && callQueue.length === 0) {
-      var calls = extractAllToolCalls(getPageText(), dispatchedSigs);
-      if (calls.length > 0) {
-        callQueue = callQueue.concat(calls);
-        processNextInQueue();
+      idleConsecutive++;
+      if (idleConsecutive >= 2) {
+        var calls = extractAllToolCalls(getPageText(), dispatchedSigs);
+        if (calls.length > 0) {
+          idleConsecutive = 0;
+          callQueue = callQueue.concat(calls);
+          processNextInQueue();
+        }
       }
+    } else {
+      idleConsecutive = 0;
     }
     idlePollTimer = setTimeout(idlePoll, 500);
   }
