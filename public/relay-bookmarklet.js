@@ -185,10 +185,31 @@
     });
   }
 
+  // Returns page text scoped to AI/assistant messages only where detectable,
+  // to avoid dispatching tool-call examples from user messages (e.g. starter prompt).
+  // Falls back to full page text (excluding input) for UIs without role markers.
+  function getAssistantText() {
+    // OWUI: data-message-author-role="assistant" on each message container
+    var nodes = document.querySelectorAll('[data-message-author-role="assistant"]');
+    if (!nodes.length) nodes = document.querySelectorAll('[data-role="assistant"]');
+    // FhGenie / generic: look for direct children of the message list that
+    // are NOT the user's own bubbles (right-aligned). Use aria role if present.
+    if (!nodes.length) nodes = document.querySelectorAll('[role="log"] [aria-label*="assistant" i], [role="log"] [aria-label*="bot" i]');
+    if (nodes.length) {
+      var parts = [];
+      for (var i = 0; i < nodes.length; i++) parts.push(nodes[i].innerText || nodes[i].textContent || '');
+      return parts.join('\n');
+    }
+    return null; // no assistant-scoped nodes found
+  }
+
   // Returns page text excluding the chat input element.
+  // Prefers assistant-message-scoped text to avoid user-message tool-call examples.
   // Textarea value is never in body.innerText so only contenteditable needs DOM exclusion.
   // Uses SHOW_ELEMENT|SHOW_TEXT so FILTER_REJECT on the input element skips its whole subtree.
   function getPageText() {
+    var assistantText = getAssistantText();
+    if (assistantText !== null) return assistantText;
     var inp = findInput();
     if (!inp || inp.tagName === 'TEXTAREA')
       return document.body.innerText || document.body.textContent || '';
