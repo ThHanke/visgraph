@@ -185,25 +185,18 @@
     });
   }
 
-  // Returns page text excluding the chat input element — tool calls typed or
-  // injected into the input must never be dispatched by the relay.
+  // Returns page text with the chat input's current content removed.
+  // Tool calls typed or pasted into the input must never be dispatched.
   function getPageText() {
+    var text = document.body.innerText || document.body.textContent || '';
     var inp = findInput();
-    if (!inp) return document.body.innerText || document.body.textContent || '';
-    var parts = [];
-    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-      acceptNode: function (node) {
-        var n = node.parentElement;
-        while (n && n !== document.body) {
-          if (n === inp) return NodeFilter.FILTER_REJECT;
-          n = n.parentElement;
-        }
-        return NodeFilter.FILTER_ACCEPT;
-      },
-    });
-    var node;
-    while ((node = walker.nextNode())) parts.push(node.nodeValue);
-    return parts.join(' ');
+    if (!inp) return text;
+    var inpText = (inp.tagName === 'TEXTAREA' ? inp.value : (inp.innerText || inp.textContent || '')).trim();
+    if (inpText.length > 0) {
+      var idx = text.indexOf(inpText);
+      if (idx !== -1) text = text.slice(0, idx) + text.slice(idx + inpText.length);
+    }
+    return text;
   }
 
   /* ── Submit the chat input ─────────────────────────────────────────────── */
@@ -686,24 +679,19 @@
   }
 
   /* ── Fire-on-idle poll ─────────────────────────────────────────────────── */
-  // Polls every 500 ms. Dispatches tool calls only on a streaming→idle transition
-  // so user messages (including the pasted starter prompt) are never processed —
-  // they arrive while idle and never trigger a streaming state.
+  // Polls every 500 ms. getPageText() excludes input field content so typed
+  // or pasted text never triggers dispatch.
   var idlePollTimer = null;
-  var prevStreaming = false;
 
   function idlePoll() {
     if (window.__vgRelayInstanceId !== instanceId) return; // stale instance
-    var streaming = isAiStreaming();
-    // Only dispatch on the tick where streaming just ended
-    if (!streaming && prevStreaming && !isProcessing && callQueue.length === 0) {
+    if (!isAiStreaming() && !isProcessing && callQueue.length === 0) {
       var calls = extractAllToolCalls(getPageText(), dispatchedSigs);
       if (calls.length > 0) {
         callQueue = callQueue.concat(calls);
         processNextInQueue();
       }
     }
-    prevStreaming = streaming;
     idlePollTimer = setTimeout(idlePoll, 500);
   }
 
