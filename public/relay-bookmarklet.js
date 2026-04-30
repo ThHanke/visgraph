@@ -259,15 +259,20 @@
       setTimeout(function () { submitInput(el); injectInProgress = false; }, 50);
     } else {
       // TipTap/ProseMirror contenteditable (OWUI).
-      // setContent(text, true) atomically replaces all content — no UUID pre-fill survives.
-      // TipTap emits 'transaction' after all onTransaction callbacks complete (including
-      // Svelte's prompt sync), so the send button is enabled when finish() fires.
-      // 300 ms safety timeout handles edge cases where the event never fires.
+      // Wait until the UI is ready (isAiStreaming()=false) before calling setContent —
+      // injecting while OWUI is still transitioning out of streaming state causes a race
+      // where the paste lands before the editor accepts input. Signal 4 (DOM mutation
+      // rate) was removed so this check no longer deadlocks on content injection.
       var live = findInput() || el;
       live.focus();
       el = live;
+      var injectDeadline = Date.now() + 10000;
 
-      setTimeout(function () {
+      (function waitReady() {
+        if (isAiStreaming() && Date.now() < injectDeadline) {
+          setTimeout(waitReady, 100);
+          return;
+        }
         var target = findInput() || el;
         var tiptap = target.editor;
 
@@ -290,7 +295,7 @@
         setTimeout(finish, 300);
         tiptap.commands.focus();
         tiptap.commands.setContent(text, true);
-      }, 50);
+      })();
     }
 
     return true;
