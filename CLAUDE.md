@@ -7,3 +7,7 @@ After adding or changing any user-facing feature, always check whether `README.m
 ## Demo videos
 
 See [docs/demo-scripts/HOWTO.md](docs/demo-scripts/HOWTO.md) when recording or creating demo videos.
+
+## OWUI relay sessions
+
+See [docs/owui-relay-session.md](docs/owui-relay-session.md) for the full session setup guide (MCP browser tabs, auth, startup sequence, format enforcement, debug checklist).

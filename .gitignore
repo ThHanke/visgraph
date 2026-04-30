@@ -43,3 +43,6 @@ public/relay-test.html
 .worktrees/
 docs/demo-videos/.last-run.json
 docs/demo-videos/e2e-*/
+
+# OpenWebUI demo auth state — contains session tokens, never commit
+.playwright/owui-auth.json

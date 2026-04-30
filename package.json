@@ -51,6 +51,8 @@
     "demo:scene": "node scripts/run-demo.mjs docs/mcp-demo/seeds/scene-ontology.md",
     "demo:pizza": "node scripts/run-demo.mjs docs/mcp-demo/seeds/pizza-tutorial.md",
     "demo:all": "npm run demo:reasoning && npm run demo:foaf && npm run demo:scene && npm run demo:pizza && node scripts/update-demo-table.mjs",
+    "demo:owui:auth": "node scripts/owui-auth.mjs",
+    "demo:owui:video": "xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' npx playwright test --config=playwright.openwebui.config.ts && node scripts/collect-demo-videos.mjs",
     "callgraph:generate": "node scripts/generate_call_graph_ts_morph.js",
     "callgraph:merge": "node scripts/merge_call_graphs.js",
     "callgraph:regen": "npm run callgraph:generate && npm run callgraph:merge",
