@@ -185,18 +185,27 @@
     });
   }
 
-  // Returns page text with the chat input's current content removed.
-  // Tool calls typed or pasted into the input must never be dispatched.
+  // Returns page text excluding the chat input element.
+  // Textarea value is never in body.innerText so only contenteditable needs DOM exclusion.
+  // Uses SHOW_ELEMENT|SHOW_TEXT so FILTER_REJECT on the input element skips its whole subtree.
   function getPageText() {
-    var text = document.body.innerText || document.body.textContent || '';
     var inp = findInput();
-    if (!inp) return text;
-    var inpText = (inp.tagName === 'TEXTAREA' ? inp.value : (inp.innerText || inp.textContent || '')).trim();
-    if (inpText.length > 0) {
-      var idx = text.indexOf(inpText);
-      if (idx !== -1) text = text.slice(0, idx) + text.slice(idx + inpText.length);
-    }
-    return text;
+    if (!inp || inp.tagName === 'TEXTAREA')
+      return document.body.innerText || document.body.textContent || '';
+    var parts = [];
+    var walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+      { acceptNode: function (node) {
+          if (node === inp) return NodeFilter.FILTER_REJECT;
+          if (node.nodeType === Node.TEXT_NODE) return NodeFilter.FILTER_ACCEPT;
+          return NodeFilter.FILTER_SKIP;
+        }
+      }
+    );
+    var node;
+    while ((node = walker.nextNode())) parts.push(node.nodeValue);
+    return parts.join(' ');
   }
 
   /* ── Submit the chat input ─────────────────────────────────────────────── */
