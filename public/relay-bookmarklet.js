@@ -185,6 +185,27 @@
     });
   }
 
+  // Returns page text excluding the chat input element — tool calls typed or
+  // injected into the input must never be dispatched by the relay.
+  function getPageText() {
+    var inp = findInput();
+    if (!inp) return document.body.innerText || document.body.textContent || '';
+    var parts = [];
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (node) {
+        var n = node.parentElement;
+        while (n && n !== document.body) {
+          if (n === inp) return NodeFilter.FILTER_REJECT;
+          n = n.parentElement;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    var node;
+    while ((node = walker.nextNode())) parts.push(node.nodeValue);
+    return parts.join(' ');
+  }
+
   /* ── Submit the chat input ─────────────────────────────────────────────── */
   function submitInput(inputEl) {
     var foundBtn = false;
@@ -676,8 +697,7 @@
     var streaming = isAiStreaming();
     // Only dispatch on the tick where streaming just ended
     if (!streaming && prevStreaming && !isProcessing && callQueue.length === 0) {
-      var text = document.body.innerText || document.body.textContent || '';
-      var calls = extractAllToolCalls(text, dispatchedSigs);
+      var calls = extractAllToolCalls(getPageText(), dispatchedSigs);
       if (calls.length > 0) {
         callQueue = callQueue.concat(calls);
         processNextInQueue();
@@ -688,7 +708,7 @@
   }
 
   // Pre-seed: mark all calls currently visible on the page as already dispatched.
-  extractAllToolCalls(document.body.innerText || document.body.textContent || '', dispatchedSigs);
+  extractAllToolCalls(getPageText(), dispatchedSigs);
 
   idlePoll();
   window.__vgRelayObserver = { disconnect: function () { clearTimeout(idlePollTimer); idlePollTimer = null; } };
