@@ -37,7 +37,7 @@
   /* ── Streaming detector — mutation-rate based, no UI-specific selectors ── */
   // Records timestamp of last DOM mutation. isAiStreaming() uses this as a
   // generic fallback: if the page mutated recently, generation is likely active.
-  var STREAM_QUIET_MS = 1500; // ms of DOM silence before we consider generation done
+  var STREAM_QUIET_MS = 4000; // ms of DOM silence before we consider generation done
   window.__vgLastMutation = window.__vgLastMutation || 0;
   var streamObserver = new MutationObserver(function () {
     window.__vgLastMutation = Date.now();
