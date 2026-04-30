@@ -523,10 +523,54 @@
   }
 
   /* ── Streaming-idle detection ──────────────────────────────────────────── */
+  // Primary signal: find the send/submit button and read its state.
+  // A visible, enabled send button (not showing a stop icon) = AI is idle.
+  // Absent, disabled-with-content, or replaced by a stop icon = generating.
+  // Fallback signals cover UIs where no send button is discoverable.
+  function findSendButton(inp) {
+    var direct = document.getElementById('send-message-button');
+    if (direct) return direct;
+    var cur = inp && inp.parentElement;
+    while (cur && cur !== document.body) {
+      var found = null;
+      var candidates = cur.querySelectorAll('button');
+      for (var ci = 0; ci < candidates.length; ci++) {
+        var cb = candidates[ci];
+        var lbl = (cb.getAttribute('aria-label') || cb.title || cb.textContent || '').toLowerCase();
+        var cls = (cb.className || '').toLowerCase();
+        if (cb.type === 'submit' || lbl.includes('send') || lbl.includes('senden') ||
+            lbl.includes('submit') || cls.includes('send') || cls.includes('submit')) {
+          found = cb; break;
+        }
+      }
+      if (found) return found;
+      cur = cur.parentElement;
+    }
+    return null;
+  }
+
   function isAiStreaming() {
     var inp = findInput();
+    var sendBtn = findSendButton(inp);
 
-    // 1. Input disabled or aria-disabled/busy → generating (textarea-based UIs)
+    if (sendBtn) {
+      // Stop icon in button (FhGenie: same button, SVG swaps arrow→X during generation)
+      var xPath = sendBtn.querySelector('path[d^="M8.22 8.22"]');
+      if (xPath && sendBtn.offsetWidth > 0) return true;
+
+      // Disabled while input has content = generating (OWUI pattern)
+      if (sendBtn.disabled && inp) {
+        var content = inp.tagName === 'TEXTAREA'
+          ? inp.value
+          : (inp.innerText || inp.textContent || '');
+        if (content.trim().length > 0) return true;
+      }
+
+      // Send button present, enabled, no stop icon → idle
+      return false;
+    }
+
+    // Fallback for UIs without a discoverable send button
     if (inp) {
       if (inp.tagName === 'TEXTAREA' && inp.disabled) return true;
       if (inp.getAttribute('aria-disabled') === 'true') return true;
@@ -537,7 +581,6 @@
       }
     }
 
-    // 2. Visible spinner/animation element outside the input → generating.
     var SPINNER_SEL = '[class*="spinner" i],[class*="loading" i],[class*="typing" i],' +
                       '[class*="thinking" i],[class*="generating" i],[class*="streaming" i],' +
                       '[class*="skeleton" i]';
@@ -548,36 +591,17 @@
       if (sp.offsetWidth > 0 || sp.offsetHeight > 0) return true;
     }
 
-    // 3. Stop/abort affordance visible → generating.
-    //    a) Text/aria-label match (OWUI, ChatGPT, etc.)
-    //    b) Icon-only stop buttons: SVG path prefix match (e.g. FhGenie uses Fluent UI
-    //       Dismiss24Regular icon — same button element swaps arrow→X during generation;
-    //       no aria-label or text, detected via path d attribute).
     var STOP_WORDS = ['stop', 'stopp', 'cancel', 'abort', 'halt', 'abbrechen', 'arrêter', 'interrompi'];
-    var STOP_SVG_D = ['M8.22 8.22']; // Fluent UI Dismiss24Regular (X icon)
     var btns = document.querySelectorAll('button:not([disabled])');
     for (var bi = 0; bi < btns.length; bi++) {
       var b = btns[bi];
       if (b.offsetWidth === 0 && b.offsetHeight === 0) continue;
-      var lbl = (b.getAttribute('aria-label') || b.title || '').toLowerCase();
+      var lbl2 = (b.getAttribute('aria-label') || b.title || '').toLowerCase();
       var txt = b.textContent.trim().toLowerCase();
       for (var wi = 0; wi < STOP_WORDS.length; wi++) {
-        if (lbl.indexOf(STOP_WORDS[wi]) !== -1 || txt === STOP_WORDS[wi]) return true;
-      }
-      var paths = b.querySelectorAll('path[d]');
-      for (var pi = 0; pi < paths.length; pi++) {
-        var d = paths[pi].getAttribute('d') || '';
-        for (var di = 0; di < STOP_SVG_D.length; di++) {
-          if (d.indexOf(STOP_SVG_D[di]) === 0) return true;
-        }
+        if (lbl2.indexOf(STOP_WORDS[wi]) !== -1 || txt === STOP_WORDS[wi]) return true;
       }
     }
-
-    // 4. Recent DOM mutations → generating (generic fallback).
-    //    Catches UIs where none of the above fire (icon-only stop buttons,
-    //    non-standard spinners, etc.). Any chat UI producing streaming output
-    //    mutates the DOM continuously; silence for STREAM_QUIET_MS = done.
-    if (window.__vgLastMutation && Date.now() - window.__vgLastMutation < STREAM_QUIET_MS) return true;
 
     return false;
   }
@@ -636,54 +660,28 @@
   }
 
   /* ── Fire-on-idle poll ─────────────────────────────────────────────────── */
-  // Waits until the AI has stopped generating, then reads the new page text
-  // (delta since last snapshot) and dispatches any tool calls found in it.
-  //
-  // Idle detection uses two independent signals (either is sufficient):
-  //   a) isAiStreaming() = false  (signal-based: aria, spinners, stop button, DOM rate)
-  //   b) Text stability: page innerText unchanged for STREAM_QUIET_MS
-  //      → catches UIs (e.g. FhGenie) whose background DOM mutations keep (a) stuck
-  //
-  // Delta extraction (text.slice(lastIdleText.length)) means:
-  //   • Same call in a later turn re-fires — "call it again" works
-  //   • Calls from previous turns are never re-dispatched
-  //   • Per-turn Set deduplicates duplicate calls within one response
-  var lastIdleText = '';
-  var lastCheckedText = '';
-  var lastTextChangeTime = 0;
+  // Polls every 500 ms. When isAiStreaming() transitions to false, scans the
+  // full page text and dispatches any tool calls not already in dispatchedSigs.
+  // dispatchedSigs is pre-seeded at inject time so calls already on the page
+  // never re-fire. Calls are identified by tool+params+id — the AI must vary
+  // the id to re-invoke the same tool in a later turn.
   var idlePollTimer = null;
 
   function idlePoll() {
     if (window.__vgRelayInstanceId !== instanceId) return; // stale instance
-    var text = document.body.innerText || document.body.textContent || '';
-    var now = Date.now();
-
-    // Track text stability (independent of general DOM mutation rate)
-    if (text !== lastCheckedText) {
-      lastCheckedText = text;
-      lastTextChangeTime = now;
-    }
-    var textStable = lastTextChangeTime > 0 && (now - lastTextChangeTime) >= STREAM_QUIET_MS;
-
-    if ((!isAiStreaming() || textStable) && !isProcessing && callQueue.length === 0) {
-      if (text !== lastIdleText) {
-        var delta = text.slice(lastIdleText.length); // only new text since last snapshot
-        lastIdleText = text;
-        var turnSeen = new Set(); // per-turn dedup only — same call fires again next turn
-        var calls = extractAllToolCalls(delta, turnSeen);
-        if (calls.length > 0) {
-          callQueue = callQueue.concat(calls);
-          processNextInQueue();
-        }
+    if (!isAiStreaming() && !isProcessing && callQueue.length === 0) {
+      var text = document.body.innerText || document.body.textContent || '';
+      var calls = extractAllToolCalls(text, dispatchedSigs);
+      if (calls.length > 0) {
+        callQueue = callQueue.concat(calls);
+        processNextInQueue();
       }
     }
     idlePollTimer = setTimeout(idlePoll, 500);
   }
 
-  // Baseline: set text snapshot so pre-existing page content is never dispatched.
-  lastIdleText = document.body.innerText || document.body.textContent || '';
-  lastCheckedText = lastIdleText;
-  lastTextChangeTime = Date.now();
+  // Pre-seed: mark all calls currently visible on the page as already dispatched.
+  extractAllToolCalls(document.body.innerText || document.body.textContent || '', dispatchedSigs);
 
   idlePoll();
   window.__vgRelayObserver = { disconnect: function () { clearTimeout(idlePollTimer); idlePollTimer = null; } };
