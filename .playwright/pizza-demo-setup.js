@@ -99,16 +99,25 @@ async (page) => {
     '`{"jsonrpc":"2.0","id":N,"method":"tools/call","params":{"name":"TOOL","arguments":{...}}}`',
     'WRONG (silently ignored): triple-backtick, <tool_call>, {"tool":"x",...}',
     '',
-    'Key tools and signatures:',
-    '  addNode(iri, typeIri?, label?)          — add entity to graph',
-    '  addLink(subjectIri, predicateIri, objectIri) — add triple',
-    '  runLayout(algorithm)                    — dagre-tb | elk-layered | dagre-lr',
-    '  getNodeDetails(iri)                     — inspect entity properties',
+    'Key tools:',
+    '  addNode(iri, typeIri?, label?)                         — add class/property/individual',
+    '  addLink(subjectIri, predicateIri, objectIri)           — add triple',
+    '  loadRdf(turtle)                                        — load Turtle (for blank-node restrictions)',
+    '  setViewMode(mode)                                      — "tbox" | "abox"',
+    '  runLayout(algorithm)                                   — dagre-tb | elk-layered | dagre-lr',
+    '  runReasoning({})                                       — run OWL-RL forward-chaining reasoner',
+    '  expandAll({})                                          — expand all nodes',
+    '  focusNode(iri)  expandNode(iri, expand)  getNodeDetails(iri)',
     '',
-    'Useful IRIs:',
-    '  owl:Class     = http://www.w3.org/2002/07/owl#Class',
+    'Key IRIs:',
+    '  owl:Class = http://www.w3.org/2002/07/owl#Class',
+    '  owl:ObjectProperty = http://www.w3.org/2002/07/owl#ObjectProperty',
+    '  owl:disjointWith = http://www.w3.org/2002/07/owl#disjointWith',
+    '  owl:inverseOf = http://www.w3.org/2002/07/owl#inverseOf',
     '  rdfs:subClassOf = http://www.w3.org/2000/01/rdf-schema#subClassOf',
-    '  ex:           = http://www.pizza-ontology.com/pizza.owl#',
+    '  rdfs:domain = http://www.w3.org/2000/01/rdf-schema#domain',
+    '  rdfs:range = http://www.w3.org/2000/01/rdf-schema#range',
+    '  ex: = http://www.pizza-ontology.com/pizza.owl#',
     '',
     'Respond with ONLY backtick-wrapped calls. No prose.',
   ].join('\n');
@@ -132,7 +141,7 @@ async (page) => {
   await owuiPage.waitForTimeout(1000);
 
   // ── 7. Inject Turn 0 — Socratic starter ───────────────────────────────────
-  const TURN0 = 'Can you teach me how ontologies work using pizzas as a real-world example? Start by adding the most fundamental concept to the graph.';
+  const TURN0 = 'Can you teach me how ontologies work using pizzas as an example? Start by switching to TBox view and adding the three fundamental categories: Pizza, PizzaBase, and PizzaTopping.';
   let turn0Ok = false;
   for (let i = 0; i < 8; i++) {
     turn0Ok = await owuiPage.evaluate((text) => window.__vgInjectResult?.(text) ?? false, TURN0);
