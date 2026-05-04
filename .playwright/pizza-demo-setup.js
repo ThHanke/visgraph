@@ -95,9 +95,10 @@ async (page) => {
   //    injectInProgress stays true during trySubmit loop so Turn 0 can't jump
   //    the queue. We wait for flag to clear before injecting Turn 0.
   const INSTR = [
-    'RELAY FORMAT — single backtick JSON-RPC 2.0 only. ALL other formats silently ignored:',
-    '`{"jsonrpc":"2.0","id":N,"method":"tools/call","params":{"name":"TOOL","arguments":{...}}}`',
-    'WRONG (silently ignored): triple-backtick, <tool_call>, {"tool":"x",...}',
+    'RELAY FORMAT — single backtick JSON-RPC 2.0 only. ALL other formats silently ignored.',
+    'Correct example (add the Pizza class):',
+    '`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#Pizza","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"Pizza"}}}`',
+    'WRONG (silently ignored): triple-backtick, <tool_call>, {"tool":"x",...}, "name":"TOOL"',
     '',
     'Key tools:',
     '  addNode(iri, typeIri?, label?)                         — add class/property/individual',

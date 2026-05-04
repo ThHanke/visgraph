@@ -32,9 +32,10 @@ const AUTH_FILE = path.resolve(__dirname, '../.playwright/owui-auth.json');
 const MODEL     = 'qwen3:4b';
 
 const INSTR = [
-  'RELAY FORMAT — single backtick JSON-RPC 2.0 only. ALL other formats silently ignored:',
-  '`{"jsonrpc":"2.0","id":N,"method":"tools/call","params":{"name":"TOOL","arguments":{...}}}`',
-  'WRONG (silently ignored): triple-backtick, <tool_call>, {"tool":"x",...}',
+  'RELAY FORMAT — single backtick JSON-RPC 2.0 only. ALL other formats silently ignored.',
+  'Correct example (add the Pizza class):',
+  '`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#Pizza","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"Pizza"}}}`',
+  'WRONG (silently ignored): triple-backtick, <tool_call>, {"tool":"x",...}, "name":"TOOL"',
   '',
   'Key tools:',
   '  addNode(iri, typeIri?, label?)                         — add class/property/individual',
@@ -61,78 +62,124 @@ const INSTR = [
   'Respond with ONLY backtick-wrapped calls. No prose.',
 ].join('\n');
 
-const TURNS = [
-  // T0 — root classes
-  'Can you teach me how ontologies work using pizzas as an example? Start by switching to TBox view and adding the three fundamental categories: Pizza, PizzaBase, and PizzaTopping.',
-  // T1 — disjointness
-  'Those three classes look separate, but how does OWL know they truly cannot overlap? Can you add the disjointWith declarations between them?',
-  // T2 — base subclasses
-  'How do I model different kinds of pizza base — thin crust versus deep pan? Add them as subclasses of PizzaBase and declare them disjoint from each other.',
-  // T3 — named pizzas
-  'Can hierarchies go deeper? Add a NamedPizza intermediate class, then place Margherita, AmericanHot, and FruttiDiMare beneath it as subclasses.',
-  // T4 — topping categories
-  'What about toppings — should they all sit directly under PizzaTopping, or is a category structure better? Add CheeseTopping, MeatTopping, VegetableTopping, and FishTopping as topping sub-categories.',
-  // T5 — topping disjointness
-  'Why do the topping categories also need owl:disjointWith? Add those disjointness assertions between all four categories.',
-  // T6 — leaf toppings
-  'Now add the real ingredients: Mozzarella and Parmesan under CheeseTopping, PeperoniSausage under MeatTopping, Tomato + Olive + Garlic under VegetableTopping, Anchovies under FishTopping.',
-  // T7 — object properties
-  'The classes are ready, but how do we link pizzas to their toppings and bases? Add object properties hasTopping and hasBase with domain and range constraints.',
-  // T8 — inverse properties
-  'Can we navigate in the opposite direction — from a topping back to its pizza? Add isToppingOf and isBaseOf as inverse properties with their own domain and range.',
-  // T9 — OWL restrictions
-  'The reasoner can infer pizza1 is a Pizza from the domain constraint — but how would it know it\'s a Margherita specifically? Use loadRdf to add the owl:equivalentClass someValuesFrom restriction for Margherita (TomatoTopping), AmericanHot (PeperoniSausageTopping), and FruttiDiMare (AnchoviesTopping). Use ex: prefix = http://www.pizza-ontology.com/pizza.owl#',
-  // T10 — ABox
-  "Those were the class definitions — the TBox. Now add actual pizza individuals. Switch to ABox view and add pizza1, pizza2, pizza3 as individuals WITHOUT asserting their types.",
-  // T11 — pizza1 (Margherita)
-  'Build a Margherita-style pizza1: add mozz1 as MozzarellaTopping individual, tom1 as TomatoTopping, thin1 as ThinAndCrispyBase, then connect them to pizza1 with hasTopping and hasBase.',
-  // T12 — pizza2 (AmericanHot)
-  'Now pizza2 — an AmericanHot. Add pep1 as PeperoniSausageTopping, mozz2 as MozzarellaTopping, olive1 as OliveTopping, deep1 as DeepPanBase, then connect them to pizza2.',
-  // T13 — pizza3 (FruttiDiMare)
-  'And pizza3 — FruttiDiMare. Add anch1 as AnchoviesTopping, garlic1 as GarlicTopping, thin2 as ThinAndCrispyBase, then connect them to pizza3.',
-  // T14 — reasoning
-  'We have schema and data but no inferred facts yet. Can you run the OWL-RL reasoner to materialise all entailed triples? Call runReasoning with empty arguments.',
-  // T15 — inspect pizza1
-  'What did the reasoner figure out about pizza1? Use focusNode and expandNode to inspect it.',
-  // T16 — inspect mozz1
-  'What about mozz1 — what types did the reasoner infer for that individual? Use focusNode and expandNode to inspect it.',
+// Caption shown briefly before injection — tells viewer what's being asked
+const TURN_TOPICS = [
+  'Adding the three root OWL classes to TBox view...',
+  'Running a hierarchical layout so the structure is clear...',
+  'Declaring owl:disjointWith between the root classes...',
+  'Adding pizza base subtypes and their disjointness...',
+  'Introducing NamedPizza with Margherita, AmericanHot, FruttiDiMare...',
+  'Adding mid-level topping categories...',
+  'Declaring disjointness between all four topping categories...',
+  'Populating the ingredient vocabulary with leaf classes...',
+  'Running layout to reveal the complete class hierarchy...',
+  'Adding object properties hasTopping and hasBase...',
+  'Adding inverse properties isToppingOf and isBaseOf...',
+  'Defining owl:equivalentClass restrictions for named pizza types...',
+  'Expanding all nodes and laying out the complete TBox...',
+  'Switching to ABox — adding three untyped pizza individuals...',
+  'Assembling pizza1: mozzarella + tomato on a thin-and-crispy base...',
+  'Assembling pizza2: peperoni + mozzarella + olive on deep pan...',
+  'Assembling pizza3: anchovies + garlic on thin-and-crispy base...',
+  'Laying out the complete ABox with all three pizzas...',
+  'Running OWL-RL forward-chaining reasoner...',
+  'Zooming into pizza1 — what type did the reasoner infer?',
+  'Zooming into mozz1 — what did the reasoner figure out?',
+  'Revealing the complete ontology — expandAll + final layout...',
 ];
 
-const CAPTIONS = [
-  { before: 'T0 — Asking qwen3 to add the three root OWL classes in TBox view.',
-    after:  'Pizza, PizzaBase, PizzaTopping added. Next: disjointness.' },
-  { before: 'T1 — Explaining owl:disjointWith — the Open World Assumption.',
-    after:  'Pairwise disjoint declared. Next: base subclasses.' },
-  { before: 'T2 — DeepPanBase and ThinAndCrispyBase as rdfs:subClassOf PizzaBase.',
-    after:  'Base hierarchy complete. Next: named pizza subclasses.' },
-  { before: 'T3 — Introducing NamedPizza + Margherita, AmericanHot, FruttiDiMare.',
-    after:  'Named pizza classes placed. Next: topping categories.' },
-  { before: 'T4 — Mid-level topping categories: Cheese, Meat, Vegetable, Fish.',
-    after:  'Topping hierarchy established. Next: topping disjointness.' },
-  { before: 'T5 — owl:disjointWith between all four topping categories.',
-    after:  'Topping disjointness declared. Next: leaf ingredient classes.' },
-  { before: 'T6 — Populating categories with real ingredient classes.',
-    after:  'Seven leaf toppings added. Next: object properties.' },
-  { before: 'T7 — hasTopping and hasBase with domain/range constraints.',
-    after:  'Object properties connected. Next: inverse properties.' },
-  { before: 'T8 — isToppingOf and isBaseOf as owl:inverseOf.',
-    after:  'Inverse properties declared. Next: OWL restrictions.' },
-  { before: 'T9 — owl:equivalentClass + owl:someValuesFrom defines named pizza types.',
-    after:  'Restrictions loaded. Next: switching to ABox for individuals.' },
-  { before: 'T10 — ABox view: three untyped pizza individuals.',
-    after:  'Individuals added without type assertions. Next: Margherita.' },
-  { before: 'T11 — pizza1: Margherita — mozzarella + tomato + thin base.',
-    after:  'pizza1 built. Next: pizza2 AmericanHot.' },
-  { before: 'T12 — pizza2: AmericanHot — peperoni + mozzarella + olive + deep pan.',
-    after:  'pizza2 built. Next: pizza3 FruttiDiMare.' },
-  { before: 'T13 — pizza3: FruttiDiMare — anchovies + garlic + thin base.',
-    after:  'All three pizzas built. Next: running OWL-RL reasoner.' },
-  { before: 'T14 — Running OWL-RL forward-chaining reasoner.',
-    after:  'Reasoning complete — inferred types materialised. Next: inspect pizza1.' },
-  { before: 'T15 — Inspecting pizza1: expect Margherita type via cls-svf1.',
-    after:  'pizza1 classified as Margherita by the reasoner! Next: inspect mozz1.' },
-  { before: 'T16 — Inspecting mozz1: expect PizzaTopping via range constraint + subClassOf chain.',
-    after:  'Full Manchester Pizza Ontology — built and reasoned via Socratic questioning.' },
+// Caption shown after idle — describes what was just built
+const AFTER_CAPTIONS = [
+  'Pizza, PizzaBase, and PizzaTopping added — the three pillars of a pizza ontology',
+  'Hierarchical layout applied — the TBox foundation is now clearly visible',
+  'owl:disjointWith declared — OWL knows these three concepts can never overlap',
+  'DeepPanBase and ThinAndCrispyBase added as disjoint PizzaBase subtypes',
+  'NamedPizza introduced — Margherita, AmericanHot, FruttiDiMare placed beneath it',
+  'Four topping categories added: Cheese, Meat, Vegetable, Fish partition the topping world',
+  'Topping categories declared disjoint — no single ingredient can span two categories',
+  'Seven leaf ingredients added — the full ingredient vocabulary is in place',
+  'Layout applied — the complete TBox hierarchy is now visible',
+  'hasTopping and hasBase added with domain/range — pizzas are now formally linked to their parts',
+  'isToppingOf and isBaseOf added — the graph can be traversed in both directions',
+  'Margherita ≡ Pizza ⊓ ∃hasTopping.TomatoTopping — OWL restrictions defined for all three named pizzas',
+  'Full TBox expanded and laid out — ready to populate with pizza individuals',
+  'Three untyped individuals added — pizza1, pizza2, pizza3 have no declared type yet',
+  'pizza1 assembled: mozzarella + tomato topping on a thin-and-crispy base',
+  'pizza2 assembled: peperoni + mozzarella + olive on a deep-pan base',
+  'pizza3 assembled: anchovies + garlic on a thin-and-crispy base',
+  'ABox layout applied — the full pizza knowledge graph is visible',
+  'OWL-RL reasoning complete — all entailed triples materialised',
+  'pizza1 is a Margherita — the reasoner proved it via owl:someValuesFrom on TomatoTopping',
+  'mozz1 typed as MozzarellaTopping → CheeseTopping → PizzaTopping via rdfs:subClassOf chain',
+  'Full Manchester Pizza Ontology — TBox, ABox, OWL-RL reasoning — built through Socratic questioning alone',
+];
+
+const TURNS = [
+  // [0] root classes + setViewMode
+  'Can you teach me how ontologies work using pizzas as an example? Start by switching to TBox view and adding the three fundamental categories: Pizza, PizzaBase, and PizzaTopping.',
+
+  // [1] verify + layout after root classes
+  'I can\'t see the nodes yet — they may be overlapping. Can you call getNodeDetails on ex:Pizza to verify it was added, then run a hierarchical layout so the structure is clear?',
+
+  // [2] disjointness
+  'Those three classes look separate, but how does OWL know they truly cannot overlap? Can you add the disjointWith declarations between them?',
+
+  // [3] base subclasses
+  'How do I model different kinds of pizza base — thin crust versus deep pan? Add them as subclasses of PizzaBase and declare them disjoint from each other.',
+
+  // [4] named pizzas
+  'Can hierarchies go deeper? Add a NamedPizza intermediate class, then place Margherita, AmericanHot, and FruttiDiMare beneath it as subclasses.',
+
+  // [5] topping categories
+  'What about toppings — should they all sit directly under PizzaTopping, or is a category structure better? Add CheeseTopping, MeatTopping, VegetableTopping, and FishTopping as topping sub-categories.',
+
+  // [6] topping disjointness
+  'Why do the topping categories also need owl:disjointWith? Add those disjointness assertions between all four categories.',
+
+  // [7] leaf toppings
+  'Now add the real ingredients: Mozzarella and Parmesan under CheeseTopping, PeperoniSausage under MeatTopping, Tomato + Olive + Garlic under VegetableTopping, Anchovies under FishTopping.',
+
+  // [8] layout after full TBox classes
+  'The class hierarchy is getting complex. Can you run a layout to organize all these nodes so the full TBox structure is visible?',
+
+  // [9] object properties
+  'The classes are ready, but how do we link pizzas to their toppings and bases? Add object properties hasTopping and hasBase with domain and range constraints.',
+
+  // [10] inverse properties
+  'Can we navigate in the opposite direction — from a topping back to its pizza? Add isToppingOf and isBaseOf as inverse properties with their own domain and range.',
+
+  // [11] OWL restrictions
+  'The reasoner can infer pizza1 is a Pizza from the domain constraint — but how would it know it\'s a Margherita specifically? Use loadRdf to add the owl:equivalentClass someValuesFrom restriction for Margherita (TomatoTopping), AmericanHot (PeperoniSausageTopping), and FruttiDiMare (AnchoviesTopping). Use ex: prefix = http://www.pizza-ontology.com/pizza.owl#',
+
+  // [12] expandAll + layout to show complete TBox before ABox
+  'The full schema is in place. Can you expand all nodes and run a layout to reveal the complete TBox before we switch to individuals?',
+
+  // [13] ABox
+  "Those were all class definitions — the TBox. Now for individuals: switch to ABox view and add pizza1, pizza2, pizza3 WITHOUT asserting their types.",
+
+  // [14] pizza1 (Margherita)
+  'Build a Margherita-style pizza1: add mozz1 as MozzarellaTopping individual, tom1 as TomatoTopping, thin1 as ThinAndCrispyBase, then connect them to pizza1 with hasTopping and hasBase.',
+
+  // [15] pizza2 (AmericanHot)
+  'Now pizza2 — an AmericanHot. Add pep1 as PeperoniSausageTopping, mozz2 as MozzarellaTopping, olive1 as OliveTopping, deep1 as DeepPanBase, then connect them to pizza2.',
+
+  // [16] pizza3 (FruttiDiMare)
+  'And pizza3 — FruttiDiMare. Add anch1 as AnchoviesTopping, garlic1 as GarlicTopping, thin2 as ThinAndCrispyBase, then connect them to pizza3.',
+
+  // [17] layout after ABox assembly
+  'All three pizzas are assembled with their ingredients. Can you run a layout to display the complete knowledge graph?',
+
+  // [18] reasoning
+  'We have the schema and the individuals but no inferred facts. Can you run the OWL-RL reasoner to materialise all the entailed triples?',
+
+  // [19] inspect pizza1 — zoom + explain
+  'What did the reasoner figure out about pizza1? Use focusNode and expandNode to zoom in on it and reveal its inferred types.',
+
+  // [20] inspect mozz1 — zoom + explain
+  'What about mozz1 — use focusNode and expandNode to inspect it. What types did the reasoner infer for this individual?',
+
+  // [21] final expandAll + layout
+  'Can you run expandAll and a final layout to reveal the complete ontology we built together — TBox, ABox, and all reasoned connections?',
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -315,28 +362,31 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
   await waitIdle(chatFrame, 120_000);
   await sleep(1_000); // let injectInProgress flag reset before T0
 
-  // ── 11. T0–T16: Socratic turns ────────────────────────────────────────────
+  // ── 11. Socratic turns ────────────────────────────────────────────────────
   await clearCaption(page);
   for (let i = 0; i < TURNS.length; i++) {
-    await caption(page, CAPTIONS[i].before);
-    await sleep(2_500);
+    // Brief topic label — what's being asked right now
+    await caption(page, TURN_TOPICS[i]);
+    await sleep(2_000);
 
     await inject(chatFrame, TURNS[i]);
     await sleep(800);
     await clickSend(chatFrame);
 
+    // Clear during model generation — live OWUI chat + canvas are the show
     await clearCaption(page);
     await waitIdle(chatFrame, 300_000);
     await sleep(800);
 
-    await caption(page, CAPTIONS[i].after);
-    await sleep(3_500);
+    // After idle — describe what was just built
+    await caption(page, AFTER_CAPTIONS[i]);
+    await sleep(4_000);
     await clearCaption(page);
-    await sleep(600);
+    await sleep(400);
   }
 
   // ── 12. End card ──────────────────────────────────────────────────────────
-  await caption(page, 'Full Manchester Pizza Ontology — built and classified by OWL-RL reasoning via Socratic questioning');
-  await sleep(5_500);
+  await caption(page, 'Full Manchester Pizza Ontology — TBox · ABox · OWL-RL reasoning — built through Socratic questioning alone');
+  await sleep(6_000);
   await clearCaption(page);
 });
