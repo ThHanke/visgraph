@@ -6,16 +6,9 @@ async (page) => {
   // "Respond with ONLY tool calls" keeps response short.
   const INSTR = [
     'RELAY FORMAT — single backtick only. ALL other formats silently ignored (no error, no response):',
-    '`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"TOOL","arguments":{...}}}`',
+    '`{"jsonrpc":"2.0","id":N,"method":"tools/call","params":{"name":"TOOL_NAME","arguments":{...}}}`',
     'WRONG (silently ignored): ```json{...}```  or  {"tool":"x","params":{}}  or  {"method":"addNode",...}',
-    'RIGHT: `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"ex:Foo","typeIri":"owl:Class"}}}`',
-    '',
-    'TASK — respond with ONLY the 4 backtick calls below, no explanation:',
-    'Add 3 OWL classes (typeIri=http://www.w3.org/2002/07/owl#Class) then runLayout:',
-    '  Pizza     IRI: http://www.pizza-ontology.com/pizza.owl#Pizza',
-    '  PizzaBase IRI: http://www.pizza-ontology.com/pizza.owl#PizzaBase',
-    '  PizzaTopping IRI: http://www.pizza-ontology.com/pizza.owl#PizzaTopping',
-    'runLayout: algorithm=dagre-lr, spacing=200',
+    'Respond only with backtick-wrapped JSON-RPC 2.0 calls. No prose.',
   ].join('\n');
 
   // Step 1: plain seed — creates /c/ URL (no backticks = no Notes routing)
@@ -24,6 +17,7 @@ async (page) => {
   await el.click();
   await page.waitForTimeout(200);
   await page.keyboard.type(SEED, { delay: 2 });
+  console.log('[INJECT][SEED]', SEED);
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => location.pathname.startsWith('/c/'), { timeout: 8000 });
   const chatUrl = page.url();
@@ -47,13 +41,18 @@ async (page) => {
   });
   await page.addScriptTag({ content: code });
 
-  // Step 3: wait for seed response via Good Response button
-  // (more reliable than __vgIsStreaming for qwen3 long think gaps)
-  await page.waitForSelector('button[aria-label="Good Response"]', { timeout: 120000 })
-    .catch(() => {});
+  // Step 3: wait for seed response via relay __vgIsStreaming poll
+  const deadline = Date.now() + 600_000;
+  while (Date.now() < deadline) {
+    const s = await page.evaluate(() => window.__vgIsStreaming?.() ?? false);
+    if (!s) break;
+    await page.waitForTimeout(1000);
+  }
   await page.waitForTimeout(500);
+  console.log('[QWEN][SEED] idle');
 
   // Step 4: inject INSTR+task (contains backticks — OK now we're on /c/)
+  console.log('[INJECT][INSTR]', INSTR.slice(0, 120));
   const injected = await page.evaluate((text) => {
     if (typeof window.__vgInjectResult !== 'function') return false;
     return window.__vgInjectResult(text);

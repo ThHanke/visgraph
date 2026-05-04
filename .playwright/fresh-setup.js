@@ -14,7 +14,7 @@ async (page) => {
   await page.waitForTimeout(400);
 
   const searchInput = await page.$('input[placeholder*="Search" i], input[placeholder*="search" i]');
-  const MODEL = 'qwen3:8b';
+  const MODEL = 'qwen3:4b';
   if (searchInput) {
     await searchInput.fill(MODEL);
     await page.waitForTimeout(400);

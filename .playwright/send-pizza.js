@@ -11,6 +11,19 @@ async (page) => {
   ).catch(() => {});
   await page.waitForTimeout(500);
 
+  const reply = await page.evaluate(() => {
+    const msgs = document.querySelectorAll('[data-message-author-role="assistant"]');
+    return msgs[msgs.length - 1]?.innerText?.slice(0, 400) ?? '';
+  });
+  console.log('[QWEN][RESPONSE]', reply.replace(/\n+/g, ' '));
+
+  const toolMsgs = await page.evaluate(() => {
+    const msgs = document.querySelectorAll('[data-message-author-role="user"]');
+    return [...msgs].filter(m => m.innerText?.includes('[Ontosphere')).map(m => m.innerText?.slice(0, 200));
+  });
+  toolMsgs.forEach(t => console.log('[TOOL]', t.replace(/\n+/g, ' ')));
+
+  console.log('[INJECT][TASK]', TASK.slice(0, 120));
   const injected = await page.evaluate((text) => {
     if (typeof window.__vgInjectResult !== 'function') return false;
     return window.__vgInjectResult(text);

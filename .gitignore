@@ -26,6 +26,7 @@ dist-ssr
 playwright-reports
 test-results
 .playwright-mcp
+debug.png
 scripts/outputs/
 
 # Claude Code

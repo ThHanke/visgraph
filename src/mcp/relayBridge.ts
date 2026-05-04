@@ -90,6 +90,7 @@ function toastLabel(tool: string, result: McpResult): string {
       const rel = d.removed as Record<string, unknown> | undefined;
       return `${tool} · ${shortIri(rel?.p) ?? ''}`;
     }
+    case 'runLayout':
     case 'setLayout':
     case 'layout':
       return typeof d.algorithm === 'string' ? `${tool} · ${d.algorithm}` : tool;
@@ -108,27 +109,43 @@ async function waitForMcpTools(retries: number): Promise<Record<string, (params:
   return null;
 }
 
-/** Compact one-line canvas state string, e.g. "Canvas: 3 nodes (Alice, Bob, Carol), 2 links" */
+/** Compact one-line store state string, e.g. "Store: 3 nodes (Alice, Bob, Carol), 2 links" */
 async function buildCanvasSummary(
   tools: Record<string, (params: unknown) => Promise<McpResult>>
 ): Promise<string | undefined> {
   try {
-    const handler = tools['getGraphState'];
-    if (!handler) return undefined;
-    const result = await handler({});
-    if (!result.success || !result.data) return undefined;
-    const d = result.data as {
-      nodeCount: number;
-      linkCount: number;
-      nodes: Array<{ label?: string; iri: string }>;
-    };
+    // Use getNodes (full RDF store) so count reflects all addNode calls,
+    // not just nodes placed on the visual canvas.
+    const nodesHandler = tools['getNodes'];
+    const linksHandler = tools['getLinks'];
+    if (!nodesHandler) return undefined;
+
+    const nodesResult = await nodesHandler({});
+    if (!nodesResult.success || !nodesResult.data) return undefined;
+    const rawNodes = nodesResult.data as { content: string } | Array<unknown>;
+    const nodes: Array<{ iri: string; label?: string }> =
+      typeof (rawNodes as { content: string }).content === 'string'
+        ? (JSON.parse((rawNodes as { content: string }).content) as Array<{ iri: string; label?: string }>)
+        : (rawNodes as Array<{ iri: string; label?: string }>);
+
+    let linkCount = 0;
+    if (linksHandler) {
+      const linksResult = await linksHandler({});
+      if (linksResult.success && linksResult.data) {
+        const d = linksResult.data as { links?: Array<unknown>; content?: string };
+        if (Array.isArray(d.links)) linkCount = d.links.length;
+        else if (typeof d.content === 'string') linkCount = (JSON.parse(d.content) as Array<unknown>).length;
+      }
+    }
+
+    const nodeCount = nodes.length;
     const MAX_LABELS = 8;
-    const labels = d.nodes
+    const labels = nodes
       .slice(0, MAX_LABELS)
       .map(n => n.label || n.iri.split(/[/#]/).pop() || n.iri)
       .join(', ');
-    const more = d.nodeCount > MAX_LABELS ? ` +${d.nodeCount - MAX_LABELS} more` : '';
-    return `Canvas: ${d.nodeCount} node${d.nodeCount !== 1 ? 's' : ''} (${labels}${more}), ${d.linkCount} link${d.linkCount !== 1 ? 's' : ''}`;
+    const more = nodeCount > MAX_LABELS ? ` +${nodeCount - MAX_LABELS} more` : '';
+    return `Store: ${nodeCount} node${nodeCount !== 1 ? 's' : ''} (${labels}${more}), ${linkCount} link${linkCount !== 1 ? 's' : ''}`;
   } catch {
     return undefined;
   }
@@ -157,6 +174,7 @@ async function handleCall(
   const handler = tools[tool];
   if (!handler) {
     const error = `Unknown tool: ${tool}`;
+    console.error('[RelayBridge] Unknown tool:', tool);
     channel.postMessage({ type: 'vg-result', requestId, result: { success: false, error } });
     channel.postMessage({ type: 'vg-ready' });
     toast.error(`✗ ${tool}: ${error}`);
@@ -173,9 +191,11 @@ async function handleCall(
   let result: McpResult;
   try {
     result = await handler(params);
+    console.info('[RelayBridge] Tool result:', tool, JSON.stringify(result).slice(0, 300));
   } catch (err) {
     clearInterval(pingInterval);
     const error = err instanceof Error ? err.message : String(err);
+    console.error('[RelayBridge] Tool error:', tool, JSON.stringify(params).slice(0, 200), error);
     result = { success: false, error };
     channel.postMessage({ type: 'vg-result', requestId, result });
     channel.postMessage({ type: 'vg-ready' });
@@ -264,7 +284,7 @@ export function startRelayBridge(): () => void {
 
   channel.onmessage = (event: MessageEvent) => {
     const msg = event.data;
-    console.info('[RelayBridge] BC message received:', msg);
+    console.info('[RelayBridge] BC message received:', JSON.stringify(msg));
 
     if (msg?.type === 'vg-ready') {
       // Initial vg-ready from workspaceContext signals the app is ready for first call
