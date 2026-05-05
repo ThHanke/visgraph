@@ -171,12 +171,14 @@ async function waitIdle(frame: Frame, timeout = 300_000, stableMs = 3_000): Prom
 
 // Wait for quietMs of continuous silence — relay fully drained, no content growth.
 // Resets if the model spontaneously makes more calls during the gap.
-// Safe to start typing only after this returns.
-async function waitQuiet(frame: Frame, quietMs = 10_000): Promise<void> {
+// maxMs caps the total wait so OWUI background updates (thinking dots, timestamps)
+// can't reset the timer indefinitely and stall the run.
+async function waitQuiet(frame: Frame, quietMs = 10_000, maxMs = 45_000): Promise<void> {
   const pollMs = 500;
   let silentMs = 0;
   let lastLen = -1;
-  while (silentMs < quietMs) {
+  const deadline = Date.now() + maxMs;
+  while (silentMs < quietMs && Date.now() < deadline) {
     const { busy, len } = await isBusy(frame, lastLen);
     lastLen = len;
     if (busy) silentMs = 0; else silentMs += pollMs;

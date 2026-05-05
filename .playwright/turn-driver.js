@@ -89,10 +89,11 @@ async (page) => {
   }
 
   // 10-second continuous silence before typing — resets on any activity.
-  async function waitQuiet(quietMs = 10_000) {
+  async function waitQuiet(quietMs = 10_000, maxMs = 45_000) {
     const pollMs = 500;
     let silentMs = 0;
-    while (silentMs < quietMs) {
+    const deadline = Date.now() + maxMs;
+    while (silentMs < quietMs && Date.now() < deadline) {
       const busy = await isBusy();
       if (busy) silentMs = 0; else silentMs += pollMs;
       await owuiPage.waitForTimeout(pollMs);

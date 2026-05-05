@@ -97,13 +97,26 @@ async (page) => {
 
   // ── 4. Wait for model's help() cycle to complete ──────────────────────────
   // Model reads starter prompt → calls help() itself → relay executes → model
-  // reads manifest → responds. Wait for 3 s of continuous silence.
-  const deadline = Date.now() + 180_000;
-  let stable = 0;
-  while (Date.now() < deadline) {
-    const s = await owuiPage.evaluate(() => window.__vgIsStreaming?.() ?? false);
-    if (!s) { stable++; if (stable >= 6) break; } else { stable = 0; }
-    await owuiPage.waitForTimeout(500);
+  // reads manifest and responds. Use content-length + relay-idle (same as
+  // turn-driver.js) — isAiStreaming() is unreliable in newer OWUI.
+  let _lastLen = -1;
+  async function isBusy() {
+    const state = await owuiPage.evaluate(() => ({
+      relayBusy: !(window.__vgIsRelayIdle?.() ?? true),
+      len: document.body.innerText?.length ?? 0,
+    })).catch(() => ({ relayBusy: false, len: _lastLen }));
+    const growing = _lastLen >= 0 && state.len !== _lastLen;
+    _lastLen = state.len;
+    return state.relayBusy || growing;
+  }
+  const helpDeadline = Date.now() + 180_000;
+  const pollMs = 500;
+  let silentMs = 0;
+  while (Date.now() < helpDeadline) {
+    const busy = await isBusy();
+    if (busy) silentMs = 0; else silentMs += pollMs;
+    if (silentMs >= 3_000) break;
+    await owuiPage.waitForTimeout(pollMs);
   }
   await owuiPage.waitForTimeout(1000);
 
