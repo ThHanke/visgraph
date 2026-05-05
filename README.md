@@ -476,7 +476,7 @@ The **AI Relay Bridge** connects any AI chat tab to Ontosphere with no server, e
 **Starter prompt** (paste into your AI chat after clicking the bookmarklet):
 
 ```text
-You are connected to Ontosphere via a relay. A script in this tab intercepts your tool calls, runs them in Ontosphere, and injects results back as a user message.
+You are connected to Ontosphere via a relay. A script in this tab intercepts your tool calls, runs them in Ontosphere, and injects results back as a user message. Ask the user what they would like to build.
 
 Output format — one JSON-RPC 2.0 call per line, backtick-wrapped:
 `{"jsonrpc":"2.0","id":<N>,"method":"tools/call","params":{"name":"<toolName>","arguments":{...}}}`

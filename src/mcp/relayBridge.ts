@@ -82,7 +82,7 @@ function toastLabel(tool: string, result: McpResult): string {
       return `${tool} · ${shortIri(d.updated) ?? ''}`;
     case 'expandAll':
       return typeof d.expanded === 'number' ? `${tool} · ${d.expanded} nodes` : tool;
-    case 'addLink': {
+    case 'addTriple': {
       const rel = d.added as Record<string, unknown> | undefined;
       return `${tool} · ${shortIri(rel?.p) ?? ''}`;
     }

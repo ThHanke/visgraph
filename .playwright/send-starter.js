@@ -1,5 +1,6 @@
 async (page) => {
-  const SEED = "You control Ontosphere knowledge graph editor via this relay.";
+  // Canonical starter prompt — must match README.md "Starter prompt" section (plain-text line only, no backticks).
+  const SEED = "You are connected to Ontosphere via a relay. A script in this tab intercepts your tool calls, runs them in Ontosphere, and injects results back as a user message. Ask the user what they would like to build.";
 
   // INSTR: compact format reminder + pizza task inline.
   // No help() call — avoids multi-thousand-word explanation that truncates.

@@ -10,20 +10,16 @@ vi.mock('@/utils/rdfManager', () => ({
   },
 }));
 
-// Mock workspaceContext — addLink needs getWorkspaceRefs for requestLinks
+// Mock workspaceContext — addTriple needs getWorkspaceRefs for requestLinks + navigateToIri
 vi.mock('@/mcp/workspaceContext', () => ({
   getWorkspaceRefs: vi.fn(),
-}));
-
-vi.mock('@/mcp/tools/layout', () => ({
-  focusElementOnCanvas: vi.fn(),
 }));
 
 import { rdfManager } from '@/utils/rdfManager';
 import { getWorkspaceRefs } from '@/mcp/workspaceContext';
 import { linkTools } from '../tools/links';
 
-const addLink = linkTools.find((t) => t.name === 'addLink')!;
+const addLink = linkTools.find((t) => t.name === 'addTriple')!;
 const removeLink = linkTools.find((t) => t.name === 'removeLink')!;
 const getLinks = linkTools.find((t) => t.name === 'getLinks')!;
 
@@ -31,10 +27,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getWorkspaceRefs).mockReturnValue({
     ctx: { model: { elements: [], links: [], requestLinks: vi.fn().mockResolvedValue(undefined) } },
+    navigateToIri: vi.fn(),
   } as never);
 });
 
-describe('addLink', () => {
+describe('addTriple', () => {
   it('calls addTriple with correct args and returns success', async () => {
     const result = await addLink.handler({
       subjectIri: 'http://s',
@@ -52,7 +49,7 @@ describe('addLink', () => {
     const result = await addLink.handler({ subjectIri: 'http://s', predicateIri: 'http://p' });
     expect(result).toEqual({
       success: false,
-      error: 'subjectIri, predicateIri, and objectIri are all required. Call help({tool:"addLink"}) for the full schema.',
+      error: 'subjectIri, predicateIri, and objectIri are all required. Call help({tool:"addTriple"}) for the full schema.',
     });
     expect(rdfManager.addTriple).not.toHaveBeenCalled();
   });
@@ -61,7 +58,7 @@ describe('addLink', () => {
     const result = await addLink.handler(null);
     expect(result).toEqual({
       success: false,
-      error: 'subjectIri, predicateIri, and objectIri are all required. Call help({tool:"addLink"}) for the full schema.',
+      error: 'subjectIri, predicateIri, and objectIri are all required. Call help({tool:"addTriple"}) for the full schema.',
     });
   });
 });

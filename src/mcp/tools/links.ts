@@ -2,7 +2,6 @@
 import type { McpTool } from '../types';
 import { rdfManager } from '@/utils/rdfManager';
 import { getWorkspaceRefs } from '@/mcp/workspaceContext';
-import { focusElementOnCanvas } from './layout';
 import { expandIri } from './iriUtils';
 import * as Reactodia from '@reactodia/workspace';
 
@@ -19,8 +18,8 @@ interface LinkParams {
 
 export const linkTools: McpTool[] = [
   {
-    name: 'addLink',
-    description: 'Add a triple (directed edge) between two entities.',
+    name: 'addTriple',
+    description: 'Add an RDF triple to the graph. For object-property triples (IRI object) the edge renders on canvas immediately. For annotation-property triples (literal object) the value appears when the subject node is expanded via expandNode.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -41,7 +40,7 @@ export const linkTools: McpTool[] = [
         // objectIri may be a plain literal — only expand if it looks like a prefixed IRI
         const objectIri = rawO ? expandIri(rawO) : undefined;
         if (!subjectIri || !predicateIri || !objectIri) {
-          return { success: false as const, error: 'subjectIri, predicateIri, and objectIri are all required. Call help({tool:"addLink"}) for the full schema.' };
+          return { success: false as const, error: 'subjectIri, predicateIri, and objectIri are all required. Call help({tool:"addTriple"}) for the full schema.' };
         }
         const expandError = [subjectIri, predicateIri, objectIri].find(v => v.startsWith('Unknown prefix:'));
         if (expandError) return { success: false as const, error: expandError };
@@ -53,10 +52,8 @@ export const linkTools: McpTool[] = [
           addedElements: [subjectIri as Reactodia.ElementIri, objectIri as Reactodia.ElementIri],
         });
 
-        const subjectEl = model.elements.find(
-          e => e instanceof Reactodia.EntityElement && (e as Reactodia.EntityElement).iri === subjectIri
-        ) as Reactodia.EntityElement | undefined;
-        if (subjectEl) focusElementOnCanvas(subjectEl, ctx);
+        const { navigateToIri } = getWorkspaceRefs();
+        navigateToIri?.(subjectIri);
 
         return { success: true as const, data: { added: { s: subjectIri, p: predicateIri, o: objectIri } } };
       } catch (e) {
