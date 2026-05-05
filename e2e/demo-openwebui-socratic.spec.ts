@@ -80,7 +80,8 @@ const TURNS = [
 
   // T4 — owl:ObjectProperty with domain + range
   // Range = Pizza (superclass) to avoid prp-range triggering cax-dw inconsistency.
-  'In OWL, composition is modelled with an owl:ObjectProperty — a named relationship that is itself a first-class node in the ontology, not just an edge. Create an object property called hasPart, declare its domain as Pizza and its range as Pizza (since every part of a pizza is itself a kind of pizza-related thing). Add it to the canvas now. Wait for my next question.',
+  // CRITICAL: rdfs:domain / rdfs:range — OWL-RL rules do NOT read owl:domain/range.
+  'In OWL, composition is modelled with an owl:ObjectProperty — a named relationship that is itself a first-class node in the ontology, not just an edge. Create an object property called hasPart. Then declare its domain and range using exactly these predicates: rdfs:domain pointing to Pizza, and rdfs:range pointing to Pizza. Important: use rdfs:domain and rdfs:range — not owl:domain or owl:range. Add it to the canvas now. Wait for my next question.',
 
   // T5 — expandNode
   'Expand the Pizza class node on the canvas so I can see all its asserted properties. Wait for my next question.',
@@ -90,8 +91,9 @@ const TURNS = [
   'Everything so far is the schema — the TBox. I want to see a real pizza instance. In OWL, concrete instances are called Named Individuals. Switch to the individuals view and create one NamedIndividual for the pizza. Do not assert any owl:Class membership for it — only the owl:NamedIndividual type. The reasoner will determine its class. Wait for my next question.',
 
   // T7 — NEW ABox individuals typed as third-level varieties; pizza left untyped
-  // Must create fresh IRIs — not reuse TBox class nodes — so cax-sco chain fires.
-  'Create two brand-new individual instances with fresh IRIs — one base part and one topping part (for example ex:MyCrust and ex:MyCheese, but use whatever names fit the ontology you built). These are ABox individuals, not the TBox class nodes. Assert the base individual\'s rdf:type as the specific base variety class from the third level. Assert the topping individual\'s rdf:type as the specific topping variety class from the third level. Then connect each to the pizza individual via hasPart. Do not assert any class type on the pizza individual. Wait for my next question.',
+  // addNode(typeIri) avoids rdfs:type vs rdf:type confusion from addTriple.
+  // hasPart direction: pizza→part (pizza subject, parts objects).
+  'Create two brand-new individual instances with fresh IRIs — one base part (e.g. ex:MyCrust) and one topping part (e.g. ex:MyCheese). Use addNode with typeIri set to the base variety class for MyCrust, and typeIri set to the topping variety class for MyCheese — this sets rdf:type correctly. Then add two hasPart triples where the PIZZA INDIVIDUAL is the subject: ex:MyPizza hasPart ex:MyCrust and ex:MyPizza hasPart ex:MyCheese (not the other way around). Do not assert any class type on the pizza individual. Wait for my next question.',
 
   // T8 — OWL-RL reasoning
   'The schema and data are in place. Now apply OWL-RL reasoning to derive everything that can be inferred. Wait for my next question.',
