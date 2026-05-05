@@ -143,23 +143,49 @@ async function clearCaption(page: Page): Promise<void> {
   });
 }
 
-async function waitIdle(frame: Frame, timeout = 300_000): Promise<boolean> {
+// Shared busy-check: content-length growth OR relay has queued work.
+// isAiStreaming() is NOT used — newer OWUI keeps the send button enabled while
+// generating so button-state detection gives false negatives.
+// Content-length of the chat area is the reliable signal: if text is still
+// appearing, the model or relay is active regardless of button state.
+async function isBusy(frame: Frame, prevLen: number): Promise<{ busy: boolean; len: number }> {
+  const state = await frame.evaluate(() => ({
+    relayBusy: !((window as any).__vgIsRelayIdle?.() ?? true),
+    len: (document.body.innerText ?? '').length,
+  })).catch(() => ({ relayBusy: false, len: prevLen }));
+  const growing = prevLen >= 0 && state.len !== prevLen;
+  return { busy: state.relayBusy || growing, len: state.len };
+}
+
+// Wait until quiet for stableMs. Used for SEED/INSTR phases (short window).
+async function waitIdle(frame: Frame, timeout = 300_000, stableMs = 3_000): Promise<boolean> {
   const deadline = Date.now() + timeout;
-  // Require 2 consecutive idle checks (2 s) before declaring done.
-  // One check isn't enough: the relay processes tool calls async (200–800 ms)
-  // and isAiStreaming() returns false during that window, causing early injection.
-  let stableIdle = 0;
+  const pollMs = 500;
+  let silentMs = 0;
+  let lastLen = -1;
   while (Date.now() < deadline) {
-    const streaming = await frame.evaluate(() => (window as any).__vgIsStreaming?.() ?? false).catch(() => false);
-    if (!streaming) {
-      stableIdle++;
-      if (stableIdle >= 2) return true;
-    } else {
-      stableIdle = 0;
-    }
-    await sleep(1000);
+    const { busy, len } = await isBusy(frame, lastLen);
+    lastLen = len;
+    if (busy) silentMs = 0; else silentMs += pollMs;
+    if (silentMs >= stableMs) return true;
+    await sleep(pollMs);
   }
   return false;
+}
+
+// Wait for quietMs of continuous silence — relay fully drained, no content growth.
+// Resets if the model spontaneously makes more calls during the gap.
+// Safe to start typing only after this returns.
+async function waitQuiet(frame: Frame, quietMs = 10_000): Promise<void> {
+  const pollMs = 500;
+  let silentMs = 0;
+  let lastLen = -1;
+  while (silentMs < quietMs) {
+    const { busy, len } = await isBusy(frame, lastLen);
+    lastLen = len;
+    if (busy) silentMs = 0; else silentMs += pollMs;
+    await sleep(pollMs);
+  }
 }
 
 async function inject(frame: Frame, text: string, retries = 8): Promise<boolean> {
@@ -176,11 +202,16 @@ async function inject(frame: Frame, text: string, retries = 8): Promise<boolean>
 }
 
 async function clickSend(frame: Frame): Promise<void> {
-  // Locator avoids stale ElementHandle: if OWUI re-renders the button between
-  // find and click the ElementHandle throws "not attached to DOM".
-  await frame.locator('#send-message-button:not([disabled])').click({ timeout: 3_000 }).catch(() => {
-    // Already submitted (relay auto-submit) or streaming started — safe to ignore.
-  });
+  await frame.locator('#send-message-button:not([disabled])').click({ timeout: 3_000 }).catch(() => {});
+}
+
+// Type text character-by-character into the chat input and press Enter.
+// Looks like the user is typing — makes the demo easy to follow.
+async function typeAndSend(frame: Frame, page: Page, text: string): Promise<void> {
+  await frame.locator('#chat-input').click();
+  await page.keyboard.type(text, { delay: 18 });
+  await sleep(400);
+  await page.keyboard.press('Enter');
 }
 
 // ── Test ──────────────────────────────────────────────────────────────────────
@@ -267,6 +298,7 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
       '  window.__vgInjectResult = injectResult;',
       '  window.__vgIsStreaming   = isAiStreaming;',
       '  window.__vgWaitForIdle  = waitForIdle;',
+      '  window.__vgIsRelayIdle  = function() { return callQueue.length === 0 && !isProcessing; };',
       '})();',
     ].join('\n'));
     return src;
@@ -290,29 +322,29 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
   await sleep(800);
   await clickSend(chatFrame);
   await waitIdle(chatFrame, 120_000);
-  await sleep(1_000); // let injectInProgress flag reset before T0
+  await sleep(3_000); // help() manifest is large — model needs time to read it
 
   // ── 11. Socratic turns ────────────────────────────────────────────────────
   await clearCaption(page);
   for (let i = 0; i < TURNS.length; i++) {
-    // Brief topic label — what's being asked right now
+    // Before: brief label so viewer knows what concept is being asked about
     await caption(page, TURN_TOPICS[i]);
     await sleep(2_000);
 
-    await inject(chatFrame, TURNS[i]);
-    await sleep(800);
-    await clickSend(chatFrame);
+    // Type the question visually — looks like the user is writing it live
+    await typeAndSend(chatFrame, page, TURNS[i]);
 
-    // Clear during model generation — live OWUI chat + canvas are the show
+    // Clear caption while model generates — the live chat + canvas are the show
     await clearCaption(page);
     await waitIdle(chatFrame, 300_000);
-    await sleep(800);
 
-    // After idle — describe what was just built
+    // Caption goes up the moment the model first goes idle so viewers can read
+    // what was built. waitQuiet holds for 10 s of continuous silence — resets
+    // if the model spontaneously makes more tool calls during that window.
     await caption(page, AFTER_CAPTIONS[i]);
-    await sleep(4_000);
+    await waitQuiet(chatFrame, 10_000);
     await clearCaption(page);
-    await sleep(400);
+    await sleep(1_000);
   }
 
   // ── 12. End card ──────────────────────────────────────────────────────────
