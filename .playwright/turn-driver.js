@@ -45,8 +45,8 @@ async (page) => {
     'Expand the Pizza class node on the canvas so I can see all its asserted properties. Wait for my next question.',
 
     // T6 — ABox: setViewMode + addNode(NamedIndividual)
-    // Goal: TBox/ABox separation.
-    'Everything so far is the schema — the TBox. I want to see a real pizza instance. Switch to the individuals view and add one concrete pizza individual. Wait for my next question.',
+    // Goal: TBox/ABox separation. "named individual" steers toward owl:NamedIndividual typeIri.
+    'Everything so far is the schema — the TBox. I want to see a real pizza instance. In OWL, concrete instances are called Named Individuals. Switch to the individuals view and add one. Wait for my next question.',
 
     // T7 — connect individual to part individuals via the object property
     // Goal: addNode for parts + addTriple with the object property.

@@ -86,7 +86,7 @@ const TURNS = [
   'Expand the Pizza class node on the canvas so I can see all its asserted properties. Wait for my next question.',
 
   // T6 — ABox individual
-  'Everything so far is the schema — the TBox. I want to see a real pizza instance. Switch to the individuals view and add one concrete pizza individual. Wait for my next question.',
+  'Everything so far is the schema — the TBox. I want to see a real pizza instance. In OWL, concrete instances are called Named Individuals. Switch to the individuals view and add one. Wait for my next question.',
 
   // T7 — connect individual to parts
   'Give your pizza individual some parts — one individual topping and one individual dough. Connect them to the pizza using the object property you defined earlier. Wait for my next question.',

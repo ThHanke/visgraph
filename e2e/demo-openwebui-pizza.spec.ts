@@ -144,9 +144,15 @@ async function setSystemPrompt(owuiFrame: Frame, systemPrompt: string): Promise<
     await owuiFrame.waitForTimeout(400);
   }
 
-  // Close via the panel's own ✕ button (class="self-center", SVG ×).
-  // The toolbar Controls button is behind the modal overlay and cannot be clicked.
-  await owuiFrame.locator('div.modal button.self-center').click({ timeout: 5_000 });
+  // Close the panel — try close button variants, fall back to Escape.
+  const closeBtn = owuiFrame.locator(
+    'button[aria-label*="close" i], button:has-text("Close"), div.modal button.self-center',
+  ).last();
+  if (await closeBtn.count() > 0) {
+    await closeBtn.click({ timeout: 5_000 }).catch(() => {});
+  }
+  // Fallback: Escape closes any open panel
+  await owuiFrame.press('body', 'Escape');
   await owuiFrame.waitForTimeout(400);
 }
 

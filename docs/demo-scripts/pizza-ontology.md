@@ -179,9 +179,10 @@ Relies on `addNode` manifest description that now explicitly calls out `owl:Obje
 ---
 
 ### Turn 6 — ABox individual
-> "Everything so far is the schema — the TBox. I want to see a real pizza instance. Switch to the individuals view and add one concrete pizza individual. Wait for my next question."
+> "Everything so far is the schema — the TBox. I want to see a real pizza instance. In OWL, concrete instances are called Named Individuals. Switch to the individuals view and add one. Wait for my next question."
 
 **Concept:** `setViewMode({mode:"abox"})` then `addNode` with `typeIri=owl:NamedIndividual`.
+"Named Individuals" in the question steers qwen3 toward the correct typeIri without naming the tool.
 
 ---
 
