@@ -252,14 +252,25 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
     }
   }
 
-  // ── 2. Pre-auth throwaway page ─────────────────────────────────────────────
-  // addInitScript only runs in top-level frames, not iframes. Navigate to OWUI
-  // on a real page first — this seeds localStorage for the OWUI origin in the
-  // shared context storage. The OWUI iframe in the stage then reads it directly.
+  // ── 2. Pre-auth throwaway pages ───────────────────────────────────────────
+  // addInitScript only runs in top-level frames, not iframes. Navigate to each
+  // origin on a real page first — this seeds localStorage for both OWUI and the
+  // Ontosphere app in the shared context storage. Their iframes then read it.
   const authPage = await context.newPage();
   await authPage.goto(`${OWUI_URL}/`);
   await authPage.waitForSelector('#chat-input', { timeout: 60_000 });
   await authPage.close();
+
+  const appAuthPage = await context.newPage();
+  await appAuthPage.goto(`${VG_URL}/`);
+  await appAuthPage.waitForFunction(() => !!(window as any).__mcpTools?.addNode, { timeout: 30_000 });
+  await appAuthPage.evaluate(() => {
+    const raw = localStorage.getItem('ontology-painter-config');
+    const stored = raw ? JSON.parse(raw) : {};
+    stored.config = { ...(stored.config ?? {}), autoApplyLayout: true };
+    localStorage.setItem('ontology-painter-config', JSON.stringify(stored));
+  });
+  await appAuthPage.close();
 
   // ── 3. Load side-by-side stage (this is the recorded page) ────────────────
   const stageUrl = `${VG_URL}/demo-stage-owui.html`
