@@ -68,7 +68,7 @@ const AFTER_CAPTIONS = [
 // Source of truth: .playwright/pizza-demo-setup.js (T0) + .playwright/turn-driver.js (T1–T9).
 const TURNS = [
   // T0 — root class
-  'I want to learn OWL ontology concepts through a hands-on example. I will guide you through the pizza domain step by step — one concept at a time. Rule: for each question I ask, model exactly the concept I ask about on the canvas, then stop and wait. Do not add anything beyond what I asked. Do not arrange nodes automatically. First question: in OWL, what is the most fundamental building block for representing a concept? Create a Pizza class on the canvas. Wait for my next question.',
+  'I want to learn OWL ontology concepts through a hands-on example. I will guide you through the pizza domain step by step — one concept at a time. Rule: for each question I ask, model exactly the concept I ask about on the canvas, then stop and wait. Do not add anything beyond what I asked. Do not arrange nodes automatically. Use the ex: prefix for all IRIs (ex: maps to http://example.org/). First question: in OWL, what is the most fundamental building block for representing a concept? Create a single Pizza class — just this one node, nothing more. Wait for my next question.',
 
   // T1 — rdfs:subClassOf hierarchy + runLayout
   'A pizza is made from two distinct building blocks. What are they in OWL terms? Model them as sub-categories of Pizza using the correct OWL relationship, then arrange the hierarchy so it is visible. Wait for my next question.',

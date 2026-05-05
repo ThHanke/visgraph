@@ -120,7 +120,7 @@ async (page) => {
   // T0: introduce the topic and ask ONLY for step 1.
   // "I will guide you" signals that qwen3 should wait for each question before proceeding.
   // "only this one step" is the explicit stop signal.
-  const TURN0 = 'I want to learn OWL ontology concepts through a hands-on example. I will guide you through the pizza domain step by step — one concept at a time. Rule: for each question I ask, model exactly the concept I ask about on the canvas, then stop and wait. Do not add anything beyond what I asked. Do not arrange nodes automatically. First question: in OWL, what is the most fundamental building block for representing a concept? Create a Pizza class on the canvas. Wait for my next question.';
+  const TURN0 = 'I want to learn OWL ontology concepts through a hands-on example. I will guide you through the pizza domain step by step — one concept at a time. Rule: for each question I ask, model exactly the concept I ask about on the canvas, then stop and wait. Do not add anything beyond what I asked. Do not arrange nodes automatically. Use the ex: prefix for all IRIs (ex: maps to http://example.org/). First question: in OWL, what is the most fundamental building block for representing a concept? Create a single Pizza class — just this one node, nothing more. Wait for my next question.';
   let turn0Ok = false;
   for (let i = 0; i < 8; i++) {
     turn0Ok = await owuiPage.evaluate((text) => window.__vgInjectResult?.(text) ?? false, TURN0);

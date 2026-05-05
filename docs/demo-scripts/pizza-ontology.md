@@ -134,10 +134,11 @@ appears. Expected entries list the concept to look for, not exact IRIs.
 ---
 
 ### Turn 0 — Root class (in pizza-demo-setup.js)
-> "I want to learn OWL ontology concepts through a hands-on example. I will guide you through the pizza domain step by step — one concept at a time. Rule: for each question I ask, model exactly the concept I ask about on the canvas, then stop and wait. Do not add anything beyond what I asked. Do not arrange nodes automatically. First question: in OWL, what is the most fundamental building block for representing a concept? Create a Pizza class on the canvas. Wait for my next question."
+> "I want to learn OWL ontology concepts through a hands-on example. I will guide you through the pizza domain step by step — one concept at a time. Rule: for each question I ask, model exactly the concept I ask about on the canvas, then stop and wait. Do not add anything beyond what I asked. Do not arrange nodes automatically. Use the ex: prefix for all IRIs (ex: maps to http://example.org/). First question: in OWL, what is the most fundamental building block for representing a concept? Create a single Pizza class — just this one node, nothing more. Wait for my next question."
 
-**Concept:** `addNode` with `typeIri=owl:Class` for a Pizza class.
-Preamble establishes guided-session rules — no tool names, just scope constraints.
+**Concept:** `addNode` with `typeIri=owl:Class` for a single `ex:Pizza` class.
+"Use the ex: prefix" prevents qwen3 from anchoring on pizza.owl# training data IRIs.
+"just this one node, nothing more" prevents qwen3 from pre-emptively adding the full 3-class hierarchy.
 
 ---
 
