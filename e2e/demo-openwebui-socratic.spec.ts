@@ -145,9 +145,18 @@ async function clearCaption(page: Page): Promise<void> {
 
 async function waitIdle(frame: Frame, timeout = 300_000): Promise<boolean> {
   const deadline = Date.now() + timeout;
+  // Require 2 consecutive idle checks (2 s) before declaring done.
+  // One check isn't enough: the relay processes tool calls async (200–800 ms)
+  // and isAiStreaming() returns false during that window, causing early injection.
+  let stableIdle = 0;
   while (Date.now() < deadline) {
     const streaming = await frame.evaluate(() => (window as any).__vgIsStreaming?.() ?? false).catch(() => false);
-    if (!streaming) return true;
+    if (!streaming) {
+      stableIdle++;
+      if (stableIdle >= 2) return true;
+    } else {
+      stableIdle = 0;
+    }
     await sleep(1000);
   }
   return false;
@@ -167,8 +176,11 @@ async function inject(frame: Frame, text: string, retries = 8): Promise<boolean>
 }
 
 async function clickSend(frame: Frame): Promise<void> {
-  const btn = await frame.$('#send-message-button:not([disabled])');
-  if (btn) await btn.click();
+  // Locator avoids stale ElementHandle: if OWUI re-renders the button between
+  // find and click the ElementHandle throws "not attached to DOM".
+  await frame.locator('#send-message-button:not([disabled])').click({ timeout: 3_000 }).catch(() => {
+    // Already submitted (relay auto-submit) or streaming started — safe to ignore.
+  });
 }
 
 // ── Test ──────────────────────────────────────────────────────────────────────

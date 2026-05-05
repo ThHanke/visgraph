@@ -84,10 +84,12 @@ async (page) => {
   await owuiPage.addScriptTag({ content: relayCode });
   await owuiPage.waitForTimeout(300);
 
-  // ── 4. Wait for seed idle ──────────────────────────────────────────────────
+  // ── 4. Wait for seed idle (3 s stability — relay processing window is <1 s) ─
   const deadline1 = Date.now() + 120_000;
+  let stable1 = 0;
   while (Date.now() < deadline1) {
-    if (!(await owuiPage.evaluate(() => window.__vgIsStreaming?.() ?? false))) break;
+    const s = await owuiPage.evaluate(() => window.__vgIsStreaming?.() ?? false);
+    if (!s) { stable1++; if (stable1 >= 2) break; } else { stable1 = 0; }
     await owuiPage.waitForTimeout(1000);
   }
   await owuiPage.waitForTimeout(500);
@@ -106,10 +108,12 @@ async (page) => {
   const instrBtn = await owuiPage.$('#send-message-button:not([disabled])');
   if (instrBtn) await instrBtn.click();
 
-  // ── 6. Wait for INSTR idle, then let injectInProgress reset ───────────────
+  // ── 6. Wait for INSTR idle (3 s stability) ───────────────────────────────
   const deadline2 = Date.now() + 120_000;
+  let stable2 = 0;
   while (Date.now() < deadline2) {
-    if (!(await owuiPage.evaluate(() => window.__vgIsStreaming?.() ?? false))) break;
+    const s = await owuiPage.evaluate(() => window.__vgIsStreaming?.() ?? false);
+    if (!s) { stable2++; if (stable2 >= 2) break; } else { stable2 = 0; }
     await owuiPage.waitForTimeout(1000);
   }
   // injectInProgress resets to false once trySubmit sees editor cleared.

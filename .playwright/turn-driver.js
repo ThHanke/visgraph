@@ -63,9 +63,15 @@ async (page) => {
 
   async function waitIdle() {
     const deadline = Date.now() + IDLE_TIMEOUT_MS;
+    let stableIdle = 0;
     while (Date.now() < deadline) {
       const streaming = await owuiPage.evaluate(() => window.__vgIsStreaming?.() ?? false);
-      if (!streaming) return true;
+      if (!streaming) {
+        stableIdle++;
+        if (stableIdle >= 2) return true;
+      } else {
+        stableIdle = 0;
+      }
       await owuiPage.waitForTimeout(1000);
     }
     return false;
