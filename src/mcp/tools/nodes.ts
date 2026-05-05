@@ -115,6 +115,8 @@ const expandNode: McpTool = {
       const el = findEntityElement(iri, model);
       if (!el) return { success: false, error: `Element not on canvas: ${iri}` };
       model.history.execute(Reactodia.setElementExpanded(el, expand));
+      const { navigateToIri } = getWorkspaceRefs();
+      navigateToIri?.(iri);
       return { success: true, data: { iri, expanded: expand } };
     } catch (e) {
       return { success: false, error: String(e) };
