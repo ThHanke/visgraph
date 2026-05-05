@@ -253,7 +253,7 @@ OWUI_URL=https://gpuserver1-sit.iwm.fraunhofer.de \
 npm run demo:owui:video
 # or directly:
 xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' \
-  npx playwright test e2e/demo-openwebui-pizza.spec.ts \
+  npx playwright test e2e/demo-openwebui-socratic.spec.ts \
     --config=playwright.openwebui.config.ts
 ```
 
