@@ -341,9 +341,11 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
   // ── 9. Wait for model's help() cycle to complete ──────────────────────────
   // Model reads starter prompt → calls help() itself → relay executes → model reads
   // manifest and responds. waitIdle waits for 3 s of content+relay silence.
-  await clearCaption(page);
+  await caption(page, 'Model familiarising with MCP tools — calling help()…');
   await waitIdle(chatFrame, 180_000);
-  await sleep(2_000); // help() manifest is large — give model time to read it
+  // Hold 30 s so viewers can see the model reading the tool manifest before we start.
+  await sleep(30_000);
+  await clearCaption(page);
 
   // ── 10. Socratic turns ────────────────────────────────────────────────────
   await clearCaption(page);
