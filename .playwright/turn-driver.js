@@ -26,7 +26,7 @@ async (page) => {
   const TURNS = [
     // T1 — rdfs:subClassOf hierarchy + runLayout
     // Goal: subClassOf edges visible on canvas, then runLayout.
-    'A pizza is made from two distinct building blocks. What are they in OWL terms? Model them as sub-categories of Pizza using the correct OWL relationship, then arrange the hierarchy so it is visible. Wait for my next question.',
+    'A pizza is made from two distinct building blocks. What predicate does OWL use to build hierarchies of classes? Use it to model the two building blocks as sub-classes of Pizza, then arrange the hierarchy so it is visible. Wait for my next question.',
 
     // T2 — owl:disjointWith
     // Goal: disjointWith between the two sibling classes.

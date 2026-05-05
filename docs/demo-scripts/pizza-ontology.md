@@ -143,10 +143,11 @@ appears. Expected entries list the concept to look for, not exact IRIs.
 ---
 
 ### Turn 1 — Hierarchy + layout
-> "A pizza is made from two distinct building blocks. What are they in OWL terms? Model them as sub-categories of Pizza using the correct OWL relationship, then arrange the hierarchy so it is visible. Wait for my next question."
+> "A pizza is made from two distinct building blocks. What predicate does OWL use to build hierarchies of classes? Use it to model the two building blocks as sub-classes of Pizza, then arrange the hierarchy so it is visible. Wait for my next question."
 
 **Concept:** `rdfs:subClassOf` edges from two new classes to Pizza, then `runLayout`.
 Accept any names (Dough/Toppings, Base/Topping, Crust/Ingredient, etc.).
+"What predicate does OWL use to build hierarchies" anchors the model on rdfs:subClassOf rather than owl:part.
 
 ---
 
