@@ -31,10 +31,6 @@ const VG_URL    = process.env.DEMO_BASE_URL || 'http://localhost:8080';
 const AUTH_FILE = path.resolve(__dirname, '../.playwright/owui-auth.json');
 const MODEL     = 'qwen3:4b';
 
-// Bare help() call — relay executes it and injects the full manifest + format
-// instructions as a user message. No inline tool list needed.
-const INSTR = '`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"help","arguments":{}}}`';
-
 // Caption shown briefly before injection — tells viewer what's being asked
 const TURN_TOPICS = [
   'Asking: what is the most fundamental OWL building block for a concept?',
@@ -71,7 +67,7 @@ const TURNS = [
   'I want to learn OWL ontology concepts through a hands-on example. I will guide you through the pizza domain step by step — one concept at a time. Rule: for each question I ask, model exactly the concept I ask about on the canvas, then stop and wait. Do not add anything beyond what I asked. Do not arrange nodes automatically. Use the ex: prefix for all IRIs (ex: maps to http://example.org/). First question: in OWL, what is the most fundamental building block for representing a concept? Create a single Pizza class — just this one node, nothing more. Wait for my next question.',
 
   // T1 — rdfs:subClassOf hierarchy + runLayout
-  'A pizza is made from two distinct building blocks. What predicate does OWL use to build hierarchies of classes? Use it to model the two building blocks as sub-classes of Pizza, then arrange the hierarchy so it is visible. Wait for my next question.',
+  'A pizza is made from two distinct building blocks — a base and a topping. In OWL the predicate rdfs:subClassOf places a class beneath its parent. Add exactly two sub-class edges: one from the base class up to Pizza, one from the topping class up to Pizza. No other triples. Keep using the ex: prefix. Then arrange the hierarchy. Wait for my next question.',
 
   // T2 — owl:disjointWith
   'In OWL, classes can be declared mutually exclusive — no individual can belong to both at the same time. Should the two building blocks of a pizza be disjoint from each other? If so, express that relationship on the canvas. Wait for my next question.',
@@ -80,7 +76,7 @@ const TURNS = [
   'Good. Each building block has concrete varieties — for example a dough might be thin-crust or thick-crust. Add two specific sub-types under each building block, then arrange the hierarchy. Wait for my next question.',
 
   // T4 — owl:ObjectProperty with domain + range
-  'The hierarchy shows how classes relate by type. But OWL has a formal construct for expressing that a Pizza is composed of its parts — a named relationship that is itself an entity in the ontology, with a defined source class and target class. How would you model that composition? Wait for my next question.',
+  'In OWL, composition is modelled with an owl:ObjectProperty — a named relationship that is itself a first-class node in the ontology, not just an edge. Create an object property called hasPart and declare its domain as Pizza and its range as its two building blocks. Add it to the canvas now. Wait for my next question.',
 
   // T5 — expandNode
   'Expand the Pizza class node on the canvas so I can see all its asserted properties. Wait for my next question.',
@@ -89,7 +85,7 @@ const TURNS = [
   'Everything so far is the schema — the TBox. I want to see a real pizza instance. In OWL, concrete instances are called Named Individuals. Switch to the individuals view and add one. Wait for my next question.',
 
   // T7 — connect individual to parts
-  'Give your pizza individual some parts — one individual topping and one individual dough. Connect them to the pizza using the object property you defined earlier. Wait for my next question.',
+  'Give your pizza individual one individual topping and one individual base. Connect each part to the pizza individual using only the hasPart object property you defined earlier — no other properties. Wait for my next question.',
 
   // T8 — OWL-RL reasoning
   'The schema and data are in place. Now apply OWL-RL reasoning to derive everything that can be inferred. Wait for my next question.',
@@ -278,13 +274,26 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
     if (pick) { await pick.click(); await sleep(400); }
   }
 
-  // ── 6. Send plain-text seed → creates /c/ URL ─────────────────────────────
-  // SEED: canonical text — must match README.md "Starter prompt" section exactly.
-  // No backticks — plain text so OWUI routes to /c/ not /notes/.
-  await caption(page, 'Seeding the relay session…');
-  const SEED = 'You are connected to Ontosphere via a relay. A script in this tab intercepts your tool calls, runs them in Ontosphere, and injects results back as a user message. Ask the user what they would like to build.';
+  // ── 6. Type full README starter prompt → creates /c/ URL ──────────────────
+  // Source of truth: README.md "Starter prompt" section.
+  // Typed line-by-line with Shift+Enter — same mechanism as Socratic questions.
+  // The embedded id:0 help() call is pre-seeded by the relay on startup and will
+  // NOT be re-executed. Only the model's own help() call in its response fires.
+  await caption(page, 'Sending relay starter prompt…');
+  const STARTER_LINES = [
+    'You are connected to Ontosphere via a relay. A script in this tab intercepts your tool calls, runs them in Ontosphere, and injects results back as a user message. Ask the user what they would like to build.',
+    '',
+    'Output format — one JSON-RPC 2.0 call per line, backtick-wrapped:',
+    '`{"jsonrpc":"2.0","id":<N>,"method":"tools/call","params":{"name":"<toolName>","arguments":{...}}}`',
+    '',
+    'Call help first to get full instructions and the tool list:',
+    '`{"jsonrpc":"2.0","id":0,"method":"tools/call","params":{"name":"help","arguments":{}}}`',
+  ];
   await chatFrame.locator('#chat-input').click();
-  await page.keyboard.type(SEED, { delay: 2 });
+  for (let i = 0; i < STARTER_LINES.length; i++) {
+    if (STARTER_LINES[i]) await page.keyboard.type(STARTER_LINES[i], { delay: 2 });
+    if (i < STARTER_LINES.length - 1) await page.keyboard.press('Shift+Enter');
+  }
   await page.keyboard.press('Enter');
   await chatFrame.waitForFunction(() => location.pathname.startsWith('/c/'), { timeout: 15_000 });
 
@@ -311,20 +320,14 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
   await relayPopup.waitForLoadState('domcontentloaded');
   await sleep(500);
 
-  // ── 9. Wait for seed idle ─────────────────────────────────────────────────
+  // ── 9. Wait for model's help() cycle to complete ──────────────────────────
+  // Model reads starter prompt → calls help() itself → relay executes → model reads
+  // manifest and responds. waitIdle waits for 3 s of content+relay silence.
   await clearCaption(page);
-  await waitIdle(chatFrame, 120_000);
-  await sleep(500);
+  await waitIdle(chatFrame, 180_000);
+  await sleep(2_000); // help() manifest is large — give model time to read it
 
-  // ── 10. Send INSTR (format only, no task) ─────────────────────────────────
-  await caption(page, 'Sending relay format instructions…');
-  await inject(chatFrame, INSTR);
-  await sleep(800);
-  await clickSend(chatFrame);
-  await waitIdle(chatFrame, 120_000);
-  await sleep(3_000); // help() manifest is large — model needs time to read it
-
-  // ── 11. Socratic turns ────────────────────────────────────────────────────
+  // ── 10. Socratic turns ────────────────────────────────────────────────────
   await clearCaption(page);
   for (let i = 0; i < TURNS.length; i++) {
     // Before: brief label so viewer knows what concept is being asked about
@@ -347,7 +350,7 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
     await sleep(1_000);
   }
 
-  // ── 12. End card ──────────────────────────────────────────────────────────
+  // ── 11. End card ──────────────────────────────────────────────────────────
   await caption(page, 'Pizza ontology — TBox · ABox · OWL-RL reasoning — built through Socratic questioning alone');
   await sleep(6_000);
   await clearCaption(page);

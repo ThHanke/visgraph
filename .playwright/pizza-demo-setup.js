@@ -10,12 +10,13 @@
  * What it does:
  *   1. fresh-setup: select qwen3:4b, clear input
  *   2. Navigate to OWUI home
- *   3. Send plain-text seed → creates /c/ URL
- *   4. Inject relay bookmarklet (via Ontosphere tab, bypasses mixed-content)
- *   5. Wait for seed idle
- *   6. Inject bare help() call — relay executes it, model reads full instructions from result
- *   7. Wait for INSTR idle
- *   8. Inject Socratic starter question (Turn 0)
+ *   3. Type the full README starter prompt (Shift+Enter for newlines) → creates /c/ URL
+ *      The starter prompt embeds the relay format + help() call.
+ *      The model reads it and calls help() itself — no separate INSTR injection.
+ *   4. Inject relay bookmarklet (relay pre-seeds the embedded help() call so it won't
+ *      re-execute it; only the model's own help() call in its response is dispatched)
+ *   5. Wait for model's help() cycle to complete
+ *   6. Inject Socratic starter question (Turn 0) via relay
  *
  * After this script: relay connected, Turn 0 live. Drive with turn-driver.js.
  */
@@ -48,21 +49,30 @@ async (page) => {
     const pick = await owuiPage.$(`button:has-text("${MODEL}"), [data-value*="${MODEL}"]`);
     if (pick) { await pick.click(); await owuiPage.waitForTimeout(400); }
   }
-  const cleared = await owuiPage.evaluate(() => {
-    const el = document.getElementById('chat-input');
-    const tp = el?.editor;
-    if (tp?.view) { const s = tp.view.state; tp.view.dispatch(s.tr.delete(0, s.doc.content.size)); return true; }
-    return false;
-  });
 
-  // ── 2. Send seed (plain text, no backticks → stays on /c/ not /notes/) ─────
-  // Canonical starter prompt — must match README.md "Starter prompt" section (plain-text line only, no backticks).
-  const SEED = 'You are connected to Ontosphere via a relay. A script in this tab intercepts your tool calls, runs them in Ontosphere, and injects results back as a user message. Ask the user what they would like to build.';
-  const el = await owuiPage.$('#chat-input');
-  if (!el) return { ok: false, error: 'no #chat-input' };
-  await el.click();
+  // ── 2. Type full README starter prompt — Shift+Enter for newlines ──────────
+  // Source of truth: README.md "Starter prompt" section.
+  // The embedded help() call (`id:0`) is pre-seeded by the relay on startup so
+  // it will NOT be executed. Only the model's own help() call in its response fires.
+  const STARTER_LINES = [
+    'You are connected to Ontosphere via a relay. A script in this tab intercepts your tool calls, runs them in Ontosphere, and injects results back as a user message. Ask the user what they would like to build.',
+    '',
+    'Output format — one JSON-RPC 2.0 call per line, backtick-wrapped:',
+    '`{"jsonrpc":"2.0","id":<N>,"method":"tools/call","params":{"name":"<toolName>","arguments":{...}}}`',
+    '',
+    'Call help first to get full instructions and the tool list:',
+    '`{"jsonrpc":"2.0","id":0,"method":"tools/call","params":{"name":"help","arguments":{}}}`',
+  ];
+
+  const chatInput = await owuiPage.$('#chat-input');
+  if (!chatInput) return { ok: false, error: 'no #chat-input' };
+  await chatInput.click();
   await owuiPage.waitForTimeout(200);
-  await owuiPage.keyboard.type(SEED, { delay: 2 });
+
+  for (let i = 0; i < STARTER_LINES.length; i++) {
+    if (STARTER_LINES[i]) await owuiPage.keyboard.type(STARTER_LINES[i], { delay: 2 });
+    if (i < STARTER_LINES.length - 1) await owuiPage.keyboard.press('Shift+Enter');
+  }
   await owuiPage.keyboard.press('Enter');
   await owuiPage.waitForFunction(() => location.pathname.startsWith('/c/'), { timeout: 10000 });
   const chatUrl = owuiPage.url();
@@ -77,6 +87,7 @@ async (page) => {
       '  window.__vgInjectResult = injectResult;',
       '  window.__vgIsStreaming   = isAiStreaming;',
       '  window.__vgWaitForIdle  = waitForIdle;',
+      '  window.__vgIsRelayIdle  = function() { return callQueue.length === 0 && !isProcessing; };',
       '})();',
     ].join('\n'));
     return src;
@@ -84,46 +95,19 @@ async (page) => {
   await owuiPage.addScriptTag({ content: relayCode });
   await owuiPage.waitForTimeout(300);
 
-  // ── 4. Wait for seed idle (3 s stability — relay processing window is <1 s) ─
-  const deadline1 = Date.now() + 120_000;
-  let stable1 = 0;
-  while (Date.now() < deadline1) {
+  // ── 4. Wait for model's help() cycle to complete ──────────────────────────
+  // Model reads starter prompt → calls help() itself → relay executes → model
+  // reads manifest → responds. Wait for 3 s of continuous silence.
+  const deadline = Date.now() + 180_000;
+  let stable = 0;
+  while (Date.now() < deadline) {
     const s = await owuiPage.evaluate(() => window.__vgIsStreaming?.() ?? false);
-    if (!s) { stable1++; if (stable1 >= 2) break; } else { stable1 = 0; }
-    await owuiPage.waitForTimeout(1000);
+    if (!s) { stable++; if (stable >= 6) break; } else { stable = 0; }
+    await owuiPage.waitForTimeout(500);
   }
-  await owuiPage.waitForTimeout(500);
-
-  // ── 5. Inject INSTR — bare help() call only ───────────────────────────────
-  //    The call itself demonstrates the relay format. Relay executes it and
-  //    injects the full tool list, workflow, and IRI prefixes as a result.
-  //    No extra instructions here — this is a live test of help() sufficiency.
-  const INSTR = '`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"help","arguments":{}}}`';
-
-  const instrInjected = await owuiPage.evaluate((text) => {
-    return typeof window.__vgInjectResult === 'function' ? window.__vgInjectResult(text) : false;
-  }, INSTR);
-
-  await owuiPage.waitForTimeout(800);
-  const instrBtn = await owuiPage.$('#send-message-button:not([disabled])');
-  if (instrBtn) await instrBtn.click();
-
-  // ── 6. Wait for INSTR idle (3 s stability) ───────────────────────────────
-  const deadline2 = Date.now() + 120_000;
-  let stable2 = 0;
-  while (Date.now() < deadline2) {
-    const s = await owuiPage.evaluate(() => window.__vgIsStreaming?.() ?? false);
-    if (!s) { stable2++; if (stable2 >= 2) break; } else { stable2 = 0; }
-    await owuiPage.waitForTimeout(1000);
-  }
-  // injectInProgress resets to false once trySubmit sees editor cleared.
-  // Give it 1s to settle before Turn 0.
   await owuiPage.waitForTimeout(1000);
 
-  // ── 7. Inject Turn 0 — Socratic starter ───────────────────────────────────
-  // T0: introduce the topic and ask ONLY for step 1.
-  // "I will guide you" signals that qwen3 should wait for each question before proceeding.
-  // "only this one step" is the explicit stop signal.
+  // ── 5. Inject Turn 0 — Socratic starter ───────────────────────────────────
   const TURN0 = 'I want to learn OWL ontology concepts through a hands-on example. I will guide you through the pizza domain step by step — one concept at a time. Rule: for each question I ask, model exactly the concept I ask about on the canvas, then stop and wait. Do not add anything beyond what I asked. Do not arrange nodes automatically. Use the ex: prefix for all IRIs (ex: maps to http://example.org/). First question: in OWL, what is the most fundamental building block for representing a concept? Create a single Pizza class — just this one node, nothing more. Wait for my next question.';
   let turn0Ok = false;
   for (let i = 0; i < 8; i++) {
@@ -136,5 +120,5 @@ async (page) => {
   const t0btn = await owuiPage.$('#send-message-button:not([disabled])');
   if (t0btn) await t0btn.click();
 
-  return { ok: true, cleared, chatUrl, instrInjected, turn0: turn0Ok };
+  return { ok: true, chatUrl, turn0: turn0Ok };
 }

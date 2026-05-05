@@ -143,11 +143,11 @@ appears. Expected entries list the concept to look for, not exact IRIs.
 ---
 
 ### Turn 1 — Hierarchy + layout
-> "A pizza is made from two distinct building blocks. What predicate does OWL use to build hierarchies of classes? Use it to model the two building blocks as sub-classes of Pizza, then arrange the hierarchy so it is visible. Wait for my next question."
+> "A pizza is made from two distinct building blocks — a base and a topping. In OWL the predicate rdfs:subClassOf places a class beneath its parent. Add exactly two sub-class edges: one from the base class up to Pizza, one from the topping class up to Pizza. No other triples. Keep using the ex: prefix. Then arrange the hierarchy. Wait for my next question."
 
 **Concept:** `rdfs:subClassOf` edges from two new classes to Pizza, then `runLayout`.
-Accept any names (Dough/Toppings, Base/Topping, Crust/Ingredient, etc.).
-"What predicate does OWL use to build hierarchies" anchors the model on rdfs:subClassOf rather than owl:part.
+Accept any names (Base/Topping, Crust/Ingredient, etc.).
+Explicit direction ("from … up to Pizza") prevents reversed edges. "No other triples" prevents extra unsolicited nodes. "Keep using the ex: prefix" counters pizza.owl# IRI leakage.
 
 ---
 
@@ -166,10 +166,10 @@ Accept any names (Dough/Toppings, Base/Topping, Crust/Ingredient, etc.).
 ---
 
 ### Turn 4 — owl:ObjectProperty with domain + range
-> "The hierarchy shows how classes relate by type. But OWL has a formal construct for expressing that a Pizza is composed of its parts — a named relationship that is itself an entity in the ontology, with a defined source class and target class. How would you model that composition? Wait for my next question."
+> "In OWL, composition is modelled with an owl:ObjectProperty — a named relationship that is itself a first-class node in the ontology, not just an edge. Create an object property called hasPart and declare its domain as Pizza and its range as its two building blocks. Add it to the canvas now. Wait for my next question."
 
 **Concept:** `addNode` with `typeIri=owl:ObjectProperty`, then `addTriple` for `rdfs:domain` and `rdfs:range`.
-Relies on `addNode` manifest description that now explicitly calls out `owl:ObjectProperty` as a first-class node.
+Naming `hasPart` explicitly prevents the model from deferring the property creation to T7 (observed failure mode: model answers in prose at T4 and only creates hasPart when it needs it at T7).
 
 ---
 
@@ -189,9 +189,10 @@ Relies on `addNode` manifest description that now explicitly calls out `owl:Obje
 ---
 
 ### Turn 7 — Connect individual to parts
-> "Give your pizza individual some parts — one individual topping and one individual dough. Connect them to the pizza using the object property you defined earlier. Wait for my next question."
+> "Give your pizza individual one individual topping and one individual base. Connect each part to the pizza individual using only the hasPart object property you defined earlier — no other properties. Wait for my next question."
 
-**Concept:** `addNode` for part individuals + `addTriple` using the object property from T4.
+**Concept:** `addNode` for part individuals + `addTriple` using the hasPart object property from T4.
+"pizza individual" (not "Pizza class") prevents triples from the wrong subject. "only the hasPart object property" prevents owl:part/owl:partOf substitutions. "no other properties" prevents extra unsolicited triples.
 
 ---
 

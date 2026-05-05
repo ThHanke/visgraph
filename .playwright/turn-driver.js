@@ -26,7 +26,7 @@ async (page) => {
   const TURNS = [
     // T1 — rdfs:subClassOf hierarchy + runLayout
     // Goal: subClassOf edges visible on canvas, then runLayout.
-    'A pizza is made from two distinct building blocks. What predicate does OWL use to build hierarchies of classes? Use it to model the two building blocks as sub-classes of Pizza, then arrange the hierarchy so it is visible. Wait for my next question.',
+    'A pizza is made from two distinct building blocks — a base and a topping. In OWL the predicate rdfs:subClassOf places a class beneath its parent. Add exactly two sub-class edges: one from the base class up to Pizza, one from the topping class up to Pizza. No other triples. Keep using the ex: prefix. Then arrange the hierarchy. Wait for my next question.',
 
     // T2 — owl:disjointWith
     // Goal: disjointWith between the two sibling classes.
@@ -37,8 +37,8 @@ async (page) => {
     'Good. Each building block has concrete varieties — for example a dough might be thin-crust or thick-crust. Add two specific sub-types under each building block, then arrange the hierarchy. Wait for my next question.',
 
     // T4 — owl:ObjectProperty with domain and range
-    // Goal: ObjectProperty as a named entity. addNode description now spells this out explicitly.
-    'The hierarchy shows how classes relate by type. But OWL has a formal construct for expressing that a Pizza is composed of its parts — a named relationship that is itself an entity in the ontology, with a defined source class and target class. How would you model that composition? Wait for my next question.',
+    // Goal: ObjectProperty as a named entity on canvas with domain + range.
+    'In OWL, composition is modelled with an owl:ObjectProperty — a named relationship that is itself a first-class node in the ontology, not just an edge. Create an object property called hasPart and declare its domain as Pizza and its range as its two building blocks. Add it to the canvas now. Wait for my next question.',
 
     // T5 — expandNode
     // Goal: reveal annotation property cards on the Pizza node.
@@ -50,7 +50,7 @@ async (page) => {
 
     // T7 — connect individual to part individuals via the object property
     // Goal: addNode for parts + addTriple with the object property.
-    'Give your pizza individual some parts — one individual topping and one individual dough. Connect them to the pizza using the object property you defined earlier. Wait for my next question.',
+    'Give your pizza individual one individual topping and one individual base. Connect each part to the pizza individual using only the hasPart object property you defined earlier — no other properties. Wait for my next question.',
 
     // T8 — runReasoning
     // Goal: OWL-RL forward-chaining.
@@ -61,20 +61,42 @@ async (page) => {
     'What did the reasoner infer about your pizza individual? Fetch its details from the graph and report which types are now attached to it.',
   ];
 
-  async function waitIdle() {
+  // Reliable idle: content-length stability + relay queue drained.
+  // isAiStreaming() is NOT used — newer OWUI keeps send-button enabled while
+  // generating, causing false-idle readings. Content growth is the true signal.
+  let _lastLen = -1;
+  async function isBusy() {
+    const state = await owuiPage.evaluate(() => ({
+      relayBusy: !(window.__vgIsRelayIdle?.() ?? true),
+      len: document.body.innerText?.length ?? 0,
+    })).catch(() => ({ relayBusy: false, len: _lastLen }));
+    const growing = _lastLen >= 0 && state.len !== _lastLen;
+    _lastLen = state.len;
+    return state.relayBusy || growing;
+  }
+
+  async function waitIdle(stableMs = 3_000) {
     const deadline = Date.now() + IDLE_TIMEOUT_MS;
-    let stableIdle = 0;
+    const pollMs = 500;
+    let silentMs = 0;
     while (Date.now() < deadline) {
-      const streaming = await owuiPage.evaluate(() => window.__vgIsStreaming?.() ?? false);
-      if (!streaming) {
-        stableIdle++;
-        if (stableIdle >= 2) return true;
-      } else {
-        stableIdle = 0;
-      }
-      await owuiPage.waitForTimeout(1000);
+      const busy = await isBusy();
+      if (busy) silentMs = 0; else silentMs += pollMs;
+      if (silentMs >= stableMs) return true;
+      await owuiPage.waitForTimeout(pollMs);
     }
     return false;
+  }
+
+  // 10-second continuous silence before typing — resets on any activity.
+  async function waitQuiet(quietMs = 10_000) {
+    const pollMs = 500;
+    let silentMs = 0;
+    while (silentMs < quietMs) {
+      const busy = await isBusy();
+      if (busy) silentMs = 0; else silentMs += pollMs;
+      await owuiPage.waitForTimeout(pollMs);
+    }
   }
 
   async function injectTurn(text) {
@@ -107,7 +129,10 @@ async (page) => {
   for (let i = 0; i < TURNS.length; i++) {
     const turnNum = i + 1;
 
+    // Wait until truly idle (3s stability), then 10s of continuous silence
+    // before typing to ensure relay queue is drained and model isn't mid-think.
     const idleReached = await waitIdle();
+    await waitQuiet();
     await owuiPage.waitForTimeout(600);
 
     // Capture previous response before injecting next turn
