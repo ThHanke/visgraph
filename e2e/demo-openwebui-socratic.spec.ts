@@ -39,10 +39,11 @@ const TURN_TOPICS = [
   'Guide: add two concrete varieties under each building block.',
   'Guide: how does OWL express that a Pizza is composed of its parts?',
   'Guide: reveal all asserted properties on the Pizza class node.',
-  'Guide: switch to individuals — create a real pizza instance.',
-  'Guide: give the pizza individual its parts and connect them.',
+  'Guide: switch to individuals — create a real pizza instance (no class yet).',
+  'Guide: add typed part individuals and connect them — leave pizza untyped.',
   'Guide: apply OWL-RL reasoning to derive everything implicit.',
   'Guide: what did the reasoner infer about the pizza individual?',
+  'Guide: inspect the part individuals — trace the subclass inference chain.',
 ];
 
 // Caption shown after idle — describes what was just built
@@ -53,10 +54,11 @@ const AFTER_CAPTIONS = [
   'Third level of hierarchy — concrete varieties under each building block.',
   'owl:ObjectProperty with domain + range — named composition link in the ontology.',
   'expandNode reveals all asserted properties on the Pizza class.',
-  'owl:NamedIndividual in ABox view — TBox/ABox separation demonstrated.',
-  'Individual linked to its parts via the object property.',
+  'owl:NamedIndividual in ABox view — no class asserted yet, only individual type.',
+  'Parts typed as specific varieties, linked via hasPart — pizza individual still untyped.',
   'OWL-RL reasoning complete — inferred triples materialised.',
-  'Pizza ontology complete — built through Socratic questioning alone.',
+  'Pizza individual now carries inferred rdf:type Pizza — derived via domain rule.',
+  'Parts inherit types up the subClass chain — ontology complete.',
 ];
 
 // T0–T9: validated Socratic arc — purely conceptual, no tool-name references.
@@ -67,7 +69,8 @@ const TURNS = [
   'I want to learn OWL ontology concepts through a hands-on example. I will guide you through the pizza domain step by step — one concept at a time. Rule: for each question I ask, model exactly the concept I ask about on the canvas, then stop and wait. Do not add anything beyond what I asked. Do not arrange nodes automatically. Use the ex: prefix for all IRIs (ex: maps to http://example.org/). First question: in OWL, what is the most fundamental building block for representing a concept? Create a single Pizza class — just this one node, nothing more. Wait for my next question.',
 
   // T1 — rdfs:subClassOf hierarchy + runLayout
-  'A pizza is made from two distinct building blocks — a base and a topping. In OWL the predicate rdfs:subClassOf places a class beneath its parent. Add exactly two sub-class edges: one from the base class up to Pizza, one from the topping class up to Pizza. No other triples. Keep using the ex: prefix. Then arrange the hierarchy. Wait for my next question.',
+  // Both edges mandatory — qwen3 reliably adds only one without explicit AND.
+  'A pizza is made from two distinct building blocks — a base and a topping. In OWL, rdfs:subClassOf places a class beneath its parent. Create a class for the base and a class for the topping, then add both subClassOf edges: base subClassOf Pizza AND topping subClassOf Pizza. Both edges are required — do not stop after just one. Keep using the ex: prefix. Then arrange the hierarchy. Wait for my next question.',
 
   // T2 — owl:disjointWith
   'In OWL, classes can be declared mutually exclusive — no individual can belong to both at the same time. Should the two building blocks of a pizza be disjoint from each other? If so, express that relationship on the canvas. Wait for my next question.',
@@ -76,22 +79,28 @@ const TURNS = [
   'Good. Each building block has concrete varieties — for example a dough might be thin-crust or thick-crust. Add two specific sub-types under each building block, then arrange the hierarchy. Wait for my next question.',
 
   // T4 — owl:ObjectProperty with domain + range
-  'In OWL, composition is modelled with an owl:ObjectProperty — a named relationship that is itself a first-class node in the ontology, not just an edge. Create an object property called hasPart and declare its domain as Pizza and its range as its two building blocks. Add it to the canvas now. Wait for my next question.',
+  // Range = Pizza (superclass) to avoid prp-range triggering cax-dw inconsistency.
+  'In OWL, composition is modelled with an owl:ObjectProperty — a named relationship that is itself a first-class node in the ontology, not just an edge. Create an object property called hasPart, declare its domain as Pizza and its range as Pizza (since every part of a pizza is itself a kind of pizza-related thing). Add it to the canvas now. Wait for my next question.',
 
   // T5 — expandNode
   'Expand the Pizza class node on the canvas so I can see all its asserted properties. Wait for my next question.',
 
-  // T6 — ABox individual
-  'Everything so far is the schema — the TBox. I want to see a real pizza instance. In OWL, concrete instances are called Named Individuals. Switch to the individuals view and add one. Wait for my next question.',
+  // T6 — ABox individual with NO class assertion (only owl:NamedIndividual)
+  // prp-domain will infer rdf:type Pizza after reasoning — must not be pre-asserted.
+  'Everything so far is the schema — the TBox. I want to see a real pizza instance. In OWL, concrete instances are called Named Individuals. Switch to the individuals view and create one NamedIndividual for the pizza. Do not assert any owl:Class membership for it — only the owl:NamedIndividual type. The reasoner will determine its class. Wait for my next question.',
 
-  // T7 — connect individual to parts
-  'Give your pizza individual one individual topping and one individual base. Connect each part to the pizza individual using only the hasPart object property you defined earlier — no other properties. Wait for my next question.',
+  // T7 — NEW ABox individuals typed as third-level varieties; pizza left untyped
+  // Must create fresh IRIs — not reuse TBox class nodes — so cax-sco chain fires.
+  'Create two brand-new individual instances with fresh IRIs — one base part and one topping part (for example ex:MyCrust and ex:MyCheese, but use whatever names fit the ontology you built). These are ABox individuals, not the TBox class nodes. Assert the base individual\'s rdf:type as the specific base variety class from the third level. Assert the topping individual\'s rdf:type as the specific topping variety class from the third level. Then connect each to the pizza individual via hasPart. Do not assert any class type on the pizza individual. Wait for my next question.',
 
   // T8 — OWL-RL reasoning
   'The schema and data are in place. Now apply OWL-RL reasoning to derive everything that can be inferred. Wait for my next question.',
 
-  // T9 — getNodeDetails (returns asserted + inferred)
-  'What did the reasoner infer about your pizza individual? Fetch its details from the graph and report which types are now attached to it.',
+  // T9 — inspect pizza individual (prp-domain: hasPart domain Pizza → MyPizza rdf:type Pizza)
+  'What did the reasoner infer about your pizza individual? Fetch its details from the graph. Report which types are marked as inferred versus asserted, and explain which OWL-RL rule produced each inferred type. Wait for my next question.',
+
+  // T10 — inspect part individuals (cax-sco chain: variety → building block → Pizza)
+  'Now fetch the details of each part individual — the base and the topping. Report their asserted types and their inferred types. Trace the inference chain: how did the reasoner climb the subclass hierarchy to assign additional types to each part?',
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

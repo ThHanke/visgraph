@@ -7,7 +7,7 @@
  *   - pizza-demo-setup.js ran: relay injected, help() call sent, Turn 0 in flight or idle
  *   - window.__vgIsStreaming and window.__vgInjectResult exposed on OWUI tab
  *
- * Arc: T1–T9 demonstrating OWL concepts through Socratic questions.
+ * Arc: T1–T10 demonstrating OWL concepts through Socratic questions.
  * Questions guide toward OWL features without prescribing class names —
  * qwen3 decides structure, we steer toward the concept to showcase.
  *
@@ -26,7 +26,9 @@ async (page) => {
   const TURNS = [
     // T1 — rdfs:subClassOf hierarchy + runLayout
     // Goal: subClassOf edges visible on canvas, then runLayout.
-    'A pizza is made from two distinct building blocks — a base and a topping. In OWL the predicate rdfs:subClassOf places a class beneath its parent. Add exactly two sub-class edges: one from the base class up to Pizza, one from the topping class up to Pizza. No other triples. Keep using the ex: prefix. Then arrange the hierarchy. Wait for my next question.',
+    // Both edges are mandatory — qwen3 reliably adds only one without explicit AND.
+    // The full base→Pizza and topping→Pizza chain is required for T10 subClass inference.
+    'A pizza is made from two distinct building blocks — a base and a topping. In OWL, rdfs:subClassOf places a class beneath its parent. Create a class for the base and a class for the topping, then add both subClassOf edges: base subClassOf Pizza AND topping subClassOf Pizza. Both edges are required — do not stop after just one. Keep using the ex: prefix. Then arrange the hierarchy. Wait for my next question.',
 
     // T2 — owl:disjointWith
     // Goal: disjointWith between the two sibling classes.
@@ -38,27 +40,39 @@ async (page) => {
 
     // T4 — owl:ObjectProperty with domain and range
     // Goal: ObjectProperty as a named entity on canvas with domain + range.
-    'In OWL, composition is modelled with an owl:ObjectProperty — a named relationship that is itself a first-class node in the ontology, not just an edge. Create an object property called hasPart and declare its domain as Pizza and its range as its two building blocks. Add it to the canvas now. Wait for my next question.',
+    // Range = Pizza (superclass of both building blocks) — avoids prp-range firing
+    // on both sibling classes simultaneously, which would trigger cax-dw (disjointWith
+    // inconsistency) because every part would be inferred as BOTH PizzaBase and PizzaTopping.
+    'In OWL, composition is modelled with an owl:ObjectProperty — a named relationship that is itself a first-class node in the ontology, not just an edge. Create an object property called hasPart, declare its domain as Pizza and its range as Pizza (since every part of a pizza is itself a kind of pizza-related thing). Add it to the canvas now. Wait for my next question.',
 
     // T5 — expandNode
     // Goal: reveal annotation property cards on the Pizza node.
     'Expand the Pizza class node on the canvas so I can see all its asserted properties. Wait for my next question.',
 
     // T6 — ABox: setViewMode + addNode(NamedIndividual)
-    // Goal: TBox/ABox separation. "named individual" steers toward owl:NamedIndividual typeIri.
-    'Everything so far is the schema — the TBox. I want to see a real pizza instance. In OWL, concrete instances are called Named Individuals. Switch to the individuals view and add one. Wait for my next question.',
+    // Goal: individual with NO class assertion — just owl:NamedIndividual.
+    // The reasoner must infer rdf:type Pizza via prp-domain (hasPart domain Pizza).
+    // Explicitly forbid class assertion so the inference is visible and impressive.
+    'Everything so far is the schema — the TBox. I want to see a real pizza instance. In OWL, concrete instances are called Named Individuals. Switch to the individuals view and create one NamedIndividual for the pizza. Do not assert any owl:Class membership for it — only the owl:NamedIndividual type. The reasoner will determine its class. Wait for my next question.',
 
     // T7 — connect individual to part individuals via the object property
-    // Goal: addNode for parts + addTriple with the object property.
-    'Give your pizza individual one individual topping and one individual base. Connect each part to the pizza individual using only the hasPart object property you defined earlier — no other properties. Wait for my next question.',
+    // Goal: NEW ABox individuals typed as third-level varieties (not the class nodes).
+    // The model must NOT reuse TBox class nodes as ABox individuals — fresh IRIs only.
+    // Typing parts as third-level varieties lets cax-sco chain inference run:
+    //   ex:MyCrust rdf:type ThinCrust → inferred Base → inferred Pizza (T10 showcase).
+    'Create two brand-new individual instances with fresh IRIs — one base part and one topping part (for example ex:MyCrust and ex:MyCheese, but use whatever names fit the ontology you built). These are ABox individuals, not the TBox class nodes. Assert the base individual\'s rdf:type as the specific base variety class from the third level. Assert the topping individual\'s rdf:type as the specific topping variety class from the third level. Then connect each to the pizza individual via hasPart. Do not assert any class type on the pizza individual. Wait for my next question.',
 
     // T8 — runReasoning
-    // Goal: OWL-RL forward-chaining.
+    // Goal: OWL-RL forward-chaining materialises inferred triples.
     'The schema and data are in place. Now apply OWL-RL reasoning to derive everything that can be inferred. Wait for my next question.',
 
-    // T9 — getNodeDetails (now returns both asserted + inferred)
-    // Goal: inspect what the reasoner derived about the individual.
-    'What did the reasoner infer about your pizza individual? Fetch its details from the graph and report which types are now attached to it.',
+    // T9 — inspect pizza individual (prp-domain inference)
+    // Goal: show inferred rdf:type Pizza on the pizza individual via domain rule.
+    'What did the reasoner infer about your pizza individual? Fetch its details from the graph. Report which types are marked as inferred versus asserted, and explain which OWL-RL rule produced each inferred type. Wait for my next question.',
+
+    // T10 — inspect part individuals (subClass chain inference)
+    // Goal: show inferred types on base and topping individuals via cax-sco chain.
+    'Now fetch the details of each part individual — the base and the topping. Report their asserted types and their inferred types. Trace the inference chain: how did the reasoner climb the subclass hierarchy to assign additional types to each part?',
   ];
 
   // Reliable idle: content-length stability + relay queue drained.
