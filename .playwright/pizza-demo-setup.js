@@ -30,6 +30,13 @@ async (page) => {
   if (!owuiPage) return { ok: false, error: 'no OWUI tab' };
   if (!vgPage)   return { ok: false, error: 'no Ontosphere tab' };
 
+  // ── 0. Reload Ontosphere to clear any graph state from previous sessions ───
+  await vgPage.reload();
+  await vgPage.waitForFunction(
+    () => typeof window.__mcpTools?.addNode === 'function',
+    { timeout: 30_000 },
+  );
+
   // ── 1. fresh-setup ─────────────────────────────────────────────────────────
   await owuiPage.goto('https://gpuserver1-sit.iwm.fraunhofer.de/');
   await owuiPage.waitForTimeout(1500);

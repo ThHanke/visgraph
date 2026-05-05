@@ -76,7 +76,8 @@ const TURNS = [
   'In OWL, classes can be declared mutually exclusive — no individual can belong to both at the same time. Should the two building blocks of a pizza be disjoint from each other? If so, express that relationship on the canvas. Wait for my next question.',
 
   // T3 — deepen hierarchy + runLayout
-  'Good. Each building block has concrete varieties — for example a dough might be thin-crust or thick-crust. Add two specific sub-types under each building block, then arrange the hierarchy. Wait for my next question.',
+  // Direction is critical: child (sub-type) is subject, parent is object.
+  'Good. Each building block has concrete varieties — for example a dough might be thin-crust or thick-crust. In rdfs:subClassOf the child class is the SUBJECT and the parent is the OBJECT: ex:ThinCrust rdfs:subClassOf ex:Base means ThinCrust is-a Base. Add two specific sub-types under each building block using this direction (child subClassOf parent), then arrange the hierarchy. Wait for my next question.',
 
   // T4 — owl:ObjectProperty with domain + range
   // Range = Pizza (superclass) to avoid prp-range triggering cax-dw inconsistency.
@@ -88,21 +89,25 @@ const TURNS = [
 
   // T6 — ABox individual with NO class assertion (only owl:NamedIndividual)
   // prp-domain will infer rdf:type Pizza after reasoning — must not be pre-asserted.
-  'Everything so far is the schema — the TBox. I want to see a real pizza instance. In OWL, concrete instances are called Named Individuals. Switch to the individuals view and create one NamedIndividual for the pizza. Do not assert any owl:Class membership for it — only the owl:NamedIndividual type. The reasoner will determine its class. Wait for my next question.',
+  // Explicit distinct IRI required — model reuses ex:Pizza class node if not told otherwise.
+  'Everything so far is the schema — the TBox. I want to see a real pizza instance. In OWL, concrete instances are called Named Individuals. Switch to the individuals view and create one NamedIndividual for the pizza. Give it a distinct IRI that differs from the ex:Pizza class — for example ex:MyPizza or ex:PizzaInstance. Do not assert any owl:Class membership for it — only the owl:NamedIndividual type. Do not add any property connections yet — only the bare node. The reasoner will determine its class. Wait for my next question.',
 
   // T7 — NEW ABox individuals typed as third-level varieties; pizza left untyped
   // addNode(typeIri) avoids rdfs:type vs rdf:type confusion from addTriple.
   // hasPart direction: pizza→part (pizza subject, parts objects).
-  'Create two brand-new individual instances with fresh IRIs — one base part (e.g. ex:MyCrust) and one topping part (e.g. ex:MyCheese). Use addNode with typeIri set to the base variety class for MyCrust, and typeIri set to the topping variety class for MyCheese — this sets rdf:type correctly. Then add two hasPart triples where the PIZZA INDIVIDUAL is the subject: ex:MyPizza hasPart ex:MyCrust and ex:MyPizza hasPart ex:MyCheese (not the other way around). Do not assert any class type on the pizza individual. Wait for my next question.',
+  // Explicit ex:hasPart IRI — model otherwise uses owl:hasPart (wrong namespace).
+  'Create two brand-new individual instances. Step 1: addNode(iri=ex:MyCrust). Step 2: addTriple to set its type — subject=ex:MyCrust, predicate=http://www.w3.org/1999/02/22-rdf-syntax-ns#type, object=the IRI of the leaf variety under the base (e.g. ex:ThinCrust). This is rdf:type — NOT rdfs:subClassOf. Step 3: addNode(iri=ex:MyCheese). Step 4: addTriple to set its type — predicate=http://www.w3.org/1999/02/22-rdf-syntax-ns#type, object=the leaf variety under the topping (e.g. ex:Cheese or ex:Pepperoni). Step 5: addTriple — subject=the pizza individual, predicate=ex:hasPart, object=ex:MyCrust. Step 6: addTriple — subject=the pizza individual, predicate=ex:hasPart, object=ex:MyCheese. All 6 steps required. Do not assert any class type on the pizza individual. Wait for my next question.',
 
   // T8 — OWL-RL reasoning
   'The schema and data are in place. Now apply OWL-RL reasoning to derive everything that can be inferred. Wait for my next question.',
 
   // T9 — inspect pizza individual (prp-domain: hasPart domain Pizza → MyPizza rdf:type Pizza)
-  'What did the reasoner infer about your pizza individual? Fetch its details from the graph. Report which types are marked as inferred versus asserted, and explain which OWL-RL rule produced each inferred type. Wait for my next question.',
+  // Must call getNodeDetails on INDIVIDUAL not the ex:Pizza class.
+  'Call getNodeDetails on your pizza individual — the NamedIndividual you created (e.g. ex:MyPizza or ex:PizzaInstance), NOT the ex:Pizza class node. Show the raw types list returned. Report which types are asserted versus inferred, and explain which OWL-RL rule produced each inferred type. Wait for my next question.',
 
   // T10 — inspect part individuals (cax-sco chain: variety → building block → Pizza)
-  'Now fetch the details of each part individual — the base and the topping. Report their asserted types and their inferred types. Trace the inference chain: how did the reasoner climb the subclass hierarchy to assign additional types to each part?',
+  // Force tool call — model otherwise gives text-only response.
+  'Now call getNodeDetails on each part individual — the base part and the topping part. Show the raw types list returned by the tool for each. Then explain: which types were asserted and which were inferred, and trace the inference chain — how did the reasoner climb the subclass hierarchy to assign each inferred type?',
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
