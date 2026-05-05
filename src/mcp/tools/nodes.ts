@@ -50,6 +50,11 @@ const addNode: McpTool = {
       if (label) adds.push({ s: iri, p: RDFS_LABEL, o: label });
       if (adds.length > 0) await rdfManager.applyBatch({ adds });
 
+      // Wait for the RDF→canvas pipeline before navigating; navigateToIri handles view-switching.
+      await new Promise(r => setTimeout(r, 400));
+      const { navigateToIri } = getWorkspaceRefs();
+      navigateToIri?.(iri);
+
       return { success: true, data: { iri } };
     } catch (e) {
       return { success: false, error: String(e) };
@@ -209,7 +214,7 @@ function classifyObject(value: string): 'iri' | 'literal' | 'bnode' {
 
 const getNodeDetails: McpTool = {
   name: 'getNodeDetails',
-  description: 'Return all asserted RDF properties (triples) for a specific entity IRI. Also navigates the canvas to the node, switching between ABox/TBox views if needed. Only reads from the asserted graph (urn:vg:data) — inferred triples are not included.',
+  description: 'Return all RDF properties (triples) for a specific entity IRI — both asserted (urn:vg:data) and inferred (urn:vg:inferred). Inferred triples are marked inferred:true in the result. Also navigates the canvas to the node, switching between ABox/TBox views if needed.',
   inputSchema: {
     type: 'object',
     required: ['iri'],
@@ -247,6 +252,9 @@ const getNodeDetails: McpTool = {
           properties.push({ predicate: q.predicate, object: q.object, objectType, inferred: true });
         }
       }
+
+      const { navigateToIri } = getWorkspaceRefs();
+      navigateToIri?.(iri);
 
       return { success: true, data: { iri, label, types: [...typeSet], properties } };
     } catch (e) {

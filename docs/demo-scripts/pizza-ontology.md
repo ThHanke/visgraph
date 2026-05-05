@@ -45,21 +45,24 @@ display), records at 1920×1080, then converts to MP4 via ffmpeg.
 2. Selects `qwen3:4b`, navigates to a fresh chat
 3. Sends plain-text seed → establishes `/c/` URL
 4. Injects relay bookmarklet (fetched from Ontosphere frame, bypasses mixed-content)
-5. Sends format INSTR message (single-backtick JSON-RPC 2.0 + key tool signatures)
-6. Runs T0–T6 with `__vgIsStreaming` idle detection between turns
+5. Sends bare `help({})` call — relay executes it, model reads full manifest from result
+6. Runs T0–T9 with `__vgIsStreaming` idle detection between turns
 7. Shows before/after caption overlays at each turn
 
 ### Caption overlay text (per turn)
 
 | Turn | Before caption | After caption |
 |------|---------------|---------------|
-| T0 | Asking qwen3 to add the most fundamental concept: what is a pizza? | qwen3 added the root Pizza class. Next: its two building blocks. |
-| T1 | Guiding the model to split Pizza into base and toppings. | Pizza → PizzaBase and PizzaTopping via rdfs:subClassOf. Next: specific base types. |
-| T2 | Asking for concrete PizzaBase specialisations. | DeepPanBase and ThinAndCrispyBase added. Next: real toppings. |
-| T3 | Populating the topping hierarchy with real ingredients. | Mozzarella, TomatoSauce, Pepperoni linked as PizzaTopping sub-classes. Next: composition. |
-| T4 | Introducing object properties: how does a Pizza relate to its parts? | Pizza hasPart PizzaBase and PizzaTopping. Next: visual layout. |
-| T5 | Asking the model to arrange the hierarchy for readability. | dagre-tb layout applied. Next: inspecting what was built. |
-| T6 | Asking the model to verify its own work via getNodeDetails. | Pizza ontology complete — built entirely through Socratic questioning. |
+| T0 | Asking qwen3: what is a pizza in OWL terms? | Root Pizza class on canvas. Next: its building blocks. |
+| T1 | Guide: model sub-categories and arrange the hierarchy. | rdfs:subClassOf edges + layout applied. Next: mutual exclusion. |
+| T2 | Guide: declare building blocks mutually exclusive in OWL. | owl:disjointWith asserted. Next: deepen the hierarchy. |
+| T3 | Guide: add concrete varieties under each building block. | Third hierarchy level + layout. Next: object property. |
+| T4 | Guide: express composition with a formal object property. | owl:ObjectProperty with domain + range. Next: expand node. |
+| T5 | Guide: reveal the Pizza class details on canvas. | expandNode shows all properties. Next: ABox individuals. |
+| T6 | Guide: switch to individuals view and create a real pizza. | owl:NamedIndividual in ABox view. Next: connect its parts. |
+| T7 | Guide: add parts and connect via the object property. | Individual linked to toppings + base. Next: reasoning. |
+| T8 | Guide: trigger OWL-RL reasoning. | Reasoner materialised inferred triples. Next: inspect results. |
+| T9 | Guide: inspect what the reasoner inferred about the individual. | Pizza ontology complete — built through Socratic questioning. |
 
 ---
 
@@ -124,97 +127,102 @@ Key log lines:
 
 ## Turn-by-turn reference
 
-### Turn 0 — Root concept
-> "Can you teach me how ontologies work using pizzas as a real-world example? Start by adding the most fundamental concept to the graph."
-
-Expected: `addNode(iri="ex:Pizza", typeIri="owl:Class", label="Pizza")`
-
----
-
-### Turn 1 — Two building blocks
-> "Great start! A pizza is made of two main building blocks — its base and its toppings. Could you model those as more specific types of Pizza in the ontology?"
-
-Expected:
-```
-addNode(iri="ex:PizzaBase",    typeIri="owl:Class", label="PizzaBase")
-addNode(iri="ex:PizzaTopping", typeIri="owl:Class", label="PizzaTopping")
-addLink(subjectIri="ex:PizzaBase",    predicateIri="rdfs:subClassOf", objectIri="ex:Pizza")
-addLink(subjectIri="ex:PizzaTopping", predicateIri="rdfs:subClassOf", objectIri="ex:Pizza")
-```
+Questions guide toward OWL **concepts** — not specific class names. qwen3 decides the
+ontology structure; we accept whatever it creates as long as the right OWL construct
+appears. Expected entries list the concept to look for, not exact IRIs.
 
 ---
 
-### Turn 2 — Base variants
-> "Nice! PizzaBase can be either deep pan or thin and crispy. Can you add those two variants as more specific types of PizzaBase?"
+### Turn 0 — Root class (in pizza-demo-setup.js)
+> "I want to learn OWL ontology concepts through a hands-on example. I will guide you through the pizza domain step by step — one concept at a time. Rule: for each question I ask, model exactly the concept I ask about on the canvas, then stop and wait. Do not add anything beyond what I asked. Do not arrange nodes automatically. First question: in OWL, what is the most fundamental building block for representing a concept? Create a Pizza class on the canvas. Wait for my next question."
 
-Expected:
-```
-addNode(iri="ex:DeepPanBase",        typeIri="owl:Class", label="Deep Pan Base")
-addNode(iri="ex:ThinAndCrispyBase",  typeIri="owl:Class", label="Thin And Crispy Base")
-addLink(subjectIri="ex:DeepPanBase",       predicateIri="rdfs:subClassOf", objectIri="ex:PizzaBase")
-addLink(subjectIri="ex:ThinAndCrispyBase", predicateIri="rdfs:subClassOf", objectIri="ex:PizzaBase")
-```
+**Concept:** `addNode` with `typeIri=owl:Class` for a Pizza class.
+Preamble establishes guided-session rules — no tool names, just scope constraints.
 
 ---
 
-### Turn 3 — Concrete toppings
-> "Now let's add some real toppings. Can you add Mozzarella, TomatoSauce, and Pepperoni as specific types of PizzaTopping?"
+### Turn 1 — Hierarchy + layout
+> "A pizza is made from two distinct building blocks. What are they in OWL terms? Model them as sub-categories of Pizza using the correct OWL relationship, then arrange the hierarchy so it is visible. Wait for my next question."
 
-Expected:
-```
-addNode(iri="ex:Mozzarella",  typeIri="owl:Class", label="Mozzarella")
-addNode(iri="ex:TomatoSauce", typeIri="owl:Class", label="Tomato Sauce")
-addNode(iri="ex:Pepperoni",   typeIri="owl:Class", label="Pepperoni")
-addLink(subjectIri="ex:Mozzarella",  predicateIri="rdfs:subClassOf", objectIri="ex:PizzaTopping")
-addLink(subjectIri="ex:TomatoSauce", predicateIri="rdfs:subClassOf", objectIri="ex:PizzaTopping")
-addLink(subjectIri="ex:Pepperoni",   predicateIri="rdfs:subClassOf", objectIri="ex:PizzaTopping")
-```
+**Concept:** `rdfs:subClassOf` edges from two new classes to Pizza, then `runLayout`.
+Accept any names (Dough/Toppings, Base/Topping, Crust/Ingredient, etc.).
 
 ---
 
-### Turn 4 — Object property: hasPart
-> "The graph has the building blocks, but a Pizza isn't linked to its parts yet. Can you express that a Pizza has both a PizzaBase and a PizzaTopping using an addLink call?"
+### Turn 2 — owl:disjointWith
+> "In OWL, classes can be declared mutually exclusive — no individual can belong to both at the same time. Should the two building blocks of a pizza be disjoint from each other? If so, express that relationship on the canvas. Wait for my next question."
 
-Expected:
-```
-addLink(subjectIri="ex:Pizza", predicateIri="ex:hasPart", objectIri="ex:PizzaBase")
-addLink(subjectIri="ex:Pizza", predicateIri="ex:hasPart", objectIri="ex:PizzaTopping")
-```
-
-qwen3 may choose a different predicate IRI — acceptable as long as a link exists.
+**Concept:** `addTriple` with `predicateIri=owl:disjointWith` between the two sibling classes.
 
 ---
 
-### Turn 5 — Layout
-> "The graph is getting complex. Can you arrange the nodes so the hierarchy is easy to read?"
+### Turn 3 — Deeper hierarchy + layout
+> "Good. Each building block has concrete varieties — for example a dough might be thin-crust or thick-crust. Add two specific sub-types under each building block, then arrange the hierarchy. Wait for my next question."
 
-Expected: `runLayout(algorithm="dagre-tb")` or `elk-layered`
+**Concept:** More `rdfs:subClassOf` edges creating a third level, followed by `runLayout`.
 
 ---
 
-### Turn 6 — Introspection
-> "Let's verify what we've built. Can you look up the details of the Pizza concept and tell me what you see?"
+### Turn 4 — owl:ObjectProperty with domain + range
+> "The hierarchy shows how classes relate by type. But OWL has a formal construct for expressing that a Pizza is composed of its parts — a named relationship that is itself an entity in the ontology, with a defined source class and target class. How would you model that composition? Wait for my next question."
 
-Expected: `getNodeDetails(iri="ex:Pizza")`
+**Concept:** `addNode` with `typeIri=owl:ObjectProperty`, then `addTriple` for `rdfs:domain` and `rdfs:range`.
+Relies on `addNode` manifest description that now explicitly calls out `owl:ObjectProperty` as a first-class node.
+
+---
+
+### Turn 5 — expandNode
+> "Expand the Pizza class node on the canvas so I can see all its asserted properties. Wait for my next question."
+
+**Concept:** `expandNode(iri=<Pizza IRI>)` — reveals annotation property cards on the node.
+
+---
+
+### Turn 6 — ABox individual
+> "Everything so far is the schema — the TBox. I want to see a real pizza instance. Switch to the individuals view and add one concrete pizza individual. Wait for my next question."
+
+**Concept:** `setViewMode({mode:"abox"})` then `addNode` with `typeIri=owl:NamedIndividual`.
+
+---
+
+### Turn 7 — Connect individual to parts
+> "Give your pizza individual some parts — one individual topping and one individual dough. Connect them to the pizza using the object property you defined earlier. Wait for my next question."
+
+**Concept:** `addNode` for part individuals + `addTriple` using the object property from T4.
+
+---
+
+### Turn 8 — OWL-RL reasoning
+> "The schema and data are in place. Now apply OWL-RL reasoning to derive everything that can be inferred. Wait for my next question."
+
+**Concept:** `runReasoning({})`.
+
+---
+
+### Turn 9 — Inspect inferred facts
+> "What did the reasoner infer about your pizza individual? Fetch its details from the graph and report which types are now attached to it."
+
+**Concept:** `getNodeDetails(iri=<individual IRI>)` — returns both asserted and inferred triples (inferred marked `inferred:true`).
+"Fetch its details from the graph" signals a data retrieval action, not an answer from prior context.
 
 ---
 
 ## Fallback nudges
 
-**Wrong format** (prose, triple-backtick, etc.):
+**Wrong format** (prose, triple-backtick, native tool syntax):
 ```
-Single backtick JSON-RPC 2.0 only. Example:
-`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#Pizza","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"Pizza"}}}`
-Try again.
-```
-
-**Wrong IRI prefix** (`pizza:Pizza` instead of full IRI):
-```
-Use full IRIs. ex: = http://www.pizza-ontology.com/pizza.owl# so ex:Pizza = http://www.pizza-ontology.com/pizza.owl#Pizza
+Single backtick JSON-RPC 2.0 only — ALL other formats silently ignored.
+`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"help","arguments":{}}}`
+Call help({}) to review the format and tool list.
 ```
 
-**Wrong tool name** (`setLayout`, `hierarchical`, etc.):
+**Wrong tool name** (`setLayout`, `hierarchical`, `addLink`, etc.):
 ```
-Tool is runLayout. Valid algorithms: dagre-tb | elk-layered | dagre-lr
-`{"jsonrpc":"2.0","id":N,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"dagre-tb"}}}`
+Tool is runLayout (not setLayout). Use addTriple (not addLink). Call help({}) for the full tool list.
+```
+
+**subClassOf direction reversed** (child subClassOf parent missing):
+```
+rdfs:subClassOf points from the more specific class to the more general one.
+Example: PizzaBase subClassOf Pizza — not Pizza subClassOf PizzaBase.
 ```

@@ -10,7 +10,7 @@ export const mcpServerDescription =
   '• Ontology discovery first: loadOntology(query="use case") → loadOntology(url="<prefix>") × N → setNamespace × N. foaf: is pre-loaded. OWL/RDFS/RDF/XSD always available.\n' +
   '• Prefer domain ontologies over schema.org: foaf:Person, ical:Vevent, org:Organization, bot:Building.\n' +
   '• For 5+ individuals use loadRdf(turtle=...) instead of N×addNode — one round-trip.\n' +
-  '• addLink blank-node limit: use loadRdf for owl:someValuesFrom/equivalentClass restrictions.\n' +
+  '• addTriple blank-node limit: use loadRdf for owl:someValuesFrom/equivalentClass restrictions.\n' +
   '• Batch up to 5 non-dependent calls per relay message. Send discovery (getNodes, queryGraph) alone.\n' +
   '• Tool failed? Call help({tool:"<name>"}) for the exact parameter schema.\n\n' +
   'GRAPH ARCHITECTURE\n' +
@@ -21,8 +21,8 @@ export const mcpServerDescription =
   'After loadOntology or setNamespace, those prefixes work in all tool IRI arguments.\n\n' +
   'Recommended workflow:\n' +
   'loadOntology(query=…) → loadOntology(url="<prefix>") × N → setNamespace × N\n' +
-  '→ setViewMode("tbox") → addNode × N (owl:Class) → addLink × N → runLayout\n' +
-  '→ setViewMode("abox") → loadRdf(turtle=...) OR addNode × N → addLink × N → runLayout\n' +
+  '→ setViewMode("tbox") → addNode × N (owl:Class) → addTriple × N → runLayout\n' +
+  '→ setViewMode("abox") → loadRdf(turtle=...) OR addNode × N → addTriple × N → runLayout\n' +
   '→ runReasoning → fitCanvas + exportImage(svg)  [last three safe to batch]\n\n' +
   'Agent integration: (1) Claude Code / Playwright — window.__mcpTools[name](params) via browser_evaluate. ' +
   '(2) AI Relay Bridge — any AI chat controls Ontosphere via bookmarklet relay; see docs/relay-bridge.md and AGENTS.md.';
@@ -152,7 +152,7 @@ export const mcpManifest: McpToolManifestEntry[] = [
   },
   {
     name: 'addNode',
-    description: 'Create a node (RDF subject) on the canvas by writing triples to the store. The node appears in the view that matches its rdf:type — owl:Class/owl:ObjectProperty etc. → TBox view; owl:NamedIndividual or unrecognised types → ABox view. Switch to the correct view with setViewMode BEFORE calling addNode so the node materialises immediately. For 5+ individuals use loadRdf(turtle=...) instead.',
+    description: 'Create a NEW entity on the canvas. Writes rdf:type + rdfs:label atomically so the canvas pipeline fires once, then auto-navigates to the new node. The node appears in the view matching its rdf:type (owl:Class → TBox; owl:ObjectProperty → TBox; owl:AnnotationProperty → TBox; owl:NamedIndividual or unknown → ABox). Object and annotation properties are first-class OWL entities — create them as nodes with typeIri=owl:ObjectProperty, then assert rdfs:domain and rdfs:range on them via addTriple. Use setViewMode before calling addNode. For 5+ individuals use loadRdf(turtle=...) instead. Use addTriple (not addNode) to add properties or relationships to an entity that already exists.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -187,7 +187,7 @@ export const mcpManifest: McpToolManifestEntry[] = [
   },
   {
     name: 'getNodes',
-    description: 'Discover or filter all known entities (TBox classes and ABox individuals). Use labelContains to find by name — falls back to fuzzy match if nothing found (response includes fuzzyFallback:true). Use typeIri to filter by class, focusFirst:true to pan the viewport to the first canvas match. Use this before addNode/addLink to resolve IRIs.',
+    description: 'Discover or filter all known entities (TBox classes and ABox individuals). Use labelContains to find by name — falls back to fuzzy match if nothing found (response includes fuzzyFallback:true). Use typeIri to filter by class, focusFirst:true to pan the viewport to the first canvas match. Use this before addNode/addTriple to resolve IRIs.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -199,15 +199,18 @@ export const mcpManifest: McpToolManifestEntry[] = [
     },
   },
   {
-    name: 'addLink',
+    name: 'addTriple',
     description:
-      'Add a directed object-property triple (edge) between two canvas nodes: subjectIri --predicateIri--> objectIri. The edge appears on canvas immediately. Both subject and object must already be canvas nodes. ' +
-      'BLANK NODE LIMITATION: addLink only connects named (IRI) nodes. OWL axioms that require blank nodes — owl:someValuesFrom, owl:allValuesFrom, owl:hasValue, owl:onProperty restrictions, owl:intersectionOf, owl:unionOf, owl:equivalentClass with anonymous restrictions — CANNOT be added with addLink. Use loadRdf with inline Turtle instead (see loadRdf description).',
+      'Assert any RDF triple on entities that already exist on the canvas. ' +
+      'IRI object → object-property edge, renders on canvas immediately (both nodes must already exist — call addNode first if needed). ' +
+      'Literal object → annotation property (rdfs:comment, skos:definition, etc.), visible after expandNode. ' +
+      'Use addNode (not addTriple) when creating an entity for the first time — addNode writes type+label atomically and navigates to the new node. ' +
+      'BLANK NODE LIMITATION: addTriple cannot express OWL axioms requiring blank nodes (owl:someValuesFrom, owl:allValuesFrom, owl:hasValue restrictions, owl:intersectionOf, owl:unionOf). Use loadRdf with inline Turtle instead.',
     inputSchema: {
       type: 'object',
       properties: {
         subjectIri: { type: 'string' },
-        predicateIri: { type: 'string', description: 'IRI of the object property (e.g. foaf:knows)' },
+        predicateIri: { type: 'string', description: 'IRI of the predicate (e.g. rdfs:subClassOf, owl:disjointWith, rdfs:domain)' },
         objectIri: { type: 'string' },
       },
       required: ['subjectIri', 'predicateIri', 'objectIri'],
@@ -326,7 +329,7 @@ export const mcpManifest: McpToolManifestEntry[] = [
   },
   {
     name: 'getNodeDetails',
-    description: 'Fetch every asserted triple for one entity (from urn:vg:data only, not inferred). Use when you need property values, not just the IRI — call getNodes first to find the IRI.',
+    description: 'Fetch every triple for one entity — asserted (urn:vg:data) and inferred (urn:vg:inferred). Inferred triples are marked inferred:true. Use after runReasoning to inspect what was derived. Call getNodes first to find the IRI.',
     inputSchema: {
       type: 'object',
       required: ['iri'],
