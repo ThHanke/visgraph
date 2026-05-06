@@ -114,12 +114,14 @@ The API key is sent only with the RDF fetch request. CORS: the server must allow
 
 ### Ontology pre-loading
 
-| Parameter   | Alias        | Description |
-|-------------|--------------|-------------|
-| `ontology`  | `ontologies` | Comma-separated list of ontologies to load on startup, in addition to any configured autoload and `owl:imports` discovery. Each value is either a well-known short name (see table below) or an arbitrary HTTPS/HTTP URI. |
+| Parameter    | Description |
+|--------------|-------------|
+| `ontologies` | Comma-separated list of ontologies that **replaces** the configured autoload list entirely. Each value is a well-known short name (see table below) or a full HTTPS/HTTP URI. Use `?ontologies=owl,rdf,rdfs` to load only the W3C core vocabs. |
+| `ontology`   | Comma-separated list of ontologies to load **in addition to** the configured autoload list. |
 
 ```text
-?ontology=bfo,dcat
+?ontologies=owl,rdf,rdfs           # replace defaults — load only W3C core vocabs
+?ontology=bfo,dcat                 # add on top of configured autoload list
 ?ontology=bfo2020,https://example.org/myontology.ttl
 ```
 

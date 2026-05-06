@@ -5,6 +5,7 @@ import { rdfManager } from '@/utils/rdfManager';
 import { getWorkspaceRefs } from '@/mcp/workspaceContext';
 import { focusElementOnCanvas } from './layout';
 import { expandIri } from './iriUtils';
+import { ADD_NODE_PIPELINE_DELAY_MS } from '@/utils/canvasConstants';
 
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
@@ -51,7 +52,7 @@ const addNode: McpTool = {
       if (adds.length > 0) await rdfManager.applyBatch({ adds });
 
       // Wait for the RDF→canvas pipeline before navigating; navigateToIri handles view-switching.
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, ADD_NODE_PIPELINE_DELAY_MS));
       const { navigateToIri } = getWorkspaceRefs();
       navigateToIri?.(iri);
 

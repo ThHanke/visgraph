@@ -24,63 +24,55 @@ async (page) => {
   if (!owuiPage) return { ok: false, error: 'no OWUI tab' };
 
   const TURNS = [
-    // T1 — rdfs:subClassOf hierarchy + runLayout
-    // Goal: subClassOf edges visible on canvas, then runLayout.
-    // Both edges are mandatory — qwen3 reliably adds only one without explicit AND.
-    // The full base→Pizza and topping→Pizza chain is required for T10 subClass inference.
-    'A pizza is made from two distinct building blocks — a base and a topping. In OWL, rdfs:subClassOf places a class beneath its parent. Create a class for the base and a class for the topping, then add both subClassOf edges: base subClassOf Pizza AND topping subClassOf Pizza. Both edges are required — do not stop after just one. Keep using the ex: prefix. Then arrange the hierarchy. Wait for my next question.',
+    // T1 — ingredient hierarchy: PizzaTopping + PizzaBase as INDEPENDENT classes (NOT subClassOf Pizza)
+    // PizzaTopping/PizzaBase must be siblings of Pizza, not children — avoids semantic leak where
+    // ingredients get inferred as Pizza via subclass chain or prp-range.
+    'A pizza is made of two kinds of ingredient — a topping and a base. In OWL these form their own separate class hierarchies, distinct from the pizza itself. Add ex:PizzaTopping and ex:PizzaBase as independent owl:Class nodes — they are not a kind of pizza, so do not add any subClassOf edge to ex:Pizza. Then add five specific topping subclasses (each rdfs:subClassOf ex:PizzaTopping): ex:SalamiTopping, ex:HamTopping, ex:PineappleTopping, ex:MozzarellaTopping, ex:TomatoTopping. Add two base subclasses (each rdfs:subClassOf ex:PizzaBase): ex:ThinCrustBase, ex:DeepPanBase. All nodes and all subClassOf edges required. Then arrange the canvas. Wait for my next question.',
 
-    // T2 — owl:disjointWith
-    // Goal: disjointWith between the two sibling classes.
-    'In OWL, classes can be declared mutually exclusive — no individual can belong to both at the same time. Should the two building blocks of a pizza be disjoint from each other? If so, express that relationship on the canvas. Wait for my next question.',
+    // T2 — owl:ObjectProperty hasPart with rdfs:domain only (NO range)
+    // Range must be omitted — declaring range=Pizza would cause prp-range to infer that ingredients
+    // are pizzas, which is semantically wrong. Domain alone is sufficient for classification.
+    // CRITICAL: rdfs:domain — OWL-RL does NOT read owl:domain.
+    'In OWL, the relationship between a pizza and its parts is an owl:ObjectProperty. Create ex:hasPart as an ObjectProperty on the canvas. Declare its domain using rdfs:domain pointing to ex:Pizza — this tells the reasoner that anything with a hasPart connection is a pizza. Do not declare a range — leaving it open keeps ingredients semantically clean. Important: use rdfs:domain, not owl:domain. Wait for my next question.',
 
-    // T3 — deepen the hierarchy + runLayout
-    // Goal: third level of rdfs:subClassOf.
-    // Direction is critical: child (sub-type) is subject, parent is object.
-    // "ThinCrust is-a Base" = ex:ThinCrust rdfs:subClassOf ex:Base.
-    'Good. Each building block has concrete varieties — for example a dough might be thin-crust or thick-crust. In rdfs:subClassOf the child class is the SUBJECT and the parent is the OBJECT: ex:ThinCrust rdfs:subClassOf ex:Base means ThinCrust is-a Base. Add two specific sub-types under each building block using this direction (child subClassOf parent), then arrange the hierarchy. Wait for my next question.',
+    // T3 — named pizza subclasses: SalamiPizza, HawaiianPizza, MargheritaPizza
+    // Three subclasses of Pizza — laid out before the equivalentClass axioms are added.
+    'There are many specific kinds of pizza. Add three named pizza classes: ex:SalamiPizza, ex:HawaiianPizza, and ex:MargheritaPizza. Each is a subclass of ex:Pizza — add all three nodes and all three rdfs:subClassOf ex:Pizza edges. Then arrange the hierarchy. Wait for my next question.',
 
-    // T4 — owl:ObjectProperty with domain and range
-    // Goal: ObjectProperty as a named entity on canvas with domain + range.
-    // Range = Pizza (superclass of both building blocks) — avoids prp-range firing
-    // on both sibling classes simultaneously, which would trigger cax-dw (disjointWith
-    // inconsistency) because every part would be inferred as BOTH PizzaBase and PizzaTopping.
-    // CRITICAL: must use rdfs:domain / rdfs:range — the OWL-RL reasoner does NOT read
-    // owl:domain / owl:range. Using the wrong prefix breaks all domain/range inference.
-    'In OWL, composition is modelled with an owl:ObjectProperty — a named relationship that is itself a first-class node in the ontology, not just an edge. Create an object property called hasPart. Then declare its domain and range using exactly these predicates: rdfs:domain pointing to Pizza, and rdfs:range pointing to Pizza. Important: use rdfs:domain and rdfs:range — not owl:domain or owl:range. Add it to the canvas now. Wait for my next question.',
+    // T4 — owl:equivalentClass + owl:someValuesFrom via loadRdf
+    // Blank-node restrictions are mandatory — named restriction nodes sharing owl:onProperty
+    // collapse into one equivalence group (scm-svf1 bug). loadRdf is the only reliable path.
+    // Characteristic toppings: Salami → SalamiTopping, Hawaiian → PineappleTopping (unique),
+    // Margherita → TomatoTopping. These must match the ABox individuals added in T7/T8.
+    'In OWL a class can be defined by a necessary-and-sufficient condition — any individual that satisfies it is automatically a member. This is expressed with owl:equivalentClass using an anonymous restriction. These three axioms define each named pizza by its characteristic topping:\n\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n@prefix ex: <http://example.org/> .\nex:SalamiPizza owl:equivalentClass [ rdf:type owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:SalamiTopping ] .\nex:HawaiianPizza owl:equivalentClass [ rdf:type owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:PineappleTopping ] .\nex:MargheritaPizza owl:equivalentClass [ rdf:type owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:TomatoTopping ] .\n\nLoad this Turtle block into the ontology as-is — the blank nodes are intentional and must not be decomposed into named resources. Wait for my next question.',
 
-    // T5 — expandNode
-    // Goal: reveal annotation property cards on the Pizza node.
-    'Expand the Pizza class node on the canvas so I can see all its asserted properties. Wait for my next question.',
+    // T5 — expandNode all + runLayout
+    // Reveal property cards across all TBox classes before switching to ABox.
+    'Expand all class nodes on the canvas to reveal their asserted properties, then arrange. Wait for my next question.',
 
-    // T6 — ABox: setViewMode + addNode(NamedIndividual)
-    // Goal: individual with NO class assertion — just owl:NamedIndividual.
-    // The reasoner must infer rdf:type Pizza via prp-domain (hasPart domain Pizza).
-    // Explicitly forbid class assertion so the inference is visible and impressive.
-    'Everything so far is the schema — the TBox. I want to see a real pizza instance. In OWL, concrete instances are called Named Individuals. Switch to the individuals view and create one NamedIndividual for the pizza. Give it a distinct IRI that differs from the ex:Pizza class — for example ex:MyPizza or ex:PizzaInstance. Do not assert any owl:Class membership for it — only the owl:NamedIndividual type. Do not add any property connections yet — only the bare node. The reasoner will determine its class. Wait for my next question.',
+    // T6 — ABox: setViewMode + 3 untyped NamedIndividuals
+    // No class assertion — prp-domain (hasPart domain Pizza) will infer Pizza type.
+    // cls-svf1 + cax-eqc2 will later classify each into its named pizza type.
+    'Everything so far is the TBox — the schema. Switch to the individuals view (ABox) and create three pizza individuals: ex:pizza1, ex:pizza2, and ex:pizza3. Give each only the owl:NamedIndividual type — do NOT assert any pizza class (not Pizza, not SalamiPizza, nothing). Only the three bare nodes. The reasoner will classify them once we add ingredients. Arrange. Wait for my next question.',
 
-    // T7 — connect individual to part individuals via the object property
-    // Goal: NEW ABox individuals typed as third-level varieties (not the class nodes).
-    // The model must NOT reuse TBox class nodes as ABox individuals — fresh IRIs only.
-    // Typing parts as third-level varieties lets cax-sco chain inference run:
-    //   ex:MyCrust rdf:type ThinCrust → inferred Base → inferred Pizza (T10 showcase).
-    // Use addNode(typeIri=varietyClass) for type — avoids rdfs:type vs rdf:type confusion.
-    // hasPart direction: pizza→part (pizza is the subject, the part is the object).
-    'Create two brand-new individual instances. Step 1: addNode(iri=ex:MyCrust). Step 2: addTriple to set its type — subject=ex:MyCrust, predicate=http://www.w3.org/1999/02/22-rdf-syntax-ns#type, object=the IRI of the leaf variety under the base (e.g. ex:ThinCrust). This is rdf:type — NOT rdfs:subClassOf. Step 3: addNode(iri=ex:MyCheese). Step 4: addTriple to set its type — predicate=http://www.w3.org/1999/02/22-rdf-syntax-ns#type, object=the leaf variety under the topping (e.g. ex:Cheese or ex:Pepperoni). Step 5: addTriple — subject=the pizza individual, predicate=ex:hasPart, object=ex:MyCrust. Step 6: addTriple — subject=the pizza individual, predicate=ex:hasPart, object=ex:MyCheese. All 6 steps required. Do not assert any class type on the pizza individual. Wait for my next question.',
+    // T7 — build pizza1 (Salami): typed parts + hasPart connections
+    // SalamiTopping is the characteristic for SalamiPizza (T4 equivalentClass).
+    'Build ex:pizza1 as a Salami pizza. Add three ingredient individuals to the canvas: ex:salami1 of type ex:SalamiTopping, ex:mozz1 of type ex:MozzarellaTopping, and ex:base1 of type ex:ThinCrustBase. Connect all three to ex:pizza1 using ex:hasPart. Do not assert any pizza class on ex:pizza1 — leave it untyped; the reasoner will classify it. Wait for my next question.',
 
-    // T8 — runReasoning
-    // Goal: OWL-RL forward-chaining materialises inferred triples.
-    'The schema and data are in place. Now apply OWL-RL reasoning to derive everything that can be inferred. Wait for my next question.',
+    // T8 — build pizza2 (Hawaiian) + pizza3 (Margherita) + layout
+    // PineappleTopping is characteristic for HawaiianPizza; TomatoTopping for MargheritaPizza.
+    // Must NOT reuse TBox class IRIs as ABox individuals.
+    'Build ex:pizza2 as a Hawaiian pizza and ex:pizza3 as a Margherita pizza. For ex:pizza2: add ex:pineapple1 of type ex:PineappleTopping, ex:ham1 of type ex:HamTopping, and ex:base2 of type ex:DeepPanBase, then connect all three to ex:pizza2 via ex:hasPart. For ex:pizza3: add ex:tom1 of type ex:TomatoTopping, ex:mozz2 of type ex:MozzarellaTopping, and ex:base3 of type ex:ThinCrustBase, then connect all three to ex:pizza3 via ex:hasPart. Do not assert any class type on pizza2 or pizza3. Reveal all node properties and arrange the canvas. Wait for my next question.',
 
-    // T9 — inspect pizza individual (prp-domain inference)
-    // Goal: show inferred rdf:type Pizza on the pizza individual via domain rule.
-    // Must call getNodeDetails on the INDIVIDUAL (MyPizza/PizzaInstance), NOT the ex:Pizza class.
-    'Call getNodeDetails on your pizza individual — the NamedIndividual you created (e.g. ex:MyPizza or ex:PizzaInstance), NOT the ex:Pizza class node. Show the raw types list returned. Report which types are asserted versus inferred, and explain which OWL-RL rule produced each inferred type. Wait for my next question.',
+    // T9 — runReasoning
+    'The schema and all three pizzas are in place. Now apply OWL-RL reasoning to derive everything that can be inferred. Wait for my next question.',
 
-    // T10 — inspect part individuals (subClass chain inference)
-    // Goal: show inferred types on base and topping individuals via cax-sco chain.
-    // Force tool call — model otherwise gives text-only response.
-    'Now call getNodeDetails on each part individual — the base part and the topping part. Show the raw types list returned by the tool for each. Then explain: which types were asserted and which were inferred, and trace the inference chain — how did the reasoner climb the subclass hierarchy to assign each inferred type?',
+    // T10 — classification showcase via graph query
+    // queryGraph covers urn:vg:data + urn:vg:inferred by default — model should reach for it
+    // naturally when asked to "verify" classification. getNodeDetails is acceptable fallback.
+    // cls-svf1: pizza1 hasPart salami1 ∧ salami1 type SalamiTopping → pizza1 type _:restriction
+    // cax-eqc2: _:restriction subClassOf SalamiPizza → pizza1 type SalamiPizza
+    'The equivalentClass axioms we defined in the TBox should have been applied consistently across all three pizzas. Verify that the classification held: did each pizza receive the type its ingredient composition implies? Use whatever tool gives you the clearest proof — querying the graph or inspecting individual nodes. Show the evidence, state which types are inferred vs asserted, and trace the OWL-RL rule chain for at least one pizza.',
   ];
 
   // Reliable idle: content-length stability + relay queue drained.

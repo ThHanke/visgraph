@@ -34,80 +34,84 @@ const MODEL     = 'qwen3:4b';
 // Caption shown briefly before injection — tells viewer what's being asked
 const TURN_TOPICS = [
   'Asking: what is the most fundamental OWL building block for a concept?',
-  'Guide: model the two building blocks of a pizza as sub-categories.',
-  'Guide: can the two building blocks ever belong to the same individual?',
-  'Guide: add two concrete varieties under each building block.',
-  'Guide: how does OWL express that a Pizza is composed of its parts?',
-  'Guide: reveal all asserted properties on the Pizza class node.',
-  'Guide: switch to individuals — create a real pizza instance (no class yet).',
-  'Guide: add typed part individuals and connect them — leave pizza untyped.',
-  'Guide: apply OWL-RL reasoning to derive everything implicit.',
-  'Guide: what did the reasoner infer about the pizza individual?',
-  'Guide: inspect the part individuals — trace the subclass inference chain.',
+  'Guide: build full ingredient hierarchy — PizzaTopping, PizzaBase, and 7 leaf varieties.',
+  'Guide: model hasPart as an ObjectProperty with rdfs:domain and rdfs:range.',
+  'Guide: add named pizza classes — SalamiPizza, HawaiianPizza, MargheritaPizza.',
+  'Guide: define equivalentClass axioms via loadRdf — anonymous someValuesFrom restrictions.',
+  'Guide: expand all TBox nodes to reveal their asserted properties.',
+  'Guide: switch to ABox — create 3 untyped pizza individuals.',
+  'Guide: build pizza1 — add Salami, Mozzarella, ThinCrust parts and hasPart links.',
+  'Guide: build pizza2 (Hawaiian) and pizza3 (Margherita) — add parts and links.',
+  'Guide: apply OWL-RL reasoning to derive all inferred triples.',
+  'Guide: inspect pizza1, pizza2, pizza3 — trace the classification inference chain.',
 ];
 
 // Caption shown after idle — describes what was just built
 const AFTER_CAPTIONS = [
   'Pizza class on canvas — owl:Class, the atomic unit of OWL.',
-  'rdfs:subClassOf hierarchy — two building blocks visible beneath Pizza.',
-  'owl:disjointWith asserted — the two blocks can never overlap.',
-  'Third level of hierarchy — concrete varieties under each building block.',
-  'owl:ObjectProperty with domain + range — named composition link in the ontology.',
-  'expandNode reveals all asserted properties on the Pizza class.',
-  'owl:NamedIndividual in ABox view — no class asserted yet, only individual type.',
-  'Parts typed as specific varieties, linked via hasPart — pizza individual still untyped.',
-  'OWL-RL reasoning complete — inferred triples materialised.',
-  'Pizza individual now carries inferred rdf:type Pizza — derived via domain rule.',
-  'Parts inherit types up the subClass chain — ontology complete.',
+  'Ingredient hierarchies — PizzaTopping and PizzaBase as independent classes, each with 5 and 2 leaf subclasses.',
+  'hasPart ObjectProperty with rdfs:domain Pizza — ingredients stay semantically independent.',
+  'Named pizza classes — SalamiPizza · HawaiianPizza · MargheritaPizza, each subClassOf Pizza.',
+  'equivalentClass axioms loaded — pizza types defined by necessary-and-sufficient conditions.',
+  'All TBox nodes expanded — asserted properties visible across the hierarchy.',
+  'ABox view — pizza1 · pizza2 · pizza3 as bare NamedIndividuals, no class asserted.',
+  'pizza1 built — salami1 · mozz1 · base1 typed and linked via hasPart.',
+  'pizza2 (Hawaiian) and pizza3 (Margherita) built — all parts typed and linked.',
+  'OWL-RL reasoning complete — inferred triples materialised in urn:vg:inferred.',
+  'Classification! pizza1 → SalamiPizza · pizza2 → HawaiianPizza · pizza3 → MargheritaPizza — all inferred, none asserted.',
 ];
 
-// T0–T9: validated Socratic arc — purely conceptual, no tool-name references.
-// Model maps OWL concept → tool from the manifest returned by help().
-// Source of truth: .playwright/pizza-demo-setup.js (T0) + .playwright/turn-driver.js (T1–T9).
+// T0–T10: Socratic arc guiding qwen3 through a rich pizza ontology.
+// Named pizza types (SalamiPizza/HawaiianPizza/MargheritaPizza) with equivalentClass
+// axioms; 3 untyped ABox pizzas classified by OWL-RL reasoning.
+// Source of truth: .playwright/pizza-demo-setup.js (T0) + .playwright/turn-driver.js (T1–T10).
 const TURNS = [
   // T0 — root class
   'I want to learn OWL ontology concepts through a hands-on example. I will guide you through the pizza domain step by step — one concept at a time. Rule: for each question I ask, model exactly the concept I ask about on the canvas, then stop and wait. Do not add anything beyond what I asked. Do not arrange nodes automatically. Use the ex: prefix for all IRIs (ex: maps to http://example.org/). First question: in OWL, what is the most fundamental building block for representing a concept? Create a single Pizza class — just this one node, nothing more. Wait for my next question.',
 
-  // T1 — rdfs:subClassOf hierarchy + runLayout
-  // Both edges mandatory — qwen3 reliably adds only one without explicit AND.
-  'A pizza is made from two distinct building blocks — a base and a topping. In OWL, rdfs:subClassOf places a class beneath its parent. Create a class for the base and a class for the topping, then add both subClassOf edges: base subClassOf Pizza AND topping subClassOf Pizza. Both edges are required — do not stop after just one. Keep using the ex: prefix. Then arrange the hierarchy. Wait for my next question.',
+  // T1 — ingredient hierarchy: PizzaTopping + PizzaBase as INDEPENDENT classes (NOT subClassOf Pizza)
+  // PizzaTopping/PizzaBase must be siblings of Pizza, not children — avoids semantic leak where
+  // ingredients get inferred as Pizza via subclass chain or prp-range.
+  'A pizza is made of two kinds of ingredient — a topping and a base. In OWL these form their own separate class hierarchies, distinct from the pizza itself. Add ex:PizzaTopping and ex:PizzaBase as independent owl:Class nodes — they are not a kind of pizza, so do not add any subClassOf edge to ex:Pizza. Then add five specific topping subclasses (each rdfs:subClassOf ex:PizzaTopping): ex:SalamiTopping, ex:HamTopping, ex:PineappleTopping, ex:MozzarellaTopping, ex:TomatoTopping. Add two base subclasses (each rdfs:subClassOf ex:PizzaBase): ex:ThinCrustBase, ex:DeepPanBase. All nodes and all subClassOf edges required. Then arrange the canvas. Wait for my next question.',
 
-  // T2 — owl:disjointWith
-  'In OWL, classes can be declared mutually exclusive — no individual can belong to both at the same time. Should the two building blocks of a pizza be disjoint from each other? If so, express that relationship on the canvas. Wait for my next question.',
+  // T2 — owl:ObjectProperty hasPart with rdfs:domain only (NO range)
+  // Range must be omitted — declaring range=Pizza would cause prp-range to infer that ingredients
+  // are pizzas, which is semantically wrong. Domain alone is sufficient for classification.
+  // CRITICAL: rdfs:domain — OWL-RL does NOT read owl:domain.
+  'In OWL, the relationship between a pizza and its parts is an owl:ObjectProperty. Create ex:hasPart as an ObjectProperty on the canvas. Declare its domain using rdfs:domain pointing to ex:Pizza — this tells the reasoner that anything with a hasPart connection is a pizza. Do not declare a range — leaving it open keeps ingredients semantically clean. Important: use rdfs:domain, not owl:domain. Wait for my next question.',
 
-  // T3 — deepen hierarchy + runLayout
-  // Direction is critical: child (sub-type) is subject, parent is object.
-  'Good. Each building block has concrete varieties — for example a dough might be thin-crust or thick-crust. In rdfs:subClassOf the child class is the SUBJECT and the parent is the OBJECT: ex:ThinCrust rdfs:subClassOf ex:Base means ThinCrust is-a Base. Add two specific sub-types under each building block using this direction (child subClassOf parent), then arrange the hierarchy. Wait for my next question.',
+  // T3 — named pizza subclasses: SalamiPizza, HawaiianPizza, MargheritaPizza
+  'There are many specific kinds of pizza. Add three named pizza classes: ex:SalamiPizza, ex:HawaiianPizza, and ex:MargheritaPizza. Each is a subclass of ex:Pizza — add all three nodes and all three rdfs:subClassOf ex:Pizza edges. Then arrange the hierarchy. Wait for my next question.',
 
-  // T4 — owl:ObjectProperty with domain + range
-  // Range = Pizza (superclass) to avoid prp-range triggering cax-dw inconsistency.
-  // CRITICAL: rdfs:domain / rdfs:range — OWL-RL rules do NOT read owl:domain/range.
-  'In OWL, composition is modelled with an owl:ObjectProperty — a named relationship that is itself a first-class node in the ontology, not just an edge. Create an object property called hasPart. Then declare its domain and range using exactly these predicates: rdfs:domain pointing to Pizza, and rdfs:range pointing to Pizza. Important: use rdfs:domain and rdfs:range — not owl:domain or owl:range. Add it to the canvas now. Wait for my next question.',
+  // T4 — owl:equivalentClass + owl:someValuesFrom via loadRdf
+  // Blank-node restrictions are mandatory — named restriction nodes sharing owl:onProperty
+  // collapse into one equivalence group (scm-svf1 bug). loadRdf is the only reliable path.
+  'In OWL a class can be defined by a necessary-and-sufficient condition — any individual that satisfies it is automatically a member. This is expressed with owl:equivalentClass using an anonymous restriction. These three axioms define each named pizza by its characteristic topping:\n\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n@prefix ex: <http://example.org/> .\nex:SalamiPizza owl:equivalentClass [ rdf:type owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:SalamiTopping ] .\nex:HawaiianPizza owl:equivalentClass [ rdf:type owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:PineappleTopping ] .\nex:MargheritaPizza owl:equivalentClass [ rdf:type owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:TomatoTopping ] .\n\nLoad this Turtle block into the ontology as-is — the blank nodes are intentional and must not be decomposed into named resources. Wait for my next question.',
 
-  // T5 — expandNode
-  'Expand the Pizza class node on the canvas so I can see all its asserted properties. Wait for my next question.',
+  // T5 — expandNode all + runLayout
+  'Expand all class nodes on the canvas to reveal their asserted properties, then arrange. Wait for my next question.',
 
-  // T6 — ABox individual with NO class assertion (only owl:NamedIndividual)
-  // prp-domain will infer rdf:type Pizza after reasoning — must not be pre-asserted.
-  // Explicit distinct IRI required — model reuses ex:Pizza class node if not told otherwise.
-  'Everything so far is the schema — the TBox. I want to see a real pizza instance. In OWL, concrete instances are called Named Individuals. Switch to the individuals view and create one NamedIndividual for the pizza. Give it a distinct IRI that differs from the ex:Pizza class — for example ex:MyPizza or ex:PizzaInstance. Do not assert any owl:Class membership for it — only the owl:NamedIndividual type. Do not add any property connections yet — only the bare node. The reasoner will determine its class. Wait for my next question.',
+  // T6 — ABox: setViewMode + 3 untyped NamedIndividuals
+  // No class assertion — prp-domain (hasPart domain Pizza) will infer Pizza type.
+  'Everything so far is the TBox — the schema. Switch to the individuals view (ABox) and create three pizza individuals: ex:pizza1, ex:pizza2, and ex:pizza3. Give each only the owl:NamedIndividual type — do NOT assert any pizza class (not Pizza, not SalamiPizza, nothing). Only the three bare nodes. The reasoner will classify them once we add ingredients. Arrange. Wait for my next question.',
 
-  // T7 — NEW ABox individuals typed as third-level varieties; pizza left untyped
-  // addNode(typeIri) avoids rdfs:type vs rdf:type confusion from addTriple.
-  // hasPart direction: pizza→part (pizza subject, parts objects).
-  // Explicit ex:hasPart IRI — model otherwise uses owl:hasPart (wrong namespace).
-  'Create two brand-new individual instances. Step 1: addNode(iri=ex:MyCrust). Step 2: addTriple to set its type — subject=ex:MyCrust, predicate=http://www.w3.org/1999/02/22-rdf-syntax-ns#type, object=the IRI of the leaf variety under the base (e.g. ex:ThinCrust). This is rdf:type — NOT rdfs:subClassOf. Step 3: addNode(iri=ex:MyCheese). Step 4: addTriple to set its type — predicate=http://www.w3.org/1999/02/22-rdf-syntax-ns#type, object=the leaf variety under the topping (e.g. ex:Cheese or ex:Pepperoni). Step 5: addTriple — subject=the pizza individual, predicate=ex:hasPart, object=ex:MyCrust. Step 6: addTriple — subject=the pizza individual, predicate=ex:hasPart, object=ex:MyCheese. All 6 steps required. Do not assert any class type on the pizza individual. Wait for my next question.',
+  // T7 — build pizza1 (Salami): typed parts + hasPart connections
+  // SalamiTopping is the characteristic for SalamiPizza (T4 equivalentClass).
+  'Build ex:pizza1 as a Salami pizza. Add three ingredient individuals to the canvas: ex:salami1 of type ex:SalamiTopping, ex:mozz1 of type ex:MozzarellaTopping, and ex:base1 of type ex:ThinCrustBase. Connect all three to ex:pizza1 using ex:hasPart. Do not assert any pizza class on ex:pizza1 — leave it untyped; the reasoner will classify it. Wait for my next question.',
 
-  // T8 — OWL-RL reasoning
-  'The schema and data are in place. Now apply OWL-RL reasoning to derive everything that can be inferred. Wait for my next question.',
+  // T8 — build pizza2 (Hawaiian) + pizza3 (Margherita) + layout
+  // PineappleTopping is characteristic for HawaiianPizza; TomatoTopping for MargheritaPizza.
+  'Build ex:pizza2 as a Hawaiian pizza and ex:pizza3 as a Margherita pizza. For ex:pizza2: add ex:pineapple1 of type ex:PineappleTopping, ex:ham1 of type ex:HamTopping, and ex:base2 of type ex:DeepPanBase, then connect all three to ex:pizza2 via ex:hasPart. For ex:pizza3: add ex:tom1 of type ex:TomatoTopping, ex:mozz2 of type ex:MozzarellaTopping, and ex:base3 of type ex:ThinCrustBase, then connect all three to ex:pizza3 via ex:hasPart. Do not assert any class type on pizza2 or pizza3. Reveal all node properties and arrange the canvas. Wait for my next question.',
 
-  // T9 — inspect pizza individual (prp-domain: hasPart domain Pizza → MyPizza rdf:type Pizza)
-  // Must call getNodeDetails on INDIVIDUAL not the ex:Pizza class.
-  'Call getNodeDetails on your pizza individual — the NamedIndividual you created (e.g. ex:MyPizza or ex:PizzaInstance), NOT the ex:Pizza class node. Show the raw types list returned. Report which types are asserted versus inferred, and explain which OWL-RL rule produced each inferred type. Wait for my next question.',
+  // T9 — runReasoning
+  'The schema and all three pizzas are in place. Now apply OWL-RL reasoning to derive everything that can be inferred. Wait for my next question.',
 
-  // T10 — inspect part individuals (cax-sco chain: variety → building block → Pizza)
-  // Force tool call — model otherwise gives text-only response.
-  'Now call getNodeDetails on each part individual — the base part and the topping part. Show the raw types list returned by the tool for each. Then explain: which types were asserted and which were inferred, and trace the inference chain — how did the reasoner climb the subclass hierarchy to assign each inferred type?',
+  // T10 — classification showcase via graph query
+  // queryGraph covers urn:vg:data + urn:vg:inferred by default — model should reach for it
+  // naturally when asked to "verify" classification. getNodeDetails is acceptable fallback.
+  // cls-svf1: pizza1 hasPart salami1 ∧ salami1 type SalamiTopping → pizza1 type _:restriction
+  // cax-eqc2: _:restriction subClassOf SalamiPizza → pizza1 type SalamiPizza
+  'The equivalentClass axioms we defined in the TBox should have been applied consistently across all three pizzas. Verify that the classification held: did each pizza receive the type its ingredient composition implies? Use whatever tool gives you the clearest proof — querying the graph or inspecting individual nodes. Show the evidence, state which types are inferred vs asserted, and trace the OWL-RL rule chain for at least one pizza.',
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -231,7 +235,7 @@ async function typeAndSend(frame: Frame, page: Page, text: string): Promise<void
 // ── Test ──────────────────────────────────────────────────────────────────────
 
 test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI relay', async ({ page, context }) => {
-  test.setTimeout(900_000);
+  test.setTimeout(1_500_000); // 25 min — qwen3 reasoning turns can be slow
 
   // ── 1. Restore cookies; register init script for localStorage ──────────────
   if (fs.existsSync(AUTH_FILE)) {
@@ -265,17 +269,19 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
   await appAuthPage.goto(`${VG_URL}/`);
   await appAuthPage.waitForFunction(() => !!(window as any).__mcpTools?.addNode, { timeout: 30_000 });
   await appAuthPage.evaluate(() => {
-    const raw = localStorage.getItem('ontology-painter-config');
-    const stored = raw ? JSON.parse(raw) : {};
-    stored.config = { ...(stored.config ?? {}), autoApplyLayout: true };
-    localStorage.setItem('ontology-painter-config', JSON.stringify(stored));
+    localStorage.setItem('ontology-painter-config', JSON.stringify({
+      config: { autoApplyLayout: true, workflowCatalogEnabled: false },
+    }));
   });
   await appAuthPage.close();
 
   // ── 3. Load side-by-side stage (this is the recorded page) ────────────────
+  // ?ontologies=owl,rdf,rdfs on the app URL replaces the 6 default additionalOntologies
+  // (PROV/P-PLAN/QUDT + core W3C) with only the 3 W3C vocabs needed for OWL-RL reasoning.
+  const appUrl = `${VG_URL}/?ontologies=${encodeURIComponent('owl,rdf,rdfs')}`;
   const stageUrl = `${VG_URL}/demo-stage-owui.html`
     + `?owui=${encodeURIComponent(OWUI_URL + '/')}`
-    + `&app=${encodeURIComponent(VG_URL + '/')}`;
+    + `&app=${encodeURIComponent(appUrl)}`;
   await page.goto(stageUrl);
   await caption(page, 'Loading Ontosphere × OpenWebUI demo stage…');
 
@@ -284,6 +290,24 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
   const chatFrame = await waitForFrame(page, OWUI_URL, 90_000);
   await appFrame.waitForFunction(() => !!(window as any).__mcpTools?.addNode, { timeout: 30_000 });
   await chatFrame.locator('#chat-input').waitFor({ timeout: 90_000 });
+  // Hide broken model avatar images — profile pic URLs don't resolve in the iframe context,
+  // leaving a broken-image placeholder next to every model response. MutationObserver ensures
+  // dynamically added images (new chat messages) are also caught.
+  await chatFrame.evaluate(() => {
+    const hide = (img: HTMLImageElement) => { img.style.display = 'none'; };
+    document.querySelectorAll<HTMLImageElement>('img').forEach(img => {
+      img.addEventListener('error', () => hide(img), { once: true });
+      if (img.complete && img.naturalWidth === 0) hide(img);
+    });
+    new MutationObserver(muts => {
+      for (const m of muts) for (const n of m.addedNodes) {
+        if ((n as Element).querySelectorAll)
+          (n as Element).querySelectorAll<HTMLImageElement>('img').forEach(img =>
+            img.addEventListener('error', () => hide(img), { once: true })
+          );
+      }
+    }).observe(document.body, { childList: true, subtree: true });
+  });
   await sleep(1_500);
 
   // ── 5. Select model ────────────────────────────────────────────────────────
@@ -382,7 +406,14 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
   }
 
   // ── 11. End card ──────────────────────────────────────────────────────────
-  await caption(page, 'Pizza ontology — TBox · ABox · OWL-RL reasoning — built through Socratic questioning alone');
+  await caption(page, 'Pizza ontology — TBox · ABox · named pizza classes · equivalentClass axioms · OWL-RL classification — built through Socratic questioning alone');
   await sleep(6_000);
   await clearCaption(page);
+
+  // ── 12. Explicitly save video ─────────────────────────────────────────────
+  // Playwright auto-save via video.mode:'on' is unreliable under xvfb; force it.
+  const videoOutDir = path.resolve(__dirname, '../test-results/demo/demo-openwebui-socratic-op-52070-ive-qwen3-4b-via-OWUI-relay-openwebui-demo');
+  fs.mkdirSync(videoOutDir, { recursive: true });
+  const videoPath = path.join(videoOutDir, 'video.webm');
+  await page.video()?.saveAs(videoPath).catch(() => {/* video unavailable — non-fatal */});
 });

@@ -7,6 +7,7 @@ import { mcpManifest, mcpServerDescription } from '@/mcp/manifest';
 import { Parser as SparqlParser, Generator as SparqlGenerator } from 'sparqljs';
 import { resolveOntologyLoadUrl, searchWellKnownOntologies, searchOntologyPacks } from '@/utils/wellKnownOntologies';
 import { useOntologyStore } from '@/stores/ontologyStore';
+import { LOAD_RDF_PROPAGATION_DELAY_MS } from '@/utils/canvasConstants';
 
 /** Fix PREFIX declarations where the IRI is bare (no angle brackets): PREFIX rdf: http://... → PREFIX rdf: <http://...> */
 function normalizePrefixIris(sparql: string): string {
@@ -67,7 +68,7 @@ const loadRdf: McpTool = {
         const canvasBefore = getCanvasIris();
         await rdfManager.loadRDFIntoGraph(p.turtle, 'urn:vg:data', 'text/turtle');
         // Wait for the RDF worker change event to propagate to dataProvider.allSubjects
-        await new Promise(r => setTimeout(r, 600));
+        await new Promise(r => setTimeout(r, LOAD_RDF_PROPAGATION_DELAY_MS));
         const { dataProvider } = getWorkspaceRefs();
         const allItems = await dataProvider.lookupAll();
         const canvasBeforeSet = new Set(canvasBefore);

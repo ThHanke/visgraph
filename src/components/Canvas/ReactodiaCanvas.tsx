@@ -44,6 +44,7 @@ import OntologyUrlAutoComplete from '../ui/OntologyUrlAutoComplete';
 import { Button } from '../ui/button';
 import { WELL_KNOWN_BY_PREFIX, resolveOntologyLoadUrl } from '@/utils/wellKnownOntologies';
 import { instantiateWorkflowOnCanvas } from '@/utils/workflowInstantiator';
+import { LAYOUT_DEBOUNCE_MS, DEFAULT_OVERLAP_THRESHOLD_PX } from '@/utils/canvasConstants';
 
 function extractNamespace(iri: string): string {
   const hash = iri.lastIndexOf('#');
@@ -224,6 +225,39 @@ function collectCanvasIris(elements: ReadonlyArray<Reactodia.Element>): Set<stri
   return iris;
 }
 
+// Checks both standalone EntityElements and EntityGroups for position proximity.
+// Groups are treated as single units — their member elements move with them and are skipped.
+// threshold: px distance below which two elements are considered overlapping; use cfg.layoutSpacing.
+function findOverlappingEntities(
+  elements: ReadonlyArray<Reactodia.Element>,
+  threshold: number = DEFAULT_OVERLAP_THRESHOLD_PX,
+): Set<Reactodia.Element> {
+  const groupedIris = new Set<string>();
+  for (const el of elements) {
+    if (el instanceof Reactodia.EntityGroup) {
+      for (const member of el.items) {
+        if (member.data.id) groupedIris.add(member.data.id);
+      }
+    }
+  }
+  const candidates = elements.filter(e =>
+    (e instanceof Reactodia.EntityGroup) ||
+    (e instanceof Reactodia.EntityElement && !groupedIris.has(e.data.id))
+  );
+  const overlapping = new Set<Reactodia.Element>();
+  for (let i = 0; i < candidates.length; i++) {
+    for (let j = i + 1; j < candidates.length; j++) {
+      const pa = candidates[i].position;
+      const pb = candidates[j].position;
+      if (Math.abs(pa.x - pb.x) < threshold && Math.abs(pa.y - pb.y) < threshold) {
+        overlapping.add(candidates[i]);
+        overlapping.add(candidates[j]);
+      }
+    }
+  }
+  return overlapping;
+}
+
 async function applyInitialGrouping(
   ctx: Reactodia.WorkspaceContext,
   canvas: Reactodia.CanvasApi,
@@ -369,6 +403,7 @@ export default function ReactodiaCanvas() {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const performLayoutRef = React.useRef<(() => Promise<void>) | null>(null);
   const pendingLayoutController = React.useRef<AbortController | null>(null);
+  const layoutDebounceTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialLayoutDone = React.useRef(false);
   const preClusterPositions = React.useRef<Map<string, Reactodia.Vector> | null>(null);
   const silentLayoutPositions = React.useRef<Map<string, Reactodia.Vector> | null>(null);
@@ -611,13 +646,12 @@ export default function ReactodiaCanvas() {
           return;
         }
 
-        const controller = new AbortController();
-        pendingLayoutController.current = controller;
-
         const cfg = (useAppConfigStore as any).getState().config;
         const layoutFn = getLayoutFunction(cfg.currentLayout, cfg, defaultLayout);
 
         if (isFullRefresh) {
+          const controller = new AbortController();
+          pendingLayoutController.current = controller;
           const entityCount = model.elements.filter(
             (el): el is Reactodia.EntityElement => el instanceof Reactodia.EntityElement
           ).length;
@@ -662,27 +696,29 @@ export default function ReactodiaCanvas() {
             actions.setCanvasReady(true);
           }
         } else {
-          // Incremental add: only lay out elements without a saved position.
-          // Elements restored from pendingPositions already have their position set.
-          const newElements = new Set(
-            model.elements.filter(
-              (e): e is Reactodia.EntityElement =>
-                e instanceof Reactodia.EntityElement &&
-                addedFiltered.includes(e.data.id) &&
-                !pendingPositions.has(e.data.id)
-            )
-          );
-          console.debug('[canvas layout] incremental —', newElements.size, 'new elements added');
-          try {
-            await ctx.performLayout({
-              layoutFunction: layoutFn,
-              selectedElements: newElements,
-              animate: cfg.layoutAnimations,
-              signal: controller.signal,
-            });
-          } finally {
-            if (pendingLayoutController.current === controller) pendingLayoutController.current = null;
-          }
+          // Debounce overlap-triggered layout: wait 300 ms after the last change so
+          // rapid sequential adds (MCP loop) and workflow drops (which call performLayout
+          // themselves) coalesce into a single layout run — or none if the caller already
+          // positioned everything.
+          if (layoutDebounceTimer.current) clearTimeout(layoutDebounceTimer.current);
+          layoutDebounceTimer.current = setTimeout(async () => {
+            layoutDebounceTimer.current = null;
+            const overlapping = findOverlappingEntities(model.elements, cfg.layoutSpacing);
+            console.debug('[canvas layout] overlap check (debounced) —', overlapping.size, 'overlapping');
+            if (overlapping.size === 0) return;
+            const debouncedController = new AbortController();
+            pendingLayoutController.current = debouncedController;
+            try {
+              await ctx.performLayout({
+                layoutFunction: layoutFn,
+                selectedElements: overlapping,
+                animate: cfg.layoutAnimations,
+                signal: debouncedController.signal,
+              });
+            } finally {
+              if (pendingLayoutController.current === debouncedController) pendingLayoutController.current = null;
+            }
+          }, 500);
         }
       });
     };
@@ -762,14 +798,11 @@ export default function ReactodiaCanvas() {
         if (newIris.length > 0) {
           await model.requestData();
           if (autoApplyLayout) {
-            // Layout only the elements without a saved position
-            const newElements = new Set(
-              model.elements.filter(
-                (e): e is Reactodia.EntityElement =>
-                  e instanceof Reactodia.EntityElement && newIris.includes(e.data.id)
-              )
-            );
-            await ctx.performLayout({ layoutFunction: layoutFn, selectedElements: newElements, animate: cfg.layoutAnimations, signal: controller.signal });
+            const overlapping = findOverlappingEntities(model.elements, cfg.layoutSpacing);
+            console.debug('[canvas layout] view-switch new nodes —', newIris.length, 'new,', overlapping.size, 'overlapping');
+            if (overlapping.size > 0) {
+              await ctx.performLayout({ layoutFunction: layoutFn, selectedElements: overlapping, animate: cfg.layoutAnimations, signal: controller.signal });
+            }
           }
         }
       } else {
@@ -793,7 +826,12 @@ export default function ReactodiaCanvas() {
               await performInitialClustering(ctx, model, cfg, layoutFn, silentLayoutPositions, preClusterPositions);
               setIsClustered(true); actions.setIsClustered(true);
             } else {
-              await ctx.performLayout({ layoutFunction: layoutFn, animate: cfg.layoutAnimations, signal: controller.signal });
+              // First time in mode: all nodes land at default positions — lay out only overlapping ones.
+              const overlapping = findOverlappingEntities(model.elements, cfg.layoutSpacing);
+              console.debug('[canvas layout] view-switch first-time —', entityCount, 'entities,', overlapping.size, 'overlapping');
+              if (overlapping.size > 0) {
+                await ctx.performLayout({ layoutFunction: layoutFn, selectedElements: overlapping, animate: cfg.layoutAnimations, signal: controller.signal });
+              }
             }
             initialLayoutDone.current = true;
             actions.setCanvasReady(true);
@@ -854,13 +892,22 @@ export default function ReactodiaCanvas() {
       startupUrl = '';
     }
 
-    // ?ontology= comma-separated list of well-known prefix names (e.g. "bfo,dcat") or full URIs.
+    // ?ontologies= (plural) — comma-separated prefixes/URIs that REPLACE the configured
+    // additionalOntologies list. When present, the stored autoload list is skipped entirely.
+    // ?ontology= (singular) — adds on top of the configured list (existing behaviour).
     let startupOntologyEntries: { input: string; resolved: string; label: string }[] = [];
+    let ontologiesParamOverride: string[] | null = null; // non-null → replace mode
     try {
       const u = new URL(String(window.location.href));
-      const ontologyParam = u.searchParams.get('ontology') || u.searchParams.get('ontologies') || '';
-      if (ontologyParam.trim()) {
-        startupOntologyEntries = ontologyParam
+      const replaceParam = u.searchParams.get('ontologies');
+      const addParam    = u.searchParams.get('ontology');
+      if (replaceParam !== null) {
+        // Replace mode: ?ontologies= overrides the stored additionalOntologies list.
+        ontologiesParamOverride = replaceParam
+          .split(',').map((s) => s.trim()).filter(Boolean)
+          .map((s) => resolveOntologyLoadUrl(s));
+      } else if (addParam?.trim()) {
+        startupOntologyEntries = addParam
           .split(',')
           .map((s) => s.trim())
           .filter(Boolean)
@@ -875,11 +922,12 @@ export default function ReactodiaCanvas() {
     }
 
     (async () => {
-      // Autoload configured ontologies if enabled
-      if (additional.length > 0 && cfg?.persistedAutoload) {
+      // Autoload ontologies: ?ontologies= replaces the configured list; otherwise use config.
+      const autoloadList = ontologiesParamOverride ?? (cfg?.persistedAutoload ? additional : []);
+      if (autoloadList.length > 0) {
         try {
           actions.setLoading(true, 5, 'Autoloading configured ontologies...');
-          await loadAdditionalOntologies(additional, (progress: number, message: string) => {
+          await loadAdditionalOntologies(autoloadList, (progress: number, message: string) => {
             actions.setLoading(true, Math.max(5, progress), message);
           });
         } catch (err) {
