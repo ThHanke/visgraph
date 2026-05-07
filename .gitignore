@@ -47,3 +47,4 @@ docs/demo-videos/e2e-*/
 
 # OpenWebUI demo auth state — contains session tokens, never commit
 .playwright/owui-auth.json
+logs/
