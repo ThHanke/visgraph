@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/thhanke-ontosphere-badge.png)](https://mseep.ai/app/thhanke-ontosphere)
+
 Ontosphere — Browser-based RDF Knowledge Graph Editor
 ====================================================
 
