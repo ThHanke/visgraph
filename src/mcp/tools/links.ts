@@ -19,7 +19,7 @@ interface LinkParams {
 export const linkTools: McpTool[] = [
   {
     name: 'addTriple',
-    description: 'Add an RDF triple to the graph. For object-property triples (IRI object) the edge renders on canvas immediately. For annotation-property triples (literal object) the value appears when the subject node is expanded via expandNode. Blank node identifiers (e.g. "_:b0") are supported in subjectIri and objectIri — use them to build anonymous restriction nodes: addTriple("_:b0","rdf:type","owl:Restriction"), addTriple("_:b0","owl:onProperty","ex:hasPart"), addTriple("_:b0","owl:someValuesFrom","ex:FillerA"), addTriple("ex:ClassA","owl:equivalentClass","_:b0").',
+    description: 'Add an RDF triple to the graph. For object-property triples (IRI object) the edge renders on canvas immediately. For annotation-property triples (literal object) the value appears when the subject node is expanded via expandNode. Blank node identifiers (e.g. "_:b0") are supported in subjectIri and objectIri. The same label always resolves to the same internal IRI, so you can build a restriction across multiple calls: addTriple("_:b0","rdf:type","owl:Restriction"), addTriple("_:b0","owl:onProperty","ex:hasPart"), addTriple("_:b0","owl:someValuesFrom","ex:FillerA"), addTriple("ex:ClassA","owl:equivalentClass","_:b0"). Use a distinct label for each distinct blank node (e.g. "_:b1" for a second restriction). Never pass inline Turtle syntax like "[ ... ]" as an IRI — use explicit labels only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -44,6 +44,9 @@ export const linkTools: McpTool[] = [
         }
         const expandError = [subjectIri, predicateIri, objectIri].find(v => v.startsWith('Unknown prefix:'));
         if (expandError) return { success: false as const, error: expandError };
+        if (subjectIri.startsWith('[') || objectIri.startsWith('[')) {
+          return { success: false as const, error: 'Inline Turtle blank node syntax "[ ... ]" is not a valid IRI. Use an explicit blank node label instead, e.g. "_:b0". Call addTriple("_:b0","rdf:type","owl:Restriction") then addTriple("_:b0","owl:onProperty","ex:hasPart") etc. Each distinct restriction needs a distinct label.' };
+        }
         rdfManager.addTriple(subjectIri, predicateIri, objectIri);
 
         const { ctx } = getWorkspaceRefs();

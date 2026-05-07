@@ -295,4 +295,59 @@ ex:p1 rdf:type ex:FillerA .
     expect(exported).not.toContain("urn:vg:bnode:");
     expect(exported).toMatch(/_:[\w]+/);
   });
+
+  it("BLANK NODES via individual addTriple calls — label-only skolemization; same label = same IRI; no collapse; ind1 typed as ClassA only", async () => {
+    // This simulates the MCP addTriple tool path: one triple per call.
+    // With label-only hashing, every call referencing "_:b0" produces the
+    // same urn:vg:bnode: IRI, so the restriction is built correctly.
+    const ClassA = `${EX}ClassA`;
+    const ClassB = `${EX}ClassB`;
+    const hasPart = `${EX}hasPart`;
+    const FillerA = `${EX}FillerA`;
+    const FillerB = `${EX}FillerB`;
+    const ind1 = `${EX}ind1`;
+    const p1 = `${EX}p1`;
+    const OWL = "http://www.w3.org/2002/07/owl#";
+    const RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
+
+    // Restriction for ClassA via _:b0 — one addTriple call per triple
+    rdfManager.addTriple("_:b0", `${RDF}type`, `${OWL}Restriction`, DATA_GRAPH);
+    rdfManager.addTriple("_:b0", `${OWL}onProperty`, hasPart, DATA_GRAPH);
+    rdfManager.addTriple("_:b0", `${OWL}someValuesFrom`, FillerA, DATA_GRAPH);
+    rdfManager.addTriple(ClassA, `${OWL}equivalentClass`, "_:b0", DATA_GRAPH);
+
+    // Restriction for ClassB via _:b1 — distinct label → distinct IRI
+    rdfManager.addTriple("_:b1", `${RDF}type`, `${OWL}Restriction`, DATA_GRAPH);
+    rdfManager.addTriple("_:b1", `${OWL}onProperty`, hasPart, DATA_GRAPH);
+    rdfManager.addTriple("_:b1", `${OWL}someValuesFrom`, FillerB, DATA_GRAPH);
+    rdfManager.addTriple(ClassB, `${OWL}equivalentClass`, "_:b1", DATA_GRAPH);
+
+    // ABox
+    rdfManager.addTriple(ind1, `${RDF}type`, `${OWL}NamedIndividual`, DATA_GRAPH);
+    rdfManager.addTriple(ind1, hasPart, p1, DATA_GRAPH);
+    rdfManager.addTriple(p1, `${RDF}type`, FillerA, DATA_GRAPH);
+
+    // Allow async worker writes to settle
+    await new Promise((r) => setTimeout(r, 200));
+
+    // Verify both blank nodes skolemized to distinct urn:vg:bnode: IRIs
+    const dataPage = await rdfManager.fetchQuadsPage({ graphName: DATA_GRAPH, limit: 10000 });
+    const dataQuads = dataPage?.items ?? [];
+    const skolemSubjects = new Set(
+      dataQuads
+        .map((q: any) => q.subject?.value ?? q.subject ?? "")
+        .filter((s: string) => s.startsWith("urn:vg:bnode:"))
+    );
+    expect(skolemSubjects.size).toBe(2); // _:b0 and _:b1 get distinct IRIs
+
+    const result = await rdfManager.runReasoning({ rulesets: ["owl-rl.n3"] });
+
+    if ((result.meta as any)?.ruleQuadCount === 0) {
+      console.warn("[TEST] No rule quads loaded — skipping");
+      return;
+    }
+
+    expect(result.status).toBe("completed");
+    await assertCorrectClassification("addTriple-blank-node");
+  });
 });
