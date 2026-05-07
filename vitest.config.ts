@@ -24,6 +24,7 @@ export default defineConfig({
     setupFiles: ['src/test-setup.ts'],
     exclude: [
       '.trunk/**',
+      '.worktrees/**',
       'node_modules/**',
       'e2e/**',
       ...(process.env.NETWORK_TESTS ? [] : ['**/*.network.test.ts']),
