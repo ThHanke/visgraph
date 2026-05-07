@@ -112,7 +112,6 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
   (globalThis as any).Buffer = Buffer;
 
   let sharedStore: any | null = null;
-  let bnodeSessionMap: Map<string, string> = new Map();
   let workerNamespaces: Record<string, string> = {};
   let workerBlacklistPrefixes: Set<string> = new Set(["owl", "rdf", "rdfs", "xml", "xsd"]);
   let workerBlacklistUris: string[] = [
@@ -153,37 +152,80 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
     }
   }
 
-  function skolemizeQuad(quad: Quad, DataFactory: any): Quad {
-    const graphName = (quad.graph as any)?.value ?? "";
-    let subject = quad.subject as any;
-    let object = quad.object as any;
-    if (subject.termType === "BlankNode") {
-      const key = `${graphName}\x00${subject.value}`;
-      let iri = bnodeSessionMap.get(key);
-      if (!iri) {
-        iri = `urn:vg:bnode:${Math.random().toString(36).slice(2, 10)}`;
-        bnodeSessionMap.set(key, iri);
-      }
-      subject = DataFactory.namedNode(iri);
+  function fnv1a32(str: string): string {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
     }
-    if (object.termType === "BlankNode") {
-      const key = `${graphName}\x00${object.value}`;
-      let iri = bnodeSessionMap.get(key);
-      if (!iri) {
-        iri = `urn:vg:bnode:${Math.random().toString(36).slice(2, 10)}`;
-        bnodeSessionMap.set(key, iri);
-      }
-      object = DataFactory.namedNode(iri);
+    return h.toString(16).padStart(8, "0");
+  }
+
+  // Batch-skolemize: replace blank-node subjects/objects with deterministic
+  // urn:vg:bnode:{hash} IRIs derived from each blank node's sorted p-o pairs.
+  // Nested blank nodes (bnode A references bnode B in object position) are
+  // resolved bottom-up so A's hash incorporates B's resolved IRI.
+  function skolemizeQuads(quads: Quad[], DataFactory: any): Quad[] {
+    // Collect all blank node IDs present in this batch
+    const bnodeIds = new Set<string>();
+    for (const q of quads) {
+      if (q.subject.termType === "BlankNode") bnodeIds.add(q.subject.value);
+      if (q.object.termType === "BlankNode") bnodeIds.add((q.object as any).value);
     }
-    if (subject === quad.subject && object === quad.object) return quad;
-    return DataFactory.quad(subject, quad.predicate, object, quad.graph);
+    if (bnodeIds.size === 0) return quads;
+
+    // Build p-o pair list per blank-node subject
+    const poPairs = new Map<string, Array<[string, string, boolean]>>();
+    for (const id of bnodeIds) poPairs.set(id, []);
+    for (const q of quads) {
+      if (q.subject.termType === "BlankNode") {
+        poPairs.get(q.subject.value)!.push([
+          q.predicate.value,
+          (q.object as any).value,
+          q.object.termType === "BlankNode",
+        ]);
+      }
+    }
+
+    // Resolve blank node → IRI bottom-up (cycle-safe via visiting guard)
+    const resolved = new Map<string, string>();
+    const visiting = new Set<string>();
+    function resolve(id: string): string {
+      if (resolved.has(id)) return resolved.get(id)!;
+      if (visiting.has(id)) {
+        // Cycle: fall back to a hash of just the id to break it
+        const iri = `urn:vg:bnode:${fnv1a32(id)}`;
+        resolved.set(id, iri);
+        return iri;
+      }
+      visiting.add(id);
+      const pairs = (poPairs.get(id) ?? []).map(([p, o, oIsBnode]) =>
+        `${p}\x00${oIsBnode ? resolve(o) : o}`
+      );
+      pairs.sort();
+      const iri = `urn:vg:bnode:${fnv1a32(pairs.join("\x01"))}`;
+      resolved.set(id, iri);
+      visiting.delete(id);
+      return iri;
+    }
+    for (const id of bnodeIds) resolve(id);
+
+    return quads.map((q) => {
+      const subj = q.subject.termType === "BlankNode"
+        ? DataFactory.namedNode(resolved.get(q.subject.value)!)
+        : q.subject;
+      const obj = q.object.termType === "BlankNode"
+        ? DataFactory.namedNode(resolved.get((q.object as any).value)!)
+        : q.object;
+      if (subj === q.subject && obj === q.object) return q;
+      return DataFactory.quad(subj, q.predicate, obj, q.graph);
+    });
   }
 
   function resetSharedStore() {
     const { StoreCls, DataFactory } = resolveN3();
     if (!StoreCls) throw new Error("n3-store-unavailable");
     sharedStore = new (StoreCls as any)();
-    bnodeSessionMap = new Map();
     workerChangeCounter = 0;
     // Non-negotiable: always seed the store with OWL/RDFS/RDF meta-ontology axioms
     if (DataFactory) loadSchemaOntology(sharedStore, DataFactory);
@@ -813,9 +855,9 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           }
 
           if (payload && Array.isArray(payload.quads)) {
-            for (const pq of payload.quads) {
+            const rawQuads = (payload.quads as any[]).map((pq) => deserializeQuad(pq, DataFactory));
+            for (const quad of skolemizeQuads(rawQuads, DataFactory)) {
               try {
-                const quad = skolemizeQuad(deserializeQuad(pq as any, DataFactory), DataFactory);
                 store.addQuad(quad);
                 added += 1;
                 touchedSubjects.add(subjectTermToString(quad.subject));
@@ -1021,6 +1063,10 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           const addedSerialized: WorkerQuad[] = [];
           let addedCount = 0;
 
+          // Buffer raw parsed quads, then skolemize as a batch after the stream
+          // ends — this ensures content-hash consistency across the whole parse.
+          const parsedBuffer: Quad[] = [];
+
           await new Promise<void>((resolve, reject) => {
             const opts: Record<string, unknown> = {};
             if (contentType) opts.contentType = contentType;
@@ -1035,31 +1081,12 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
                   !incoming.graph || !incoming.graph.termType || incoming.graph.termType === "DefaultGraph"
                     ? targetGraph
                     : incoming.graph;
-                const normalized = skolemizeQuad(DataFactory.quad(
+                parsedBuffer.push(DataFactory.quad(
                   incoming.subject,
                   incoming.predicate,
                   incoming.object,
                   graphTerm,
-                ), DataFactory);
-                const exists =
-                  typeof store.countQuads === "function"
-                    ? store.countQuads(
-                        normalized.subject,
-                        normalized.predicate,
-                        normalized.object,
-                        normalized.graph,
-                      ) > 0
-                    : (store.getQuads(
-                        normalized.subject,
-                        normalized.predicate,
-                        normalized.object,
-                        normalized.graph,
-                      ) || []).length > 0;
-                if (exists) return;
-                store.addQuad(normalized);
-                addedCount += 1;
-                touchedSubjects.add(subjectTermToString(normalized.subject));
-                addedSerialized.push(serializeQuad(normalized));
+                ));
               } catch (err) {
                 console.debug("[rdfManager.worker] importSerialized.data failed", err);
               }
@@ -1087,6 +1114,33 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
               resolve();
             });
           });
+
+          // Skolemize the full parsed batch, then write to store
+          for (const normalized of skolemizeQuads(parsedBuffer, DataFactory)) {
+            try {
+              const exists =
+                typeof store.countQuads === "function"
+                  ? store.countQuads(
+                      normalized.subject,
+                      normalized.predicate,
+                      normalized.object,
+                      normalized.graph,
+                    ) > 0
+                  : (store.getQuads(
+                      normalized.subject,
+                      normalized.predicate,
+                      normalized.object,
+                      normalized.graph,
+                    ) || []).length > 0;
+              if (exists) continue;
+              store.addQuad(normalized);
+              addedCount += 1;
+              touchedSubjects.add(subjectTermToString(normalized.subject));
+              addedSerialized.push(serializeQuad(normalized));
+            } catch (err) {
+              console.debug("[rdfManager.worker] importSerialized.data failed", err);
+            }
+          }
 
           if (
             Object.keys(prefixes).length > 0 &&
@@ -1607,10 +1661,9 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
                   ? DataFactory.namedNode(gVal)
                   : DataFactory.defaultGraph();
 
-              const renamedQuad = skolemizeQuad(DataFactory.quad(subj, pred, obj, graph), DataFactory);
-              store.addQuad(renamedQuad);
+              store.addQuad(DataFactory.quad(subj, pred, obj, graph));
               renamed += 1;
-              touchedSubjects.add(newS !== null ? newS : subjectTermToString(renamedQuad.subject));
+              touchedSubjects.add(newS !== null ? newS : subjectTermToString(subj));
             } catch (err) {
               console.debug("[rdfManager.worker] renameNamespaceUri failed for quad", err);
             }
@@ -1843,10 +1896,9 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           }
 
           if (payload && Array.isArray(payload.adds)) {
-            for (const add of payload.adds) {
-              if (!add) continue;
+            const rawAdds = (payload.adds as any[]).filter(Boolean).map((a) => deserializeQuad(a, DataFactory));
+            for (const quad of skolemizeQuads(rawAdds, DataFactory)) {
               try {
-                const quad = skolemizeQuad(deserializeQuad(add, DataFactory), DataFactory);
                 store.addQuad(quad);
                 added += 1;
                 touchedSubjects.add(subjectTermToString(quad.subject));
@@ -2333,18 +2385,16 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
     // No removal step is needed: the reasoner ran on a working copy so the main store
     // was never touched by string-keyed _addToIndex calls.
     if (capturedInsertions.length > 0) {
+      const rawInferred: Quad[] = [];
       for (const insertion of capturedInsertions) {
         const subjectTerm = termFromReasonerValue(DataFactory, insertion.subject);
         const predicateTerm = termFromReasonerValue(DataFactory, insertion.predicate);
         const objectTerm = termFromReasonerValue(DataFactory, insertion.object);
         if (!subjectTerm || !predicateTerm || !objectTerm) continue;
+        rawInferred.push(DataFactory.quad(subjectTerm, predicateTerm, objectTerm, inferredGraphTerm));
+      }
 
-        const inferredQuad = skolemizeQuad(DataFactory.quad(
-          subjectTerm,
-          predicateTerm,
-          objectTerm,
-          inferredGraphTerm,
-        ), DataFactory);
+      for (const inferredQuad of skolemizeQuads(rawInferred, DataFactory)) {
         const additionKey = quadKeyFromTerms(inferredQuad);
         if (!additionSeen.has(additionKey)) {
           additionSeen.add(additionKey);
@@ -2359,7 +2409,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             }
           }
 
-          const subjectValue = subjectTermToString(subjectTerm, subjectTerm.value);
+          const subjectValue = subjectTermToString(inferredQuad.subject, inferredQuad.subject.value);
           if (subjectValue) touchedSubjects.add(subjectValue);
         }
       }
