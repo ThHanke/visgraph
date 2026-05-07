@@ -112,6 +112,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
   (globalThis as any).Buffer = Buffer;
 
   let sharedStore: any | null = null;
+  let bnodeSessionMap: Map<string, string> = new Map();
   let workerNamespaces: Record<string, string> = {};
   let workerBlacklistPrefixes: Set<string> = new Set(["owl", "rdf", "rdfs", "xml", "xsd"]);
   let workerBlacklistUris: string[] = [
@@ -152,10 +153,37 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
     }
   }
 
+  function skolemizeQuad(quad: Quad, DataFactory: any): Quad {
+    const graphName = (quad.graph as any)?.value ?? "";
+    let subject = quad.subject as any;
+    let object = quad.object as any;
+    if (subject.termType === "BlankNode") {
+      const key = `${graphName}\x00${subject.value}`;
+      let iri = bnodeSessionMap.get(key);
+      if (!iri) {
+        iri = `urn:vg:bnode:${Math.random().toString(36).slice(2, 10)}`;
+        bnodeSessionMap.set(key, iri);
+      }
+      subject = DataFactory.namedNode(iri);
+    }
+    if (object.termType === "BlankNode") {
+      const key = `${graphName}\x00${object.value}`;
+      let iri = bnodeSessionMap.get(key);
+      if (!iri) {
+        iri = `urn:vg:bnode:${Math.random().toString(36).slice(2, 10)}`;
+        bnodeSessionMap.set(key, iri);
+      }
+      object = DataFactory.namedNode(iri);
+    }
+    if (subject === quad.subject && object === quad.object) return quad;
+    return DataFactory.quad(subject, quad.predicate, object, quad.graph);
+  }
+
   function resetSharedStore() {
     const { StoreCls, DataFactory } = resolveN3();
     if (!StoreCls) throw new Error("n3-store-unavailable");
     sharedStore = new (StoreCls as any)();
+    bnodeSessionMap = new Map();
     workerChangeCounter = 0;
     // Non-negotiable: always seed the store with OWL/RDFS/RDF meta-ontology axioms
     if (DataFactory) loadSchemaOntology(sharedStore, DataFactory);
@@ -787,7 +815,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           if (payload && Array.isArray(payload.quads)) {
             for (const pq of payload.quads) {
               try {
-                const quad = deserializeQuad(pq as any, DataFactory);
+                const quad = skolemizeQuad(deserializeQuad(pq as any, DataFactory), DataFactory);
                 store.addQuad(quad);
                 added += 1;
                 touchedSubjects.add(subjectTermToString(quad.subject));
@@ -1007,12 +1035,12 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
                   !incoming.graph || !incoming.graph.termType || incoming.graph.termType === "DefaultGraph"
                     ? targetGraph
                     : incoming.graph;
-                const normalized = DataFactory.quad(
+                const normalized = skolemizeQuad(DataFactory.quad(
                   incoming.subject,
                   incoming.predicate,
                   incoming.object,
                   graphTerm,
-                );
+                ), DataFactory);
                 const exists =
                   typeof store.countQuads === "function"
                     ? store.countQuads(
@@ -1250,11 +1278,22 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             if (!seenKeys.has(k)) { seenKeys.add(k); mergedQuads.push(q); }
           }
 
+          const deskolemized = mergedQuads.map((q) => {
+            const subj = q.subject.termType === "NamedNode" && q.subject.value.startsWith("urn:vg:bnode:")
+              ? DataFactory.blankNode(q.subject.value.slice("urn:vg:bnode:".length))
+              : q.subject;
+            const obj = q.object.termType === "NamedNode" && q.object.value.startsWith("urn:vg:bnode:")
+              ? DataFactory.blankNode(q.object.value.slice("urn:vg:bnode:".length))
+              : q.object;
+            if (subj === q.subject && obj === q.object) return q;
+            return DataFactory.quad(subj, q.predicate, obj, q.graph);
+          });
+
           const toWrite: Quad[] = formatInfo.dropGraph
-            ? mergedQuads.map((q) =>
+            ? deskolemized.map((q) =>
                 DataFactory.quad(q.subject, q.predicate, q.object, DataFactory.defaultGraph()),
               )
-            : mergedQuads;
+            : deskolemized;
 
           let output: string;
 
@@ -1568,9 +1607,10 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
                   ? DataFactory.namedNode(gVal)
                   : DataFactory.defaultGraph();
 
-              store.addQuad(subj, pred, obj, graph);
+              const renamedQuad = skolemizeQuad(DataFactory.quad(subj, pred, obj, graph), DataFactory);
+              store.addQuad(renamedQuad);
               renamed += 1;
-              touchedSubjects.add(newS !== null ? newS : subjectTermToString(q.subject));
+              touchedSubjects.add(newS !== null ? newS : subjectTermToString(renamedQuad.subject));
             } catch (err) {
               console.debug("[rdfManager.worker] renameNamespaceUri failed for quad", err);
             }
@@ -1806,7 +1846,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             for (const add of payload.adds) {
               if (!add) continue;
               try {
-                const quad = deserializeQuad(add, DataFactory);
+                const quad = skolemizeQuad(deserializeQuad(add, DataFactory), DataFactory);
                 store.addQuad(quad);
                 added += 1;
                 touchedSubjects.add(subjectTermToString(quad.subject));
@@ -2299,12 +2339,12 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
         const objectTerm = termFromReasonerValue(DataFactory, insertion.object);
         if (!subjectTerm || !predicateTerm || !objectTerm) continue;
 
-        const inferredQuad = DataFactory.quad(
+        const inferredQuad = skolemizeQuad(DataFactory.quad(
           subjectTerm,
           predicateTerm,
           objectTerm,
           inferredGraphTerm,
-        );
+        ), DataFactory);
         const additionKey = quadKeyFromTerms(inferredQuad);
         if (!additionSeen.has(additionKey)) {
           additionSeen.add(additionKey);

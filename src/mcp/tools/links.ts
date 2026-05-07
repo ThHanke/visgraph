@@ -19,7 +19,7 @@ interface LinkParams {
 export const linkTools: McpTool[] = [
   {
     name: 'addTriple',
-    description: 'Add an RDF triple to the graph. For object-property triples (IRI object) the edge renders on canvas immediately. For annotation-property triples (literal object) the value appears when the subject node is expanded via expandNode.',
+    description: 'Add an RDF triple to the graph. For object-property triples (IRI object) the edge renders on canvas immediately. For annotation-property triples (literal object) the value appears when the subject node is expanded via expandNode. Blank node identifiers (e.g. "_:b0") are supported in subjectIri and objectIri — use them to build anonymous restriction nodes: addTriple("_:b0","rdf:type","owl:Restriction"), addTriple("_:b0","owl:onProperty","ex:hasPart"), addTriple("_:b0","owl:someValuesFrom","ex:FillerA"), addTriple("ex:ClassA","owl:equivalentClass","_:b0").',
     inputSchema: {
       type: 'object',
       properties: {

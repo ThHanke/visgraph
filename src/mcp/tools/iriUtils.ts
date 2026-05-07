@@ -53,6 +53,8 @@ const URI_SCHEMES = ['http:', 'https:', 'urn:', 'mailto:', 'ftp:', 'file:', 'urn
  */
 export function expandIri(value: string): string {
   if (!value) return value;
+  // Blank node identifiers pass through unchanged.
+  if (value.startsWith('_:')) return value;
   // Pass through any value whose scheme is a known URI scheme (not an RDF prefix).
   for (const scheme of URI_SCHEMES) {
     if (value.startsWith(scheme)) return value;
