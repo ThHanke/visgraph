@@ -83,12 +83,11 @@ const TURNS = [
   // T3 — named pizza subclasses: SalamiPizza, HawaiianPizza, MargheritaPizza
   'There are many specific kinds of pizza. Add three named pizza classes: ex:SalamiPizza, ex:HawaiianPizza, and ex:MargheritaPizza. Each is a subclass of ex:Pizza — add all three nodes and all three rdfs:subClassOf ex:Pizza edges. Then arrange the hierarchy. Wait for my next question.',
 
-  // T4 — owl:equivalentClass + owl:someValuesFrom via loadRdf
-  // Blank-node restrictions are mandatory — named restriction nodes sharing owl:onProperty
-  // collapse into one equivalence group (scm-svf1 bug). loadRdf is the only reliable path.
-  // The manifest already tells the model addTriple cannot encode blank nodes; no need to
-  // repeat that here. Prompt provides exact Turtle so qwen3 copies it verbatim.
-  'In OWL a class can be defined by a necessary-and-sufficient condition — any individual that satisfies it is automatically a member. This is expressed with owl:equivalentClass using an anonymous existential restriction (owl:someValuesFrom). These three axioms define each named pizza by its characteristic topping:\n\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n@prefix ex: <http://example.org/> .\nex:SalamiPizza owl:equivalentClass [ rdf:type owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:SalamiTopping ] .\nex:HawaiianPizza owl:equivalentClass [ rdf:type owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:PineappleTopping ] .\nex:MargheritaPizza owl:equivalentClass [ rdf:type owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:TomatoTopping ] .\n\nLoad this Turtle block into the ontology as-is — the blank nodes are intentional. Wait for my next question.',
+  // T4 — owl:equivalentClass + owl:someValuesFrom
+  // Blank nodes are skolemized to stable urn:vg:bnode: IRIs; both loadRdf and
+  // addTriple with "_:b0" syntax work correctly. No tool-call instruction here —
+  // manifest carries the blank-node pattern; qwen3 chooses the path.
+  'In OWL a class can be defined by a necessary-and-sufficient condition — any individual that satisfies it is automatically a member. This is expressed with owl:equivalentClass using an anonymous existential restriction (owl:someValuesFrom — not allValuesFrom). Model these three equivalences for the named pizza classes:\n• ex:SalamiPizza ≡ [hasPart someValuesFrom ex:SalamiTopping]\n• ex:HawaiianPizza ≡ [hasPart someValuesFrom ex:PineappleTopping]\n• ex:MargheritaPizza ≡ [hasPart someValuesFrom ex:TomatoTopping]\nEach restriction needs its own anonymous node. Wait for my next question.',
 
   // T5 — expandNode all + runLayout
   'Expand all class nodes on the canvas to reveal their asserted properties, then arrange. Wait for my next question.',
@@ -443,13 +442,22 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
   await clearCaption(page);
 
   // ── 12. Save video ────────────────────────────────────────────────────────
-  // saveAs() waits for the page to close before it can finalise the video.
-  // Closing the page here lets saveAs complete immediately rather than blocking.
-  const videoOutDir = path.resolve(__dirname, '../test-results/demo/demo-openwebui-socratic-op-52070-ive-qwen3-4b-via-OWUI-relay-openwebui-demo');
-  fs.mkdirSync(videoOutDir, { recursive: true });
-  const videoPath = path.join(videoOutDir, 'video.webm');
+  // Close extra pages first so Chrome shuts down cleanly before finalising video.
+  // video.path() resolves once the recording file is fully written (blocks until
+  // page is closed). Copy from there rather than relying on the hardcoded saveAs
+  // directory name, which contains a Playwright-generated hash.
   const video = page.video();
+  await relayPopup.close().catch(() => {});
   await page.close();
-  await video?.saveAs(videoPath).catch(() => {/* video unavailable — non-fatal */});
-  demoLog('video saved →', videoPath);
+  const recordedPath = await video?.path().catch(() => undefined);
+  if (recordedPath && fs.existsSync(recordedPath)) {
+    const videoOutDir = path.resolve(__dirname, '../test-results/demo/demo-openwebui-socratic-op-52070-ive-qwen3-4b-via-OWUI-relay-openwebui-demo');
+    fs.mkdirSync(videoOutDir, { recursive: true });
+    const videoPath = path.join(videoOutDir, 'video.webm');
+    fs.copyFileSync(recordedPath, videoPath);
+    const mb = (fs.statSync(videoPath).size / 1024 / 1024).toFixed(1);
+    demoLog(`video saved → ${videoPath} (${mb} MB)`);
+  } else {
+    demoLog('video unavailable — recordedPath:', recordedPath);
+  }
 });
