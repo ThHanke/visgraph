@@ -47,6 +47,11 @@ export const linkTools: McpTool[] = [
         if (subjectIri.startsWith('[') || objectIri.startsWith('[')) {
           return { success: false as const, error: 'Inline Turtle blank node syntax "[ ... ]" is not a valid IRI. Use an explicit blank node label instead, e.g. "_:b0". Call addTriple("_:b0","rdf:type","owl:Restriction") then addTriple("_:b0","owl:onProperty","ex:hasPart") etc. Each distinct restriction needs a distinct label.' };
         }
+        // IRIs never contain spaces — catch Turtle fragments passed as IRIs
+        // (e.g. "ex:hasPart someValuesFrom ex:Foo" or "Pizza and hasTopping some Foo")
+        if (/ /.test(subjectIri) || / /.test(objectIri)) {
+          return { success: false as const, error: 'IRIs cannot contain spaces. It looks like you passed a Turtle or Manchester expression as an IRI. For OWL restrictions use loadRdf with Turtle syntax, or use addTriple with explicit blank node labels: addTriple("_:b0","rdf:type","owl:Restriction"), addTriple("_:b0","owl:onProperty","ex:hasPart"), addTriple("_:b0","owl:someValuesFrom","ex:SalamiTopping"), addTriple("ex:SalamiPizza","owl:equivalentClass","_:b0").' };
+        }
         rdfManager.addTriple(subjectIri, predicateIri, objectIri);
 
         const { ctx } = getWorkspaceRefs();

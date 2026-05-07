@@ -84,9 +84,6 @@ const TURNS = [
   'There are many specific kinds of pizza. Add three named pizza classes: ex:SalamiPizza, ex:HawaiianPizza, and ex:MargheritaPizza. Each is a subclass of ex:Pizza — add all three nodes and all three rdfs:subClassOf ex:Pizza edges. Then arrange the hierarchy. Wait for my next question.',
 
   // T4 — owl:equivalentClass + owl:someValuesFrom
-  // Blank nodes are skolemized to stable urn:vg:bnode: IRIs; both loadRdf and
-  // addTriple with "_:b0" syntax work correctly. No tool-call instruction here —
-  // manifest carries the blank-node pattern; qwen3 chooses the path.
   'In OWL a class can be defined by a necessary-and-sufficient condition — any individual that satisfies it is automatically a member. This is expressed with owl:equivalentClass using an anonymous existential restriction (owl:someValuesFrom — not allValuesFrom). Model these three equivalences for the named pizza classes:\n• ex:SalamiPizza ≡ [hasPart someValuesFrom ex:SalamiTopping]\n• ex:HawaiianPizza ≡ [hasPart someValuesFrom ex:PineappleTopping]\n• ex:MargheritaPizza ≡ [hasPart someValuesFrom ex:TomatoTopping]\nEach restriction needs its own anonymous node. Wait for my next question.',
 
   // T5 — expandNode all + runLayout
@@ -256,6 +253,10 @@ async function typeAndSend(frame: Frame, page: Page, text: string): Promise<void
 test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI relay', async ({ page, context }) => {
   test.setTimeout(2_700_000); // 45 min — qwen3 reasoning turns can be slow
 
+  // Expose a logging bridge callable from ANY frame (including iframes).
+  // appFrame.on('console') doesn't work for iframes — use exposeFunction instead.
+  await context.exposeFunction('__demoLog__', (msg: string) => { demoLog(msg); });
+
   // ── 1. Restore cookies; register init script for localStorage ──────────────
   if (fs.existsSync(AUTH_FILE)) {
     const state = JSON.parse(fs.readFileSync(AUTH_FILE, 'utf8')) as {
@@ -398,6 +399,25 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
   const relayPopup = await relayPopupPromise;
   await relayPopup.waitForLoadState('domcontentloaded');
   await sleep(500);
+
+  // Wrap __mcpTools in the app frame so every tool call + result is logged.
+  // Uses __demoLog__ (exposeFunction) — the only reliable way to get data out
+  // of an iframe since frame.on('console') doesn't fire for subframe messages.
+  await appFrame.evaluate(() => {
+    const log = (window as any).__demoLog__ as (msg: string) => void;
+    const tools = (window as any).__mcpTools as Record<string, (p: unknown) => Promise<unknown>>;
+    for (const name of Object.keys(tools)) {
+      const orig = tools[name];
+      tools[name] = async (params: unknown) => {
+        const argStr = JSON.stringify(params ?? {});
+        log(`[MCP→] ${name} ${argStr.length > 600 ? argStr.slice(0, 600) + '…' : argStr}`);
+        const result = await orig(params);
+        const resStr = JSON.stringify(result ?? {});
+        log(`[MCP←] ${name} ${resStr.length > 300 ? resStr.slice(0, 300) + '…' : resStr}`);
+        return result;
+      };
+    }
+  });
 
   // ── 9. Wait for model's help() cycle to complete ──────────────────────────
   // Model reads starter prompt → calls help() itself → relay executes → model reads
