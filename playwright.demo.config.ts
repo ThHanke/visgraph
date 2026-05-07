@@ -15,6 +15,9 @@ export default defineConfig({
         viewport: { width: 1920, height: 1080 },
         video: { mode: 'on', size: { width: 1920, height: 1080 } },
         baseURL: 'http://localhost:8080',
+        launchOptions: {
+          args: ['--disable-features=BlockInsecurePrivateNetworkRequests'],
+        },
       },
     },
   ],

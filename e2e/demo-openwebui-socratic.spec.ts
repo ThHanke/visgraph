@@ -86,7 +86,9 @@ const TURNS = [
   // T4 — owl:equivalentClass + owl:someValuesFrom via loadRdf
   // Blank-node restrictions are mandatory — named restriction nodes sharing owl:onProperty
   // collapse into one equivalence group (scm-svf1 bug). loadRdf is the only reliable path.
-  'In OWL a class can be defined by a necessary-and-sufficient condition — any individual that satisfies it is automatically a member. This is expressed with owl:equivalentClass using an anonymous restriction. These three axioms define each named pizza by its characteristic topping:\n\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n@prefix ex: <http://example.org/> .\nex:SalamiPizza owl:equivalentClass [ rdf:type owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:SalamiTopping ] .\nex:HawaiianPizza owl:equivalentClass [ rdf:type owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:PineappleTopping ] .\nex:MargheritaPizza owl:equivalentClass [ rdf:type owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:TomatoTopping ] .\n\nLoad this Turtle block into the ontology as-is — the blank nodes are intentional and must not be decomposed into named resources. Wait for my next question.',
+  // The manifest already tells the model addTriple cannot encode blank nodes; no need to
+  // repeat that here. Prompt provides exact Turtle so qwen3 copies it verbatim.
+  'In OWL a class can be defined by a necessary-and-sufficient condition — any individual that satisfies it is automatically a member. This is expressed with owl:equivalentClass using an anonymous existential restriction (owl:someValuesFrom). These three axioms define each named pizza by its characteristic topping:\n\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n@prefix ex: <http://example.org/> .\nex:SalamiPizza owl:equivalentClass [ rdf:type owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:SalamiTopping ] .\nex:HawaiianPizza owl:equivalentClass [ rdf:type owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:PineappleTopping ] .\nex:MargheritaPizza owl:equivalentClass [ rdf:type owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:TomatoTopping ] .\n\nLoad this Turtle block into the ontology as-is — the blank nodes are intentional. Wait for my next question.',
 
   // T5 — expandNode all + runLayout
   'Expand all class nodes on the canvas to reveal their asserted properties, then arrange. Wait for my next question.',
@@ -117,6 +119,12 @@ const TURNS = [
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+const demoStart = Date.now();
+function demoLog(...args: unknown[]) {
+  const s = ((Date.now() - demoStart) / 1000).toFixed(1);
+  console.log(`[demo +${s}s]`, ...args);
+}
 
 async function waitForFrame(page: Page, urlPrefix: string, timeout = 60_000): Promise<Frame> {
   const deadline = Date.now() + timeout;
@@ -162,13 +170,25 @@ async function clearCaption(page: Page): Promise<void> {
 // Shared busy-check: content-length growth OR relay has queued work.
 // isAiStreaming() is NOT used — newer OWUI keeps the send button enabled while
 // generating so button-state detection gives false negatives.
-// Content-length of the chat area is the reliable signal: if text is still
-// appearing, the model or relay is active regardless of button state.
+// We walk the DOM skipping <details> subtrees so qwen3 chain-of-thought tokens
+// (streamed into hidden thinking blocks) don't keep isBusy returning true after
+// the visible response has settled.
 async function isBusy(frame: Frame, prevLen: number): Promise<{ busy: boolean; len: number }> {
-  const state = await frame.evaluate(() => ({
-    relayBusy: !((window as any).__vgIsRelayIdle?.() ?? true),
-    len: (document.body.innerText ?? '').length,
-  })).catch(() => ({ relayBusy: false, len: prevLen }));
+  const state = await frame.evaluate(() => {
+    const relayBusy = !((window as any).__vgIsRelayIdle?.() ?? true);
+    // Walk body text nodes, skipping <details> subtrees (thinking/CoT blocks).
+    let len = 0;
+    function walk(node: Node) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        len += (node.textContent ?? '').length;
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        if ((node as Element).tagName === 'DETAILS') return;
+        for (const child of node.childNodes) walk(child);
+      }
+    }
+    walk(document.body);
+    return { relayBusy, len };
+  }).catch(() => ({ relayBusy: false, len: prevLen }));
   const growing = prevLen >= 0 && state.len !== prevLen;
   return { busy: state.relayBusy || growing, len: state.len };
 }
@@ -235,7 +255,7 @@ async function typeAndSend(frame: Frame, page: Page, text: string): Promise<void
 // ── Test ──────────────────────────────────────────────────────────────────────
 
 test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI relay', async ({ page, context }) => {
-  test.setTimeout(1_500_000); // 25 min — qwen3 reasoning turns can be slow
+  test.setTimeout(2_700_000); // 45 min — qwen3 reasoning turns can be slow
 
   // ── 1. Restore cookies; register init script for localStorage ──────────────
   if (fs.existsSync(AUTH_FILE)) {
@@ -260,10 +280,12 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
   // addInitScript only runs in top-level frames, not iframes. Navigate to each
   // origin on a real page first — this seeds localStorage for both OWUI and the
   // Ontosphere app in the shared context storage. Their iframes then read it.
+  demoLog('step 1: auth pre-seed — navigating to OWUI');
   const authPage = await context.newPage();
   await authPage.goto(`${OWUI_URL}/`);
   await authPage.waitForSelector('#chat-input', { timeout: 60_000 });
   await authPage.close();
+  demoLog('step 1: OWUI auth OK');
 
   const appAuthPage = await context.newPage();
   await appAuthPage.goto(`${VG_URL}/`);
@@ -274,6 +296,7 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
     }));
   });
   await appAuthPage.close();
+  demoLog('step 1: app auth OK');
 
   // ── 3. Load side-by-side stage (this is the recorded page) ────────────────
   // ?ontologies=owl,rdf,rdfs on the app URL replaces the 6 default additionalOntologies
@@ -282,6 +305,7 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
   const stageUrl = `${VG_URL}/demo-stage-owui.html`
     + `?owui=${encodeURIComponent(OWUI_URL + '/')}`
     + `&app=${encodeURIComponent(appUrl)}`;
+  demoLog('step 2: loading stage page');
   await page.goto(stageUrl);
   await caption(page, 'Loading Ontosphere × OpenWebUI demo stage…');
 
@@ -290,6 +314,7 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
   const chatFrame = await waitForFrame(page, OWUI_URL, 90_000);
   await appFrame.waitForFunction(() => !!(window as any).__mcpTools?.addNode, { timeout: 30_000 });
   await chatFrame.locator('#chat-input').waitFor({ timeout: 90_000 });
+  demoLog('step 3: both frames ready');
   // Hide broken model avatar images — profile pic URLs don't resolve in the iframe context,
   // leaving a broken-image placeholder next to every model response. MutationObserver ensures
   // dynamically added images (new chat messages) are also caught.
@@ -347,8 +372,10 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
     if (STARTER_LINES[i]) await page.keyboard.type(STARTER_LINES[i], { delay: 2 });
     if (i < STARTER_LINES.length - 1) await page.keyboard.press('Shift+Enter');
   }
+  demoLog('step 5: sending starter prompt');
   await page.keyboard.press('Enter');
   await chatFrame.waitForFunction(() => location.pathname.startsWith('/c/'), { timeout: 15_000 });
+  demoLog('step 5: starter prompt sent, chat URL:', await chatFrame.evaluate(() => location.pathname));
 
   // ── 7. Fetch relay code from appFrame (HTTP — no mixed-content) ───────────
   const relayCode = await appFrame.evaluate(async (vgUrl: string) => {
@@ -376,8 +403,10 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
   // ── 9. Wait for model's help() cycle to complete ──────────────────────────
   // Model reads starter prompt → calls help() itself → relay executes → model reads
   // manifest and responds. waitIdle waits for 3 s of content+relay silence.
+  demoLog('step 6: relay injected — waiting for model help() cycle (up to 3 min)');
   await caption(page, 'Model familiarising with MCP tools — calling help()…');
   await waitIdle(chatFrame, 180_000);
+  demoLog('step 6: help() cycle done');
   // Hold 10 s so viewers can see the model reading the tool manifest before we start.
   await sleep(10_000);
   await clearCaption(page);
@@ -385,6 +414,7 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
   // ── 10. Socratic turns ────────────────────────────────────────────────────
   await clearCaption(page);
   for (let i = 0; i < TURNS.length; i++) {
+    demoLog(`turn ${i + 1}/${TURNS.length}: "${TURN_TOPICS[i]}" — sending`);
     // Before: brief label so viewer knows what concept is being asked about
     await caption(page, TURN_TOPICS[i]);
     await sleep(2_000);
@@ -395,6 +425,7 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
     // Clear caption while model generates — the live chat + canvas are the show
     await clearCaption(page);
     await waitIdle(chatFrame, 300_000);
+    demoLog(`turn ${i + 1}/${TURNS.length}: idle — model done`);
 
     // Caption goes up the moment the model first goes idle so viewers can read
     // what was built. waitQuiet holds for 10 s of continuous silence — resets
@@ -406,14 +437,19 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
   }
 
   // ── 11. End card ──────────────────────────────────────────────────────────
+  demoLog('all turns done — end card');
   await caption(page, 'Pizza ontology — TBox · ABox · named pizza classes · equivalentClass axioms · OWL-RL classification — built through Socratic questioning alone');
   await sleep(6_000);
   await clearCaption(page);
 
-  // ── 12. Explicitly save video ─────────────────────────────────────────────
-  // Playwright auto-save via video.mode:'on' is unreliable under xvfb; force it.
+  // ── 12. Save video ────────────────────────────────────────────────────────
+  // saveAs() waits for the page to close before it can finalise the video.
+  // Closing the page here lets saveAs complete immediately rather than blocking.
   const videoOutDir = path.resolve(__dirname, '../test-results/demo/demo-openwebui-socratic-op-52070-ive-qwen3-4b-via-OWUI-relay-openwebui-demo');
   fs.mkdirSync(videoOutDir, { recursive: true });
   const videoPath = path.join(videoOutDir, 'video.webm');
-  await page.video()?.saveAs(videoPath).catch(() => {/* video unavailable — non-fatal */});
+  const video = page.video();
+  await page.close();
+  await video?.saveAs(videoPath).catch(() => {/* video unavailable — non-fatal */});
+  demoLog('video saved →', videoPath);
 });

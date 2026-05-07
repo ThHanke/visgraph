@@ -18,7 +18,7 @@ export default defineConfig({
         ignoreHTTPSErrors: true,
         launchOptions: {
           // Required: allows cross-origin iframe access and self-signed TLS
-          args: ['--disable-web-security', '--ignore-certificate-errors'],
+          args: ['--disable-web-security', '--ignore-certificate-errors', '--disable-features=BlockInsecurePrivateNetworkRequests'],
         },
       },
     },
