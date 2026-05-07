@@ -442,22 +442,19 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
   await clearCaption(page);
 
   // ── 12. Save video ────────────────────────────────────────────────────────
-  // Close extra pages first so Chrome shuts down cleanly before finalising video.
-  // video.path() resolves once the recording file is fully written (blocks until
-  // page is closed). Copy from there rather than relying on the hardcoded saveAs
-  // directory name, which contains a Playwright-generated hash.
+  // Use video.saveAs() — more reliable than path()+copyFileSync because path()
+  // can return the transient artifacts path which Playwright moves before we read it.
   const video = page.video();
+  const videoOutDir = path.resolve(__dirname, '../test-results/demo/demo-openwebui-socratic-op-52070-ive-qwen3-4b-via-OWUI-relay-openwebui-demo');
+  fs.mkdirSync(videoOutDir, { recursive: true });
+  const videoPath = path.join(videoOutDir, 'video.webm');
   await relayPopup.close().catch(() => {});
   await page.close();
-  const recordedPath = await video?.path().catch(() => undefined);
-  if (recordedPath && fs.existsSync(recordedPath)) {
-    const videoOutDir = path.resolve(__dirname, '../test-results/demo/demo-openwebui-socratic-op-52070-ive-qwen3-4b-via-OWUI-relay-openwebui-demo');
-    fs.mkdirSync(videoOutDir, { recursive: true });
-    const videoPath = path.join(videoOutDir, 'video.webm');
-    fs.copyFileSync(recordedPath, videoPath);
+  await video?.saveAs(videoPath).catch((e) => demoLog('video saveAs failed:', e));
+  if (fs.existsSync(videoPath)) {
     const mb = (fs.statSync(videoPath).size / 1024 / 1024).toFixed(1);
     demoLog(`video saved → ${videoPath} (${mb} MB)`);
   } else {
-    demoLog('video unavailable — recordedPath:', recordedPath);
+    demoLog('video unavailable — saveAs did not produce a file');
   }
 });
