@@ -161,61 +161,30 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
     return h.toString(16).padStart(8, "0");
   }
 
-  // Batch-skolemize: replace blank-node subjects/objects with deterministic
-  // urn:vg:bnode:{hash} IRIs derived from each blank node's sorted p-o pairs.
-  // Nested blank nodes (bnode A references bnode B in object position) are
-  // resolved bottom-up so A's hash incorporates B's resolved IRI.
+  // Skolemize: replace blank-node subjects/objects with stable urn:vg:bnode:{hash} IRIs.
+  // Hash is derived from the blank node's label (value) only — not its predicate-object
+  // pairs — so the same label always maps to the same IRI regardless of batch size.
+  // This enables building blank-node restrictions via individual addTriple calls:
+  // every call that references "_:b0" produces the same urn:vg:bnode: IRI.
+  // Callers are responsible for using distinct labels for distinct blank nodes.
   function skolemizeQuads(quads: Quad[], DataFactory: any): Quad[] {
-    // Collect all blank node IDs present in this batch
-    const bnodeIds = new Set<string>();
-    for (const q of quads) {
-      if (q.subject.termType === "BlankNode") bnodeIds.add(q.subject.value);
-      if (q.object.termType === "BlankNode") bnodeIds.add((q.object as any).value);
-    }
-    if (bnodeIds.size === 0) return quads;
+    const hasBnodes = quads.some(
+      (q) => q.subject.termType === "BlankNode" || q.object.termType === "BlankNode"
+    );
+    if (!hasBnodes) return quads;
 
-    // Build p-o pair list per blank-node subject
-    const poPairs = new Map<string, Array<[string, string, boolean]>>();
-    for (const id of bnodeIds) poPairs.set(id, []);
-    for (const q of quads) {
-      if (q.subject.termType === "BlankNode") {
-        poPairs.get(q.subject.value)!.push([
-          q.predicate.value,
-          (q.object as any).value,
-          q.object.termType === "BlankNode",
-        ]);
-      }
-    }
-
-    // Resolve blank node → IRI bottom-up (cycle-safe via visiting guard)
-    const resolved = new Map<string, string>();
-    const visiting = new Set<string>();
-    function resolve(id: string): string {
-      if (resolved.has(id)) return resolved.get(id)!;
-      if (visiting.has(id)) {
-        // Cycle: fall back to a hash of just the id to break it
-        const iri = `urn:vg:bnode:${fnv1a32(id)}`;
-        resolved.set(id, iri);
-        return iri;
-      }
-      visiting.add(id);
-      const pairs = (poPairs.get(id) ?? []).map(([p, o, oIsBnode]) =>
-        `${p}\x00${oIsBnode ? resolve(o) : o}`
-      );
-      pairs.sort();
-      const iri = `urn:vg:bnode:${fnv1a32(pairs.join("\x01"))}`;
-      resolved.set(id, iri);
-      visiting.delete(id);
-      return iri;
-    }
-    for (const id of bnodeIds) resolve(id);
+    const cache = new Map<string, string>();
+    const toIri = (id: string): string => {
+      if (!cache.has(id)) cache.set(id, `urn:vg:bnode:${fnv1a32(id)}`);
+      return cache.get(id)!;
+    };
 
     return quads.map((q) => {
       const subj = q.subject.termType === "BlankNode"
-        ? DataFactory.namedNode(resolved.get(q.subject.value)!)
+        ? DataFactory.namedNode(toIri(q.subject.value))
         : q.subject;
       const obj = q.object.termType === "BlankNode"
-        ? DataFactory.namedNode(resolved.get((q.object as any).value)!)
+        ? DataFactory.namedNode(toIri((q.object as any).value))
         : q.object;
       if (subj === q.subject && obj === q.object) return q;
       return DataFactory.quad(subj, q.predicate, obj, q.graph);
