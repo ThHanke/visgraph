@@ -53,16 +53,16 @@ pairs to cover every combination.
 <details>
 <summary>4 tool calls ✓</summary>
 
-`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#Pizza","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaBase"}}}`
-`{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#Pizza","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaTopping"}}}`
-`{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaBase","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaTopping"}}}`
+`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#Pizza","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaBase"}}}`
+`{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#Pizza","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaTopping"}}}`
+`{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaBase","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaTopping"}}}`
 `{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"elk-layered","spacing":200}}}`
 
 ```tool-result
 [Ontosphere — 4 tools ✓]
-✓ addLink: s=Pizza p=disjointWith o=PizzaBase
-✓ addLink: s=Pizza p=disjointWith o=PizzaTopping
-✓ addLink: s=PizzaBase p=disjointWith o=PizzaTopping
+✓ addTriple
+✓ addTriple
+✓ addTriple
 ✓ runLayout: elk-layered
 
 Canvas: 3 nodes, 3 links
@@ -86,18 +86,18 @@ also disjoint: no base can be both thin and deep pan.
 
 `{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#ThinAndCrispyBase","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"ThinAndCrispyBase"}}}`
 `{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#DeepPanBase","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"DeepPanBase"}}}`
-`{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#ThinAndCrispyBase","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaBase"}}}`
-`{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#DeepPanBase","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaBase"}}}`
-`{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#ThinAndCrispyBase","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#DeepPanBase"}}}`
+`{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#ThinAndCrispyBase","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaBase"}}}`
+`{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#DeepPanBase","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaBase"}}}`
+`{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#ThinAndCrispyBase","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#DeepPanBase"}}}`
 `{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"elk-layered","spacing":160}}}`
 
 ```tool-result
 [Ontosphere — 6 tools ✓]
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#ThinAndCrispyBase
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#DeepPanBase
-✓ addLink: s=ThinAndCrispyBase p=subClassOf o=PizzaBase
-✓ addLink: s=DeepPanBase p=subClassOf o=PizzaBase
-✓ addLink: s=ThinAndCrispyBase p=disjointWith o=DeepPanBase
+✓ addTriple
+✓ addTriple
+✓ addTriple
 ✓ runLayout: elk-layered
 
 Canvas: 5 nodes, 6 links
@@ -123,10 +123,10 @@ are also implicitly Pizzas through the chain.
 `{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#Margherita","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"Margherita"}}}`
 `{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#AmericanHot","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"AmericanHot"}}}`
 `{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#FruttiDiMare","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"FruttiDiMare"}}}`
-`{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#NamedPizza","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#Pizza"}}}`
-`{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#Margherita","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#NamedPizza"}}}`
-`{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#AmericanHot","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#NamedPizza"}}}`
-`{"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#FruttiDiMare","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#NamedPizza"}}}`
+`{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#NamedPizza","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#Pizza"}}}`
+`{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#Margherita","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#NamedPizza"}}}`
+`{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#AmericanHot","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#NamedPizza"}}}`
+`{"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#FruttiDiMare","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#NamedPizza"}}}`
 `{"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"elk-layered","spacing":160}}}`
 
 ```tool-result
@@ -135,10 +135,10 @@ are also implicitly Pizzas through the chain.
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#Margherita
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#AmericanHot
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#FruttiDiMare
-✓ addLink: s=NamedPizza p=subClassOf o=Pizza
-✓ addLink: s=Margherita p=subClassOf o=NamedPizza
-✓ addLink: s=AmericanHot p=subClassOf o=NamedPizza
-✓ addLink: s=FruttiDiMare p=subClassOf o=NamedPizza
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
 ✓ runLayout: elk-layered
 
 Canvas: 9 nodes, 10 links
@@ -164,10 +164,10 @@ PizzaTopping through the chain.
 `{"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#MeatTopping","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"MeatTopping"}}}`
 `{"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#VegetableTopping","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"VegetableTopping"}}}`
 `{"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#FishTopping","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"FishTopping"}}}`
-`{"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#CheeseTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaTopping"}}}`
-`{"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#MeatTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaTopping"}}}`
-`{"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#VegetableTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaTopping"}}}`
-`{"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#FishTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaTopping"}}}`
+`{"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#CheeseTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaTopping"}}}`
+`{"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#MeatTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaTopping"}}}`
+`{"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#VegetableTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaTopping"}}}`
+`{"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#FishTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaTopping"}}}`
 `{"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"elk-layered","spacing":160}}}`
 
 ```tool-result
@@ -176,10 +176,10 @@ PizzaTopping through the chain.
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#MeatTopping
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#VegetableTopping
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#FishTopping
-✓ addLink: s=CheeseTopping p=subClassOf o=PizzaTopping
-✓ addLink: s=MeatTopping p=subClassOf o=PizzaTopping
-✓ addLink: s=VegetableTopping p=subClassOf o=PizzaTopping
-✓ addLink: s=FishTopping p=subClassOf o=PizzaTopping
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
 ✓ runLayout: elk-layered
 
 Canvas: 13 nodes, 14 links
@@ -202,22 +202,22 @@ it will flag an inconsistency.
 <details>
 <summary>7 tool calls ✓</summary>
 
-`{"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#CheeseTopping","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#MeatTopping"}}}`
-`{"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#CheeseTopping","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#VegetableTopping"}}}`
-`{"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#CheeseTopping","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#FishTopping"}}}`
-`{"jsonrpc":"2.0","id":37,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#MeatTopping","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#VegetableTopping"}}}`
-`{"jsonrpc":"2.0","id":38,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#MeatTopping","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#FishTopping"}}}`
-`{"jsonrpc":"2.0","id":39,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#VegetableTopping","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#FishTopping"}}}`
+`{"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#CheeseTopping","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#MeatTopping"}}}`
+`{"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#CheeseTopping","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#VegetableTopping"}}}`
+`{"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#CheeseTopping","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#FishTopping"}}}`
+`{"jsonrpc":"2.0","id":37,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#MeatTopping","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#VegetableTopping"}}}`
+`{"jsonrpc":"2.0","id":38,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#MeatTopping","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#FishTopping"}}}`
+`{"jsonrpc":"2.0","id":39,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#VegetableTopping","predicateIri":"http://www.w3.org/2002/07/owl#disjointWith","objectIri":"http://www.pizza-ontology.com/pizza.owl#FishTopping"}}}`
 `{"jsonrpc":"2.0","id":40,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"elk-layered","spacing":160}}}`
 
 ```tool-result
 [Ontosphere — 7 tools ✓]
-✓ addLink: s=CheeseTopping p=disjointWith o=MeatTopping
-✓ addLink: s=CheeseTopping p=disjointWith o=VegetableTopping
-✓ addLink: s=CheeseTopping p=disjointWith o=FishTopping
-✓ addLink: s=MeatTopping p=disjointWith o=VegetableTopping
-✓ addLink: s=MeatTopping p=disjointWith o=FishTopping
-✓ addLink: s=VegetableTopping p=disjointWith o=FishTopping
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
 ✓ runLayout: elk-layered
 
 Canvas: 13 nodes, 20 links
@@ -246,13 +246,13 @@ all the way up to CheeseTopping and then PizzaTopping — no extra assertions ne
 `{"jsonrpc":"2.0","id":45,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#OliveTopping","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"OliveTopping"}}}`
 `{"jsonrpc":"2.0","id":46,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#GarlicTopping","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"GarlicTopping"}}}`
 `{"jsonrpc":"2.0","id":47,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#AnchoviesTopping","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"AnchoviesTopping"}}}`
-`{"jsonrpc":"2.0","id":48,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#MozzarellaTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#CheeseTopping"}}}`
-`{"jsonrpc":"2.0","id":49,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#ParmesanTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#CheeseTopping"}}}`
-`{"jsonrpc":"2.0","id":50,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#PeperoniSausageTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#MeatTopping"}}}`
-`{"jsonrpc":"2.0","id":51,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#TomatoTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#VegetableTopping"}}}`
-`{"jsonrpc":"2.0","id":52,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#OliveTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#VegetableTopping"}}}`
-`{"jsonrpc":"2.0","id":53,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#GarlicTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#VegetableTopping"}}}`
-`{"jsonrpc":"2.0","id":54,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#AnchoviesTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#FishTopping"}}}`
+`{"jsonrpc":"2.0","id":48,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#MozzarellaTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#CheeseTopping"}}}`
+`{"jsonrpc":"2.0","id":49,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#ParmesanTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#CheeseTopping"}}}`
+`{"jsonrpc":"2.0","id":50,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#PeperoniSausageTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#MeatTopping"}}}`
+`{"jsonrpc":"2.0","id":51,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#TomatoTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#VegetableTopping"}}}`
+`{"jsonrpc":"2.0","id":52,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#OliveTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#VegetableTopping"}}}`
+`{"jsonrpc":"2.0","id":53,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#GarlicTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#VegetableTopping"}}}`
+`{"jsonrpc":"2.0","id":54,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#AnchoviesTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#FishTopping"}}}`
 `{"jsonrpc":"2.0","id":55,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"elk-layered","spacing":140}}}`
 `{"jsonrpc":"2.0","id":56,"method":"tools/call","params":{"name":"expandNode","arguments":{}}}`
 `{"jsonrpc":"2.0","id":57,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"elk-layered","spacing":140}}}`
@@ -266,13 +266,13 @@ all the way up to CheeseTopping and then PizzaTopping — no extra assertions ne
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#OliveTopping
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#GarlicTopping
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#AnchoviesTopping
-✓ addLink: s=MozzarellaTopping p=subClassOf o=CheeseTopping
-✓ addLink: s=ParmesanTopping p=subClassOf o=CheeseTopping
-✓ addLink: s=PeperoniSausageTopping p=subClassOf o=MeatTopping
-✓ addLink: s=TomatoTopping p=subClassOf o=VegetableTopping
-✓ addLink: s=OliveTopping p=subClassOf o=VegetableTopping
-✓ addLink: s=GarlicTopping p=subClassOf o=VegetableTopping
-✓ addLink: s=AnchoviesTopping p=subClassOf o=FishTopping
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
 ✓ runLayout: elk-layered
 ✓ expandNode
 ✓ runLayout: elk-layered
@@ -299,20 +299,20 @@ explicit type assertion.
 
 `{"jsonrpc":"2.0","id":58,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","typeIri":"http://www.w3.org/2002/07/owl#ObjectProperty","label":"hasTopping"}}}`
 `{"jsonrpc":"2.0","id":59,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#hasBase","typeIri":"http://www.w3.org/2002/07/owl#ObjectProperty","label":"hasBase"}}}`
-`{"jsonrpc":"2.0","id":60,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://www.pizza-ontology.com/pizza.owl#Pizza"}}}`
-`{"jsonrpc":"2.0","id":61,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaTopping"}}}`
-`{"jsonrpc":"2.0","id":62,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#hasBase","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://www.pizza-ontology.com/pizza.owl#Pizza"}}}`
-`{"jsonrpc":"2.0","id":63,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#hasBase","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaBase"}}}`
+`{"jsonrpc":"2.0","id":60,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://www.pizza-ontology.com/pizza.owl#Pizza"}}}`
+`{"jsonrpc":"2.0","id":61,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaTopping"}}}`
+`{"jsonrpc":"2.0","id":62,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#hasBase","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://www.pizza-ontology.com/pizza.owl#Pizza"}}}`
+`{"jsonrpc":"2.0","id":63,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#hasBase","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaBase"}}}`
 `{"jsonrpc":"2.0","id":64,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"elk-layered","spacing":140}}}`
 
 ```tool-result
 [Ontosphere — 7 tools ✓]
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#hasTopping
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#hasBase
-✓ addLink: s=hasTopping p=domain o=Pizza
-✓ addLink: s=hasTopping p=range o=PizzaTopping
-✓ addLink: s=hasBase p=domain o=Pizza
-✓ addLink: s=hasBase p=range o=PizzaBase
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
 ✓ runLayout: elk-layered
 
 Canvas: 22 nodes, 31 links
@@ -337,13 +337,13 @@ on the real world.
 
 `{"jsonrpc":"2.0","id":65,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#isToppingOf","typeIri":"http://www.w3.org/2002/07/owl#ObjectProperty","label":"isToppingOf"}}}`
 `{"jsonrpc":"2.0","id":66,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#isBaseOf","typeIri":"http://www.w3.org/2002/07/owl#ObjectProperty","label":"isBaseOf"}}}`
-`{"jsonrpc":"2.0","id":67,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#isToppingOf","predicateIri":"http://www.w3.org/2002/07/owl#inverseOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping"}}}`
-`{"jsonrpc":"2.0","id":68,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#isBaseOf","predicateIri":"http://www.w3.org/2002/07/owl#inverseOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#hasBase"}}}`
-`{"jsonrpc":"2.0","id":69,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#isToppingOf","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaTopping"}}}`
-`{"jsonrpc":"2.0","id":70,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#isToppingOf","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://www.pizza-ontology.com/pizza.owl#Pizza"}}}`
-`{"jsonrpc":"2.0","id":71,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#isBaseOf","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaBase"}}}`
-`{"jsonrpc":"2.0","id":72,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#isBaseOf","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://www.pizza-ontology.com/pizza.owl#Pizza"}}}`
-`{"jsonrpc":"2.0","id":73,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#hasBase","predicateIri":"http://www.w3.org/1999/02/22-rdf-syntax-ns#type","objectIri":"http://www.w3.org/2002/07/owl#FunctionalProperty"}}}`
+`{"jsonrpc":"2.0","id":67,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#isToppingOf","predicateIri":"http://www.w3.org/2002/07/owl#inverseOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping"}}}`
+`{"jsonrpc":"2.0","id":68,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#isBaseOf","predicateIri":"http://www.w3.org/2002/07/owl#inverseOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#hasBase"}}}`
+`{"jsonrpc":"2.0","id":69,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#isToppingOf","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaTopping"}}}`
+`{"jsonrpc":"2.0","id":70,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#isToppingOf","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://www.pizza-ontology.com/pizza.owl#Pizza"}}}`
+`{"jsonrpc":"2.0","id":71,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#isBaseOf","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://www.pizza-ontology.com/pizza.owl#PizzaBase"}}}`
+`{"jsonrpc":"2.0","id":72,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#isBaseOf","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://www.pizza-ontology.com/pizza.owl#Pizza"}}}`
+`{"jsonrpc":"2.0","id":73,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#hasBase","predicateIri":"http://www.w3.org/1999/02/22-rdf-syntax-ns#type","objectIri":"http://www.w3.org/2002/07/owl#FunctionalProperty"}}}`
 `{"jsonrpc":"2.0","id":74,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"elk-layered","spacing":140}}}`
 `{"jsonrpc":"2.0","id":75,"method":"tools/call","params":{"name":"expandNode","arguments":{}}}`
 `{"jsonrpc":"2.0","id":76,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"elk-layered","spacing":140}}}`
@@ -352,13 +352,13 @@ on the real world.
 [Ontosphere — 12 tools ✓]
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#isToppingOf
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#isBaseOf
-✓ addLink: s=isToppingOf p=inverseOf o=hasTopping
-✓ addLink: s=isBaseOf p=inverseOf o=hasBase
-✓ addLink: s=isToppingOf p=domain o=PizzaTopping
-✓ addLink: s=isToppingOf p=range o=Pizza
-✓ addLink: s=isBaseOf p=domain o=PizzaBase
-✓ addLink: s=isBaseOf p=range o=Pizza
-✓ addLink: s=hasBase p=type o=FunctionalProperty
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
 ✓ runLayout: elk-layered
 ✓ expandNode
 ✓ runLayout: elk-layered
@@ -441,14 +441,14 @@ closure axioms exist.
 <summary>4 tool calls ✓</summary>
 
 `{"jsonrpc":"2.0","id":128,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#VegetarianPizza","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"VegetarianPizza"}}}`
-`{"jsonrpc":"2.0","id":129,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#VegetarianPizza","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#NamedPizza"}}}`
+`{"jsonrpc":"2.0","id":129,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#VegetarianPizza","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://www.pizza-ontology.com/pizza.owl#NamedPizza"}}}`
 `{"jsonrpc":"2.0","id":130,"method":"tools/call","params":{"name":"loadRdf","arguments":{"turtle":"@prefix owl: <http://www.w3.org/2002/07/owl#> .\n@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n@prefix pizza: <http://www.pizza-ontology.com/pizza.owl#> .\n\npizza:VegetarianPizza owl:equivalentClass [\n    rdf:type owl:Restriction ;\n    owl:onProperty pizza:hasTopping ;\n    owl:someValuesFrom pizza:VegetableTopping\n] ."}}}`
 `{"jsonrpc":"2.0","id":131,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"elk-layered","spacing":140}}}`
 
 ```tool-result
 [Ontosphere — 4 tools ✓]
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#VegetarianPizza
-✓ addLink: s=VegetarianPizza p=subClassOf o=NamedPizza
+✓ addTriple
 ✓ loadRdf: loaded
 ✓ runLayout: elk-layered
 
@@ -508,9 +508,9 @@ the most specific leaf class; the subClassOf chain propagates membership upward 
 `{"jsonrpc":"2.0","id":82,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#mozz1","typeIri":"http://www.pizza-ontology.com/pizza.owl#MozzarellaTopping","label":"mozz"}}}`
 `{"jsonrpc":"2.0","id":83,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#tom1","typeIri":"http://www.pizza-ontology.com/pizza.owl#TomatoTopping","label":"tomato"}}}`
 `{"jsonrpc":"2.0","id":84,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#thin1","typeIri":"http://www.pizza-ontology.com/pizza.owl#ThinAndCrispyBase","label":"thin & crispy"}}}`
-`{"jsonrpc":"2.0","id":85,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza1","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","objectIri":"http://www.pizza-ontology.com/pizza.owl#mozz1"}}}`
-`{"jsonrpc":"2.0","id":86,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza1","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","objectIri":"http://www.pizza-ontology.com/pizza.owl#tom1"}}}`
-`{"jsonrpc":"2.0","id":87,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza1","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasBase","objectIri":"http://www.pizza-ontology.com/pizza.owl#thin1"}}}`
+`{"jsonrpc":"2.0","id":85,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza1","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","objectIri":"http://www.pizza-ontology.com/pizza.owl#mozz1"}}}`
+`{"jsonrpc":"2.0","id":86,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza1","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","objectIri":"http://www.pizza-ontology.com/pizza.owl#tom1"}}}`
+`{"jsonrpc":"2.0","id":87,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza1","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasBase","objectIri":"http://www.pizza-ontology.com/pizza.owl#thin1"}}}`
 `{"jsonrpc":"2.0","id":88,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"dagre-lr","spacing":180}}}`
 `{"jsonrpc":"2.0","id":200,"method":"tools/call","params":{"name":"focusNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#pizza1"}}}`
 
@@ -519,9 +519,9 @@ the most specific leaf class; the subClassOf chain propagates membership upward 
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#mozz1
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#tom1
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#thin1
-✓ addLink: s=pizza1 p=hasTopping o=mozz1
-✓ addLink: s=pizza1 p=hasTopping o=tom1
-✓ addLink: s=pizza1 p=hasBase o=thin1
+✓ addTriple
+✓ addTriple
+✓ addTriple
 ✓ runLayout: dagre-lr
 ✓ focusNode
 
@@ -548,10 +548,10 @@ so no conflict.
 `{"jsonrpc":"2.0","id":92,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#mozz2","typeIri":"http://www.pizza-ontology.com/pizza.owl#MozzarellaTopping","label":"mozz"}}}`
 `{"jsonrpc":"2.0","id":93,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#olive1","typeIri":"http://www.pizza-ontology.com/pizza.owl#OliveTopping","label":"olive"}}}`
 `{"jsonrpc":"2.0","id":94,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#deep1","typeIri":"http://www.pizza-ontology.com/pizza.owl#DeepPanBase","label":"deep pan"}}}`
-`{"jsonrpc":"2.0","id":95,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza2","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","objectIri":"http://www.pizza-ontology.com/pizza.owl#pep1"}}}`
-`{"jsonrpc":"2.0","id":96,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza2","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","objectIri":"http://www.pizza-ontology.com/pizza.owl#mozz2"}}}`
-`{"jsonrpc":"2.0","id":97,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza2","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","objectIri":"http://www.pizza-ontology.com/pizza.owl#olive1"}}}`
-`{"jsonrpc":"2.0","id":98,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza2","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasBase","objectIri":"http://www.pizza-ontology.com/pizza.owl#deep1"}}}`
+`{"jsonrpc":"2.0","id":95,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza2","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","objectIri":"http://www.pizza-ontology.com/pizza.owl#pep1"}}}`
+`{"jsonrpc":"2.0","id":96,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza2","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","objectIri":"http://www.pizza-ontology.com/pizza.owl#mozz2"}}}`
+`{"jsonrpc":"2.0","id":97,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza2","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","objectIri":"http://www.pizza-ontology.com/pizza.owl#olive1"}}}`
+`{"jsonrpc":"2.0","id":98,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza2","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasBase","objectIri":"http://www.pizza-ontology.com/pizza.owl#deep1"}}}`
 `{"jsonrpc":"2.0","id":99,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"dagre-lr","spacing":180}}}`
 `{"jsonrpc":"2.0","id":201,"method":"tools/call","params":{"name":"focusNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#pizza2"}}}`
 
@@ -561,10 +561,10 @@ so no conflict.
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#mozz2
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#olive1
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#deep1
-✓ addLink: s=pizza2 p=hasTopping o=pep1
-✓ addLink: s=pizza2 p=hasTopping o=mozz2
-✓ addLink: s=pizza2 p=hasTopping o=olive1
-✓ addLink: s=pizza2 p=hasBase o=deep1
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
 ✓ runLayout: dagre-lr
 ✓ focusNode
 
@@ -591,9 +591,9 @@ topping the reasoner will use for classification.
 `{"jsonrpc":"2.0","id":100,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#anch1","typeIri":"http://www.pizza-ontology.com/pizza.owl#AnchoviesTopping","label":"anchovies"}}}`
 `{"jsonrpc":"2.0","id":101,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#garlic1","typeIri":"http://www.pizza-ontology.com/pizza.owl#GarlicTopping","label":"garlic"}}}`
 `{"jsonrpc":"2.0","id":102,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#thin2","typeIri":"http://www.pizza-ontology.com/pizza.owl#ThinAndCrispyBase","label":"thin & crispy"}}}`
-`{"jsonrpc":"2.0","id":103,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza3","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","objectIri":"http://www.pizza-ontology.com/pizza.owl#anch1"}}}`
-`{"jsonrpc":"2.0","id":104,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza3","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","objectIri":"http://www.pizza-ontology.com/pizza.owl#garlic1"}}}`
-`{"jsonrpc":"2.0","id":105,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza3","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasBase","objectIri":"http://www.pizza-ontology.com/pizza.owl#thin2"}}}`
+`{"jsonrpc":"2.0","id":103,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza3","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","objectIri":"http://www.pizza-ontology.com/pizza.owl#anch1"}}}`
+`{"jsonrpc":"2.0","id":104,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza3","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","objectIri":"http://www.pizza-ontology.com/pizza.owl#garlic1"}}}`
+`{"jsonrpc":"2.0","id":105,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza3","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasBase","objectIri":"http://www.pizza-ontology.com/pizza.owl#thin2"}}}`
 `{"jsonrpc":"2.0","id":106,"method":"tools/call","params":{"name":"expandNode","arguments":{}}}`
 `{"jsonrpc":"2.0","id":107,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"dagre-lr","spacing":180}}}`
 
@@ -602,9 +602,9 @@ topping the reasoner will use for classification.
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#anch1
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#garlic1
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#thin2
-✓ addLink: s=pizza3 p=hasTopping o=anch1
-✓ addLink: s=pizza3 p=hasTopping o=garlic1
-✓ addLink: s=pizza3 p=hasBase o=thin2
+✓ addTriple
+✓ addTriple
+✓ addTriple
 ✓ expandNode
 ✓ runLayout: dagre-lr
 
@@ -632,9 +632,9 @@ fire and classify it — but we also need to observe what the reasoner says abou
 `{"jsonrpc":"2.0","id":136,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#olive2","typeIri":"http://www.pizza-ontology.com/pizza.owl#OliveTopping","label":"olive"}}}`
 `{"jsonrpc":"2.0","id":137,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#tom2","typeIri":"http://www.pizza-ontology.com/pizza.owl#TomatoTopping","label":"tomato"}}}`
 `{"jsonrpc":"2.0","id":138,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#thin3","typeIri":"http://www.pizza-ontology.com/pizza.owl#ThinAndCrispyBase","label":"thin & crispy"}}}`
-`{"jsonrpc":"2.0","id":139,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza4","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","objectIri":"http://www.pizza-ontology.com/pizza.owl#olive2"}}}`
-`{"jsonrpc":"2.0","id":140,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza4","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","objectIri":"http://www.pizza-ontology.com/pizza.owl#tom2"}}}`
-`{"jsonrpc":"2.0","id":141,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza4","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasBase","objectIri":"http://www.pizza-ontology.com/pizza.owl#thin3"}}}`
+`{"jsonrpc":"2.0","id":139,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza4","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","objectIri":"http://www.pizza-ontology.com/pizza.owl#olive2"}}}`
+`{"jsonrpc":"2.0","id":140,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza4","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasTopping","objectIri":"http://www.pizza-ontology.com/pizza.owl#tom2"}}}`
+`{"jsonrpc":"2.0","id":141,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://www.pizza-ontology.com/pizza.owl#pizza4","predicateIri":"http://www.pizza-ontology.com/pizza.owl#hasBase","objectIri":"http://www.pizza-ontology.com/pizza.owl#thin3"}}}`
 `{"jsonrpc":"2.0","id":142,"method":"tools/call","params":{"name":"expandNode","arguments":{}}}`
 `{"jsonrpc":"2.0","id":143,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"dagre-lr","spacing":180}}}`
 `{"jsonrpc":"2.0","id":202,"method":"tools/call","params":{"name":"focusNode","arguments":{"iri":"http://www.pizza-ontology.com/pizza.owl#pizza4"}}}`
@@ -645,9 +645,9 @@ fire and classify it — but we also need to observe what the reasoner says abou
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#olive2
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#tom2
 ✓ addNode: http://www.pizza-ontology.com/pizza.owl#thin3
-✓ addLink: s=pizza4 p=hasTopping o=olive2
-✓ addLink: s=pizza4 p=hasTopping o=tom2
-✓ addLink: s=pizza4 p=hasBase o=thin3
+✓ addTriple
+✓ addTriple
+✓ addTriple
 ✓ expandNode
 ✓ runLayout: dagre-lr
 ✓ focusNode
@@ -689,7 +689,7 @@ fires on our data:
 ✓ expandNode
 ✓ runLayout: dagre-lr
 
-Canvas: 21 nodes, 26 links
+Canvas: 21 nodes, 43 links
 ```
 
 </details>
@@ -719,7 +719,7 @@ then cax-sco propagates). Not one of these types was explicitly stated in the AB
 ✓ focusNode
 ✓ expandNode
 
-Canvas: 21 nodes, 26 links
+Canvas: 21 nodes, 43 links
 ```
 
 </details>
@@ -746,7 +746,7 @@ Each step was derived automatically from the subClassOf chain in the TBox.
 ✓ focusNode
 ✓ expandNode
 
-Canvas: 21 nodes, 26 links
+Canvas: 21 nodes, 43 links
 ```
 
 </details>
@@ -786,7 +786,7 @@ reasoner or a SHACL constraint.
 ✓ focusNode
 ✓ expandNode
 
-Canvas: 21 nodes, 26 links
+Canvas: 21 nodes, 43 links
 ```
 
 </details>

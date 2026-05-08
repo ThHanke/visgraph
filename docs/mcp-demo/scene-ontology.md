@@ -31,21 +31,21 @@ node then wiring the subclass chain and property axioms one by one. No bulk load
 `{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://purl.obolibrary.org/obo/RO_0000057","typeIri":"http://www.w3.org/2002/07/owl#ObjectProperty","label":"has participant"}}}`
 `{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://purl.obolibrary.org/obo/RO_0000066","typeIri":"http://www.w3.org/2002/07/owl#ObjectProperty","label":"occurs in"}}}`
 `{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://purl.obolibrary.org/obo/RO_0000087","typeIri":"http://www.w3.org/2002/07/owl#ObjectProperty","label":"has role"}}}`
-`{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/BFO_0000002","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000001"}}}`
-`{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/BFO_0000003","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000001"}}}`
-`{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/BFO_0000004","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000002"}}}`
-`{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/BFO_0000015","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000003"}}}`
-`{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/BFO_0000017","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000002"}}}`
-`{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/BFO_0000023","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000017"}}}`
-`{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/BFO_0000029","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000004"}}}`
-`{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/BFO_0000055","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://purl.obolibrary.org/obo/BFO_0000015"}}}`
-`{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/BFO_0000055","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://purl.obolibrary.org/obo/BFO_0000017"}}}`
-`{"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000057","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://purl.obolibrary.org/obo/BFO_0000015"}}}`
-`{"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000057","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://purl.obolibrary.org/obo/BFO_0000004"}}}`
-`{"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000066","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://purl.obolibrary.org/obo/BFO_0000015"}}}`
-`{"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000066","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://purl.obolibrary.org/obo/BFO_0000029"}}}`
-`{"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000087","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://purl.obolibrary.org/obo/BFO_0000004"}}}`
-`{"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000087","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://purl.obolibrary.org/obo/BFO_0000023"}}}`
+`{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/BFO_0000002","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000001"}}}`
+`{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/BFO_0000003","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000001"}}}`
+`{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/BFO_0000004","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000002"}}}`
+`{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/BFO_0000015","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000003"}}}`
+`{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/BFO_0000017","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000002"}}}`
+`{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/BFO_0000023","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000017"}}}`
+`{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/BFO_0000029","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000004"}}}`
+`{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/BFO_0000055","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://purl.obolibrary.org/obo/BFO_0000015"}}}`
+`{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/BFO_0000055","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://purl.obolibrary.org/obo/BFO_0000017"}}}`
+`{"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000057","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://purl.obolibrary.org/obo/BFO_0000015"}}}`
+`{"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000057","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://purl.obolibrary.org/obo/BFO_0000004"}}}`
+`{"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000066","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://purl.obolibrary.org/obo/BFO_0000015"}}}`
+`{"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000066","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://purl.obolibrary.org/obo/BFO_0000029"}}}`
+`{"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000087","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://purl.obolibrary.org/obo/BFO_0000004"}}}`
+`{"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000087","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://purl.obolibrary.org/obo/BFO_0000023"}}}`
 
 ```tool-result
 [Ontosphere — 28 tools ✓]
@@ -62,21 +62,21 @@ node then wiring the subclass chain and property axioms one by one. No bulk load
 ✓ addNode: http://purl.obolibrary.org/obo/RO_0000057
 ✓ addNode: http://purl.obolibrary.org/obo/RO_0000066
 ✓ addNode: http://purl.obolibrary.org/obo/RO_0000087
-✓ addLink: s=BFO_0000002 p=subClassOf o=BFO_0000001
-✓ addLink: s=BFO_0000003 p=subClassOf o=BFO_0000001
-✓ addLink: s=BFO_0000004 p=subClassOf o=BFO_0000002
-✓ addLink: s=BFO_0000015 p=subClassOf o=BFO_0000003
-✓ addLink: s=BFO_0000017 p=subClassOf o=BFO_0000002
-✓ addLink: s=BFO_0000023 p=subClassOf o=BFO_0000017
-✓ addLink: s=BFO_0000029 p=subClassOf o=BFO_0000004
-✓ addLink: s=BFO_0000055 p=domain o=BFO_0000015
-✓ addLink: s=BFO_0000055 p=range o=BFO_0000017
-✓ addLink: s=RO_0000057 p=domain o=BFO_0000015
-✓ addLink: s=RO_0000057 p=range o=BFO_0000004
-✓ addLink: s=RO_0000066 p=domain o=BFO_0000015
-✓ addLink: s=RO_0000066 p=range o=BFO_0000029
-✓ addLink: s=RO_0000087 p=domain o=BFO_0000004
-✓ addLink: s=RO_0000087 p=range o=BFO_0000023
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
 
 Canvas: 12 nodes, 15 links
 ```
@@ -98,11 +98,11 @@ Canvas: 12 nodes, 15 links
 `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.com/scene-ontology#DialogueScene","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"DialogueScene"}}}`
 `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.com/scene-ontology#ChaseScene","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"ChaseScene"}}}`
 `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.com/scene-ontology#ConfrontationScene","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"ConfrontationScene"}}}`
-`{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#Scene","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000015"}}}`
-`{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#ActionScene","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/scene-ontology#Scene"}}}`
-`{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#DialogueScene","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/scene-ontology#Scene"}}}`
-`{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#ChaseScene","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/scene-ontology#ActionScene"}}}`
-`{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#ConfrontationScene","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/scene-ontology#ActionScene"}}}`
+`{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#Scene","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000015"}}}`
+`{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#ActionScene","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/scene-ontology#Scene"}}}`
+`{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#DialogueScene","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/scene-ontology#Scene"}}}`
+`{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#ChaseScene","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/scene-ontology#ActionScene"}}}`
+`{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#ConfrontationScene","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/scene-ontology#ActionScene"}}}`
 
 ```tool-result
 [Ontosphere — 10 tools ✓]
@@ -111,11 +111,11 @@ Canvas: 12 nodes, 15 links
 ✓ addNode: http://example.com/scene-ontology#DialogueScene
 ✓ addNode: http://example.com/scene-ontology#ChaseScene
 ✓ addNode: http://example.com/scene-ontology#ConfrontationScene
-✓ addLink: s=Scene p=subClassOf o=BFO_0000015
-✓ addLink: s=ActionScene p=subClassOf o=Scene
-✓ addLink: s=DialogueScene p=subClassOf o=Scene
-✓ addLink: s=ChaseScene p=subClassOf o=ActionScene
-✓ addLink: s=ConfrontationScene p=subClassOf o=ActionScene
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
 
 Canvas: 17 nodes, 20 links
 ```
@@ -136,10 +136,10 @@ Canvas: 17 nodes, 20 links
 `{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.com/scene-ontology#Location","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"Location"}}}`
 `{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.com/scene-ontology#ExteriorLocation","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"ExteriorLocation"}}}`
 `{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.com/scene-ontology#InteriorLocation","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"InteriorLocation"}}}`
-`{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#Character","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000004"}}}`
-`{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#Location","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000029"}}}`
-`{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#ExteriorLocation","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/scene-ontology#Location"}}}`
-`{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#InteriorLocation","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/scene-ontology#Location"}}}`
+`{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#Character","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000004"}}}`
+`{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#Location","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000029"}}}`
+`{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#ExteriorLocation","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/scene-ontology#Location"}}}`
+`{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#InteriorLocation","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/scene-ontology#Location"}}}`
 
 ```tool-result
 [Ontosphere — 8 tools ✓]
@@ -147,10 +147,10 @@ Canvas: 17 nodes, 20 links
 ✓ addNode: http://example.com/scene-ontology#Location
 ✓ addNode: http://example.com/scene-ontology#ExteriorLocation
 ✓ addNode: http://example.com/scene-ontology#InteriorLocation
-✓ addLink: s=Character p=subClassOf o=BFO_0000004
-✓ addLink: s=Location p=subClassOf o=BFO_0000029
-✓ addLink: s=ExteriorLocation p=subClassOf o=Location
-✓ addLink: s=InteriorLocation p=subClassOf o=Location
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
 
 Canvas: 21 nodes, 24 links
 ```
@@ -171,16 +171,16 @@ Canvas: 21 nodes, 24 links
 `{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.com/scene-ontology#ProtagonistRole","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"ProtagonistRole"}}}`
 `{"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.com/scene-ontology#AntagonistRole","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"AntagonistRole"}}}`
 `{"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.com/scene-ontology#SupportingRole","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"SupportingRole"}}}`
-`{"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#SceneRole","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000023"}}}`
-`{"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#ProtagonistRole","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/scene-ontology#SceneRole"}}}`
-`{"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#AntagonistRole","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/scene-ontology#SceneRole"}}}`
-`{"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#SupportingRole","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/scene-ontology#SceneRole"}}}`
-`{"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000087","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.com/scene-ontology#Character"}}}`
-`{"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000087","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.com/scene-ontology#SceneRole"}}}`
-`{"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000057","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.com/scene-ontology#Scene"}}}`
-`{"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000057","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.com/scene-ontology#Character"}}}`
-`{"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000066","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.com/scene-ontology#Scene"}}}`
-`{"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000066","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.com/scene-ontology#Location"}}}`
+`{"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#SceneRole","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://purl.obolibrary.org/obo/BFO_0000023"}}}`
+`{"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#ProtagonistRole","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/scene-ontology#SceneRole"}}}`
+`{"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#AntagonistRole","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/scene-ontology#SceneRole"}}}`
+`{"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#SupportingRole","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/scene-ontology#SceneRole"}}}`
+`{"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000087","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.com/scene-ontology#Character"}}}`
+`{"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000087","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.com/scene-ontology#SceneRole"}}}`
+`{"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000057","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.com/scene-ontology#Scene"}}}`
+`{"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000057","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.com/scene-ontology#Character"}}}`
+`{"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000066","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.com/scene-ontology#Scene"}}}`
+`{"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://purl.obolibrary.org/obo/RO_0000066","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.com/scene-ontology#Location"}}}`
 `{"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"elk-layered","spacing":200}}}`
 `{"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"expandNode","arguments":{}}}`
 `{"jsonrpc":"2.0","id":37,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"elk-layered","spacing":200}}}`
@@ -191,16 +191,16 @@ Canvas: 21 nodes, 24 links
 ✓ addNode: http://example.com/scene-ontology#ProtagonistRole
 ✓ addNode: http://example.com/scene-ontology#AntagonistRole
 ✓ addNode: http://example.com/scene-ontology#SupportingRole
-✓ addLink: s=SceneRole p=subClassOf o=BFO_0000023
-✓ addLink: s=ProtagonistRole p=subClassOf o=SceneRole
-✓ addLink: s=AntagonistRole p=subClassOf o=SceneRole
-✓ addLink: s=SupportingRole p=subClassOf o=SceneRole
-✓ addLink: s=RO_0000087 p=domain o=Character
-✓ addLink: s=RO_0000087 p=range o=SceneRole
-✓ addLink: s=RO_0000057 p=domain o=Scene
-✓ addLink: s=RO_0000057 p=range o=Character
-✓ addLink: s=RO_0000066 p=domain o=Scene
-✓ addLink: s=RO_0000066 p=range o=Location
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
 ✓ runLayout: elk-layered
 ✓ expandNode
 ✓ runLayout: elk-layered
@@ -265,36 +265,36 @@ Canvas: 10 nodes, 0 links
 <details>
 <summary>15 tool calls ✓</summary>
 
-`{"jsonrpc":"2.0","id":49,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#rooftopChase","predicateIri":"http://purl.obolibrary.org/obo/RO_0000057","objectIri":"http://example.com/scene-ontology#jake"}}}`
-`{"jsonrpc":"2.0","id":50,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#rooftopChase","predicateIri":"http://purl.obolibrary.org/obo/RO_0000057","objectIri":"http://example.com/scene-ontology#vera"}}}`
-`{"jsonrpc":"2.0","id":51,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#rooftopChase","predicateIri":"http://purl.obolibrary.org/obo/RO_0000066","objectIri":"http://example.com/scene-ontology#rooftop"}}}`
-`{"jsonrpc":"2.0","id":52,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#cafeDialogue","predicateIri":"http://purl.obolibrary.org/obo/RO_0000057","objectIri":"http://example.com/scene-ontology#jake"}}}`
-`{"jsonrpc":"2.0","id":53,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#cafeDialogue","predicateIri":"http://purl.obolibrary.org/obo/RO_0000057","objectIri":"http://example.com/scene-ontology#sam"}}}`
-`{"jsonrpc":"2.0","id":54,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#cafeDialogue","predicateIri":"http://purl.obolibrary.org/obo/RO_0000066","objectIri":"http://example.com/scene-ontology#cafe"}}}`
-`{"jsonrpc":"2.0","id":55,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#jake","predicateIri":"http://purl.obolibrary.org/obo/RO_0000087","objectIri":"http://example.com/scene-ontology#jakeProtagonistRole"}}}`
-`{"jsonrpc":"2.0","id":56,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#vera","predicateIri":"http://purl.obolibrary.org/obo/RO_0000087","objectIri":"http://example.com/scene-ontology#veraAntagonistRole"}}}`
-`{"jsonrpc":"2.0","id":57,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#sam","predicateIri":"http://purl.obolibrary.org/obo/RO_0000087","objectIri":"http://example.com/scene-ontology#samSupportingRole"}}}`
-`{"jsonrpc":"2.0","id":58,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#rooftopChase","predicateIri":"http://purl.obolibrary.org/obo/BFO_0000055","objectIri":"http://example.com/scene-ontology#jakeProtagonistRole"}}}`
-`{"jsonrpc":"2.0","id":59,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#rooftopChase","predicateIri":"http://purl.obolibrary.org/obo/BFO_0000055","objectIri":"http://example.com/scene-ontology#veraAntagonistRole"}}}`
-`{"jsonrpc":"2.0","id":60,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/scene-ontology#cafeDialogue","predicateIri":"http://purl.obolibrary.org/obo/BFO_0000055","objectIri":"http://example.com/scene-ontology#samSupportingRole"}}}`
+`{"jsonrpc":"2.0","id":49,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#rooftopChase","predicateIri":"http://purl.obolibrary.org/obo/RO_0000057","objectIri":"http://example.com/scene-ontology#jake"}}}`
+`{"jsonrpc":"2.0","id":50,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#rooftopChase","predicateIri":"http://purl.obolibrary.org/obo/RO_0000057","objectIri":"http://example.com/scene-ontology#vera"}}}`
+`{"jsonrpc":"2.0","id":51,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#rooftopChase","predicateIri":"http://purl.obolibrary.org/obo/RO_0000066","objectIri":"http://example.com/scene-ontology#rooftop"}}}`
+`{"jsonrpc":"2.0","id":52,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#cafeDialogue","predicateIri":"http://purl.obolibrary.org/obo/RO_0000057","objectIri":"http://example.com/scene-ontology#jake"}}}`
+`{"jsonrpc":"2.0","id":53,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#cafeDialogue","predicateIri":"http://purl.obolibrary.org/obo/RO_0000057","objectIri":"http://example.com/scene-ontology#sam"}}}`
+`{"jsonrpc":"2.0","id":54,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#cafeDialogue","predicateIri":"http://purl.obolibrary.org/obo/RO_0000066","objectIri":"http://example.com/scene-ontology#cafe"}}}`
+`{"jsonrpc":"2.0","id":55,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#jake","predicateIri":"http://purl.obolibrary.org/obo/RO_0000087","objectIri":"http://example.com/scene-ontology#jakeProtagonistRole"}}}`
+`{"jsonrpc":"2.0","id":56,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#vera","predicateIri":"http://purl.obolibrary.org/obo/RO_0000087","objectIri":"http://example.com/scene-ontology#veraAntagonistRole"}}}`
+`{"jsonrpc":"2.0","id":57,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#sam","predicateIri":"http://purl.obolibrary.org/obo/RO_0000087","objectIri":"http://example.com/scene-ontology#samSupportingRole"}}}`
+`{"jsonrpc":"2.0","id":58,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#rooftopChase","predicateIri":"http://purl.obolibrary.org/obo/BFO_0000055","objectIri":"http://example.com/scene-ontology#jakeProtagonistRole"}}}`
+`{"jsonrpc":"2.0","id":59,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#rooftopChase","predicateIri":"http://purl.obolibrary.org/obo/BFO_0000055","objectIri":"http://example.com/scene-ontology#veraAntagonistRole"}}}`
+`{"jsonrpc":"2.0","id":60,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/scene-ontology#cafeDialogue","predicateIri":"http://purl.obolibrary.org/obo/BFO_0000055","objectIri":"http://example.com/scene-ontology#samSupportingRole"}}}`
 `{"jsonrpc":"2.0","id":61,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"dagre-lr","spacing":200}}}`
 `{"jsonrpc":"2.0","id":62,"method":"tools/call","params":{"name":"expandNode","arguments":{}}}`
 `{"jsonrpc":"2.0","id":63,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"dagre-lr","spacing":200}}}`
 
 ```tool-result
 [Ontosphere — 15 tools ✓]
-✓ addLink: s=rooftopChase p=RO_0000057 o=jake
-✓ addLink: s=rooftopChase p=RO_0000057 o=vera
-✓ addLink: s=rooftopChase p=RO_0000066 o=rooftop
-✓ addLink: s=cafeDialogue p=RO_0000057 o=jake
-✓ addLink: s=cafeDialogue p=RO_0000057 o=sam
-✓ addLink: s=cafeDialogue p=RO_0000066 o=cafe
-✓ addLink: s=jake p=RO_0000087 o=jakeProtagonistRole
-✓ addLink: s=vera p=RO_0000087 o=veraAntagonistRole
-✓ addLink: s=sam p=RO_0000087 o=samSupportingRole
-✓ addLink: s=rooftopChase p=BFO_0000055 o=jakeProtagonistRole
-✓ addLink: s=rooftopChase p=BFO_0000055 o=veraAntagonistRole
-✓ addLink: s=cafeDialogue p=BFO_0000055 o=samSupportingRole
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
 ✓ runLayout: dagre-lr
 ✓ expandNode
 ✓ runLayout: dagre-lr
@@ -384,11 +384,11 @@ Canvas: 10 nodes, 12 links
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
 @prefix xml: <http://www.w3.org/XML/1998/namespace>.
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
-@prefix : <http://purl.org/net/p-plan#>.
 @prefix spw: <https://thhanke.github.io/PyodideSemanticWorkflow#>.
 @prefix dcterms: <http://purl.org/dc/terms/>.
 @prefix p-plan: <http://purl.org/net/p-plan#>.
 @prefix prov: <http://www.w3.org/ns/prov#>.
+@prefix : <http://purl.org/net/p-plan#>.
 @prefix terms: <http://purl.org/dc/terms/>.
 @prefix vann: <http://purl.org/vocab/vann/>.
 @prefix dtype: <http://www.linkedmodel.org/schema/dtype#>.

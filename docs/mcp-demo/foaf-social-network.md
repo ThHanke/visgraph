@@ -25,12 +25,12 @@ every node and axiom will be visible on canvas.
 `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://xmlns.com/foaf/0.1/Organization","typeIri":"http://www.w3.org/2002/07/owl#Class","label":"foaf:Organization"}}}`
 `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://xmlns.com/foaf/0.1/knows","typeIri":"http://www.w3.org/2002/07/owl#ObjectProperty","label":"foaf:knows"}}}`
 `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://xmlns.com/foaf/0.1/member","typeIri":"http://www.w3.org/2002/07/owl#ObjectProperty","label":"foaf:member"}}}`
-`{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://xmlns.com/foaf/0.1/Person","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://xmlns.com/foaf/0.1/Agent"}}}`
-`{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://xmlns.com/foaf/0.1/Organization","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://xmlns.com/foaf/0.1/Agent"}}}`
-`{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://xmlns.com/foaf/0.1/knows","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://xmlns.com/foaf/0.1/Person"}}}`
-`{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://xmlns.com/foaf/0.1/knows","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://xmlns.com/foaf/0.1/Person"}}}`
-`{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://xmlns.com/foaf/0.1/member","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://xmlns.com/foaf/0.1/Agent"}}}`
-`{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://xmlns.com/foaf/0.1/member","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://xmlns.com/foaf/0.1/Organization"}}}`
+`{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://xmlns.com/foaf/0.1/Person","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://xmlns.com/foaf/0.1/Agent"}}}`
+`{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://xmlns.com/foaf/0.1/Organization","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://xmlns.com/foaf/0.1/Agent"}}}`
+`{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://xmlns.com/foaf/0.1/knows","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://xmlns.com/foaf/0.1/Person"}}}`
+`{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://xmlns.com/foaf/0.1/knows","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://xmlns.com/foaf/0.1/Person"}}}`
+`{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://xmlns.com/foaf/0.1/member","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://xmlns.com/foaf/0.1/Agent"}}}`
+`{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://xmlns.com/foaf/0.1/member","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://xmlns.com/foaf/0.1/Organization"}}}`
 
 ```tool-result
 [Ontosphere — 12 tools ✓]
@@ -40,12 +40,12 @@ every node and axiom will be visible on canvas.
 ✓ addNode: http://xmlns.com/foaf/0.1/Organization
 ✓ addNode: http://xmlns.com/foaf/0.1/knows
 ✓ addNode: http://xmlns.com/foaf/0.1/member
-✓ addLink: s=Person p=subClassOf o=Agent
-✓ addLink: s=Organization p=subClassOf o=Agent
-✓ addLink: s=knows p=domain o=Person
-✓ addLink: s=knows p=range o=Person
-✓ addLink: s=member p=domain o=Agent
-✓ addLink: s=member p=range o=Organization
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
 
 Canvas: 5 nodes, 6 links
 ```
@@ -69,17 +69,17 @@ Canvas: 5 nodes, 6 links
 `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.org/ex#manages","typeIri":"http://www.w3.org/2002/07/owl#ObjectProperty","label":"manages"}}}`
 `{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.org/ex#reportsTo","typeIri":"http://www.w3.org/2002/07/owl#ObjectProperty","label":"reportsTo"}}}`
 `{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"addNode","arguments":{"iri":"http://example.org/ex#collaboratesWith","typeIri":"http://www.w3.org/2002/07/owl#ObjectProperty","label":"collaboratesWith"}}}`
-`{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/ex#Employee","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://xmlns.com/foaf/0.1/Person"}}}`
-`{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/ex#Manager","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.org/ex#Employee"}}}`
-`{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/ex#Executive","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.org/ex#Manager"}}}`
-`{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/ex#Department","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://xmlns.com/foaf/0.1/Organization"}}}`
-`{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/ex#manages","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.org/ex#Manager"}}}`
-`{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/ex#manages","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.org/ex#Employee"}}}`
-`{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/ex#reportsTo","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.org/ex#Employee"}}}`
-`{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/ex#reportsTo","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.org/ex#Manager"}}}`
-`{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/ex#collaboratesWith","predicateIri":"http://www.w3.org/1999/02/22-rdf-syntax-ns#type","objectIri":"http://www.w3.org/2002/07/owl#SymmetricProperty"}}}`
-`{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/ex#collaboratesWith","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.org/ex#Employee"}}}`
-`{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/ex#collaboratesWith","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.org/ex#Employee"}}}`
+`{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/ex#Employee","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://xmlns.com/foaf/0.1/Person"}}}`
+`{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/ex#Manager","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.org/ex#Employee"}}}`
+`{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/ex#Executive","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.org/ex#Manager"}}}`
+`{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/ex#Department","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://xmlns.com/foaf/0.1/Organization"}}}`
+`{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/ex#manages","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.org/ex#Manager"}}}`
+`{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/ex#manages","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.org/ex#Employee"}}}`
+`{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/ex#reportsTo","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.org/ex#Employee"}}}`
+`{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/ex#reportsTo","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.org/ex#Manager"}}}`
+`{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/ex#collaboratesWith","predicateIri":"http://www.w3.org/1999/02/22-rdf-syntax-ns#type","objectIri":"http://www.w3.org/2002/07/owl#SymmetricProperty"}}}`
+`{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/ex#collaboratesWith","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.org/ex#Employee"}}}`
+`{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/ex#collaboratesWith","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.org/ex#Employee"}}}`
 `{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"elk-layered","spacing":200}}}`
 `{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"expandNode","arguments":{}}}`
 `{"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"elk-layered","spacing":200}}}`
@@ -93,17 +93,17 @@ Canvas: 5 nodes, 6 links
 ✓ addNode: http://example.org/ex#manages
 ✓ addNode: http://example.org/ex#reportsTo
 ✓ addNode: http://example.org/ex#collaboratesWith
-✓ addLink: s=Employee p=subClassOf o=Person
-✓ addLink: s=Manager p=subClassOf o=Employee
-✓ addLink: s=Executive p=subClassOf o=Manager
-✓ addLink: s=Department p=subClassOf o=Organization
-✓ addLink: s=manages p=domain o=Manager
-✓ addLink: s=manages p=range o=Employee
-✓ addLink: s=reportsTo p=domain o=Employee
-✓ addLink: s=reportsTo p=range o=Manager
-✓ addLink: s=collaboratesWith p=type o=SymmetricProperty
-✓ addLink: s=collaboratesWith p=domain o=Employee
-✓ addLink: s=collaboratesWith p=range o=Employee
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
 ✓ runLayout: elk-layered
 ✓ expandNode
 ✓ runLayout: elk-layered
@@ -165,44 +165,44 @@ Canvas: 8 nodes, 0 links
 <details>
 <summary>19 tool calls ✓</summary>
 
-`{"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/alice","predicateIri":"http://example.org/ex#manages","objectIri":"http://example.org/bob"}}}`
-`{"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/alice","predicateIri":"http://example.org/ex#manages","objectIri":"http://example.org/frank"}}}`
-`{"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/bob","predicateIri":"http://example.org/ex#manages","objectIri":"http://example.org/carol"}}}`
-`{"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/bob","predicateIri":"http://example.org/ex#manages","objectIri":"http://example.org/dave"}}}`
-`{"jsonrpc":"2.0","id":37,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/eve","predicateIri":"http://example.org/ex#reportsTo","objectIri":"http://example.org/alice"}}}`
-`{"jsonrpc":"2.0","id":38,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/carol","predicateIri":"http://example.org/ex#reportsTo","objectIri":"http://example.org/bob"}}}`
-`{"jsonrpc":"2.0","id":39,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/dave","predicateIri":"http://example.org/ex#reportsTo","objectIri":"http://example.org/bob"}}}`
-`{"jsonrpc":"2.0","id":40,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/dave","predicateIri":"http://example.org/ex#collaboratesWith","objectIri":"http://example.org/eve"}}}`
-`{"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/alice","predicateIri":"http://xmlns.com/foaf/0.1/knows","objectIri":"http://example.org/eve"}}}`
-`{"jsonrpc":"2.0","id":42,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/bob","predicateIri":"http://xmlns.com/foaf/0.1/knows","objectIri":"http://example.org/carol"}}}`
-`{"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/alice","predicateIri":"http://xmlns.com/foaf/0.1/member","objectIri":"http://example.org/engineering"}}}`
-`{"jsonrpc":"2.0","id":44,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/bob","predicateIri":"http://xmlns.com/foaf/0.1/member","objectIri":"http://example.org/engineering"}}}`
-`{"jsonrpc":"2.0","id":45,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/carol","predicateIri":"http://xmlns.com/foaf/0.1/member","objectIri":"http://example.org/engineering"}}}`
-`{"jsonrpc":"2.0","id":46,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/dave","predicateIri":"http://xmlns.com/foaf/0.1/member","objectIri":"http://example.org/research"}}}`
-`{"jsonrpc":"2.0","id":47,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/eve","predicateIri":"http://xmlns.com/foaf/0.1/member","objectIri":"http://example.org/research"}}}`
-`{"jsonrpc":"2.0","id":48,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.org/frank","predicateIri":"http://xmlns.com/foaf/0.1/member","objectIri":"http://example.org/research"}}}`
+`{"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/alice","predicateIri":"http://example.org/ex#manages","objectIri":"http://example.org/bob"}}}`
+`{"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/alice","predicateIri":"http://example.org/ex#manages","objectIri":"http://example.org/frank"}}}`
+`{"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/bob","predicateIri":"http://example.org/ex#manages","objectIri":"http://example.org/carol"}}}`
+`{"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/bob","predicateIri":"http://example.org/ex#manages","objectIri":"http://example.org/dave"}}}`
+`{"jsonrpc":"2.0","id":37,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/eve","predicateIri":"http://example.org/ex#reportsTo","objectIri":"http://example.org/alice"}}}`
+`{"jsonrpc":"2.0","id":38,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/carol","predicateIri":"http://example.org/ex#reportsTo","objectIri":"http://example.org/bob"}}}`
+`{"jsonrpc":"2.0","id":39,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/dave","predicateIri":"http://example.org/ex#reportsTo","objectIri":"http://example.org/bob"}}}`
+`{"jsonrpc":"2.0","id":40,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/dave","predicateIri":"http://example.org/ex#collaboratesWith","objectIri":"http://example.org/eve"}}}`
+`{"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/alice","predicateIri":"http://xmlns.com/foaf/0.1/knows","objectIri":"http://example.org/eve"}}}`
+`{"jsonrpc":"2.0","id":42,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/bob","predicateIri":"http://xmlns.com/foaf/0.1/knows","objectIri":"http://example.org/carol"}}}`
+`{"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/alice","predicateIri":"http://xmlns.com/foaf/0.1/member","objectIri":"http://example.org/engineering"}}}`
+`{"jsonrpc":"2.0","id":44,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/bob","predicateIri":"http://xmlns.com/foaf/0.1/member","objectIri":"http://example.org/engineering"}}}`
+`{"jsonrpc":"2.0","id":45,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/carol","predicateIri":"http://xmlns.com/foaf/0.1/member","objectIri":"http://example.org/engineering"}}}`
+`{"jsonrpc":"2.0","id":46,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/dave","predicateIri":"http://xmlns.com/foaf/0.1/member","objectIri":"http://example.org/research"}}}`
+`{"jsonrpc":"2.0","id":47,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/eve","predicateIri":"http://xmlns.com/foaf/0.1/member","objectIri":"http://example.org/research"}}}`
+`{"jsonrpc":"2.0","id":48,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.org/frank","predicateIri":"http://xmlns.com/foaf/0.1/member","objectIri":"http://example.org/research"}}}`
 `{"jsonrpc":"2.0","id":49,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"dagre-lr","spacing":200}}}`
 `{"jsonrpc":"2.0","id":50,"method":"tools/call","params":{"name":"expandNode","arguments":{}}}`
 `{"jsonrpc":"2.0","id":51,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"dagre-lr","spacing":200}}}`
 
 ```tool-result
 [Ontosphere — 19 tools ✓]
-✓ addLink: s=alice p=manages o=bob
-✓ addLink: s=alice p=manages o=frank
-✓ addLink: s=bob p=manages o=carol
-✓ addLink: s=bob p=manages o=dave
-✓ addLink: s=eve p=reportsTo o=alice
-✓ addLink: s=carol p=reportsTo o=bob
-✓ addLink: s=dave p=reportsTo o=bob
-✓ addLink: s=dave p=collaboratesWith o=eve
-✓ addLink: s=alice p=knows o=eve
-✓ addLink: s=bob p=knows o=carol
-✓ addLink: s=alice p=member o=engineering
-✓ addLink: s=bob p=member o=engineering
-✓ addLink: s=carol p=member o=engineering
-✓ addLink: s=dave p=member o=research
-✓ addLink: s=eve p=member o=research
-✓ addLink: s=frank p=member o=research
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
 ✓ runLayout: dagre-lr
 ✓ expandNode
 ✓ runLayout: dagre-lr
@@ -296,11 +296,11 @@ Canvas: 8 nodes, 17 links
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
 @prefix xml: <http://www.w3.org/XML/1998/namespace>.
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
-@prefix : <http://purl.org/net/p-plan#>.
 @prefix spw: <https://thhanke.github.io/PyodideSemanticWorkflow#>.
 @prefix dcterms: <http://purl.org/dc/terms/>.
 @prefix p-plan: <http://purl.org/net/p-plan#>.
 @prefix prov: <http://www.w3.org/ns/prov#>.
+@prefix : <http://purl.org/net/p-plan#>.
 @prefix terms: <http://purl.org/dc/terms/>.
 @prefix vann: <http://purl.org/vocab/vann/>.
 @prefix dtype: <http://www.linkedmodel.org/schema/dtype#>.

@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: 'demo-*.spec.ts',
+  testMatch: /demo-(?!openwebui-socratic).*\.spec\.ts$/,
   outputDir: 'test-results/demo',
   timeout: 600_000,
   fullyParallel: false,

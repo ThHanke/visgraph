@@ -76,50 +76,50 @@ Canvas: 10 nodes, 0 links
 <details>
 <summary>22 tool calls ✓</summary>
 
-`{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#Employee","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/reasoning-demo#Person"}}}`
-`{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#Manager","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/reasoning-demo#Employee"}}}`
-`{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#Executive","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/reasoning-demo#Manager"}}}`
-`{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#hasFriend","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subPropertyOf","objectIri":"http://example.com/reasoning-demo#knows"}}}`
-`{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#isManagedBy","predicateIri":"http://www.w3.org/2002/07/owl#inverseOf","objectIri":"http://example.com/reasoning-demo#manages"}}}`
-`{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#isColleagueOf","predicateIri":"http://www.w3.org/1999/02/22-rdf-syntax-ns#type","objectIri":"http://www.w3.org/2002/07/owl#SymmetricProperty"}}}`
-`{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#hasSupervisor","predicateIri":"http://www.w3.org/1999/02/22-rdf-syntax-ns#type","objectIri":"http://www.w3.org/2002/07/owl#TransitiveProperty"}}}`
-`{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#knows","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.com/reasoning-demo#Person"}}}`
-`{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#knows","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.com/reasoning-demo#Person"}}}`
-`{"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#hasFriend","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.com/reasoning-demo#Person"}}}`
-`{"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#hasFriend","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.com/reasoning-demo#Person"}}}`
-`{"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#manages","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.com/reasoning-demo#Manager"}}}`
-`{"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#manages","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.com/reasoning-demo#Employee"}}}`
-`{"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#isManagedBy","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.com/reasoning-demo#Employee"}}}`
-`{"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#isManagedBy","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.com/reasoning-demo#Manager"}}}`
-`{"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#isColleagueOf","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.com/reasoning-demo#Employee"}}}`
-`{"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#isColleagueOf","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.com/reasoning-demo#Employee"}}}`
-`{"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#hasSupervisor","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.com/reasoning-demo#Employee"}}}`
-`{"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#hasSupervisor","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.com/reasoning-demo#Manager"}}}`
+`{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#Employee","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/reasoning-demo#Person"}}}`
+`{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#Manager","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/reasoning-demo#Employee"}}}`
+`{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#Executive","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subClassOf","objectIri":"http://example.com/reasoning-demo#Manager"}}}`
+`{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#hasFriend","predicateIri":"http://www.w3.org/2000/01/rdf-schema#subPropertyOf","objectIri":"http://example.com/reasoning-demo#knows"}}}`
+`{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#isManagedBy","predicateIri":"http://www.w3.org/2002/07/owl#inverseOf","objectIri":"http://example.com/reasoning-demo#manages"}}}`
+`{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#isColleagueOf","predicateIri":"http://www.w3.org/1999/02/22-rdf-syntax-ns#type","objectIri":"http://www.w3.org/2002/07/owl#SymmetricProperty"}}}`
+`{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#hasSupervisor","predicateIri":"http://www.w3.org/1999/02/22-rdf-syntax-ns#type","objectIri":"http://www.w3.org/2002/07/owl#TransitiveProperty"}}}`
+`{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#knows","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.com/reasoning-demo#Person"}}}`
+`{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#knows","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.com/reasoning-demo#Person"}}}`
+`{"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#hasFriend","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.com/reasoning-demo#Person"}}}`
+`{"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#hasFriend","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.com/reasoning-demo#Person"}}}`
+`{"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#manages","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.com/reasoning-demo#Manager"}}}`
+`{"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#manages","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.com/reasoning-demo#Employee"}}}`
+`{"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#isManagedBy","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.com/reasoning-demo#Employee"}}}`
+`{"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#isManagedBy","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.com/reasoning-demo#Manager"}}}`
+`{"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#isColleagueOf","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.com/reasoning-demo#Employee"}}}`
+`{"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#isColleagueOf","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.com/reasoning-demo#Employee"}}}`
+`{"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#hasSupervisor","predicateIri":"http://www.w3.org/2000/01/rdf-schema#domain","objectIri":"http://example.com/reasoning-demo#Employee"}}}`
+`{"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#hasSupervisor","predicateIri":"http://www.w3.org/2000/01/rdf-schema#range","objectIri":"http://example.com/reasoning-demo#Manager"}}}`
 `{"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"elk-layered","spacing":200}}}`
 `{"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"expandNode","arguments":{}}}`
 `{"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"elk-layered","spacing":200}}}`
 
 ```tool-result
 [Ontosphere — 22 tools ✓]
-✓ addLink: s=Employee p=subClassOf o=Person
-✓ addLink: s=Manager p=subClassOf o=Employee
-✓ addLink: s=Executive p=subClassOf o=Manager
-✓ addLink: s=hasFriend p=subPropertyOf o=knows
-✓ addLink: s=isManagedBy p=inverseOf o=manages
-✓ addLink: s=isColleagueOf p=type o=SymmetricProperty
-✓ addLink: s=hasSupervisor p=type o=TransitiveProperty
-✓ addLink: s=knows p=domain o=Person
-✓ addLink: s=knows p=range o=Person
-✓ addLink: s=hasFriend p=domain o=Person
-✓ addLink: s=hasFriend p=range o=Person
-✓ addLink: s=manages p=domain o=Manager
-✓ addLink: s=manages p=range o=Employee
-✓ addLink: s=isManagedBy p=domain o=Employee
-✓ addLink: s=isManagedBy p=range o=Manager
-✓ addLink: s=isColleagueOf p=domain o=Employee
-✓ addLink: s=isColleagueOf p=range o=Employee
-✓ addLink: s=hasSupervisor p=domain o=Employee
-✓ addLink: s=hasSupervisor p=range o=Manager
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
 ✓ runLayout: elk-layered
 ✓ expandNode
 ✓ runLayout: elk-layered
@@ -174,24 +174,24 @@ can see the ABox shape before we run the reasoner:
 <details>
 <summary>9 tool calls ✓</summary>
 
-`{"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#alice","predicateIri":"http://example.com/reasoning-demo#manages","objectIri":"http://example.com/reasoning-demo#carol"}}}`
-`{"jsonrpc":"2.0","id":44,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#dave","predicateIri":"http://example.com/reasoning-demo#manages","objectIri":"http://example.com/reasoning-demo#bob"}}}`
-`{"jsonrpc":"2.0","id":45,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#alice","predicateIri":"http://example.com/reasoning-demo#hasFriend","objectIri":"http://example.com/reasoning-demo#bob"}}}`
-`{"jsonrpc":"2.0","id":46,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#bob","predicateIri":"http://example.com/reasoning-demo#isColleagueOf","objectIri":"http://example.com/reasoning-demo#carol"}}}`
-`{"jsonrpc":"2.0","id":47,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#carol","predicateIri":"http://example.com/reasoning-demo#hasSupervisor","objectIri":"http://example.com/reasoning-demo#bob"}}}`
-`{"jsonrpc":"2.0","id":48,"method":"tools/call","params":{"name":"addLink","arguments":{"subjectIri":"http://example.com/reasoning-demo#bob","predicateIri":"http://example.com/reasoning-demo#hasSupervisor","objectIri":"http://example.com/reasoning-demo#alice"}}}`
+`{"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#alice","predicateIri":"http://example.com/reasoning-demo#manages","objectIri":"http://example.com/reasoning-demo#carol"}}}`
+`{"jsonrpc":"2.0","id":44,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#dave","predicateIri":"http://example.com/reasoning-demo#manages","objectIri":"http://example.com/reasoning-demo#bob"}}}`
+`{"jsonrpc":"2.0","id":45,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#alice","predicateIri":"http://example.com/reasoning-demo#hasFriend","objectIri":"http://example.com/reasoning-demo#bob"}}}`
+`{"jsonrpc":"2.0","id":46,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#bob","predicateIri":"http://example.com/reasoning-demo#isColleagueOf","objectIri":"http://example.com/reasoning-demo#carol"}}}`
+`{"jsonrpc":"2.0","id":47,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#carol","predicateIri":"http://example.com/reasoning-demo#hasSupervisor","objectIri":"http://example.com/reasoning-demo#bob"}}}`
+`{"jsonrpc":"2.0","id":48,"method":"tools/call","params":{"name":"addTriple","arguments":{"subjectIri":"http://example.com/reasoning-demo#bob","predicateIri":"http://example.com/reasoning-demo#hasSupervisor","objectIri":"http://example.com/reasoning-demo#alice"}}}`
 `{"jsonrpc":"2.0","id":49,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"dagre-lr","spacing":200}}}`
 `{"jsonrpc":"2.0","id":50,"method":"tools/call","params":{"name":"expandNode","arguments":{}}}`
 `{"jsonrpc":"2.0","id":51,"method":"tools/call","params":{"name":"runLayout","arguments":{"algorithm":"dagre-lr","spacing":200}}}`
 
 ```tool-result
 [Ontosphere — 9 tools ✓]
-✓ addLink: s=alice p=manages o=carol
-✓ addLink: s=dave p=manages o=bob
-✓ addLink: s=alice p=hasFriend o=bob
-✓ addLink: s=bob p=isColleagueOf o=carol
-✓ addLink: s=carol p=hasSupervisor o=bob
-✓ addLink: s=bob p=hasSupervisor o=alice
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
+✓ addTriple
 ✓ runLayout: dagre-lr
 ✓ expandNode
 ✓ runLayout: dagre-lr
