@@ -37,7 +37,7 @@ const TURN_TOPICS = [
   'Guide: build full ingredient hierarchy — PizzaTopping, PizzaBase, and 7 leaf varieties.',
   'Guide: model hasPart as an ObjectProperty with rdfs:domain and rdfs:range.',
   'Guide: add named pizza classes — SalamiPizza, HawaiianPizza, MargheritaPizza.',
-  'Guide: define equivalentClass axioms via loadRdf — anonymous someValuesFrom restrictions.',
+  'Guide: define equivalentClass axioms via blank-node restrictions — anonymous someValuesFrom.',
   'Guide: expand all TBox nodes to reveal their asserted properties.',
   'Guide: switch to ABox — create 3 untyped pizza individuals.',
   'Guide: build pizza1 — add Salami, Mozzarella, ThinCrust parts and hasPart links.',
@@ -83,8 +83,10 @@ const TURNS = [
   // T3 — named pizza subclasses: SalamiPizza, HawaiianPizza, MargheritaPizza
   'There are many specific kinds of pizza. Add three named pizza classes: ex:SalamiPizza, ex:HawaiianPizza, and ex:MargheritaPizza. Each is a subclass of ex:Pizza — add all three nodes and all three rdfs:subClassOf ex:Pizza edges. Then arrange the hierarchy. Wait for my next question.',
 
-  // T4 — owl:equivalentClass + owl:someValuesFrom
-  'In OWL a class can be defined by a necessary-and-sufficient condition — any individual that satisfies it is automatically a member. This is expressed with owl:equivalentClass using an anonymous existential restriction (owl:someValuesFrom — not allValuesFrom). Model these three equivalences for the named pizza classes:\n• ex:SalamiPizza ≡ [hasPart someValuesFrom ex:SalamiTopping]\n• ex:HawaiianPizza ≡ [hasPart someValuesFrom ex:PineappleTopping]\n• ex:MargheritaPizza ≡ [hasPart someValuesFrom ex:TomatoTopping]\nEach restriction needs its own anonymous node. Wait for my next question.',
+  // T4 — Socratic: owl:equivalentClass + owl:Restriction + owl:someValuesFrom.
+  // Characteristic toppings: Salami → SalamiTopping, Hawaiian → PineappleTopping,
+  // Margherita → TomatoTopping. Must match ABox individuals added in T7/T8.
+  'In OWL a class can be defined by a necessary-and-sufficient condition using owl:equivalentClass and owl:Restriction with owl:someValuesFrom. Define each named pizza class with such a condition — SalamiPizza by its characteristic SalamiTopping, HawaiianPizza by PineappleTopping, MargheritaPizza by TomatoTopping. Wait for my next question.',
 
   // T5 — expandNode all + runLayout
   'Expand all class nodes on the canvas to reveal their asserted properties, then arrange. Wait for my next question.',
@@ -95,11 +97,11 @@ const TURNS = [
 
   // T7 — build pizza1 (Salami): typed parts + hasPart connections
   // SalamiTopping is the characteristic for SalamiPizza (T4 equivalentClass).
-  'Build ex:pizza1 as a Salami pizza. Add three ingredient individuals to the canvas: ex:salami1 of type ex:SalamiTopping, ex:mozz1 of type ex:MozzarellaTopping, and ex:base1 of type ex:ThinCrustBase. Connect all three to ex:pizza1 using ex:hasPart. Do not assert any pizza class on ex:pizza1 — leave it untyped; the reasoner will classify it. Wait for my next question.',
+  'Build ex:pizza1 as a Salami pizza. Add three ingredient individuals: ex:salami1 of type ex:SalamiTopping, ex:mozz1 of type ex:MozzarellaTopping, and ex:base1 of type ex:ThinCrustBase. Then add an ex:hasPart edge FROM ex:pizza1 TO each ingredient (subject=pizza1, object=ingredient). Do not assert any pizza class on ex:pizza1 — leave it untyped; the reasoner will classify it. Wait for my next question.',
 
   // T8 — build pizza2 (Hawaiian) + pizza3 (Margherita) + layout
   // PineappleTopping is characteristic for HawaiianPizza; TomatoTopping for MargheritaPizza.
-  'Build ex:pizza2 as a Hawaiian pizza and ex:pizza3 as a Margherita pizza. For ex:pizza2: add ex:pineapple1 of type ex:PineappleTopping, ex:ham1 of type ex:HamTopping, and ex:base2 of type ex:DeepPanBase, then connect all three to ex:pizza2 via ex:hasPart. For ex:pizza3: add ex:tom1 of type ex:TomatoTopping, ex:mozz2 of type ex:MozzarellaTopping, and ex:base3 of type ex:ThinCrustBase, then connect all three to ex:pizza3 via ex:hasPart. Do not assert any class type on pizza2 or pizza3. Reveal all node properties and arrange the canvas. Wait for my next question.',
+  'Build ex:pizza2 as a Hawaiian pizza and ex:pizza3 as a Margherita pizza. For ex:pizza2: add ex:pineapple1 of type ex:PineappleTopping, ex:ham1 of type ex:HamTopping, and ex:base2 of type ex:DeepPanBase. Add ex:hasPart edges FROM ex:pizza2 TO each ingredient (subject=pizza2, object=ingredient). For ex:pizza3: add ex:tom1 of type ex:TomatoTopping, ex:mozz2 of type ex:MozzarellaTopping, and ex:base3 of type ex:ThinCrustBase. Add ex:hasPart edges FROM ex:pizza3 TO each ingredient (subject=pizza3, object=ingredient). Do not assert any class type on pizza2 or pizza3. Reveal all node properties and arrange the canvas. Wait for my next question.',
 
   // T9 — runReasoning
   'The schema and all three pizzas are in place. Now apply OWL-RL reasoning to derive everything that can be inferred. Wait for my next question.',
@@ -243,7 +245,11 @@ async function clickSend(frame: Frame): Promise<void> {
 // Looks like the user is typing — makes the demo easy to follow.
 async function typeAndSend(frame: Frame, page: Page, text: string): Promise<void> {
   await frame.locator('#chat-input').click();
-  await page.keyboard.type(text, { delay: 18 });
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i]) await page.keyboard.type(lines[i], { delay: 18 });
+    if (i < lines.length - 1) await page.keyboard.press('Shift+Enter');
+  }
   await sleep(400);
   await page.keyboard.press('Enter');
 }
@@ -359,7 +365,7 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
   // NOT be re-executed. Only the model's own help() call in its response fires.
   await caption(page, 'Sending relay starter prompt…');
   const STARTER_LINES = [
-    'You are connected to Ontosphere via a relay. A script in this tab intercepts your tool calls, runs them in Ontosphere, and injects results back as a user message. Ask the user what they would like to build.',
+    'You are connected to Ontosphere via a relay. A script in this tab intercepts your tool calls, runs them in Ontosphere, and injects results back as a user message. Always demonstrate answers by BUILDING in Ontosphere — never describe what you would do, always do it. Every response to a question about a concept must include tool calls that construct that concept in the graph. If a tool call returns success:false, read the error, fix the argument, and retry the same call immediately — never skip a failed call. Ask the user what they would like to build.',
     '',
     'Output format — one JSON-RPC 2.0 call per line, backtick-wrapped:',
     '`{"jsonrpc":"2.0","id":<N>,"method":"tools/call","params":{"name":"<toolName>","arguments":{...}}}`',
@@ -420,14 +426,17 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
   });
 
   // ── 9. Wait for model's help() cycle to complete ──────────────────────────
-  // Model reads starter prompt → calls help() itself → relay executes → model reads
-  // manifest and responds. waitIdle waits for 3 s of content+relay silence.
+  // Model reads starter prompt → calls help() → relay executes → model reads manifest
+  // and may make follow-up calls. waitQuiet(15 000) exits only after 15 consecutive
+  // seconds of complete silence (no relay work, no content growth) — prevents
+  // accidentally firing during a brief pause between tool calls. 3-min cap cuts out
+  // if the model gets stuck without producing output for the full window.
   demoLog('step 6: relay injected — waiting for model help() cycle (up to 3 min)');
   await caption(page, 'Model familiarising with MCP tools — calling help()…');
-  await waitIdle(chatFrame, 180_000);
-  demoLog('step 6: help() cycle done');
-  // Hold 10 s so viewers can see the model reading the tool manifest before we start.
-  await sleep(10_000);
+  await waitQuiet(chatFrame, 15_000, 180_000);
+  demoLog('step 6: help() cycle done — 15 s silent or 3 min elapsed');
+  // Brief pause so viewers see the model's response before Socratic turns begin.
+  await sleep(3_000);
   await clearCaption(page);
 
   // ── 10. Socratic turns ────────────────────────────────────────────────────
@@ -438,30 +447,59 @@ test('openwebui-socratic: Socratic pizza ontology — live qwen3:4b via OWUI rel
     await caption(page, TURN_TOPICS[i]);
     await sleep(2_000);
 
-    // Type the question visually — looks like the user is writing it live
-    await typeAndSend(chatFrame, page, TURNS[i]);
+    // Inject via relay for multi-line turns (avoids choppy Shift+Enter typing
+    // animation); fall back to typeAndSend for single-line questions.
+    const isMultiLine = TURNS[i].includes('\n');
+    if (isMultiLine) {
+      await inject(chatFrame, TURNS[i]);
+      await sleep(400);
+      await clickSend(chatFrame);
+    } else {
+      await typeAndSend(chatFrame, page, TURNS[i]);
+    }
 
     // Clear caption while model generates — the live chat + canvas are the show
     await clearCaption(page);
-    await waitIdle(chatFrame, 300_000);
+    // 10s stable window — ensures relay queue is fully drained and model is
+    // truly done before declaring idle between turns.
+    await waitIdle(chatFrame, 300_000, 10_000);
     demoLog(`turn ${i + 1}/${TURNS.length}: idle — model done`);
 
     // Caption goes up the moment the model first goes idle so viewers can read
-    // what was built. waitQuiet holds for 10 s of continuous silence — resets
-    // if the model spontaneously makes more tool calls during that window.
+    // what was built. waitQuiet holds for 15 s of continuous silence (was 10 s)
+    // to avoid cutting before late tool calls finish.
     await caption(page, AFTER_CAPTIONS[i]);
-    await waitQuiet(chatFrame, 10_000);
+    await waitQuiet(chatFrame, 15_000);
     await clearCaption(page);
-    await sleep(1_000);
+    await sleep(2_000);
   }
 
-  // ── 11. End card ──────────────────────────────────────────────────────────
+  // ── 11. Export Turtle snapshot ───────────────────────────────────────────
+  try {
+    const turtleData = await appFrame.evaluate(async () => {
+      const tools = (window as any).__mcpTools;
+      if (!tools?.exportGraph) return null;
+      const result = await tools.exportGraph({ format: 'turtle' });
+      return result?.data?.content ?? null;
+    });
+    if (turtleData) {
+      const turtlePath = path.resolve(__dirname, '../logs/demo-last-run-data.ttl');
+      fs.writeFileSync(turtlePath, turtleData, 'utf8');
+      demoLog(`turtle exported → logs/demo-last-run-data.ttl (${turtleData.length} chars)`);
+    } else {
+      demoLog('turtle export skipped — rdfManager not available');
+    }
+  } catch (e) {
+    demoLog('turtle export failed:', e);
+  }
+
+  // ── 12. End card ──────────────────────────────────────────────────────────
   demoLog('all turns done — end card');
   await caption(page, 'Pizza ontology — TBox · ABox · named pizza classes · equivalentClass axioms · OWL-RL classification — built through Socratic questioning alone');
   await sleep(6_000);
   await clearCaption(page);
 
-  // ── 12. Save video ────────────────────────────────────────────────────────
+  // ── 13. Save video ────────────────────────────────────────────────────────
   // Use video.saveAs() — more reliable than path()+copyFileSync because path()
   // can return the transient artifacts path which Playwright moves before we read it.
   const video = page.video();

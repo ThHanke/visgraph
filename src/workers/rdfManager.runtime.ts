@@ -1280,7 +1280,8 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
               ? (store.getQuads(null, null, null, inferredTerm) || [])
               : [];
 
-          const filteredInferred = rawInferred.filter((q) => {
+          const skolemizedInferred = skolemizeQuads(rawInferred, DataFactory);
+          const filteredInferred = skolemizedInferred.filter((q) => {
             // Must be grounded in data (subject is a NamedNode known from the data graph)
             if (q.subject.termType !== "NamedNode") return false;
             if (!dataSubjects.has(q.subject.value)) return false;

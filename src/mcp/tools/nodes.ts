@@ -38,6 +38,12 @@ const addNode: McpTool = {
       if (!raw.iri) return { success: false, error: 'iri is required' };
       const iri = expandIri(raw.iri);
       if (iri.startsWith('Unknown prefix:')) return { success: false, error: iri };
+      if (/ /.test(iri)) {
+        const blankNodeHint = /^\s+:/.test(iri)
+          ? ` You passed "${iri}" — blank-node label with leading spaces. Use "_:${iri.trim().slice(1)}" (must start with "_:", not spaces).`
+          : ` You passed "${iri}".`;
+        return { success: false, error: `Node IRI contains spaces and is not valid.${blankNodeHint}` };
+      }
       const typeIri = (raw.typeIri ?? raw.type) ? expandIri((raw.typeIri ?? raw.type)!) : undefined;
       if (typeIri?.startsWith('Unknown prefix:')) return { success: false, error: typeIri };
       const { label } = raw;

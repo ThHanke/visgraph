@@ -8,6 +8,7 @@ import { Parser as SparqlParser, Generator as SparqlGenerator } from 'sparqljs';
 import { resolveOntologyLoadUrl, searchWellKnownOntologies, searchOntologyPacks } from '@/utils/wellKnownOntologies';
 import { useOntologyStore } from '@/stores/ontologyStore';
 import { LOAD_RDF_PROPAGATION_DELAY_MS } from '@/utils/canvasConstants';
+import { BUILTIN_PREFIXES } from '@/mcp/tools/iriUtils';
 
 /** Fix PREFIX declarations where the IRI is bare (no angle brackets): PREFIX rdf: http://... → PREFIX rdf: <http://...> */
 function normalizePrefixIris(sparql: string): string {
@@ -20,12 +21,24 @@ function normalizePrefixIris(sparql: string): string {
 /** Prepend PREFIX declarations from the namespace map for any prefix not already declared in the query. */
 function injectPrefixes(sparql: string): string {
   const normalized = normalizePrefixIris(sparql);
-  const namespaces = rdfManager.getNamespaces();
+  const dynamicNamespaces = rdfManager.getNamespaces();
   const declared = new Set<string>();
   for (const m of normalized.matchAll(/(?:PREFIX|BASE)\s+(\S+)\s*:/gi)) declared.add(m[1].toLowerCase());
-  const lines = namespaces
-    .filter(ns => ns.prefix && ns.uri && !declared.has(ns.prefix.toLowerCase()))
-    .map(ns => `PREFIX ${ns.prefix}: <${ns.uri}>`);
+  // Merge built-in prefixes (e.g. ex:, owl:) with dynamic registry, dynamic takes precedence.
+  const builtinEntries = Object.entries(BUILTIN_PREFIXES).map(([k, v]) => ({
+    prefix: k.replace(/:$/, ''),
+    uri: v,
+  }));
+  const merged = [...builtinEntries, ...dynamicNamespaces];
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const ns of merged) {
+    if (!ns.prefix || !ns.uri) continue;
+    const key = ns.prefix.toLowerCase();
+    if (seen.has(key) || declared.has(key)) continue;
+    seen.add(key);
+    lines.push(`PREFIX ${ns.prefix}: <${ns.uri}>`);
+  }
   return lines.length ? `${lines.join('\n')}\n${normalized}` : normalized;
 }
 
@@ -46,14 +59,50 @@ function getCanvasIris(): string[] {
 // ---------------------------------------------------------------------------
 // loadRdf
 // ---------------------------------------------------------------------------
+
+/**
+ * Check the inline Turtle for common model-output mistakes and return a
+ * descriptive error string, or null if the snippet looks plausible.
+ * Does NOT attempt to parse Turtle — only catches obvious patterns before N3.js runs.
+ */
+function validateTurtleSnippet(turtle: string): string | null {
+  // Detect @prefix declarations whose IRI is missing (e.g. "@prefix owl: .")
+  for (const m of turtle.matchAll(/@prefix\s+(\w*)\s*:\s*\./g)) {
+    const pfx = m[1];
+    const builtin = BUILTIN_PREFIXES[pfx + ':'];
+    const hint = builtin
+      ? ` Either use '@prefix ${pfx}: <${builtin}> .' or omit @prefix lines entirely — ${pfx}:, owl:, rdf:, rdfs:, ex:, xsd: are auto-injected.`
+      : ` IRI is required: '@prefix ${pfx}: <https://...> .'`;
+    return `Invalid @prefix declaration '@prefix ${pfx}: .' — the namespace IRI is missing.${hint}`;
+  }
+  // Detect bare full IRIs used as subjects (http://... without angle brackets)
+  for (const m of turtle.matchAll(/^(https?:\/\/\S+)/mg)) {
+    const bare = m[1];
+    const exMatch = bare.match(/^https?:\/\/example\.org\/(.+)/);
+    const altHint = exMatch ? ` — or use prefix notation 'ex:${exMatch[1]}'` : '';
+    return `Bare IRI '${bare}' is not valid Turtle. Full IRIs must be wrapped in angle brackets: '<${bare}>'${altHint}.`;
+  }
+  return null;
+}
+
+/** Prepend BUILTIN_PREFIXES for any prefix not already declared in the turtle. */
+function injectTurtlePrefixes(turtle: string): string {
+  const declared = new Set<string>();
+  for (const m of turtle.matchAll(/@prefix\s+(\w*)\s*:/g)) declared.add(m[1]);
+  const missing = Object.entries(BUILTIN_PREFIXES)
+    .filter(([k]) => !declared.has(k.replace(/:$/, '')))
+    .map(([k, v]) => `@prefix ${k.replace(/:$/, '')}: <${v}> .`);
+  return missing.length > 0 ? missing.join('\n') + '\n' + turtle : turtle;
+}
+
 const loadRdf: McpTool = {
   name: 'loadRdf',
-  description: 'Load RDF data into the graph from a URL or inline Turtle text.',
+  description: 'Load RDF data into the graph from a URL or inline Turtle text. Common prefixes (owl:, rdf:, rdfs:, ex:, xsd:) are auto-injected — you do not need to include @prefix declarations.',
   inputSchema: {
     type: 'object',
     properties: {
       url: { type: 'string', description: 'URL of an RDF document to fetch and load.' },
-      turtle: { type: 'string', description: 'Inline Turtle text to load.' },
+      turtle: { type: 'string', description: 'Inline Turtle text to load. @prefix declarations are optional — owl:, rdf:, rdfs:, ex:, xsd: are available automatically.' },
     },
     oneOf: [{ required: ['url'] }, { required: ['turtle'] }],
   },
@@ -65,8 +114,11 @@ const loadRdf: McpTool = {
         return { success: true, data: { loaded: p.url } };
       }
       if (p.turtle) {
+        const snippetError = validateTurtleSnippet(p.turtle);
+        if (snippetError) return { success: false, error: snippetError };
         const canvasBefore = getCanvasIris();
-        await rdfManager.loadRDFIntoGraph(p.turtle, 'urn:vg:data', 'text/turtle');
+        const normalizedTurtle = injectTurtlePrefixes(p.turtle);
+        await rdfManager.loadRDFIntoGraph(normalizedTurtle, 'urn:vg:data', 'text/turtle');
         // Wait for the RDF worker change event to propagate to dataProvider.allSubjects
         await new Promise(r => setTimeout(r, LOAD_RDF_PROPAGATION_DELAY_MS));
         const { dataProvider } = getWorkspaceRefs();
@@ -490,7 +542,7 @@ const help: McpTool = {
       '4. addTriple (literal object): annotation property — visible on canvas after expandNode.',
       '5. 5+ individuals: loadRdf(turtle=...) not repeated addNode — one round-trip.',
       '6. Pre-loaded prefixes: foaf rdf rdfs owl xsd skos dc ex — use short form (foaf:Person, owl:Class).',
-      '7. Tool failed? Call help({tool:"toolname"}) to get the exact parameter schema.',
+      '7. Tool failed? READ THE ERROR and retry immediately with the corrected call. Never skip a failed call — keep retrying until success or you have exhausted the fix options, then report what failed and why.',
       '8. GUIDED SESSION: if the user is asking one question at a time, execute ONLY what was asked, then STOP. Do not execute additional tools based on relay results. Wait for the next user question.',
       '   Skip suggestOntologiesForTask and loadOntology unless explicitly requested — guided sessions provide all context through questions.',
       '',

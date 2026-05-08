@@ -238,11 +238,11 @@ export const NodePropertyEditor = ({
         : "";
     setNodeIri(iri);
 
-      const rdfTypes: string[] = Array.isArray(sourceNode.rdfTypes)
+      const rdfTypes: string[] = (Array.isArray(sourceNode.rdfTypes)
         ? sourceNode.rdfTypes.filter((type: unknown): type is string => typeof type === "string")
         : sourceNode.rdfType
         ? [String(sourceNode.rdfType)]
-        : [];
+        : []).filter((t: string) => !t.startsWith('urn:vg:bnode:'));
       setRdfTypesState(rdfTypes);
       initialRdfTypesRef.current = rdfTypes.slice();
 
@@ -897,9 +897,9 @@ export const NodePropertyEditorContent = ({
         : "";
     setNodeIri(iri);
 
-    const rdfTypes: string[] = Array.isArray(sourceNode.rdfTypes)
+    const rdfTypes: string[] = (Array.isArray(sourceNode.rdfTypes)
       ? sourceNode.rdfTypes.filter((t: unknown): t is string => typeof t === "string")
-      : [];
+      : []).filter((t: string) => !t.startsWith('urn:vg:bnode:'));
     setRdfTypesState(rdfTypes);
     initialRdfTypesRef.current = rdfTypes.slice();
 

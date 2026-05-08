@@ -39,12 +39,10 @@ async (page) => {
     // Three subclasses of Pizza — laid out before the equivalentClass axioms are added.
     'There are many specific kinds of pizza. Add three named pizza classes: ex:SalamiPizza, ex:HawaiianPizza, and ex:MargheritaPizza. Each is a subclass of ex:Pizza — add all three nodes and all three rdfs:subClassOf ex:Pizza edges. Then arrange the hierarchy. Wait for my next question.',
 
-    // T4 — owl:equivalentClass + owl:someValuesFrom via loadRdf
-    // Blank-node restrictions are mandatory — named restriction nodes sharing owl:onProperty
-    // collapse into one equivalence group (scm-svf1 bug). loadRdf is the only reliable path.
-    // Characteristic toppings: Salami → SalamiTopping, Hawaiian → PineappleTopping (unique),
-    // Margherita → TomatoTopping. These must match the ABox individuals added in T7/T8.
-    'In OWL a class can be defined by a necessary-and-sufficient condition — any individual that satisfies it is automatically a member. This is expressed with owl:equivalentClass using an anonymous restriction. These three axioms define each named pizza by its characteristic topping:\n\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n@prefix ex: <http://example.org/> .\nex:SalamiPizza owl:equivalentClass [ rdf:type owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:SalamiTopping ] .\nex:HawaiianPizza owl:equivalentClass [ rdf:type owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:PineappleTopping ] .\nex:MargheritaPizza owl:equivalentClass [ rdf:type owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:TomatoTopping ] .\n\nLoad this Turtle block into the ontology as-is — the blank nodes are intentional and must not be decomposed into named resources. Wait for my next question.',
+    // T4 — Socratic: owl:equivalentClass + owl:Restriction + owl:someValuesFrom.
+    // Characteristic toppings: Salami → SalamiTopping, Hawaiian → PineappleTopping,
+    // Margherita → TomatoTopping. Must match ABox individuals added in T7/T8.
+    'In OWL a class can be defined by a necessary-and-sufficient condition using owl:equivalentClass and owl:Restriction with owl:someValuesFrom. Define each named pizza class with such a condition — SalamiPizza by its characteristic SalamiTopping, HawaiianPizza by PineappleTopping, MargheritaPizza by TomatoTopping. Wait for my next question.',
 
     // T5 — expandNode all + runLayout
     // Reveal property cards across all TBox classes before switching to ABox.

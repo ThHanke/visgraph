@@ -127,6 +127,7 @@ const SCHEMA_ALLOWED_GRAPHS = new Set([
 const TBOX_TYPES = ALL_TBOX_TYPES;
 
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
+const SKOLEM_PREFIX = 'urn:vg:bnode:';
 
 /** IRIs of synthetic marker properties injected into ElementModel / LinkModel. */
 export const INFERRED_TYPES_PROP = 'urn:vg:inferredTypes' as PropertyTypeIri;
@@ -227,7 +228,8 @@ export class N3DataProvider implements DataProvider {
     const addToSchema = graphName === undefined || SCHEMA_ALLOWED_GRAPHS.has(graphName);
 
     for (const q of arr) {
-      if (q.subject.termType === 'NamedNode' && addToIndex) {
+      if (q.subject.termType === 'NamedNode' && addToIndex
+          && !q.subject.value.startsWith(SKOLEM_PREFIX)) {
         this.allSubjects.add(q.subject.value);
       }
       if (
@@ -235,7 +237,9 @@ export class N3DataProvider implements DataProvider {
         q.predicate.termType === 'NamedNode' &&
         q.predicate.value === RDF_TYPE &&
         q.subject.termType === 'NamedNode' &&
-        q.object.termType === 'NamedNode'
+        !q.subject.value.startsWith(SKOLEM_PREFIX) &&
+        q.object.termType === 'NamedNode' &&
+        !q.object.value.startsWith(SKOLEM_PREFIX)
       ) {
         let types = this.typeMap.get(q.subject.value);
         if (!types) { types = new Set(); this.typeMap.set(q.subject.value, types); }
@@ -350,10 +354,16 @@ export class N3DataProvider implements DataProvider {
       if (!knownIds.has(parent)) { extraTypes.push({ id: parent, label: [], count: 0 }); knownIds.add(parent); }
       extraEdges.push([child, parent]);
     }
-    if (extraEdges.length === 0 && extraTypes.length === 0) return graph;
+    const isSkolem = (id: ElementTypeIri) => String(id).startsWith(SKOLEM_PREFIX);
+    const filteredBase = graph.elementTypes.filter(et => !isSkolem(et.id));
+    if (extraEdges.length === 0 && extraTypes.length === 0) {
+      return filteredBase.length === graph.elementTypes.length ? graph : { ...graph, elementTypes: filteredBase };
+    }
     return {
-      elementTypes: extraTypes.length > 0 ? [...graph.elementTypes, ...extraTypes] : graph.elementTypes,
-      subtypeOf: [...graph.subtypeOf, ...extraEdges],
+      elementTypes: [...filteredBase, ...extraTypes.filter(et => !isSkolem(et.id))],
+      subtypeOf: [...graph.subtypeOf, ...extraEdges].filter(
+        ([c, p]) => !isSkolem(c as ElementTypeIri) && !isSkolem(p as ElementTypeIri)
+      ),
     };
   }
   /**

@@ -133,13 +133,13 @@ const EntityEditor = ({ options }: EntityEditorProps) => {
 
   const entityId = elementData?.id ?? '';
   const [nodeIri, setNodeIri] = useState(entityId);
-  const [types, setTypes] = useState<string[]>(elementData ? [...elementData.types] : []);
+  const [types, setTypes] = useState<string[]>(elementData ? elementData.types.filter(t => !t.startsWith('urn:vg:bnode:')) : []);
   const [rows, setRows] = useState<PropRow[]>(() => elementData ? rowsFromElementModel(elementData) : []);
 
   // Re-initialize when a different entity is opened
   useEffect(() => {
     setNodeIri(entityId);
-    setTypes(elementData ? [...elementData.types] : []);
+    setTypes(elementData ? elementData.types.filter(t => !t.startsWith('urn:vg:bnode:')) : []);
     setRows(elementData ? rowsFromElementModel(elementData) : []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityId]);

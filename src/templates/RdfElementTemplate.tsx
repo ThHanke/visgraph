@@ -98,7 +98,8 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
 
   // Type labels — prefer prefix-shortened IRI (e.g. owl:NamedIndividual), fall back to
   // model-loaded label, then bare local name
-  const typeLabels = data.types.map(typeIri => {
+  const displayTypes = data.types.filter(t => !t.startsWith('urn:vg:bnode:'));
+  const typeLabels = displayTypes.map(typeIri => {
     const shortened = prefixShorten(typeIri, prefixes);
     // prefixShorten returns the full IRI unchanged when no prefix matches
     if (shortened !== typeIri) return shortened;
@@ -167,12 +168,12 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
             }}
-            title={data.types.join(', ')}
+            title={displayTypes.join(', ')}
           >
             {typeLabels.map((label, i) => (
               <span
-                key={data.types[i]}
-                style={inferredTypesSet.has(data.types[i])
+                key={displayTypes[i]}
+                style={inferredTypesSet.has(displayTypes[i])
                   ? { fontStyle: 'italic', color: 'var(--vg-inferred-color)', opacity: 0.9 }
                   : undefined}
               >

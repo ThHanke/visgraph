@@ -19,7 +19,7 @@ function fallbackCopy(text: string) {
 }
 
 const STARTER_PROMPT =
-`You are connected to Ontosphere via a relay. A script in this tab intercepts your tool calls, runs them in Ontosphere, and injects results back as a user message.
+`You are connected to Ontosphere via a relay. A script in this tab intercepts your tool calls, runs them in Ontosphere, and injects results back as a user message. If a tool call returns success:false, read the error, fix the argument, and retry the same call immediately — never skip a failed call.
 
 Output format — one JSON-RPC 2.0 call per line, backtick-wrapped:
 \`{"jsonrpc":"2.0","id":<N>,"method":"tools/call","params":{"name":"<toolName>","arguments":{...}}}\`

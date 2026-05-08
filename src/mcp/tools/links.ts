@@ -19,7 +19,7 @@ interface LinkParams {
 export const linkTools: McpTool[] = [
   {
     name: 'addTriple',
-    description: 'Add an RDF triple to the graph. For object-property triples (IRI object) the edge renders on canvas immediately. For annotation-property triples (literal object) the value appears when the subject node is expanded via expandNode. Blank node identifiers (e.g. "_:b0") are supported in subjectIri and objectIri. The same label always resolves to the same internal IRI, so you can build a restriction across multiple calls: addTriple("_:b0","rdf:type","owl:Restriction"), addTriple("_:b0","owl:onProperty","ex:hasPart"), addTriple("_:b0","owl:someValuesFrom","ex:FillerA"), addTriple("ex:ClassA","owl:equivalentClass","_:b0"). Use a distinct label for each distinct blank node (e.g. "_:b1" for a second restriction). Never pass inline Turtle syntax like "[ ... ]" as an IRI — use explicit labels only.',
+    description: 'Add a simple RDF triple between named entities (IRIs) or attach a literal annotation. Use for: object-property links between known IRIs (e.g. ex:Pizza rdf:type ex:Food), data/annotation properties (e.g. rdfs:label "Pizza"@en), and rdf:type assertions. Object-property triples render on canvas immediately; literal triples appear when the subject node is expanded via expandNode. Do NOT use for OWL axioms that require intermediate anonymous nodes — restrictions (owl:someValuesFrom, owl:allValuesFrom, owl:hasValue), intersections (owl:intersectionOf), unions, or other complex class expressions. For those, use loadRdf with inline Turtle: loadRdf(`@prefix ex: <http://example.org/> . @prefix owl: <http://www.w3.org/2002/07/owl#> . ex:SalamiPizza owl:equivalentClass [ rdf:type owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:SalamiTopping ] .`). Blank node labels ("_:b0") are accepted and skolemized consistently, but only for simple entity linking — do not use them to build restriction structures via addTriple.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -50,7 +50,12 @@ export const linkTools: McpTool[] = [
         // IRIs never contain spaces — catch Turtle fragments passed as IRIs
         // (e.g. "ex:hasPart someValuesFrom ex:Foo" or "Pizza and hasTopping some Foo")
         if (/ /.test(subjectIri) || / /.test(objectIri)) {
-          return { success: false as const, error: 'IRIs cannot contain spaces. It looks like you passed a Turtle or Manchester expression as an IRI. For OWL restrictions use loadRdf with Turtle syntax, or use addTriple with explicit blank node labels: addTriple("_:b0","rdf:type","owl:Restriction"), addTriple("_:b0","owl:onProperty","ex:hasPart"), addTriple("_:b0","owl:someValuesFrom","ex:SalamiTopping"), addTriple("ex:SalamiPizza","owl:equivalentClass","_:b0").' };
+          const badIri = [subjectIri, objectIri].find(v => / /.test(v)) ?? '';
+          // Detect corrupted blank-node: leading whitespace before colon (e.g. "     :r1" → should be "_:r1")
+          const blankNodeHint = /^\s+:/.test(badIri)
+            ? ` You passed "${badIri}" — this is a blank-node label with leading spaces instead of underscore. Use "_:${badIri.trim().slice(1)}" (must start with "_:", not spaces).`
+            : ` You passed "${badIri}".`;
+          return { success: false as const, error: `IRI contains spaces and is not valid.${blankNodeHint} For OWL restrictions prefer loadRdf with Turtle: loadRdf({turtle:"@prefix ex: <http://example.org/> . @prefix owl: <http://www.w3.org/2002/07/owl#> . ex:SalamiPizza owl:equivalentClass [ a owl:Restriction ; owl:onProperty ex:hasPart ; owl:someValuesFrom ex:SalamiTopping ] ."})` };
         }
         rdfManager.addTriple(subjectIri, predicateIri, objectIri);
 

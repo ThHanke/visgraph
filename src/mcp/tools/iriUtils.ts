@@ -3,7 +3,7 @@
 // Dynamic namespaces (from addNamespace / loadOntology) are provided via
 // setNamespaceRegistryGetter, wired up by ontosphereMcpServer.ts at startup.
 
-const BUILTIN_PREFIXES: Record<string, string> = {
+export const BUILTIN_PREFIXES: Record<string, string> = {
   'rdf:':     'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
   'rdfs:':    'http://www.w3.org/2000/01/rdf-schema#',
   'owl:':     'http://www.w3.org/2002/07/owl#',
