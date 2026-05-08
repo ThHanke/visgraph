@@ -76,7 +76,10 @@ describe('loadRdf', () => {
   it('calls loadRDFIntoGraph when turtle is provided', async () => {
     const turtle = '@prefix ex: <http://example.org/> .';
     const result = await tool('loadRdf').handler({ turtle });
-    expect(rdfManager.loadRDFIntoGraph).toHaveBeenCalledWith(turtle, 'urn:vg:data', 'text/turtle');
+    // injectTurtlePrefixes prepends missing built-in prefixes before parsing
+    const [injectedTurtle] = (rdfManager.loadRDFIntoGraph as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(injectedTurtle).toContain('@prefix ex: <http://example.org/> .');
+    expect(rdfManager.loadRDFIntoGraph).toHaveBeenCalledWith(injectedTurtle, 'urn:vg:data', 'text/turtle');
     expect(result).toMatchObject({
       success: true,
       data: expect.objectContaining({ loaded: 'inline turtle' }),
