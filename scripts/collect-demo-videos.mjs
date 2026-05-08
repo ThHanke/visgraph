@@ -30,11 +30,26 @@ if (!fs.existsSync(RESULTS_DIR)) {
   process.exit(1);
 }
 
+// Sort longest-first so pizza-tutorial-chat is claimed before pizza-tutorial
+specNames.sort((a, b) => b.length - a.length);
+
+// Pre-assign each result subdir to its longest-matching spec name
+const claimedDirs = new Map(); // subdir → name
+for (const subdir of fs.readdirSync(RESULTS_DIR)) {
+  for (const name of specNames) {
+    if (subdir.startsWith(`demo-${name}`) && !claimedDirs.has(subdir)) {
+      claimedDirs.set(subdir, name);
+      break;
+    }
+  }
+}
+
 let copied = 0;
 for (const name of specNames) {
   // Playwright names the output dir: e2e-demo-<name>-<hash>-demo/
-  const subdirs = fs.readdirSync(RESULTS_DIR)
-    .filter(d => d.startsWith(`demo-${name}`));
+  const subdirs = [...claimedDirs.entries()]
+    .filter(([, n]) => n === name)
+    .map(([d]) => d);
 
   for (const subdir of subdirs) {
     const videoPath = path.join(RESULTS_DIR, subdir, 'video.webm');
