@@ -124,7 +124,7 @@ export const RelaySection: React.FC<RelaySectionProps> = ({ buildBookmarkletHref
           aria-label="Drag to bookmark bar to install Ontosphere Relay"
         >
           <Zap className="h-3.5 w-3.5 mr-1.5" />
-          Ontosphere Relay
+          Ontosphere Relay - {window.location.host}
         </a>
       </Button>
 
