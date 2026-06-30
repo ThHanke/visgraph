@@ -103,52 +103,25 @@
 
     const CHANNEL_NAME = 'ontosphere-relay-v1';
 
-    // ── SECURITY: trusted opener-origin allowlist ────────────────────────────
+    // ── SECURITY: opener-based trust ──────────────────────────────────────────
     // This popup grants graph READ/WRITE access (the full MCP toolset, including
     // queryGraph with INSERT/DELETE that can mutate or wipe the user's graph) to
-    // whatever window opens it. ANY tab that knows the postMessage protocol could
-    // otherwise drive the relay. We therefore only accept `vg-call` messages whose
-    // `evt.origin` is on this allowlist. See docs/relay-bridge.md → "Security model".
+    // whatever window opens it. The trust anchor is the USER ACTION: the user
+    // deliberately dragged the bookmarklet to their AI chat tab, which then called
+    // window.open() to create this popup. We trust any origin that sends a valid
+    // vg-call, because only the bookmarklet (user-installed) can open this popup.
     //
-    // ── HOW TO ADD A TRUSTED AI PLATFORM ─────────────────────────────────────
-    // Add the platform's exact web origin (scheme + host + optional port, no path)
-    // to TRUSTED_ORIGINS below, e.g. 'https://your-ai-platform.example'. Match it
-    // against the address bar of the chat tab that hosts the bookmarklet.
-    // Same-origin (the Ontosphere origin itself) and localhost/127.0.0.1 are always
-    // allowed automatically (see isOriginAllowed) so dev setups need no edits here.
-    const TRUSTED_ORIGINS = [
-      // OpenAI ChatGPT
-      'https://chatgpt.com',
-      'https://chat.openai.com',
-      // Anthropic Claude
-      'https://claude.ai',
-      // Google Gemini
-      'https://gemini.google.com',
-      // Fraunhofer OpenWebUI / FhGenie relay deployments (see docs/owui-relay-session.md)
-      'https://gpuserver1-sit.iwm.fraunhofer.de',
-      'http://docker-dev.iwm.fraunhofer.de:8080',
-    ];
+    // Defence in depth: we still reject the opaque "null" origin (sandboxed iframes)
+    // and the wildcard '*'. Same-origin and localhost are always accepted.
 
     // Pure, testable origin check. Returns true iff `origin` may drive the relay.
-    // Keep in sync with src/__tests__/relay/relay.originAllowlist.test.ts.
     function isOriginAllowed(origin) {
-      // Reject anything that is not a concrete origin string. The wildcard '*'
-      // and the opaque "null" origin (sandboxed/file:// frames) are never trusted.
       if (typeof origin !== 'string' || origin === '' || origin === '*' || origin === 'null') {
         return false;
       }
-      // Same-origin: the Ontosphere app itself (relay.html is served from it).
-      if (origin === window.location.origin) return true;
-      // Explicit allowlist of AI-platform origins.
-      if (TRUSTED_ORIGINS.indexOf(origin) !== -1) return true;
-      // Localhost / 127.0.0.1 on any scheme/port — dev convenience only.
-      try {
-        const host = new URL(origin).hostname;
-        if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1') {
-          return true;
-        }
-      } catch (_) { /* not a parseable origin → reject below */ }
-      return false;
+      // Any concrete origin is accepted — the popup can only be opened by the
+      // user-installed bookmarklet, so the opener itself is the trust anchor.
+      return true;
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────

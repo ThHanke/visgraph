@@ -74,7 +74,8 @@
     badge.title = 'Click to reopen relay popup';
 
     var span = document.createElement('span');
-    span.textContent = '🟢 Ontosphere Relay Active';
+    var shortOrigin = RELAY_ORIGIN.replace(/^https?:\/\//, '');
+    span.textContent = '🟢 Ontosphere Relay - ' + shortOrigin;
 
     var x = document.createElement('span');
     x.textContent = '×';
