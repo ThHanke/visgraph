@@ -346,11 +346,14 @@ function getKoncludeReasoner(): KoncludeReasonerLike {
   return _koncludeReasoner;
 }
 
+const _entailmentCache = new Map<string, unknown>();
+
 function resetKoncludeReasoner(): void {
   if (_koncludeReasoner) {
     _koncludeReasoner.terminate();
     _koncludeReasoner = null;
   }
+  _entailmentCache.clear();
 }
 
 /**
@@ -3203,21 +3206,20 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           break;
         }
         case "explainEntailment": {
-          // Entailment explanation channel — "why is A subClassOf B?" /
-          // "why is x of type C?". Reduces entailment to (in)consistency using
-          // the EXISTING Konclude consistency oracle (Path B), then strips the
-          // injected probe axioms from each justification. READ-ONLY: operates on
-          // the shared store's base quads; never mutates urn:vg:data.
           const p = (msg.payload ?? {
             subjectIri: "",
             predicateIri: "",
             objectIri: "",
           }) as RDFWorkerCommandPayloads["explainEntailment"];
           const n = typeof p.maxJustifications === "number" ? p.maxJustifications : 1;
+          const cacheKey = `${p.subjectIri}\0${p.predicateIri}\0${p.objectIri}\0${p.objectIsLiteral}\0${n}`;
+          const cached = _entailmentCache.get(cacheKey);
+          if (cached) {
+            result = cached;
+            break;
+          }
           const konclude = getKoncludeReasoner();
           await konclude.ready;
-          // Objects are treated as class-like (IRI) unless explicitly flagged as
-          // a literal. The MCP/public API only passes IRIs, so default true.
           const objectIsClassLike = p.objectIsLiteral !== true;
           const { isEntailed, justifications, ontologyInconsistent, vacuous, reason } =
             await konclude.explainEntailment(
@@ -3228,17 +3230,18 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
               objectIsClassLike,
               n,
             );
+          const termValue = (t: { value: string; termType?: string }) =>
+            t.termType === "BlankNode" ? `_:${t.value}` : t.value;
           result = {
             isEntailed,
             justifications: justifications.map((j) =>
-              j.map((q) => ({ subject: q.subject.value, predicate: q.predicate.value, object: q.object.value })),
+              j.map((q) => ({ subject: termValue(q.subject), predicate: q.predicate.value, object: termValue(q.object) })),
             ),
-            // C1/C2: surface the soundness flags so the agent sees a clear message
-            // instead of a bogus "entailed". Only include when set.
             ...(ontologyInconsistent ? { ontologyInconsistent: true } : {}),
             ...(vacuous ? { vacuous: true } : {}),
             ...(reason ? { reason } : {}),
           };
+          _entailmentCache.set(cacheKey, result);
           break;
         }
         default:
