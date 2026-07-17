@@ -25,251 +25,23 @@ import { ensureDefaultNamespaceMap } from "../constants/namespaces.ts";
 import { RDF_TYPE, RDFS_LABEL, SHACL } from "../constants/vocabularies.ts";
 import { OWL_SCHEMA_AXIOMS } from "../constants/owlSchemaData.ts";
 import { mipsToReasoningError, shaclViolationToEntry } from "./reasoningDiagnostics.ts";
-// TODO(rdf-reasoner-konclude): entailmentProbe will be an internal module of
-// the reasoner once explainEntailment() lands (plan-050, Unit 2-3).
-import { buildEntailmentProbe } from "./entailmentProbe.ts";
+import { RdfReasoner, type LaconicJustification, type LaconicPart } from "rdf-reasoner-konclude";
 
 import { QueryEngine } from "@comunica/query-sparql-rdfjs";
-// TODO(rdf-reasoner-konclude): laconic justification will move to reasoner
-// once explainInconsistencyLaconic() lands (plan-050, Unit 4-5).
-// LACONIC JUSTIFICATIONS (Horridge, Parsia, Sattler, ISWC 2008). IMPORT ONLY —
-// the pure module is never edited here. `splitAxiom` is the structural weakening
-// (OPlus) closure of one axiom; `axiomKey` is its stable de-dup key. We do NOT
-// use the module's synchronous `computeLaconic` because our entailment oracle
-// (`_checkInconsistencyDirect`) is asynchronous (it round-trips the Konclude
-// worker). Instead `computeLaconicAsync` below replays the SAME two-step Horridge
-// algorithm — split every axiom, sanity-check the candidate set still entails η,
-// then contract superfluous parts — awaiting the async oracle at each step, while
-// reusing the pure `splitAxiom`/`axiomKey` so the weakening rules stay in one place.
-import {
-  splitAxiom,
-  axiomKey as laconicAxiomKey,
-  type LaconicAxiom,
-  type LaconicTriple,
-} from "./laconicJustification.ts";
 const KONCLUDE_INFERRED_GRAPH_IRI = "urn:vg:inferred";
 
-// ───────────────────────────────────────────────────────────────────────────
-// LACONIC post-processing of inconsistency justifications
-// ───────────────────────────────────────────────────────────────────────────
-//
-// The worker's MIPS search (`explainInconsistency`) returns each justification as
-// a FLAT list of RDF quads, minimal at the granularity of WHOLE axioms. A laconic
-// justification (Horridge et al. ISWC 2008) is sharper: it strips superfluous
-// PARTS, so `A ⊑ B ⊓ C` is reported as just its `A ⊑ B` part when only that part
-// drives the clash. We post-process each MIPS J → its laconic form by:
-//   1. grouping J's flat quads into logical AXIOMS (a principal triple + its
-//      transitive blank-node closure, the shape `splitAxiom` consumes);
-//   2. running `splitAxiom` on each axiom to get its weaker parts;
-//   3. contracting the parts via the Konclude consistency oracle (async).
-//
-// COST CAP (bounds the extra oracle/WASM round-trips so laconic can never blow the
-// 3-minute worker timeout). Laconic adds one oracle call per split part during the
-// sanity check + one per part during contraction — O(parts) calls per justification.
-// We therefore:
-//   • SKIP laconic entirely for a justification with more than
-//     LACONIC_MAX_AXIOMS axioms (a large MIPS would explode the oracle budget);
-//   • SKIP laconic for a justification whose total candidate-part count exceeds
-//     LACONIC_MAX_PARTS (after splitting), for the same reason.
-// A skipped justification falls back to laconic == original (documented, lossless:
-// the agent still gets the regular justification, just not the sharpened parts).
-const LACONIC_MAX_AXIOMS = 12;
-const LACONIC_MAX_PARTS = 24;
-
-/** Convert a runtime N3 quad to the laconic module's plain-triple shape. */
-function quadToLaconicTriple(q: N3.Quad): LaconicTriple {
-  return {
-    subject: q.subject.value,
-    predicate: q.predicate.value,
-    object: q.object.value,
-    objectIsLiteral: q.object.termType === "Literal",
-  };
-}
-
-/** A blank-node-ish term value (N3 blank label, `_:b`, or N3 `bN`). */
-function isLaconicBlank(value: string): boolean {
-  return value.startsWith("_:") || /^b\d+$/.test(value) || value.startsWith("n3-");
-}
-
 /**
- * Materialise a laconic part (plain triples) into runtime N3 quads so the async
- * oracle can hand them to Konclude. Blank-node terms become real N3 blank nodes;
- * everything else is a NamedNode (or a Literal when objectIsLiteral). The graph is
- * the default graph — `_checkInconsistencyDirect` only reads s/p/o.
- */
-export function laconicAxiomToQuads(axiom: LaconicAxiom): N3.Quad[] {
-  const term = (value: string, isLiteral: boolean): N3.Quad_Subject | N3.Quad_Object => {
-    if (isLiteral) return N3.DataFactory.literal(value) as unknown as N3.Quad_Object;
-    if (isLaconicBlank(value)) return N3.DataFactory.blankNode(value.replace(/^_:/, ""));
-    return N3.DataFactory.namedNode(value);
-  };
-  return axiom.map((t) =>
-    N3.DataFactory.quad(
-      term(t.subject, false) as N3.Quad_Subject,
-      N3.DataFactory.namedNode(t.predicate),
-      term(t.object, !!t.objectIsLiteral) as N3.Quad_Object,
-    ),
-  );
-}
-
-/**
- * Group a flat MIPS justification (N3 quads) into logical AXIOMS — each a
- * principal triple plus its transitive blank-node closure — in the
- * `LaconicAxiom` shape `splitAxiom` consumes. The principal triple is placed
- * FIRST (splitAxiom treats `axiom[0]` as principal).
- *
- * A quad with a NAMED subject is a principal; its blank-node object closure is
- * pulled from the SAME justification's quads (the MIPS keeps the class-expression
- * triples it needs). Closure quads (blank-subject) consumed by a principal are
- * not re-emitted standalone. Any blank-subject quad NOT reached by a principal is
- * grouped on its own (kept whole — sound, merely coarser).
- *
- * Returns the axioms plus, for each axiom (by its laconic key), the ORIGINAL N3
- * quads that composed it, so the laconic result can map a part back to the exact
- * source quads (graph + typed-literal term) the repair path must target.
- */
-export function groupQuadsIntoLaconicAxioms(
-  justification: N3.Quad[],
-  closureSource?: N3.Quad[],
-): { axioms: LaconicAxiom[]; sourceQuads: Map<string, N3.Quad[]> } {
-  // Blank-node closures are resolved from `closureSource` (the FULL reasoning
-  // base) when provided, NOT from the justification alone. This matters because
-  // the QUAD-level MIPS minimiser may prune individual list cells of an
-  // intersection (e.g. it keeps `_:int first ex:B` but drops the `ex:C` cell when
-  // C is superfluous), leaving a dangling rdf:List. Reconstructing the COMPLETE
-  // class expression from the full base lets splitAxiom see `A ⊑ B ⊓ C` in full
-  // so the laconic contraction can genuinely drop the superfluous `A ⊑ C` part.
-  const closureBase = closureSource && closureSource.length > 0 ? closureSource : justification;
-  const bySubject = new Map<string, N3.Quad[]>();
-  for (const q of closureBase) {
-    const arr = bySubject.get(q.subject.value);
-    if (arr) arr.push(q);
-    else bySubject.set(q.subject.value, [q]);
-  }
-
-  const consumed = new Set<N3.Quad>();
-  const closure = (start: string, accT: LaconicTriple[], accQ: N3.Quad[], seen: Set<string>): void => {
-    if (seen.has(start)) return;
-    seen.add(start);
-    const arr = bySubject.get(start);
-    if (!arr) return;
-    for (const q of arr) {
-      consumed.add(q);
-      accT.push(quadToLaconicTriple(q));
-      accQ.push(q);
-      if (q.object.termType !== "Literal" && isLaconicBlank(q.object.value)) {
-        closure(q.object.value, accT, accQ, seen);
-      }
-    }
-  };
-
-  const axioms: LaconicAxiom[] = [];
-  const sourceQuads = new Map<string, N3.Quad[]>();
-  const register = (triples: LaconicTriple[], quads: N3.Quad[]): void => {
-    if (triples.length === 0) return;
-    const key = laconicAxiomKey(triples);
-    if (sourceQuads.has(key)) return;
-    axioms.push(triples);
-    sourceQuads.set(key, quads);
-  };
-
-  // Principals first: NAMED-subject quads. Each pulls its blank object closure.
-  for (const q of justification) {
-    if (isLaconicBlank(q.subject.value)) continue; // closure handled below
-    const triples: LaconicTriple[] = [quadToLaconicTriple(q)];
-    const quads: N3.Quad[] = [q];
-    consumed.add(q);
-    if (q.object.termType !== "Literal" && isLaconicBlank(q.object.value)) {
-      closure(q.object.value, triples, quads, new Set<string>());
-    }
-    register(triples, quads);
-  }
-
-  // Any remaining blank-subject quad not reached by a principal: keep whole.
-  for (const q of justification) {
-    if (consumed.has(q)) continue;
-    const triples: LaconicTriple[] = [quadToLaconicTriple(q)];
-    const quads: N3.Quad[] = [q];
-    consumed.add(q);
-    if (q.object.termType !== "Literal" && isLaconicBlank(q.object.value)) {
-      closure(q.object.value, triples, quads, new Set<string>());
-    }
-    register(triples, quads);
-  }
-
-  return { axioms, sourceQuads };
-}
-
-/**
- * Async port of laconicJustification.computeLaconic — same Horridge two-step
- * shape (split → sanity → contract) but awaiting an ASYNC entailment oracle (the
- * Konclude consistency check). Reuses the pure `splitAxiom`/`axiomKey` so the
- * weakening rules live in exactly one place.
- *
- * `entails(axioms)` must resolve true iff the union of the given axioms entails η
- * (here: is INCONSISTENT). Returns the laconic axioms plus a part-key → source
- * axiom map (the source is the ORIGINAL axiom the part was split from).
- */
-export async function computeLaconicAsync(
-  justification: LaconicAxiom[],
-  entails: (axioms: LaconicAxiom[]) => Promise<boolean>,
-): Promise<{ laconic: LaconicAxiom[]; sources: Map<LaconicAxiom, LaconicAxiom> }> {
-  // Step 1 — split + dedupe, tracking provenance.
-  const candidates: LaconicAxiom[] = [];
-  const candidateKeys = new Set<string>();
-  const sources = new Map<LaconicAxiom, LaconicAxiom>();
-  for (const original of justification) {
-    for (const part of splitAxiom(original)) {
-      const k = laconicAxiomKey(part);
-      if (candidateKeys.has(k)) continue;
-      candidateKeys.add(k);
-      candidates.push(part);
-      sources.set(part, original);
-    }
-  }
-
-  // Step 2 — sanity: the split candidate set must still entail η. If not (an
-  // oracle that does not accept the weaker parts), fall back to the ORIGINAL
-  // justification verbatim so the result is never weaker than the input.
-  if (!(await entails(candidates))) {
-    const fallback = new Map<LaconicAxiom, LaconicAxiom>();
-    for (const a of justification) fallback.set(a, a);
-    return { laconic: [...justification], sources: fallback };
-  }
-
-  // Step 3 — contract: drop every superfluous part (single stable pass).
-  let current = [...candidates];
-  for (const part of candidates) {
-    const without = current.filter((c) => c !== part);
-    if (await entails(without)) current = without;
-  }
-
-  const laconicSources = new Map<LaconicAxiom, LaconicAxiom>();
-  for (const part of current) {
-    const src = sources.get(part);
-    if (src) laconicSources.set(part, src);
-  }
-  return { laconic: current, sources: laconicSources };
-}
-
-/**
- * One laconic justification, serialised for the worker→main boundary. `parts` are
- * the laconic axiom PARTS (the precise culprits); each part carries its principal
- * triple plus the ORIGINAL source axiom's principal triple (so the UI can say
- * "the `A ⊑ B` part of axiom `A ⊑ B ⊓ C` is the culprit"). `sharpened` is true
- * when laconic actually dropped something (parts differ from the original axioms);
- * `skipped` is true when the cost cap suppressed laconic for this justification.
+ * Serialize a package LaconicJustification (Quad-based) into the string-based
+ * format the worker→main boundary uses.
  */
 type SerializedLaconicPart = {
   subject: string;
   predicate: string;
   object: string;
   objectIsLiteral?: boolean;
-  /** The principal triple of the original axiom this part was split from. */
   sourceSubject: string;
   sourcePredicate: string;
   sourceObject: string;
-  /** True when this part is strictly smaller/weaker than its source axiom. */
   isPartOf: boolean;
 };
 
@@ -278,6 +50,23 @@ type SerializedLaconicJustification = {
   sharpened: boolean;
   skipped: boolean;
 };
+
+function serializeLaconicJustification(lj: LaconicJustification): SerializedLaconicJustification {
+  return {
+    parts: lj.parts.map((p: LaconicPart) => ({
+      subject: p.quad.subject.value,
+      predicate: p.quad.predicate.value,
+      object: p.quad.object.value,
+      ...(p.quad.object.termType === "Literal" ? { objectIsLiteral: true } : {}),
+      sourceSubject: p.sourceQuad.subject.value,
+      sourcePredicate: p.sourceQuad.predicate.value,
+      sourceObject: p.sourceQuad.object.value,
+      isPartOf: p.isPartOf,
+    })),
+    sharpened: lj.sharpened,
+    skipped: lj.skipped,
+  };
+}
 
 // ───────────────────────────────────────────────────────────────────────────
 // SINGLE SOURCE OF TRUTH — reasoning-base graph exclusions (Finding 1)
@@ -340,272 +129,23 @@ const EXCLUDED_FROM_REASONING_WORKING_COPY: ReadonlySet<string> = new Set(
 
 
 // ---------------------------------------------------------------------------
-// Binary codec — verbatim from rdf-reasoner-konclude v0.3.0 ts/intern.ts.
-// Not exported from the package public API; inlined here to avoid importing
-// private dist paths. Coupled to the worker.js in public/rdf-reasoner-konclude/
-// — both come from the same package version. Pin: 0.3.0
+// KoncludeReasoner — thin adapter around rdf-reasoner-konclude v0.4.0 RdfReasoner.
+// Handles ontosphere-specific concerns: blank-node de-skolemization
+// (urn:vg:bnode:*), named-graph filtering (EXCLUDED_FROM_REASONING), and
+// SerializedLaconicJustification format conversion for the worker boundary.
 // ---------------------------------------------------------------------------
 
-const _enc = new TextEncoder();
-const _dec = new TextDecoder();
-
-class InternTable {
-  private readonly namedNodes = new Map<string, number>();
-  private readonly blankNodes = new Map<string, number>();
-  private readonly literals = new Map<string, number>();
-  private readonly entries: Uint8Array[] = [];
-
-  private addEntry(bytes: Uint8Array, type: 0 | 1 | 2): number {
-    const id = (this.entries.length & 0x3fffffff) | (type << 30);
-    this.entries.push(bytes);
-    return id;
-  }
-
-  encodeTerm(term: N3.Term): number {
-    switch (term.termType) {
-      case "NamedNode": {
-        let id = this.namedNodes.get(term.value);
-        if (id === undefined) {
-          id = this.addEntry(_enc.encode(term.value), 0);
-          this.namedNodes.set(term.value, id);
-        }
-        return id;
-      }
-      case "BlankNode": {
-        let id = this.blankNodes.get(term.value);
-        if (id === undefined) {
-          id = this.addEntry(_enc.encode(term.value), 1);
-          this.blankNodes.set(term.value, id);
-        }
-        return id;
-      }
-      case "Literal": {
-        const dt = term.datatype?.value ?? "";
-        const lang = term.language ?? "";
-        const raw = `${term.value}\0${dt}\0${lang}`;
-        let id = this.literals.get(raw);
-        if (id === undefined) {
-          id = this.addEntry(_enc.encode(raw), 2);
-          this.literals.set(raw, id);
-        }
-        return id;
-      }
-      default: {
-        let id = this.namedNodes.get("");
-        if (id === undefined) {
-          id = this.addEntry(_enc.encode(""), 0);
-          this.namedNodes.set("", id);
-        }
-        return id;
-      }
-    }
-  }
-
-  buildStrTableBuffer(): ArrayBuffer {
-    const count = this.entries.length;
-    const headerBytes = 4 + 4 * count;
-    let dataBytes = 0;
-    for (const e of this.entries) dataBytes += e.byteLength;
-    const buf = new ArrayBuffer(headerBytes + dataBytes);
-    const dv = new DataView(buf);
-    const u8 = new Uint8Array(buf);
-    dv.setUint32(0, count, true);
-    let offset = 0;
-    let dataPos = headerBytes;
-    for (let i = 0; i < count; i++) {
-      dv.setUint32(4 + 4 * i, offset, true);
-      const entry = this.entries[i];
-      u8.set(entry, dataPos);
-      offset += entry.byteLength;
-      dataPos += entry.byteLength;
-    }
-    return buf;
-  }
-}
-
-function _encodeToBuffers(quads: Iterable<N3.Quad>): { tripleBuffer: ArrayBuffer; strTableBuffer: ArrayBuffer } {
-  const table = new InternTable();
-  const ids: number[] = [];
-  for (const quad of quads) {
-    ids.push(table.encodeTerm(quad.subject), table.encodeTerm(quad.predicate), table.encodeTerm(quad.object));
-  }
-  return { tripleBuffer: new Uint32Array(ids).buffer, strTableBuffer: table.buildStrTableBuffer() };
-}
-
-function _decodeTerm(id: number, rawStrings: string[]): N3.NamedNode | N3.BlankNode | N3.Literal {
-  const type = id >>> 30;
-  const idx = id & 0x3fffffff;
-  const raw = rawStrings[idx] ?? "";
-  switch (type) {
-    case 1: return N3.DataFactory.blankNode(raw);
-    case 2: {
-      const nul1 = raw.indexOf("\0");
-      const value = nul1 >= 0 ? raw.slice(0, nul1) : raw;
-      const rest = nul1 >= 0 ? raw.slice(nul1 + 1) : "";
-      const nul2 = rest.indexOf("\0");
-      const datatype = nul2 >= 0 ? rest.slice(0, nul2) : rest;
-      const language = nul2 >= 0 ? rest.slice(nul2 + 1) : "";
-      if (language) return N3.DataFactory.literal(value, language);
-      if (datatype) return N3.DataFactory.literal(value, N3.DataFactory.namedNode(datatype));
-      return N3.DataFactory.literal(value);
-    }
-    default: return N3.DataFactory.namedNode(raw);
-  }
-}
-
-function _decodeBuffers(combined: ArrayBuffer): N3.Quad[] {
-  if (combined.byteLength < 4) return [];
-  const dv = new DataView(combined);
-  const strTableLen = dv.getUint32(0, true);
-  const strTableStart = 4;
-  const tripleStart = 4 + strTableLen;
-  if (strTableLen < 4) return [];
-  const strDv = new DataView(combined, strTableStart, strTableLen);
-  const termCount = strDv.getUint32(0, true);
-  const headerBytes = 4 + 4 * termCount;
-  const strDataLen = strTableLen - headerBytes;
-  const strBytes = new Uint8Array(combined, strTableStart + headerBytes, strDataLen);
-  const rawStrings: string[] = new Array(termCount);
-  for (let i = 0; i < termCount; i++) {
-    const start = strDv.getUint32(4 + 4 * i, true);
-    const end = i + 1 < termCount ? strDv.getUint32(4 + 4 * (i + 1), true) : strDataLen;
-    rawStrings[i] = _dec.decode(strBytes.slice(start, end));
-  }
-  const tripleBytes = combined.byteLength - tripleStart;
-  const tripleCount = Math.floor(tripleBytes / 12);
-  if (tripleCount === 0) return [];
-  const tripDv = new DataView(combined, tripleStart, tripleCount * 12);
-  const quads: N3.Quad[] = new Array(tripleCount);
-  for (let i = 0; i < tripleCount; i++) {
-    const sId = tripDv.getUint32(i * 12, true);
-    const pId = tripDv.getUint32(i * 12 + 4, true);
-    const oId = tripDv.getUint32(i * 12 + 8, true);
-    quads[i] = N3.DataFactory.quad(
-      _decodeTerm(sId, rawStrings) as N3.NamedNode,
-      _decodeTerm(pId, rawStrings) as N3.NamedNode,
-      _decodeTerm(oId, rawStrings),
-      N3.DataFactory.defaultGraph(),
-    );
-  }
-  return quads;
-}
-
-// ---------------------------------------------------------------------------
-// KoncludeReasoner — adapted from RdfReasoner in rdf-reasoner-konclude v0.3.0.
-// Identical to upstream except the worker URL uses an absolute public path
-// instead of new URL("./worker.js", import.meta.url), which resolves
-// incorrectly inside Vite worker bundles.
-// ---------------------------------------------------------------------------
-
-// M1: monotonic, deterministic counter giving each explainEntailment call a
-// unique probeId. Module-scoped so probe blank-node labels (vg_neg_*/vg_wit_*)
-// are unique per call and cannot collide with a real ontology bnode that
-// happens to carry the constant default label. Deterministic (not Math.random)
-// so probe construction stays reproducible.
-let _entailmentProbeCounter = 0;
 
 class KoncludeReasoner {
   readonly ready: Promise<void>;
-  private readonly worker: Worker;
-  private nextId = 0;
-  private readonly pending = new Map<number, { resolve: (value: unknown) => void; reject: (reason: unknown) => void }>();
-  private _queue: Promise<void> = Promise.resolve();
+  private readonly _reasoner: RdfReasoner;
 
   constructor() {
-    // Absolute public URL — required because new URL("./worker.js", import.meta.url)
-    // resolves to the bundle URL inside a Vite worker, not the package directory.
-    // BASE_URL is "/" in dev and "/ontosphere/" on GitHub Pages.
-    // Increment v= when upgrading rdf-reasoner-konclude.
-    this.worker = new Worker(`${import.meta.env.BASE_URL}rdf-reasoner-konclude/worker.js?v=20`, { type: "module" });
-
-    let readyReject!: (reason: Error) => void;
-    let readySettled = false;
-
-    this.ready = new Promise<void>((resolve, reject) => {
-      readyReject = reject;
-      const onInit = (event: MessageEvent) => {
-        const msg = event.data;
-        if ("type" in msg) {
-          if (msg.type === "ready") {
-            this.worker.removeEventListener("message", onInit);
-            readySettled = true;
-            resolve();
-          } else if (msg.type === "error") {
-            this.worker.removeEventListener("message", onInit);
-            readySettled = true;
-            reject(new Error(msg.error));
-          }
-        }
-      };
-      this.worker.addEventListener("message", onInit);
-    });
-
-    this.worker.addEventListener("message", (event: MessageEvent) => {
-      const msg = event.data;
-      if ("type" in msg) {
-        if (msg.type === "log" && typeof msg.msg === "string") {
-          if (workerDebugEnabled) console.error("[Konclude]", msg.msg);
-        }
-        return;
-      }
-      const entry = this.pending.get(msg.id);
-      if (!entry) return;
-      this.pending.delete(msg.id);
-      if (msg.error !== undefined) entry.reject(new Error(msg.error));
-      else entry.resolve(msg.result);
-    });
-
-    this.worker.addEventListener("error", (event: ErrorEvent) => {
-      event.preventDefault();
-      const err = new Error(event.message ?? "Worker error");
-      if (!readySettled) { readySettled = true; readyReject(err); }
-      for (const e of this.pending.values()) e.reject(err);
-      this.pending.clear();
-    });
+    const workerUrl = `${(import.meta as any).env.BASE_URL}rdf-reasoner-konclude/worker.js?v=40`;
+    this._reasoner = new RdfReasoner({ workerUrl });
+    this.ready = this._reasoner.ready;
   }
 
-  private static readonly CALL_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
-
-  private _call(method: string, args: unknown[], transfer?: Transferable[]): Promise<unknown> {
-    return new Promise((resolve, reject) => {
-      const id = this.nextId++;
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        this._handleTimeout(method);
-        reject(new Error(
-          `Konclude OWL DL reasoning timed out after ${KoncludeReasoner.CALL_TIMEOUT_MS / 1000}s during "${method}". ` +
-          `A likely cause is an OWL 2 DL profile violation (for example a datatype/literal value used where an ` +
-          `object property is expected) that prevents the reasoner from terminating; run explainDiagnostics or ` +
-          `check recently added axioms. The reasoner worker has been recycled.`
-        ));
-      }, KoncludeReasoner.CALL_TIMEOUT_MS);
-
-      this.pending.set(id, {
-        resolve: (v) => { clearTimeout(timer); resolve(v); },
-        reject: (e) => { clearTimeout(timer); reject(e); },
-      });
-      const request = { id, method, args };
-      if (transfer && transfer.length > 0) {
-        this.worker.postMessage(request, transfer);
-      } else {
-        this.worker.postMessage(request);
-      }
-    });
-  }
-
-  private _handleTimeout(method: string): void {
-    console.error(`[Konclude] WASM call "${method}" timed out — terminating worker`);
-    this.terminate();
-    _koncludeReasoner = null;
-  }
-
-  /**
-   * De-skolemize a candidate quad set: urn:vg:bnode:* NamedNodes → real blank
-   * nodes so Konclude sees anonymous OWL class expressions. Factored out of
-   * reason / _checkInconsistencyDirect / _getUnsatisfiableClassesDirect
-   * so every Konclude entry point applies the IDENTICAL boundary
-   * transform (a divergence here would silently change what the reasoner sees).
-   */
   private static _deskolemize(candidates: N3.Quad[]): N3.Quad[] {
     const BNODE_PREFIX = "urn:vg:bnode:";
     return candidates.map((q) => {
@@ -620,278 +160,59 @@ class KoncludeReasoner {
     });
   }
 
+  private _buildReasoningStore(store: N3.Store, excluded: ReadonlySet<string>): N3.Store {
+    const allQuads: N3.Quad[] = store.getQuads(null, null, null, null);
+    const filtered = allQuads.filter((q) => {
+      const g = q.graph.termType === "DefaultGraph" ? "" : q.graph.value;
+      return !excluded.has(g);
+    });
+    return new N3.Store(KoncludeReasoner._deskolemize(filtered));
+  }
+
   reason(store: N3.Store): Promise<void> {
-    const result = this._queue.then(async () => {
+    return (async () => {
       const inferredGraphNode = N3.DataFactory.namedNode(KONCLUDE_INFERRED_GRAPH_IRI);
       store.removeQuads(store.getQuads(null, null, null, inferredGraphNode));
 
-      // reason() clears urn:vg:inferred above, so it uses the KEEP_INFERRED
-      // variant (single source of truth — Finding 1).
-      const allQuads: N3.Quad[] = store.getQuads(null, null, null, null);
-      const sourceQuads = allQuads.filter((q) => {
-        const g = q.graph.termType === "DefaultGraph" ? "" : q.graph.value;
-        return !EXCLUDED_FROM_REASONING_KEEP_INFERRED.has(g);
-      });
+      const reasoningStore = this._buildReasoningStore(store, EXCLUDED_FROM_REASONING_KEEP_INFERRED);
+      await this._reasoner.materialize(reasoningStore, { includeClassHierarchy: true });
 
-      const inferredQuads = await this._classifyDirect(sourceQuads);
+      const inferred = reasoningStore.getQuads(
+        null, null, null,
+        N3.DataFactory.namedNode("urn:konclude:inferred"),
+      );
 
-      for (const q of inferredQuads) {
-        store.addQuad(N3.DataFactory.quad(q.subject, q.predicate, q.object, inferredGraphNode));
+      const sourceKeys = new Set(
+        reasoningStore.getQuads(null, null, null, N3.DataFactory.defaultGraph())
+          .map((q: N3.Quad) => `${q.subject.value}\0${q.predicate.value}\0${q.object.value}`),
+      );
+
+      for (const q of inferred) {
+        const key = `${q.subject.value}\0${q.predicate.value}\0${q.object.value}`;
+        if (!sourceKeys.has(key)) {
+          store.addQuad(N3.DataFactory.quad(q.subject, q.predicate, q.object, inferredGraphNode));
+        }
       }
 
-      debugLog("[VG_REASONING_WORKER] Konclude inferred quads:", inferredQuads.length);
-    });
-    this._queue = result.then(() => {}, () => {});
-    return result;
-  }
-
-  /**
-   * Run Konclude TBox classification + ABox realization over a candidate quad set
-   * and return the NEWLY inferred quads (those not already present in the source).
-   * De-skolemizes at the boundary. Runs INSIDE an existing _queue slot (like
-   * _checkInconsistencyDirect), so callers that already hold a _queue slot (reason)
-   * reuse it without re-acquiring (which would deadlock). The
-   * returned quads carry a DefaultGraph term; the caller assigns the target graph.
-   */
-  private async _classifyDirect(candidates: N3.Quad[]): Promise<N3.Quad[]> {
-    const sourceKeys = new Set(
-      candidates.map((q) => `${q.subject.value}\0${q.predicate.value}\0${q.object.value}`),
-    );
-    const deskolemized = KoncludeReasoner._deskolemize(candidates);
-    const { tripleBuffer, strTableBuffer } = _encodeToBuffers(deskolemized);
-    // realization runs TBox classification + ABox individual typing in one pass.
-    // Calling classification separately then realization drains the result buffer mid-sequence,
-    // leaving realization with no output — hence the single-pass approach mirrors materialize().
-    // forRealization=true (3rd arg, added in 0.3.0) configures Konclude for ABox realization.
-    await this._call("loadTripleBuffer", [tripleBuffer, strTableBuffer, true], [tripleBuffer, strTableBuffer]);
-    await this._call("realization", []);
-    const resultBuf = (await this._call("getInferredTripleBuffer", [])) as ArrayBuffer;
-    const inferredQuads = _decodeBuffers(resultBuf);
-    return inferredQuads.filter(
-      (q) => !sourceKeys.has(`${q.subject.value}\0${q.predicate.value}\0${q.object.value}`),
-    );
-  }
-
-  private async _checkInconsistencyDirect(candidates: N3.Quad[]): Promise<boolean> {
-    const deskolemized = KoncludeReasoner._deskolemize(candidates);
-    const { tripleBuffer, strTableBuffer } = _encodeToBuffers(deskolemized);
-    await this._call("loadTripleBuffer", [tripleBuffer, strTableBuffer, false], [tripleBuffer, strTableBuffer]);
-    await this._call("classification", []);
-    const consistent = (await this._call("consistency", [])) as boolean;
-    return !consistent;
-  }
-
-  /**
-   * Direct (non-queued) variant of getUnsatisfiableClasses: classify a candidate
-   * quad set and return the IRIs of classes entailed equivalent to owl:Nothing.
-   * Mirrors getUnsatisfiableClasses' de-skolemisation but takes pre-filtered
-   * quads and runs INSIDE an existing _queue slot (like _checkInconsistencyDirect)
-   * so callers such as explainEntailment can use it without re-acquiring _queue
-   * (which would deadlock). Used for C2 vacuous-truth detection.
-   */
-  private async _getUnsatisfiableClassesDirect(candidates: N3.Quad[]): Promise<string[]> {
-    const deskolemized = KoncludeReasoner._deskolemize(candidates);
-    const { tripleBuffer, strTableBuffer } = _encodeToBuffers(deskolemized);
-    await this._call("loadTripleBuffer", [tripleBuffer, strTableBuffer, false], [tripleBuffer, strTableBuffer]);
-    await this._call("classification", []);
-    const raw = (await this._call("getUnsatisfiableClassBuffer", [])) as string;
-    return typeof raw === "string" ? raw.split("\n").map((s) => s.trim()).filter(Boolean) : [];
+      debugLog("[VG_REASONING_WORKER] Konclude inferred quads:", inferred.length);
+    })();
   }
 
   checkConsistency(store: N3.Store): Promise<boolean> {
-    const result = this._queue.then(async () => {
-      const candidates: N3.Quad[] = (store.getQuads(null, null, null, null) as N3.Quad[]).filter((q) => {
-        const g = q.graph.termType === "DefaultGraph" ? "" : q.graph.value;
-        return !EXCLUDED_FROM_REASONING.has(g);
-      });
-      return !(await this._checkInconsistencyDirect(candidates));
-    });
-    this._queue = result.then(() => {}, () => {});
-    return result;
+    const reasoningStore = this._buildReasoningStore(store, EXCLUDED_FROM_REASONING);
+    return this._reasoner.checkConsistency(reasoningStore);
   }
 
-  /**
-   * Return the IRIs of classes that are unsatisfiable (entailed equivalent to
-   * owl:Nothing) over the base graphs. Mirrors checkConsistency's graph filtering
-   * and blank-node de-skolemisation, then asks the Konclude worker for the
-   * unsatisfiable-class buffer (a newline-separated IRI list).
-   */
   getUnsatisfiableClasses(store: N3.Store): Promise<string[]> {
-    const result = this._queue.then(async () => {
-      const candidates: N3.Quad[] = (store.getQuads(null, null, null, null) as N3.Quad[]).filter((q) => {
-        const g = q.graph.termType === "DefaultGraph" ? "" : q.graph.value;
-        return !EXCLUDED_FROM_REASONING.has(g);
-      });
-      return this._getUnsatisfiableClassesDirect(candidates);
-    });
-    this._queue = result.then(() => {}, () => {});
-    return result;
+    const reasoningStore = this._buildReasoningStore(store, EXCLUDED_FROM_REASONING);
+    return this._reasoner.getUnsatisfiableClasses(reasoningStore);
   }
 
   explainInconsistency(store: N3.Store, maxJustifications = 1): Promise<N3.Quad[][]> {
-    const result = this._queue.then(() =>
-      this._explainInconsistencyJustifications(store, maxJustifications),
-    );
-    this._queue = result.then(() => {}, () => {});
-    return result;
+    const reasoningStore = this._buildReasoningStore(store, EXCLUDED_FROM_REASONING);
+    return this._reasoner.explainInconsistency(reasoningStore, { maxJustifications }) as Promise<N3.Quad[][]>;
   }
 
-  /**
-   * Compute the MIPS justifications WITHOUT acquiring a _queue slot — the caller
-   * must already hold one (like _checkInconsistencyDirect). Factored out of
-   * explainInconsistency so BOTH the plain path and the laconic path
-   * (explainInconsistencyLaconic) share the identical search and the SAME
-   * consistency oracle, instead of duplicating the binary-expand / single-axiom-
-   * prune / hitting-set enumeration.
-   */
-  private async _explainInconsistencyJustifications(
-    store: N3.Store,
-    maxJustifications = 1,
-  ): Promise<N3.Quad[][]> {
-    {
-      const allBase: N3.Quad[] = (store.getQuads(null, null, null, null) as N3.Quad[]).filter((q) => {
-        const g = q.graph.termType === "DefaultGraph" ? "" : q.graph.value;
-        return !EXCLUDED_FROM_REASONING.has(g);
-      });
-
-      if (!(await this._checkInconsistencyDirect(allBase))) return [];
-      if (maxJustifications === 0) return [];
-
-      // Filter out pure declaration and annotation triples that cannot be the
-      // cause of a logical inconsistency on their own.  This shrinks the O(N)
-      // oracle search substantially for ontologies with many labels/comments.
-      const ANNOTATION_PREDICATES = new Set([
-        "http://www.w3.org/2000/01/rdf-schema#label",
-        "http://www.w3.org/2000/01/rdf-schema#comment",
-        "http://www.w3.org/2000/01/rdf-schema#seeAlso",
-        "http://www.w3.org/2000/01/rdf-schema#isDefinedBy",
-        // skos
-        "http://www.w3.org/2004/02/skos/core#prefLabel",
-        "http://www.w3.org/2004/02/skos/core#altLabel",
-        "http://www.w3.org/2004/02/skos/core#hiddenLabel",
-        "http://www.w3.org/2004/02/skos/core#note",
-        "http://www.w3.org/2004/02/skos/core#definition",
-        "http://www.w3.org/2004/02/skos/core#example",
-        "http://www.w3.org/2004/02/skos/core#scopeNote",
-        "http://www.w3.org/2004/02/skos/core#editorialNote",
-        "http://www.w3.org/2004/02/skos/core#changeNote",
-        "http://www.w3.org/2004/02/skos/core#historyNote",
-        // dc / dcterms
-        "http://purl.org/dc/elements/1.1/title",
-        "http://purl.org/dc/elements/1.1/description",
-        "http://purl.org/dc/elements/1.1/creator",
-        "http://purl.org/dc/elements/1.1/date",
-        "http://purl.org/dc/terms/title",
-        "http://purl.org/dc/terms/description",
-        "http://purl.org/dc/terms/creator",
-        "http://purl.org/dc/terms/date",
-        "http://purl.org/dc/terms/created",
-        "http://purl.org/dc/terms/modified",
-      ]);
-      const OWL_DECLARATION_OBJECTS = new Set([
-        "http://www.w3.org/2002/07/owl#Class",
-        "http://www.w3.org/2002/07/owl#ObjectProperty",
-        "http://www.w3.org/2002/07/owl#DatatypeProperty",
-        "http://www.w3.org/2002/07/owl#AnnotationProperty",
-        "http://www.w3.org/2002/07/owl#NamedIndividual",
-        "http://www.w3.org/2002/07/owl#Ontology",
-      ]);
-      const RDF_TYPE_URI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-      const isNonLogical = (q: N3.Quad): boolean => {
-        const pred = q.predicate.value;
-        if (ANNOTATION_PREDICATES.has(pred)) return true;
-        // rdf:type declarations to OWL meta-vocabulary objects are non-logical
-        if (pred === RDF_TYPE_URI && OWL_DECLARATION_OBJECTS.has(q.object.value)) return true;
-        return false;
-      };
-      const allCandidates = allBase.filter((q) => !isNonLogical(q));
-
-      const justifications: N3.Quad[][] = [];
-
-      const findOneJustification = async (candidates: N3.Quad[]): Promise<N3.Quad[] | null> => {
-        let working = [...candidates];
-        let changed = true;
-        while (changed && working.length > 1) {
-          changed = false;
-          const mid = Math.floor(working.length / 2);
-          const firstHalf = working.slice(0, mid);
-          const secondHalf = working.slice(mid);
-          if (await this._checkInconsistencyDirect(firstHalf)) {
-            working = firstHalf; changed = true; continue;
-          }
-          if (await this._checkInconsistencyDirect(secondHalf)) {
-            working = secondHalf; changed = true; continue;
-          }
-          break;
-        }
-        let i = 0;
-        while (i < working.length) {
-          if (working.length === 1) break;
-          const without = [...working.slice(0, i), ...working.slice(i + 1)];
-          if (await this._checkInconsistencyDirect(without)) {
-            working = without;
-          } else {
-            i++;
-          }
-        }
-        return working;
-      };
-
-      const j1 = await findOneJustification(allCandidates);
-      if (!j1 || j1.length === 0) return [];
-      justifications.push(j1);
-
-      if (maxJustifications > 1) {
-        const hsQueue: Array<{ excluded: Set<string>; justification: N3.Quad[] }> = [
-          { excluded: new Set(), justification: j1 },
-        ];
-        const exploredExclusions = new Set<string>();
-        while (hsQueue.length > 0 && justifications.length < maxJustifications) {
-          const { excluded, justification: currentJ } = hsQueue.shift()!;
-          const excludedKey = [...excluded].sort().join("|");
-          if (exploredExclusions.has(excludedKey)) continue;
-          exploredExclusions.add(excludedKey);
-          for (const axiomInJ of currentJ) {
-            const newExcluded = new Set(excluded);
-            const axKey = `${axiomInJ.subject.value}\0${axiomInJ.predicate.value}\0${axiomInJ.object.value}`;
-            newExcluded.add(axKey);
-            const newExcludedKey = [...newExcluded].sort().join("|");
-            if (exploredExclusions.has(newExcludedKey)) continue;
-            const reduced = allCandidates.filter(q => !newExcluded.has(`${q.subject.value}\0${q.predicate.value}\0${q.object.value}`));
-            if (!(await this._checkInconsistencyDirect(reduced))) continue;
-            const jNew = await findOneJustification(reduced);
-            if (!jNew || jNew.length === 0) continue;
-            const jKey = jNew.map(q => `${q.subject.value}\0${q.predicate.value}\0${q.object.value}`).sort().join("|");
-            const alreadyFound = justifications.some(j => j.map(q => `${q.subject.value}\0${q.predicate.value}\0${q.object.value}`).sort().join("|") === jKey);
-            if (!alreadyFound) {
-              justifications.push(jNew);
-              if (justifications.length >= maxJustifications) break;
-              hsQueue.push({ excluded: newExcluded, justification: jNew });
-            }
-          }
-        }
-      }
-
-      return justifications;
-    }
-  }
-
-  /**
-   * LACONIC inconsistency explanation (Horridge et al. ISWC 2008). Computes the
-   * SAME MIPS justifications as explainInconsistency, then POST-PROCESSES each to
-   * its laconic form — stripping superfluous axiom PARTS so a culprit like
-   * `A ⊑ B ⊓ C` is reported as just its `A ⊑ B` part when only that part drives
-   * the clash. The laconic contraction reuses THIS reasoner's consistency oracle
-   * (`_checkInconsistencyDirect`): a subset of parts "entails η" iff, conjoined
-   * with the other justification axioms, it is INCONSISTENT.
-   *
-   * Returns, per justification: the original MIPS quads, the laconic axiom parts
-   * (each with its source axiom), and whether laconic was sharpened or skipped by
-   * the cost cap (LACONIC_MAX_AXIOMS / LACONIC_MAX_PARTS — see the constants).
-   *
-   * Runs in ONE _queue slot for the whole computation (search + all oracle calls)
-   * so it cannot interleave with another caller's reasoning.
-   */
   explainInconsistencyLaconic(
     store: N3.Store,
     maxJustifications = 1,
@@ -901,185 +222,22 @@ class KoncludeReasoner {
       laconic: SerializedLaconicJustification;
     }>
   > {
-    const result = this._queue.then(async () => {
-      const justifications = await this._explainInconsistencyJustifications(store, maxJustifications);
-      // Full reasoning base — used to reconstruct COMPLETE class expressions
-      // (blank-node closures) the quad-level MIPS minimiser may have pruned, so
-      // laconic can split & contract the whole intersection.
-      const fullBase: N3.Quad[] = (store.getQuads(null, null, null, null) as N3.Quad[]).filter((q) => {
-        const g = q.graph.termType === "DefaultGraph" ? "" : q.graph.value;
-        return !EXCLUDED_FROM_REASONING.has(g);
-      });
-      const out: Array<{ justification: N3.Quad[]; laconic: SerializedLaconicJustification }> = [];
-
-      for (const j of justifications) {
-        out.push({
-          justification: j,
-          laconic: await this._laconicForJustification(j, fullBase),
-        });
-      }
-      return out;
-    });
-    this._queue = result.then(() => {}, () => {});
-    return result;
+    return (async () => {
+      const reasoningStore = this._buildReasoningStore(store, EXCLUDED_FROM_REASONING);
+      const results = await this._reasoner.explainInconsistencyLaconic(reasoningStore, { maxJustifications });
+      return (results as Array<{ justification: N3.Quad[]; laconic: LaconicJustification }>).map((r) => ({
+        justification: r.justification as N3.Quad[],
+        laconic: serializeLaconicJustification(r.laconic),
+      }));
+    })();
   }
 
-  /**
-   * Post-process ONE MIPS justification (flat quads) into its laconic form. Must
-   * run inside an existing _queue slot (uses _checkInconsistencyDirect). Applies
-   * the cost cap; on skip / fallback returns the original axioms verbatim.
-   */
-  private async _laconicForJustification(
-    justification: N3.Quad[],
-    fullBase?: N3.Quad[],
-  ): Promise<SerializedLaconicJustification> {
-    const { axioms, sourceQuads } = groupQuadsIntoLaconicAxioms(justification, fullBase);
-
-    // COST CAP — skip laconic for justifications too large to bound the oracle
-    // budget (each extra part ⇒ extra Konclude round-trips). On skip we return
-    // the regular axioms verbatim (lossless: the agent still gets the MIPS).
-    const totalParts = axioms.reduce((n, ax) => n + splitAxiom(ax).length, 0);
-    const skip = axioms.length > LACONIC_MAX_AXIOMS || totalParts > LACONIC_MAX_PARTS;
-    if (skip) {
-      return this._serializeLaconicFromAxioms(axioms, axioms, sourceQuads, false, true);
-    }
-
-    // The async oracle: a set of laconic parts "entails η" iff it is INCONSISTENT.
-    const entails = async (parts: LaconicAxiom[]): Promise<boolean> => {
-      const quads: N3.Quad[] = [];
-      for (const p of parts) {
-        const src = sourceQuads.get(laconicAxiomKey(p));
-        // Reuse the ORIGINAL quads when this part IS an un-split source axiom
-        // (preserves the exact graph/typed-literal terms the reasoner saw);
-        // otherwise materialise the split part's plain triples into fresh quads.
-        quads.push(...(src ?? laconicAxiomToQuads(p)));
-      }
-      return this._checkInconsistencyDirect(quads);
-    };
-
-    const { laconic, sources } = await computeLaconicAsync(axioms, entails);
-    const sharpened = laconic.length !== axioms.length
-      || laconic.some((p) => !sourceQuads.has(laconicAxiomKey(p)));
-    return this._serializeLaconicFromComputed(laconic, sources, sourceQuads, sharpened);
-  }
-
-  /** Serialise laconic parts (computed) into the boundary shape. */
-  private _serializeLaconicFromComputed(
-    laconic: LaconicAxiom[],
-    sources: Map<LaconicAxiom, LaconicAxiom>,
-    sourceQuads: Map<string, N3.Quad[]>,
-    sharpened: boolean,
-  ): SerializedLaconicJustification {
-    const parts: SerializedLaconicPart[] = laconic.map((part) => {
-      const principal = part[0];
-      const source = sources.get(part) ?? part;
-      const srcPrincipal = source[0];
-      const srcQuads = sourceQuads.get(laconicAxiomKey(part));
-      // Prefer the ORIGINAL quad's term for the principal when this part is an
-      // un-split source axiom (carries the exact graph/typed object); else the
-      // split part's plain triple. `isPartOf` = strictly smaller than its source.
-      const principalQuad = srcQuads?.[0];
-      return {
-        subject: principalQuad?.subject.value ?? principal.subject,
-        predicate: principalQuad?.predicate.value ?? principal.predicate,
-        object: principalQuad?.object.value ?? principal.object,
-        ...(principal.objectIsLiteral ? { objectIsLiteral: true } : {}),
-        sourceSubject: srcPrincipal.subject,
-        sourcePredicate: srcPrincipal.predicate,
-        sourceObject: srcPrincipal.object,
-        isPartOf: laconicAxiomKey(part) !== laconicAxiomKey(source),
-      };
-    });
-    return { parts, sharpened, skipped: false };
-  }
-
-  /** Serialise un-processed axioms (skip path) into the boundary shape. */
-  private _serializeLaconicFromAxioms(
-    laconic: LaconicAxiom[],
-    sourceAxioms: LaconicAxiom[],
-    sourceQuads: Map<string, N3.Quad[]>,
-    sharpened: boolean,
-    skipped: boolean,
-  ): SerializedLaconicJustification {
-    void sourceAxioms;
-    const parts: SerializedLaconicPart[] = laconic.map((part) => {
-      const principal = part[0];
-      const srcQuads = sourceQuads.get(laconicAxiomKey(part));
-      const principalQuad = srcQuads?.[0];
-      return {
-        subject: principalQuad?.subject.value ?? principal.subject,
-        predicate: principalQuad?.predicate.value ?? principal.predicate,
-        object: principalQuad?.object.value ?? principal.object,
-        ...(principal.objectIsLiteral ? { objectIsLiteral: true } : {}),
-        sourceSubject: principal.subject,
-        sourcePredicate: principal.predicate,
-        sourceObject: principal.object,
-        isPartOf: false,
-      };
-    });
-    return { parts, sharpened, skipped };
-  }
-
-  /**
-   * BlackBox minimisation: given a candidate quad set that is KNOWN to be
-   * inconsistent, shrink it to ONE minimal inconsistent subset using the
-   * consistency oracle. Same algorithm as the inner closure in
-   * explainInconsistency (binary expand + single-axiom prune). Must run inside a
-   * _queue slot (uses _checkInconsistencyDirect).
-   */
-  private async _findOneInconsistentJustification(candidates: N3.Quad[]): Promise<N3.Quad[] | null> {
-    let working = [...candidates];
-    let changed = true;
-    while (changed && working.length > 1) {
-      changed = false;
-      const mid = Math.floor(working.length / 2);
-      const firstHalf = working.slice(0, mid);
-      const secondHalf = working.slice(mid);
-      if (await this._checkInconsistencyDirect(firstHalf)) {
-        working = firstHalf; changed = true; continue;
-      }
-      if (await this._checkInconsistencyDirect(secondHalf)) {
-        working = secondHalf; changed = true; continue;
-      }
-      break;
-    }
-    let i = 0;
-    while (i < working.length) {
-      if (working.length === 1) break;
-      const without = [...working.slice(0, i), ...working.slice(i + 1)];
-      if (await this._checkInconsistencyDirect(without)) {
-        working = without;
-      } else {
-        i++;
-      }
-    }
-    return working.length > 0 ? working : null;
-  }
-
-  /**
-   * Explain why an axiom (subjectIri predicateIri objectIri) is ENTAILED by the
-   * ontology — a Horridge-style justification for an arbitrary entailed axiom,
-   * not just for inconsistency.
-   *
-   * Path B (entailment-as-unsatisfiability): α is entailed ⇔ O ∪ ¬α is
-   * inconsistent. We add a small PROBE set encoding ¬α to the ontology's
-   * candidate axioms, run the SAME BlackBox justification search used for
-   * inconsistency, then strip the probe triples out of each justification. What
-   * remains is a minimal subset of the ONTOLOGY's own axioms entailing α.
-   *
-   * Supported shapes (object must be an IRI): rdfs:subClassOf and rdf:type.
-   * Other predicates / literal objects fall back to a pure asserted-triple
-   * check: isEntailed reflects asserted presence, justifications stay empty.
-   *
-   * READ-ONLY — operates on a filtered copy of the store's base quads; never
-   * mutates urn:vg:data.
-   */
   explainEntailment(
     store: N3.Store,
     subjectIri: string,
     predicateIri: string,
     objectIri: string,
-    objectIsClassLike: boolean,
+    _objectIsClassLike: boolean,
     maxJustifications = 1,
   ): Promise<{
     isEntailed: boolean | null;
@@ -1088,214 +246,36 @@ class KoncludeReasoner {
     vacuous?: boolean;
     reason?: string;
   }> {
-    const result = this._queue.then(async () => {
-      const allBase: N3.Quad[] = (store.getQuads(null, null, null, null) as N3.Quad[]).filter((q) => {
-        const g = q.graph.termType === "DefaultGraph" ? "" : q.graph.value;
-        return !EXCLUDED_FROM_REASONING.has(g);
-      });
-
-      // C1 (SOUNDNESS): the reduction α entailed ⇔ (O ∪ ¬α) inconsistent is only
-      // VALID when O itself is consistent. If O is ALREADY inconsistent then
-      // O ∪ ¬α is inconsistent for EVERY α, so the reduction would report
-      // isEntailed:true for arbitrary non-entailed axioms, with a "justification"
-      // that is the pre-existing contradiction — not α's support. Guard exactly
-      // like explainInconsistency: bail out before running the reduction.
-      if (await this._checkInconsistencyDirect(allBase)) {
-        return {
-          isEntailed: null as boolean | null,
-          justifications: [] as N3.Quad[][],
-          ontologyInconsistent: true,
-          reason:
-            "Ontology is already inconsistent; entailment is vacuous (everything is entailed by a contradiction). " +
-            "Run explainDiagnostics and fix consistency first.",
-        };
-      }
-
-      // Asserted-triple short circuit: if the exact axiom is already asserted it
-      // is trivially "entailed" but there is nothing to explain beyond itself
-      // (per spec: empty justifications for asserted-only).
-      const assertedAxiom = allBase.some(
-        (q) =>
-          q.subject.value === subjectIri &&
-          q.predicate.value === predicateIri &&
-          q.object.value === objectIri,
-      );
-
-      // M1: a unique, deterministic probeId per call so the injected blank-node
-      // labels (vg_neg_*/vg_wit_*) can never collide with a real ontology bnode
-      // that happens to carry the constant default label. A monotonic counter is
-      // deterministic (reproducible) and collision-proof — Math.random is not.
-      const probeId = `probe_${++_entailmentProbeCounter}`;
-      const probe = buildEntailmentProbe<N3.Quad>(
-        N3.DataFactory as unknown as Parameters<typeof buildEntailmentProbe>[0],
-        subjectIri,
-        predicateIri,
-        objectIri,
-        objectIsClassLike,
-        probeId,
-      );
-
-      if (probe.kind === "unsupported") {
-        // No reduction available — report asserted presence with no derivation.
-        return { isEntailed: assertedAxiom, justifications: [] as N3.Quad[][], ontologyInconsistent: false };
-      }
-
-      // O ∪ ¬α. The probe blank nodes are fresh, so they cannot collide with
-      // ontology terms; _checkInconsistencyDirect de-skolemises urn:vg:bnode:*
-      // IRIs but leaves real blank nodes (the probe terms) untouched.
-      const withProbe = [...allBase, ...probe.probeQuads];
-      const entailed = await this._checkInconsistencyDirect(withProbe);
-      if (!entailed) {
-        return { isEntailed: false, justifications: [] as N3.Quad[][] };
-      }
-
-      // C2 (SOUNDNESS): vacuous-truth detection. For the subClassOf shape the
-      // probe asserts A ⊑ ¬B plus a witness `_w a A`. If class A is UNSATISFIABLE
-      // in O alone (A ⊑ ⊥), the witness forces O inconsistent REGARDLESS of B, so
-      // A ⊑ (anything) reports entailed. That is logically true (the empty class
-      // is a subclass of everything) but the "derivation" is misleading — the
-      // real cause is A's unsatisfiability, not any path A→B. Flag it explicitly.
-      //
-      // rdf:type shape: the analogous vacuous case is the subject individual being
-      // forced into an unsatisfiable class by O alone — but since we already
-      // verified O is consistent (C1 guard), a concrete individual that is part of
-      // a consistent O cannot be independently unsatisfiable in the same sense
-      // without contradicting that guard. There is therefore no clean reasoner
-      // signal to surface for rdf:type here, so this vacuous detection is
-      // intentionally limited to the subClassOf shape. (Documented limitation.)
-      if (probe.kind === "subClassOf") {
-        const unsat = await this._getUnsatisfiableClassesDirect(allBase);
-        if (unsat.includes(subjectIri)) {
-          return {
-            isEntailed: true as boolean | null,
-            justifications: [] as N3.Quad[][],
-            vacuous: true,
-            reason:
-              `Subject class is unsatisfiable in the ontology, so it is a subclass of ` +
-              `anything (vacuous truth). The entailment does not reflect a genuine ` +
-              `derivation path to the requested superclass; fix the unsatisfiable ` +
-              `class first (see explainDiagnostics / unsatisfiableClasses).`,
-          };
-        }
-      }
-
-      if (maxJustifications === 0) {
-        return { isEntailed: true, justifications: [] as N3.Quad[][] };
-      }
-
-      // Filter the ONTOLOGY candidates the same way explainInconsistency does
-      // (drop pure declarations / annotations that cannot drive entailment), but
-      // ALWAYS keep the probe quads in the search set.
-      const ANNOTATION_PREDICATES = new Set([
-        "http://www.w3.org/2000/01/rdf-schema#label",
-        "http://www.w3.org/2000/01/rdf-schema#comment",
-        "http://www.w3.org/2000/01/rdf-schema#seeAlso",
-        "http://www.w3.org/2000/01/rdf-schema#isDefinedBy",
-      ]);
-      const OWL_DECLARATION_OBJECTS = new Set([
-        "http://www.w3.org/2002/07/owl#Class",
-        "http://www.w3.org/2002/07/owl#ObjectProperty",
-        "http://www.w3.org/2002/07/owl#DatatypeProperty",
-        "http://www.w3.org/2002/07/owl#AnnotationProperty",
-        "http://www.w3.org/2002/07/owl#NamedIndividual",
-        "http://www.w3.org/2002/07/owl#Ontology",
-      ]);
-      const RDF_TYPE_URI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-      const isNonLogical = (q: N3.Quad): boolean => {
-        const pred = q.predicate.value;
-        if (ANNOTATION_PREDICATES.has(pred)) return true;
-        if (pred === RDF_TYPE_URI && OWL_DECLARATION_OBJECTS.has(q.object.value)) return true;
-        return false;
-      };
-      const ontologyCandidates = allBase.filter((q) => !isNonLogical(q));
-      const allCandidates = [...ontologyCandidates, ...probe.probeQuads];
-
-      const stripProbe = (j: N3.Quad[]): N3.Quad[] =>
-        j.filter((q) => !probe.probeKeys.has(`${q.subject.value}\0${q.predicate.value}\0${q.object.value}`));
-
-      const justifications: N3.Quad[][] = [];
-
-      const j1Raw = await this._findOneInconsistentJustification(allCandidates);
-      if (!j1Raw || j1Raw.length === 0) {
-        // Entailed but no minimal subset found (should not happen) — report
-        // entailment without a derivation rather than a false negative.
-        return { isEntailed: true, justifications: [] as N3.Quad[][] };
-      }
-      justifications.push(stripProbe(j1Raw));
-
-      if (maxJustifications > 1) {
-        // Hitting-set enumeration over the ONTOLOGY axioms only; probe quads are
-        // never excluded (they encode the fixed query ¬α).
-        const probeSet = probe.probeQuads;
-        const hsQueue: Array<{ excluded: Set<string>; justification: N3.Quad[] }> = [
-          { excluded: new Set(), justification: j1Raw },
-        ];
-        const exploredExclusions = new Set<string>();
-        const keyOf = (q: N3.Quad) => `${q.subject.value}\0${q.predicate.value}\0${q.object.value}`;
-        const jKeyOf = (j: N3.Quad[]) => j.map(keyOf).sort().join("|");
-        while (hsQueue.length > 0 && justifications.length < maxJustifications) {
-          const { excluded, justification: currentJ } = hsQueue.shift()!;
-          const excludedKey = [...excluded].sort().join("|");
-          if (exploredExclusions.has(excludedKey)) continue;
-          exploredExclusions.add(excludedKey);
-          for (const axiomInJ of currentJ) {
-            // Never exclude probe axioms — only the ontology's own axioms.
-            if (probe.probeKeys.has(keyOf(axiomInJ))) continue;
-            const newExcluded = new Set(excluded);
-            newExcluded.add(keyOf(axiomInJ));
-            const newExcludedKey = [...newExcluded].sort().join("|");
-            if (exploredExclusions.has(newExcludedKey)) continue;
-            const reduced = [
-              ...ontologyCandidates.filter((q) => !newExcluded.has(keyOf(q))),
-              ...probeSet,
-            ];
-            if (!(await this._checkInconsistencyDirect(reduced))) continue;
-            const jNew = await this._findOneInconsistentJustification(reduced);
-            if (!jNew || jNew.length === 0) continue;
-            const jKey = jKeyOf(jNew);
-            const already = justifications.some(
-              (j) => jKeyOf([...j, ...probeSet.filter((p) => jNew.some((x) => keyOf(x) === keyOf(p)))]) === jKey,
-            ) || justifications.some((j) => jKeyOf(j) === jKeyOf(stripProbe(jNew)));
-            if (!already) {
-              justifications.push(stripProbe(jNew));
-              if (justifications.length >= maxJustifications) break;
-              hsQueue.push({ excluded: newExcluded, justification: jNew });
-            }
-          }
-        }
-      }
-
-      return { isEntailed: true, justifications };
-    });
-    this._queue = result.then(() => {}, () => {});
-    return result;
+    const reasoningStore = this._buildReasoningStore(store, EXCLUDED_FROM_REASONING);
+    return this._reasoner.explainEntailment(
+      reasoningStore,
+      subjectIri,
+      predicateIri,
+      objectIri,
+      { maxJustifications, objectIsClassLike: _objectIsClassLike },
+    ) as Promise<{
+      isEntailed: boolean | null;
+      justifications: N3.Quad[][];
+      ontologyInconsistent?: boolean;
+      vacuous?: boolean;
+      reason?: string;
+    }>;
   }
 
   terminate(): void {
-    this.worker.terminate();
-    const err = new Error("Worker terminated");
-    for (const e of this.pending.values()) e.reject(err);
-    this.pending.clear();
+    this._reasoner.terminate();
   }
 }
-
 const RDF_TYPE_IRI = RDF_TYPE;
 const RDFS_LABEL_IRI = RDFS_LABEL;
 
 let _cachedQueryEngine: QueryEngine | null = null;
 
 /**
- * TODO(rdf-reasoner-konclude): once workerUrl constructor option lands (plan-050,
- * Unit 1), replace this hand-rolled interface with the package's RdfReasoner
- * directly. The entailment/laconic/BlackBox methods here will be replaced by
- * reasoner API calls (explainEntailment, explainInconsistencyLaconic).
- *
  * The subset of KoncludeReasoner the worker runtime depends on. Declared as an
- * interface (not the concrete class) so a TEST can inject a node-compatible
- * adapter — the production KoncludeReasoner spawns a Web Worker (unavailable in
- * the node/jsdom test environments), so without this seam the incremental and
- * full Konclude paths could not be exercised end-to-end under vitest. The
- * production factory still returns the real KoncludeReasoner.
+ * interface so a TEST can inject a node-compatible adapter (the production
+ * KoncludeReasoner wraps RdfReasoner which spawns a nested Web Worker,
+ * unavailable under vitest's node environment).
  */
 export interface KoncludeReasonerLike {
   readonly ready: Promise<void>;

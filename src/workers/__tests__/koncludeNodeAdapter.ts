@@ -106,14 +106,43 @@ export function createNodeKoncludeReasoner(): KoncludeReasonerLike {
         maxJustifications,
       })) as unknown as N3.Quad[][];
     },
-    explainEntailment(): Promise<{
+    async explainEntailment(
+      store: N3.Store,
+      subjectIri: string,
+      predicateIri: string,
+      objectIri: string,
+      objectIsClassLike: boolean,
+      maxJustifications = 1,
+    ): Promise<{
       isEntailed: boolean | null;
       justifications: N3.Quad[][];
       ontologyInconsistent?: boolean;
       vacuous?: boolean;
       reason?: string;
     }> {
-      return Promise.reject(new Error('explainEntailment is not supported by the test node adapter'));
+      const EXCLUDED = new Set([
+        'urn:vg:workflows',
+        'urn:vg:inferred',
+        'urn:vg:shapes',
+        'urn:vg:provenance',
+      ]);
+      const candidates = (store.getQuads(null, null, null, null) as N3.Quad[]).filter((q) => {
+        const g = q.graph.termType === 'DefaultGraph' ? '' : q.graph.value;
+        return !EXCLUDED.has(g);
+      });
+      return r.explainEntailment(
+        new N3.Store(deskolemizeQuads(candidates)),
+        subjectIri,
+        predicateIri,
+        objectIri,
+        { maxJustifications, objectIsClassLike },
+      ) as unknown as {
+        isEntailed: boolean | null;
+        justifications: N3.Quad[][];
+        ontologyInconsistent?: boolean;
+        vacuous?: boolean;
+        reason?: string;
+      };
     },
     terminate(): void {
       r.terminate();
