@@ -1,5 +1,8 @@
 // src/mcp/tools/axiomWeakening.ts
 //
+// TODO(rdf-reasoner-konclude): axiom weakening should move to the reasoner API
+// once repair/weakening endpoints land. Currently app-side (plan-050 deferred).
+//
 // Axiom WEAKENING as a less-destructive repair alternative to axiom DELETION.
 //
 // Background — the publishable contribution

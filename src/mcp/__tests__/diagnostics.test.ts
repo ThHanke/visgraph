@@ -260,20 +260,7 @@ describe('explainDiagnostics', () => {
     expect(res.data.repairBrief).toContain('EmptyClass');
   });
 
-  it('OWL 2 profile violation (literal on object property) is reported', async () => {
-    mockFetchQuadsPage.mockResolvedValue({
-      items: [
-        // ex:knows declared an object property
-        { subject: { value: 'http://ex/knows' }, predicate: { value: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type' }, object: { value: 'http://www.w3.org/2002/07/owl#ObjectProperty', termType: 'NamedNode' } },
-        // ...but used with a literal object
-        { subject: { value: 'http://ex/a' }, predicate: { value: 'http://ex/knows' }, object: { value: '42', termType: 'Literal' } },
-      ],
-    });
-    const res = await explainDiagnostics.handler({});
-    expect(res.data.profile.owl2dl).toBe(false);
-    expect(res.data.profile.violations.length).toBeGreaterThan(0);
-    expect(res.data.repairBrief).toContain('OWL 2 DL PROFILE');
-  });
+  // Profile detection removed — will be re-added via rdf-reasoner-konclude API.
 
   it('SHACL violation is reported', async () => {
     mockRunShacl.mockResolvedValue({

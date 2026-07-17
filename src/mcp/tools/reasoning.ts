@@ -4,8 +4,9 @@ import { getWorkspaceRefs } from '@/mcp/workspaceContext';
 import { useAppConfigStore } from '@/stores/appConfigStore';
 import { VALID_ALGORITHMS } from './layout';
 import { rdfManager } from '@/utils/rdfManager';
-import { checkOwl2Profile, detectOwl2Profiles, type ProfileTriple } from '@/utils/owlProfile';
 import { buildRepairBrief, type DiagnosticsData } from './diagnosticsBrief';
+// TODO(rdf-reasoner-konclude): replace local computeRepairs/axiomWeakening with
+// reasoner API once repair/weakening endpoints land (plan-050 deferred scope).
 import {
   computeRepairs,
   addWeakeningRepairs,
@@ -42,21 +43,6 @@ function repairToRemoval(r: RepairSuggestion): VerifyRepairRemoval {
   };
 }
 
-/** Read the asserted data graph and project it to ProfileTriple[] (literal-aware). */
-async function loadDataProfileTriples(): Promise<ProfileTriple[]> {
-  const page = await rdfManager.fetchQuadsPage({ graphName: DATA_GRAPH, limit: 0, serialize: true });
-  const items = (page?.items ?? []) as Array<{
-    subject: { value: string };
-    predicate: { value: string };
-    object: { value: string; termType: string };
-  }>;
-  return items.map((q) => ({
-    subject: q.subject.value,
-    predicate: q.predicate.value,
-    object: q.object.value,
-    objectIsLiteral: q.object.termType === 'Literal',
-  }));
-}
 
 const RDFS_SUBCLASS_OF = 'http://www.w3.org/2000/01/rdf-schema#subClassOf';
 const OWL_INTERSECTION_OF = 'http://www.w3.org/2002/07/owl#intersectionOf';
@@ -297,22 +283,9 @@ const explainDiagnostics: McpTool = {
       let unsatisfiableClasses: string[] = [];
       try { unsatisfiableClasses = await rdfManager.getUnsatisfiableClasses(); } catch { unsatisfiableClasses = []; }
 
-      // 4. OWL 2 profile detection over the asserted data graph.
-      //    Keep the legacy DL-sanity fields (owl2dl + violations) for backward
-      //    compatibility, and ADD structural EL/QL/RL classification plus the
-      //    `mostRestrictive` label (the tightest profile the ontology fits —
-      //    tells an agent whether a cheaper, profile-specific reasoner suffices).
-      const profileTriples = await loadDataProfileTriples();
-      const dlReport = checkOwl2Profile(profileTriples);
-      const profiles = detectOwl2Profiles(profileTriples);
-      const profile = {
-        owl2dl: dlReport.owl2dl,
-        violations: dlReport.violations,
-        el: profiles.el,
-        ql: profiles.ql,
-        rl: profiles.rl,
-        mostRestrictive: profiles.mostRestrictive,
-      };
+      // TODO(rdf-reasoner-konclude): profile/expressivity detection removed —
+      // will be replaced by reasoner API: detectProfiles(store) returning
+      // EL/QL/RL/DL classification per named graph with violations list.
 
       // 5. SHACL conformance.
       const shacl = await rdfManager.runShaclValidation();
@@ -325,7 +298,6 @@ const explainDiagnostics: McpTool = {
           ? { laconicJustifications }
           : {}),
         unsatisfiableClasses,
-        profile,
         shaclViolations,
       };
 

@@ -25,9 +25,13 @@ import { ensureDefaultNamespaceMap } from "../constants/namespaces.ts";
 import { RDF_TYPE, RDFS_LABEL, SHACL } from "../constants/vocabularies.ts";
 import { OWL_SCHEMA_AXIOMS } from "../constants/owlSchemaData.ts";
 import { mipsToReasoningError, shaclViolationToEntry } from "./reasoningDiagnostics.ts";
+// TODO(rdf-reasoner-konclude): entailmentProbe will be an internal module of
+// the reasoner once explainEntailment() lands (plan-050, Unit 2-3).
 import { buildEntailmentProbe } from "./entailmentProbe.ts";
 
 import { QueryEngine } from "@comunica/query-sparql-rdfjs";
+// TODO(rdf-reasoner-konclude): laconic justification will move to reasoner
+// once explainInconsistencyLaconic() lands (plan-050, Unit 4-5).
 // LACONIC JUSTIFICATIONS (Horridge, Parsia, Sattler, ISWC 2008). IMPORT ONLY —
 // the pure module is never edited here. `splitAxiom` is the structural weakening
 // (OPlus) closure of one axiom; `axiomKey` is its stable de-dup key. We do NOT
@@ -1281,6 +1285,11 @@ const RDFS_LABEL_IRI = RDFS_LABEL;
 let _cachedQueryEngine: QueryEngine | null = null;
 
 /**
+ * TODO(rdf-reasoner-konclude): once workerUrl constructor option lands (plan-050,
+ * Unit 1), replace this hand-rolled interface with the package's RdfReasoner
+ * directly. The entailment/laconic/BlackBox methods here will be replaced by
+ * reasoner API calls (explainEntailment, explainInconsistencyLaconic).
+ *
  * The subset of KoncludeReasoner the worker runtime depends on. Declared as an
  * interface (not the concrete class) so a TEST can inject a node-compatible
  * adapter — the production KoncludeReasoner spawns a Web Worker (unavailable in

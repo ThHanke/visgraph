@@ -407,10 +407,10 @@ export const mcpManifest: McpToolManifestEntry[] = [
     name: 'explainDiagnostics',
     description:
       'Run the full symbolic verifier (OWL 2 DL reasoning + SHACL) and return ONE structured diagnosis of everything wrong with the current graph: ' +
-      '{ isConsistent, justifications, unsatisfiableClasses, profile, shaclViolations, repairBrief, suggestedRepairs }. ' +
+      '{ isConsistent, justifications, unsatisfiableClasses, shaclViolations, repairBrief, suggestedRepairs }. ' +
       'When isConsistent=false, justifications lists each minimal contradictory axiom set (MIPS) — remove or revise one axiom per set. '
       + 'laconicJustifications (Horridge, Parsia & Sattler, ISWC 2008) is the superfluous-part-free refinement aligned by index with justifications: each entry pinpoints the precise culprit axiom PART — e.g. the "A ⊑ B" part of "A ⊑ B ⊓ C" — with parts[] carrying the part and its source axiom (sourceSubject/sourcePredicate/sourceObject), sharpened (a superfluous part was dropped) and skipped (a cost cap suppressed laconic for that MIPS). The repair brief and the axiom-weakening repairs use it to target the minimal culprit conjunct. ' +
-      'profile reports OWL 2 profile analysis: the legacy DL sanity check (owl2dl + violations, e.g. a literal on an object property) PLUS structural EL/QL/RL detection — el/ql/rl each { valid, violations:[{construct,axiom,reason}] } listing the disallowed constructs found, and mostRestrictive (EL|QL|RL|DL|Full) is the tightest profile the ontology fits, telling you whether a cheaper profile-specific reasoner (EL/QL/RL) is sound & complete instead of full OWL 2 DL; shaclViolations are data-shape failures; ' +
+      'shaclViolations are data-shape failures; ' +
       'repairBrief is a ranked plain-language summary to act on. ' +
       'suggestedRepairs is a ranked list of EXECUTABLE, reasoner-computed fixes: each { id, issue, action:{tool,args}, rationale, verifiedConsistent?, verifiedSet?, justificationsCovered?, needsValue?, needsManualReview? }. ' +
       'For inconsistencies the DELETION repairs (kind:"delete") form a minimal hitting set over the MIPS — removing the WHOLE set restores consistency. Apply each via its action.tool (always removeLink for inconsistency repairs; it removes IRI- and literal-object triples and TBox axioms alike) with action.args. ' +

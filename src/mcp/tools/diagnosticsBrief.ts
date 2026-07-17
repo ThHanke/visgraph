@@ -47,12 +47,11 @@ export interface DiagnosticsData {
     skipped: boolean;
   }[];
   unsatisfiableClasses: string[];
-  profile: {
-    // Legacy OWL 2 DL sanity-check fields (kept for backward compatibility).
+  // TODO(rdf-reasoner-konclude): re-add profile/expressivity once reasoner
+  // exposes detectProfiles(store) with per-named-graph EL/QL/RL/DL classification.
+  profile?: {
     owl2dl: boolean;
     violations: { axiom: string; reason: string }[];
-    // Structural EL / QL / RL detection (added). Optional so older callers and
-    // fixtures that only set { owl2dl, violations } still type-check.
     el?: { valid: boolean; violations: { construct: string; axiom: string; reason: string }[] };
     ql?: { valid: boolean; violations: { construct: string; axiom: string; reason: string }[] };
     rl?: { valid: boolean; violations: { construct: string; axiom: string; reason: string }[] };
@@ -316,9 +315,9 @@ export function buildRepairBrief(
 ): string {
   const hasInconsistency = d.isConsistent === false;
   const hasUnsatisfiable = d.unsatisfiableClasses.length > 0;
-  const hasProfileViolations = d.profile.owl2dl === false && d.profile.violations.length > 0;
+  const hasProfileViolations = d.profile?.owl2dl === false && (d.profile?.violations.length ?? 0) > 0;
   const hasShaclViolations = d.shaclViolations.length > 0;
-  const hasProfileFlag = d.profile.owl2dl === false;
+  const hasProfileFlag = d.profile?.owl2dl === false;
 
   const anyIssue =
     hasInconsistency ||
@@ -350,7 +349,7 @@ export function buildRepairBrief(
     num++;
   }
 
-  if (hasProfileFlag) {
+  if (hasProfileFlag && d.profile) {
     sections.push(buildProfileSection(d.profile, num));
     num++;
   }

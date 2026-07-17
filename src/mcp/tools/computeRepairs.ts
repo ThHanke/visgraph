@@ -1,5 +1,8 @@
 // src/mcp/tools/computeRepairs.ts
 //
+// TODO(rdf-reasoner-konclude): repair computation (MIPS hitting-set, minimality)
+// should move to the reasoner API once repair endpoints land (plan-050 deferred).
+//
 // R1 — Reasoner-computed repair suggestions.
 //
 // Pure, deterministic translation of symbolic diagnostics (inconsistency

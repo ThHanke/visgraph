@@ -1,6 +1,9 @@
 /**
  * laconicJustification.ts
  *
+ * TODO(rdf-reasoner-konclude): this module will be ported to the reasoner
+ * package as explainInconsistencyLaconic() (plan-050, Unit 4-5).
+ *
  * LACONIC JUSTIFICATIONS for OWL entailments / inconsistencies.
  *
  * PURE, STANDALONE module. NOT wired into the worker / reasoning pipeline yet.

@@ -1,5 +1,8 @@
 // src/workers/entailmentProbe.ts
 //
+// TODO(rdf-reasoner-konclude): this module will be ported to the reasoner
+// package as an internal module of explainEntailment() (plan-050, Unit 2).
+//
 // Entailment-as-unsatisfiability reduction (Path B) for the entailment
 // explanation channel ("why is A subClassOf B?" / "why is x of type C?").
 //
