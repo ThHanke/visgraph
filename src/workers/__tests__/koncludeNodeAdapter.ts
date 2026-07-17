@@ -106,24 +106,6 @@ export function createNodeKoncludeReasoner(): KoncludeReasonerLike {
         maxJustifications,
       })) as unknown as N3.Quad[][];
     },
-    async classifyModule(moduleQuads: N3.Quad[]): Promise<{
-      isConsistent: boolean;
-      unsatisfiableClasses: string[];
-      inferredQuads: N3.Quad[];
-    }> {
-      const deskolemized = deskolemizeQuads(moduleQuads);
-      const store = new N3.Store(deskolemized);
-      const isConsistent = await r.checkConsistency(store);
-      if (!isConsistent) {
-        return { isConsistent: false, unsatisfiableClasses: [], inferredQuads: [] };
-      }
-      const unsatisfiableClasses = await r.getUnsatisfiableClasses(store);
-      const inferredQuads = await classifyDirect(r, moduleQuads);
-      return { isConsistent: true, unsatisfiableClasses, inferredQuads };
-    },
-    // Not exercised by the incremental/conformance tests; present only to satisfy
-    // the KoncludeReasonerLike contract. (The package reasoner exposes `explain`,
-    // not the worker's reduction-based explainEntailment; wiring it is out of scope.)
     explainEntailment(): Promise<{
       isEntailed: boolean | null;
       justifications: N3.Quad[][];

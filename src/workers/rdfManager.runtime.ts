@@ -26,12 +26,6 @@ import { RDF_TYPE, RDFS_LABEL, SHACL } from "../constants/vocabularies.ts";
 import { OWL_SCHEMA_AXIOMS } from "../constants/owlSchemaData.ts";
 import { mipsToReasoningError, shaclViolationToEntry } from "./reasoningDiagnostics.ts";
 import { buildEntailmentProbe } from "./entailmentProbe.ts";
-import {
-  extractBotModule,
-  extractStarModule,
-  signatureOf,
-  type LocalityTriple,
-} from "./localityModule.ts";
 
 import { QueryEngine } from "@comunica/query-sparql-rdfjs";
 // LACONIC JUSTIFICATIONS (Horridge, Parsia, Sattler, ISWC 2008). IMPORT ONLY —
@@ -49,13 +43,6 @@ import {
   type LaconicAxiom,
   type LaconicTriple,
 } from "./laconicJustification.ts";
-// EL FAST PATH (conformance-gated). IMPORT ONLY — elReasoner.ts is the pure,
-// PTIME EL⁺⁺ completion reasoner (proven EXACTLY equal to Konclude on EL input by
-// elReasoner.test.ts). We use classifyEL for the TBox subsumption closure that
-// drives the EL realization in classifyModuleELorKonclude below; owlProfile's
-// detectOwl2Profiles is the structural EL-profile gate. NEITHER module is edited.
-import { classifyEL, type Triple as ElTriple } from "./elReasoner.ts";
-import { detectOwl2Profiles, type ProfileTriple } from "../utils/owlProfile.ts";
 const KONCLUDE_INFERRED_GRAPH_IRI = "urn:vg:inferred";
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -308,7 +295,7 @@ type SerializedLaconicJustification = {
 /**
  * The canonical reasoning-base exclusion: drop inferred/shapes/workflows/
  * provenance so the base is exactly the asserted TBox/ABox + loaded ontologies.
- * Used by every consistency / unsat / justification / module / gatherBaseAxioms
+ * Used by every consistency / unsat / justification
  * path that reads the CURRENT store (the reasoner must never re-consume its own
  * inferred output, hence urn:vg:inferred is excluded here).
  */
@@ -347,14 +334,6 @@ const EXCLUDED_FROM_REASONING_WORKING_COPY: ReadonlySet<string> = new Set(
   ),
 );
 
-// H2 — periodic full re-validation. After this many consecutive incremental
-// steps the next reasonIncremental is forced to a FULL run that re-anchors the
-// baseline. This bounds any drift that could accumulate over a long incremental-
-// only session where soundness rests on each per-module verdict. (Finding 4: a
-// SINGLE drift signal — the consecutive-step count — replaces the former dual
-// step-count + accumulated-Σ_Δ-size bounds, which needed two counters kept in
-// lockstep at three sites.)
-const MAX_INCREMENTAL_STEPS_BEFORE_FULL = 20;
 
 // ---------------------------------------------------------------------------
 // Binary codec — verbatim from rdf-reasoner-konclude v0.3.0 ts/intern.ts.
@@ -619,8 +598,8 @@ class KoncludeReasoner {
   /**
    * De-skolemize a candidate quad set: urn:vg:bnode:* NamedNodes → real blank
    * nodes so Konclude sees anonymous OWL class expressions. Factored out of
-   * reason / _checkInconsistencyDirect / _getUnsatisfiableClassesDirect /
-   * classifyModule so every Konclude entry point applies the IDENTICAL boundary
+   * reason / _checkInconsistencyDirect / _getUnsatisfiableClassesDirect
+   * so every Konclude entry point applies the IDENTICAL boundary
    * transform (a divergence here would silently change what the reasoner sees).
    */
   private static _deskolemize(candidates: N3.Quad[]): N3.Quad[] {
@@ -666,8 +645,8 @@ class KoncludeReasoner {
    * Run Konclude TBox classification + ABox realization over a candidate quad set
    * and return the NEWLY inferred quads (those not already present in the source).
    * De-skolemizes at the boundary. Runs INSIDE an existing _queue slot (like
-   * _checkInconsistencyDirect), so callers that already hold a _queue slot (reason,
-   * classifyModule) reuse it without re-acquiring (which would deadlock). The
+   * _checkInconsistencyDirect), so callers that already hold a _queue slot (reason)
+   * reuse it without re-acquiring (which would deadlock). The
    * returned quads carry a DefaultGraph term; the caller assigns the target graph.
    */
   private async _classifyDirect(candidates: N3.Quad[]): Promise<N3.Quad[]> {
@@ -687,40 +666,6 @@ class KoncludeReasoner {
     return inferredQuads.filter(
       (q) => !sourceKeys.has(`${q.subject.value}\0${q.predicate.value}\0${q.object.value}`),
     );
-  }
-
-  /**
-   * Classify a MODULE (a self-contained candidate quad set, e.g. a ⊤⊥*-module) in
-   * isolation and return its consistency verdict, the unsatisfiable classes, and
-   * the newly inferred quads. The three Konclude calls (consistency, unsat,
-   * realization) all run within a SINGLE _queue slot so they observe the same
-   * loaded buffer and cannot interleave with another caller's reasoning.
-   *
-   * This is the reusable classify machinery the auto-incremental loop runs over a
-   * module M instead of over the whole store. Mirrors reason()'s de-skolemization
-   * and source-filtering exactly. READ-ONLY — never mutates any store.
-   */
-  classifyModule(moduleQuads: N3.Quad[]): Promise<{
-    isConsistent: boolean;
-    unsatisfiableClasses: string[];
-    inferredQuads: N3.Quad[];
-  }> {
-    const result = this._queue.then(async () => {
-      // Consistency + unsatisfiable classes share one classification pass (a
-      // non-realization load), then realization is a SEPARATE load on the same
-      // candidate set — exactly the call shapes used elsewhere in this class.
-      const inconsistent = await this._checkInconsistencyDirect(moduleQuads);
-      if (inconsistent) {
-        // An inconsistent module ⇒ the ontology is inconsistent (monotonicity).
-        // No inferred delta is meaningful; report the verdict.
-        return { isConsistent: false, unsatisfiableClasses: [] as string[], inferredQuads: [] as N3.Quad[] };
-      }
-      const unsatisfiableClasses = await this._getUnsatisfiableClassesDirect(moduleQuads);
-      const inferredQuads = await this._classifyDirect(moduleQuads);
-      return { isConsistent: true, unsatisfiableClasses, inferredQuads };
-    });
-    this._queue = result.then(() => {}, () => {});
-    return result;
   }
 
   private async _checkInconsistencyDirect(candidates: N3.Quad[]): Promise<boolean> {
@@ -1365,11 +1310,6 @@ export interface KoncludeReasonerLike {
       laconic: SerializedLaconicJustification;
     }>
   >;
-  classifyModule(moduleQuads: N3.Quad[]): Promise<{
-    isConsistent: boolean;
-    unsatisfiableClasses: string[];
-    inferredQuads: N3.Quad[];
-  }>;
   explainEntailment(
     store: N3.Store,
     subjectIri: string,
@@ -1393,7 +1333,7 @@ let _koncludeReasonerFactory: (() => KoncludeReasonerLike) | null = null;
 /**
  * TEST-ONLY: override the Konclude reasoner factory so a node-compatible adapter
  * (e.g. one wrapping the package `RdfReasoner`) can drive the REAL worker
- * `handleReasonIncremental` / full-run paths under vitest. Pass `null` to restore
+ * full-run paths under vitest. Pass `null` to restore
  * the production factory. Clears any cached instance so the override takes effect
  * on the next `getKoncludeReasoner()`.
  */
@@ -1525,51 +1465,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
   ];
   let workerChangeCounter = 0;
 
-  // ── Auto-incremental-reasoning baseline ───────────────────────────────────
-  //
-  // The baseline records the state established by the most recent FULL Konclude
-  // run: whether the ontology was consistent and the complete axiom signature
-  // (sig of the asserted TBox/ABox + loaded ontologies) at that time. An
-  // incremental step is sound ONLY relative to a CONSISTENT baseline (see
-  // handleReasonIncremental). `null` ⇒ no baseline yet ⇒ any incremental request
-  // falls back to a full run. The baseline is (re)established by every full run
-  // (handleRunReasoning, Konclude path) and INVALIDATED on bulk store mutations
-  // (clear / syncLoad / import / graph purge) so a wholesale change can never be
-  // mistaken for a small edit over Σ_Δ.
-  //
-  // H2 drift bound (Finding 4 — SINGLE drift signal). `stepsSinceFull` counts the
-  // consecutive incremental steps spliced since the last full re-anchor. Once it
-  // crosses MAX_INCREMENTAL_STEPS_BEFORE_FULL the next request is forced to a full
-  // run that re-anchors the baseline, bounding any drift that could accumulate
-  // across a long incremental-only session. (Previously a SECOND, independent
-  // bound — accumulated |Σ_Δ| size — ran in lockstep with its own counter, reset
-  // and increment at three sites; the duplication was a latent hazard because an
-  // increment site could update one counter and forget the other, silently
-  // weakening the re-anchor bound. Consolidated to step count: it is the bound the
-  // H2 conformance test pins, and one counter / one reset / one bump helper now
-  // cover every site.)
-  let incrementalBaseline:
-    | { consistent: boolean; signature: Set<string> }
-    | null = null;
-  let stepsSinceFull = 0;
-
-  /** Count one incremental step toward the H2 re-anchor bound (single site). */
-  function bumpIncrementalStep(): void {
-    stepsSinceFull += 1;
-  }
-
-  /** Reset the H2 drift counter (every full re-anchor / baseline invalidation). */
-  function resetIncrementalDrift(): void {
-    stepsSinceFull = 0;
-  }
-
-  /** Invalidate the incremental baseline (forces the next request to full). */
-  function invalidateIncrementalBaseline(): void {
-    incrementalBaseline = null;
-    resetIncrementalDrift();
-  }
-
-  // ── Incremental per-named-graph triple counters ───────────────────────────
+  // ── Per-named-graph triple counters ────────────────────────────────────────
   //
   // getGraphCounts is called frequently (every reasoning report refresh, UI
   // panel update). Full-scanning the store with getQuads(null,null,null,null)
@@ -1743,11 +1639,6 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
     if (!StoreCls) throw new Error("n3-store-unavailable");
     sharedStore = new (StoreCls as any)();
     workerChangeCounter = 0;
-    // A brand-new store invalidates any incremental baseline (the inferred graph
-    // and the recorded signature no longer describe this store).
-    invalidateIncrementalBaseline();
-    // Reset and re-install incremental graph counters BEFORE seeding so the
-    // seed axioms (loadSchemaOntology) are counted through the wrapped methods.
     graphCounts = new Map();
     graphCountsReady = true;
     installGraphCountTracking(sharedStore);
@@ -2610,1006 +2501,6 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
     return best;
   }
 
-  /**
-   * extractModuleFromStore — R2 locality-based module extraction over the store.
-   *
-   * Gathers the asserted/ontology axiom triples from the SAME base graphs the
-   * Konclude reasoning path consumes (urn:vg:data + urn:vg:ontologies; the other
-   * urn:vg:* graphs — inferred, shapes, workflows, provenance — are excluded so
-   * the module is over the TBox/ABox the reasoner sees), converts each N3 quad to
-   * the pure extractor's { subject, predicate, object, objectIsLiteral } shape,
-   * and runs the ⊥-module ("bot") or iterated ⊤⊥* ("star") fixpoint for the given
-   * signature Σ. The returned module preserves ALL entailments over Σ (the
-   * conformance proof lives in moduleConformance.integration.test.ts).
-   *
-   * READ-ONLY: only reads quads; never mutates the store.
-   */
-  function extractModuleFromStore(
-    store: any,
-    signature: string[],
-    moduleType: "bot" | "star",
-    includeOntologies: boolean,
-  ): {
-    moduleTriples: { subject: string; predicate: string; object: string }[];
-    moduleSize: number;
-    fullSize: number;
-    signature: string[];
-  } {
-    // Same graph selection as the reasoning path: keep urn:vg:data and (optionally)
-    // urn:vg:ontologies; drop inferred/shapes/workflows/provenance so the module
-    // is computed over exactly the asserted TBox/ABox + loaded ontologies. Single
-    // source of truth (Finding 1) — identical filter to gatherBaseAxioms and the
-    // KoncludeReasoner consistency/unsat/justification paths.
-    const allQuads: Quad[] = store.getQuads(null, null, null, null) || [];
-    const axioms: LocalityTriple[] = [];
-    // De-skolemize at the boundary: on import the worker skolemizes blank nodes to
-    // urn:vg:bnode:{hash} named IRIs (skolemizeQuads). The pure locality extractor's
-    // isBlankNode (localityModule.ts) only recognizes blank-node FORMS (`_:`, `bN`,
-    // `n3-`), NOT the skolem IRI — so an anonymous OWL class expression (restriction,
-    // list cell, intersection, …) would be misread as an ordinary NAMED class and its
-    // body dropped from the module → lost entailments (UNSOUND). We mirror EXACTLY the
-    // reasoning path's de-skolemization (rdfManager.runtime.ts reason()/_check…Direct):
-    // strip the urn:vg:bnode: prefix off subject/object. The reasoning path rebuilds a
-    // real N3 blank node (value === bare hash); here we emit the `_:`-prefixed form so
-    // isBlankNode's `startsWith("_:")` branch accepts it (a bare hex hash like
-    // "5f3a2b1c" would NOT match the `^b\d+$` branch). Predicates are always NamedNodes.
-    const BNODE_PREFIX = "urn:vg:bnode:";
-    const deskolemizeTerm = (value: string, termType: string): string =>
-      termType === "NamedNode" && value.startsWith(BNODE_PREFIX)
-        ? `_:${value.slice(BNODE_PREFIX.length)}`
-        : value;
-    for (const q of allQuads) {
-      const g = q.graph?.termType === "DefaultGraph" ? "" : q.graph?.value ?? "";
-      if (EXCLUDED_FROM_REASONING.has(g)) continue;
-      if (!includeOntologies && g === "urn:vg:ontologies") continue;
-      axioms.push({
-        subject: deskolemizeTerm(q.subject.value, q.subject.termType),
-        predicate: q.predicate.value,
-        object: deskolemizeTerm(q.object.value, q.object.termType),
-        objectIsLiteral: q.object.termType === "Literal",
-      });
-    }
-
-    // includeDeclarationsForSignature: re-attach the owl:Class / owl:*Property
-    // declarations for every symbol in the module so the result is a SELF-
-    // CONTAINED, classifiable ontology. Declarations are always ⊥-local (they
-    // entail nothing about Σ) so this does not change the logical module, but a
-    // reasoner needs the explicit typing to classify the module in isolation —
-    // exactly what makes the conformance guarantee usable for modular reasoning.
-    const moduleTriples =
-      moduleType === "star"
-        ? extractStarModule(axioms, signature, { includeDeclarationsForSignature: true })
-        : extractBotModule(axioms, signature, { includeDeclarationsForSignature: true });
-
-    return {
-      moduleTriples: moduleTriples.map((t) => ({
-        subject: t.subject,
-        predicate: t.predicate,
-        object: t.object,
-      })),
-      moduleSize: moduleTriples.length,
-      fullSize: axioms.length,
-      signature: [...signature],
-    };
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // AUTO-INCREMENTAL REASONING (module-scoped reclassification on edit)
-  // ───────────────────────────────────────────────────────────────────────────
-  //
-  // SOUNDNESS ARGUMENT (implemented exactly as specified).
-  //   A full run establishes a baseline: the complete urn:vg:inferred graph, a
-  //   record that the ontology was consistent, and the axiom-set signature Σ_full
-  //   at that time. On a later edit, let Σ_Δ be the signature of the added/removed
-  //   axioms (their subjects plus the class/property symbols they reference).
-  //   Because the PRE-EDIT ontology was consistent and ONLY axioms over Σ_Δ
-  //   changed, every NEW or RETRACTED entailment — and any newly introduced
-  //   inconsistency — must be expressible over Σ_Δ. The ⊤⊥*-module
-  //   M = extractStarModule(currentAxioms, Σ_Δ) captures (locality guarantee) ALL
-  //   axioms that can affect entailments over Σ_Δ ⊆ sig(M). Hence:
-  //     • if M is inconsistent ⇒ the ontology is inconsistent (monotonicity);
-  //     • if M is consistent ⇒ the ontology stays consistent (no inconsistency
-  //       outside M could have been introduced by an edit confined to Σ_Δ);
-  //     • the inferred triples whose SUBJECT lies in sig(M) are exactly those that
-  //       can have changed; all other inferred triples are unchanged and kept.
-  //   We therefore recompute M's entailments and splice the delta into
-  //   urn:vg:inferred, leaving inferred triples over subjects ∉ sig(M) intact.
-  //
-  // PRECONDITION + FALLBACK. Incremental is valid ONLY when a consistent baseline
-  //   exists. Otherwise (no baseline / inconsistent baseline / empty Σ_Δ — which
-  //   we treat as "unknown edit") we FALL BACK to a full run and re-establish the
-  //   baseline. Bulk mutations (clear / load / import / purge) invalidate the
-  //   baseline so they always force a full run.
-
-  /**
-   * Gather the base reasoning axioms from the SAME graphs the full Konclude
-   * classify consumes (urn:vg:data + urn:vg:ontologies; inferred/shapes/workflows/
-   * provenance excluded). Returns BOTH the raw N3 quads (for re-classification) and
-   * their de-skolemized locality-triple projection (for signature + module work).
-   */
-  function gatherBaseAxioms(store: any): { quads: Quad[]; triples: LocalityTriple[] } {
-    // Single source of truth (Finding 1): the SAME graphs the full Konclude
-    // classify consumes, so the incremental base and the full base read from one
-    // definition and cannot silently diverge.
-    const BNODE_PREFIX = "urn:vg:bnode:";
-    const deskolemizeTerm = (value: string, termType: string): string =>
-      termType === "NamedNode" && value.startsWith(BNODE_PREFIX)
-        ? `_:${value.slice(BNODE_PREFIX.length)}`
-        : value;
-    const allQuads: Quad[] = store.getQuads(null, null, null, null) || [];
-    const quads: Quad[] = [];
-    const triples: LocalityTriple[] = [];
-    for (const q of allQuads) {
-      const g = q.graph?.termType === "DefaultGraph" ? "" : q.graph?.value ?? "";
-      if (EXCLUDED_FROM_REASONING.has(g)) continue;
-      quads.push(q);
-      triples.push({
-        subject: deskolemizeTerm(q.subject.value, q.subject.termType),
-        predicate: q.predicate.value,
-        object: deskolemizeTerm(q.object.value, q.object.termType),
-        objectIsLiteral: q.object.termType === "Literal",
-      });
-    }
-    return { quads, triples };
-  }
-
-  /**
-   * Compute Σ_Δ — the changed signature — from the changed subjects / explicit
-   * signature provided by the edit, then EXPAND it conservatively so soundness is
-   * preserved: a changed subject's directly-asserted class/property neighbours
-   * (the symbols of every base axiom that subject participates in as subject OR
-   * object) are added. A larger Σ_Δ only grows the module, which is always sound;
-   * we never SHRINK it. Returns the seed signature (the module fixpoint then
-   * pulls in everything non-local w.r.t. this seed).
-   */
-  function computeChangedSignature(
-    baseTriples: LocalityTriple[],
-    changedSubjects: string[],
-    changedSignature: string[],
-  ): Set<string> {
-    const sigma = new Set<string>();
-    for (const s of changedSignature) if (s) sigma.add(s);
-    const seeds = new Set<string>(changedSubjects.filter(Boolean));
-    for (const s of seeds) sigma.add(s);
-    if (seeds.size === 0) return sigma;
-    // Conservative neighbour expansion: for every base axiom touching a seed
-    // subject (as subject or object), harvest that axiom's signature into Σ_Δ.
-    //
-    // Finding 3 (efficiency): collect the matching triples and call signatureOf
-    // ONCE over the whole batch, instead of signatureOf([t]) per matching triple.
-    // signatureOf rebuilds an N3 triple index (buildIndex) on every call, and its
-    // harvest loop reads each triple INDEPENDENTLY (no cross-triple lookups), so
-    // signatureOf(batch) === the union of signatureOf([t]) over the batch — the
-    // result is identical, but a high-degree seed subject now pays ONE index build
-    // instead of thousands.
-    const neighbours: LocalityTriple[] = [];
-    for (const t of baseTriples) {
-      if (seeds.has(t.subject) || (!t.objectIsLiteral && seeds.has(t.object))) {
-        neighbours.push(t);
-      }
-    }
-    if (neighbours.length > 0) {
-      for (const sym of signatureOf(neighbours)) sigma.add(sym);
-    }
-    return sigma;
-  }
-
-  /**
-   * Build an N3 store from locality triples (module → reasoner). Mirrors the
-   * conformance test's localityTriplesToStore: `_:`/`bN`/`n3-` forms become real
-   * blank nodes so the reasoner sees anonymous class expressions; everything else
-   * is a NamedNode (or a plain Literal when objectIsLiteral).
-   */
-  function moduleTriplesToQuads(triples: LocalityTriple[], DataFactory: any): Quad[] {
-    const { namedNode, blankNode, literal, quad } = DataFactory;
-    const isBlankForm = (v: string): boolean =>
-      v.startsWith("_:") || /^b\d+$/.test(v) || v.startsWith("n3-");
-    const term = (v: string, isLiteral?: boolean) => {
-      if (isLiteral) return literal(v);
-      if (isBlankForm(v)) return blankNode(v.replace(/^_:/, ""));
-      return namedNode(v);
-    };
-    return triples.map((t) =>
-      quad(term(t.subject), namedNode(t.predicate), term(t.object, t.objectIsLiteral)),
-    );
-  }
-
-  /**
-   * Re-skolemize an inferred quad's subject/object back to the urn:vg:bnode: form
-   * used in the shared store, so the spliced inferred triples are keyed
-   * identically to a full run's output (skolemizeQuads). A real blank node →
-   * urn:vg:bnode:{hash(label)}; named/literal terms are untouched.
-   */
-  function reskolemizeInferred(q: Quad, DataFactory: any): Quad {
-    const skol = skolemizeQuads([q], DataFactory);
-    return skol[0] ?? q;
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // EL FAST PATH — conformance-gated PTIME classification of EL-profile modules
-  // ───────────────────────────────────────────────────────────────────────────
-  //
-  // SAFETY MODEL (the whole point — CORRECTNESS OVER SPEED).
-  //   classifyModuleELorKonclude(moduleTriples, moduleQuads) routes a module M's
-  //   classification to the PTIME EL reasoner ONLY when M is PROVABLY inside the
-  //   slice of OWL 2 EL for which the EL path produces an inferred-quad set that is
-  //   BYTE-IDENTICAL to Konclude's `materialize` output. Otherwise it FALLS BACK to
-  //   the full Konclude `classifyModule` — unchanged. It can NEVER produce a result
-  //   that differs from full DL: every divergence-capable construct forces Konclude.
-  //
-  //   What Konclude's materialize (the conformance reference, NO includeClassHierarchy)
-  //   actually emits over a module — empirically (see logs/probe*.mjs) — is ONLY:
-  //     • ABox REALIZATION: `s rdf:type C` for every NAMED class C an individual is
-  //       entailed to belong to (transitive/existential closure of class membership),
-  //       MINUS source triples. No owl:Thing, no owl:NamedIndividual, no subClassOf.
-  //     • ROLE assertions: `a q b` derived from asserted `a p b` via the role box
-  //       (subPropertyOf hierarchy, TransitiveProperty, property chains), MINUS source.
-  //   It emits NO TBox `rdfs:subClassOf` inferences. So the EL path must reproduce
-  //   EXACTLY that ABox-realization + role-assertion set.
-  //
-  //   The EL path reproduces it as follows (each piece independently verified == Konclude):
-  //     (1) TYPE realization: encode the ABox into the EL TBox — `i rdf:type C` ⟶
-  //         `{i} ⊑ C` (i becomes a concept name); `a p b` ⟶ `{a} ⊑ ∃p.{b}` — then
-  //         classifyEL's S(·) completion gives, for each individual i, S({i}); the
-  //         NAMED classes in S({i}) (minus i, owl:Thing, and the asserted types) are
-  //         exactly i's realized types. classifyEL is proven == Konclude on EL TBoxes.
-  //     (2) ROLE realization: a self-contained role-box completion (hierarchy +
-  //         TransitiveProperty + binary/Nary property chains) over the asserted role
-  //         edges yields the inferred `a q b` set (verified == Konclude).
-  //
-  //   GATE (conservative — anything not provably covered ⟶ Konclude):
-  //     • detectOwl2Profiles(M).el.valid must hold (structural EL profile), AND
-  //     • classifyEL(M).inProfile must hold (the EL normaliser accepted every axiom),
-  //     • AND M must contain NO construct whose EL semantics the realizer does not
-  //       reproduce identically — DISJOINTNESS (owl:disjointWith, owl:AllDisjoint*,
-  //       owl:propertyDisjointWith), NOMINALS / sameAs / differentFrom, and negative
-  //       assertions. classifyEL silently IGNORES owl:disjointWith (it is not in its
-  //       rejection set), so an EL inconsistency such as `i:A, A⊑C, A disjointWith C`
-  //       would be MISSED — therefore disjointness ALWAYS forces Konclude. (Verified:
-  //       logs/probe-realize.mjs flags this exact case as a divergence.)
-  //
-  //   On any gate failure OR any internal inconsistency hint, return undefined so the
-  //   caller uses Konclude. The EL path is a pure FAST PATH; Konclude is the floor.
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // ALLOWLIST GATE (fail SAFE) — the AUTHORITATIVE routing decision.
-  // ───────────────────────────────────────────────────────────────────────────
-  // RATIONALE (architect-confirmed soundness fix). The previous gate was a
-  // DENYLIST over an approximate profile detector: it routed M to the EL path
-  // unless M contained a construct someone remembered to denylist. That FAILS
-  // OPEN — any EL-profile-VALID construct the EL realizer does NOT actually
-  // reproduce (and that nobody denylisted) leaks through and diverges from
-  // Konclude. Confirmed leaks: rdfs:range (missed type realization),
-  // owl:equivalentProperty, owl:ReflexiveProperty (missed role realization), and
-  // — worst — a FUNCTIONAL DATA property with two distinct literals, which
-  // Konclude reports INCONSISTENT but the EL path silently calls consistent
-  // (a MISSED INCONSISTENCY; user shown "consistent" for an inconsistent graph).
-  //
-  // The fix INVERTS the gate to an ALLOWLIST: route M to the EL fast path ONLY
-  // IF every triple in M uses a predicate (and, for rdf:type, a type-object) that
-  // the EL realizer PROVABLY reproduces byte-identically to Konclude. ANY triple
-  // outside the allowlist ⇒ Konclude. Unknown construct ⇒ Konclude (fail safe).
-  //
-  // The allowlist is a SUBSET of what the EL normaliser (elReasoner.ts) consumes
-  // with logical content. Audited against Normaliser.handleTriple's switch and
-  // translateClass: the normaliser produces TBox/role-box content ONLY for
-  // rdfs:subClassOf, owl:equivalentClass, rdfs:domain, rdfs:subPropertyOf,
-  // owl:propertyChainAxiom, and rdf:type owl:TransitiveProperty; restriction /
-  // intersection structure is read via owl:onProperty, owl:someValuesFrom,
-  // owl:intersectionOf, rdf:first, rdf:rest; declarations come via rdf:type
-  // owl:Class / owl:ObjectProperty / owl:Restriction. EVERY OTHER predicate hits
-  // the normaliser's `default` branch and is SILENTLY IGNORED — precisely the
-  // leak. So those predicates are EXCLUDED here and force Konclude.
-  //
-  // EXCLUDED-AND-FALL-BACK constructs (not implemented in the EL realizer; each
-  // forces Konclude rather than being silently dropped):
-  //   • rdfs:range            — Konclude realizes the range type; EL emits nothing.
-  //   • owl:equivalentProperty — role-equivalence realization; EL ignores it.
-  //   • rdfs:range / owl:inverseOf / property characteristics below.
-  //   • rdf:type owl:ReflexiveProperty / owl:FunctionalProperty /
-  //     owl:InverseFunctionalProperty / owl:SymmetricProperty /
-  //     owl:AsymmetricProperty / owl:IrreflexiveProperty / owl:DatatypeProperty
-  //     — none modelled by the EL realizer; the functional-DATA case is an
-  //     OUTRIGHT inconsistency Konclude catches (probe: logs/probe-c4-funcdata.mjs
-  //     → consistent=false) and EL would miss. ALL force Konclude.
-  // We EXCLUDE (fall back) rather than implement these — correctness over speed,
-  // per the architect's recommendation.
-  //
-  // The structural EL-profile guard (detectOwl2Profiles) and classifyEL.inProfile
-  // are kept as ADDITIONAL defense-in-depth below, but the ALLOWLIST is primary.
-
-  const EL_ALLOWED_PREDICATES = new Set<string>([
-    "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", // gated separately by object
-    "http://www.w3.org/2000/01/rdf-schema#subClassOf",
-    "http://www.w3.org/2000/01/rdf-schema#subPropertyOf",
-    "http://www.w3.org/2000/01/rdf-schema#domain",
-    "http://www.w3.org/2002/07/owl#equivalentClass",
-    "http://www.w3.org/2002/07/owl#propertyChainAxiom",
-    "http://www.w3.org/2002/07/owl#onProperty",
-    "http://www.w3.org/2002/07/owl#someValuesFrom",
-    "http://www.w3.org/2002/07/owl#intersectionOf",
-    "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-    "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-  ]);
-
-  // rdf:type OBJECTS that are allowed as STRUCTURAL/declaration types. Any OTHER
-  // rdf:type object is treated as NAMED-CLASS membership (ABox realization) and
-  // is allowed ONLY when the object is a declared/known domain class (see the
-  // gate). Property characteristics are deliberately ABSENT here so they force
-  // Konclude: ReflexiveProperty, FunctionalProperty, InverseFunctionalProperty,
-  // SymmetricProperty, AsymmetricProperty, IrreflexiveProperty, DatatypeProperty.
-  const EL_ALLOWED_TYPE_OBJECTS = new Set<string>([
-    "http://www.w3.org/2002/07/owl#Class",
-    "http://www.w3.org/2002/07/owl#ObjectProperty",
-    "http://www.w3.org/2002/07/owl#NamedIndividual",
-    "http://www.w3.org/2002/07/owl#Thing",
-    "http://www.w3.org/2002/07/owl#Nothing",
-    "http://www.w3.org/2002/07/owl#Restriction",
-    "http://www.w3.org/2002/07/owl#TransitiveProperty",
-  ]);
-
-  // OWL/RDF/RDFS-namespace rdf:type objects that are NOT in EL_ALLOWED_TYPE_OBJECTS
-  // are ALWAYS structural-but-unsupported (property characteristics, datatype
-  // props, …) and must NEVER be mistaken for a domain class. We detect them by
-  // namespace so an UNANTICIPATED owl:* / rdfs:* characteristic also fails SAFE
-  // (forces Konclude) instead of being misread as ABox membership.
-  const OWL_NS = "http://www.w3.org/2002/07/owl#";
-  const RDFS_NS = "http://www.w3.org/2000/01/rdf-schema#";
-  const RDF_NS = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
-
-  const EL_RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-  const EL_RDF_FIRST = "http://www.w3.org/1999/02/22-rdf-syntax-ns#first";
-  const EL_RDF_REST = "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest";
-  const EL_RDF_NIL = "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil";
-  const EL_RDFS_SUBCLASS_OF = "http://www.w3.org/2000/01/rdf-schema#subClassOf";
-  const EL_RDFS_SUBPROPERTY_OF = "http://www.w3.org/2000/01/rdf-schema#subPropertyOf";
-  const EL_OWL_CLASS = "http://www.w3.org/2002/07/owl#Class";
-  const EL_OWL_OBJECT_PROPERTY = "http://www.w3.org/2002/07/owl#ObjectProperty";
-  const EL_OWL_NAMED_INDIVIDUAL = "http://www.w3.org/2002/07/owl#NamedIndividual";
-  const EL_OWL_RESTRICTION = "http://www.w3.org/2002/07/owl#Restriction";
-  const EL_OWL_ON_PROPERTY = "http://www.w3.org/2002/07/owl#onProperty";
-  const EL_OWL_SOME_VALUES_FROM = "http://www.w3.org/2002/07/owl#someValuesFrom";
-  const EL_OWL_THING = "http://www.w3.org/2002/07/owl#Thing";
-  const EL_OWL_NOTHING = "http://www.w3.org/2002/07/owl#Nothing";
-  const EL_OWL_TRANSITIVE_PROPERTY = "http://www.w3.org/2002/07/owl#TransitiveProperty";
-  const EL_OWL_PROPERTY_CHAIN_AXIOM = "http://www.w3.org/2002/07/owl#propertyChainAxiom";
-
-  type ElClassifyResult = {
-    isConsistent: boolean;
-    unsatisfiableClasses: string[];
-    inferredQuads: Quad[];
-  };
-
-  /**
-   * Compute the inferred ROLE assertions of a module: starting from asserted
-   * `a p b` edges over named object properties, close under the role box
-   * (subPropertyOf hierarchy + TransitiveProperty + binary/N-ary property chains)
-   * and return the NEW `a q b` triples (over NAMED properties), minus the asserted
-   * ones. This reproduces Konclude's role-assertion materialization (verified ==
-   * Konclude in logs/probe-roles.mjs).
-   */
-  function elRoleAssertions(
-    triples: LocalityTriple[],
-    objectProps: Set<string>,
-  ): Array<{ a: string; r: string; b: string }> {
-    const idx = new Map<string, LocalityTriple[]>();
-    for (const t of triples) {
-      const arr = idx.get(t.subject);
-      if (arr) arr.push(t);
-      else idx.set(t.subject, [t]);
-    }
-    const first = (s: string, p: string): string | undefined =>
-      (idx.get(s) ?? []).find((t) => t.predicate === p)?.object;
-    const readList = (head: string): string[] => {
-      const out: string[] = [];
-      let node: string | undefined = head;
-      const seen = new Set<string>();
-      while (node && node !== EL_RDF_NIL && !seen.has(node)) {
-        seen.add(node);
-        const f = first(node, EL_RDF_FIRST);
-        const rest = first(node, EL_RDF_REST);
-        if (f === undefined) break;
-        out.push(f);
-        node = rest;
-      }
-      return out;
-    };
-
-    // Role box: roleSub (r ⊑ s) and binary chains (r1 ∘ r2 ⊑ s). N-ary chains and
-    // TransitiveProperty (R ∘ R ⊑ R) are split exactly as elReasoner's normaliser.
-    const roleSub: Array<[string, string]> = [];
-    const chains: Array<{ r1: string; r2: string; s: string }> = [];
-    let freshRole = 0;
-    for (const t of triples) {
-      if (t.predicate === EL_RDFS_SUBPROPERTY_OF && !t.objectIsLiteral) {
-        roleSub.push([t.subject, t.object]);
-      } else if (t.predicate === EL_RDF_TYPE && t.object === EL_OWL_TRANSITIVE_PROPERTY) {
-        chains.push({ r1: t.subject, r2: t.subject, s: t.subject });
-      } else if (t.predicate === EL_OWL_PROPERTY_CHAIN_AXIOM && !t.objectIsLiteral) {
-        const ch = readList(t.object);
-        if (ch.length === 1) {
-          roleSub.push([ch[0], t.subject]);
-        } else if (ch.length >= 2) {
-          let left = ch[0];
-          for (let i = 1; i < ch.length; i++) {
-            const isLast = i === ch.length - 1;
-            const tgt = isLast ? t.subject : `urn:vg:el:realize:role:${freshRole++}`;
-            chains.push({ r1: left, r2: ch[i], s: tgt });
-            left = tgt;
-          }
-        }
-      }
-    }
-
-    // Forward-indexed role-edge store with a worklist (mirrors elReasoner's R-map).
-    const fwd = new Map<string, Map<string, Set<string>>>(); // r → a → {b}
-    const queue: Array<{ r: string; a: string; b: string }> = [];
-    const hasE = (r: string, a: string, b: string): boolean =>
-      fwd.get(r)?.get(a)?.has(b) ?? false;
-    const addE = (r: string, a: string, b: string): void => {
-      if (hasE(r, a, b)) return;
-      let f = fwd.get(r);
-      if (!f) {
-        f = new Map();
-        fwd.set(r, f);
-      }
-      let fa = f.get(a);
-      if (!fa) {
-        fa = new Set();
-        f.set(a, fa);
-      }
-      fa.add(b);
-      queue.push({ r, a, b });
-    };
-
-    const asserted = new Set<string>();
-    for (const t of triples) {
-      if (objectProps.has(t.predicate) && !t.objectIsLiteral) {
-        asserted.add(`${t.subject}\0${t.predicate}\0${t.object}`);
-        addE(t.predicate, t.subject, t.object);
-      }
-    }
-
-    const subOf = new Map<string, string[]>();
-    for (const [r, s] of roleSub) {
-      const arr = subOf.get(r);
-      if (arr) arr.push(s);
-      else subOf.set(r, [s]);
-    }
-    const ch1 = new Map<string, Array<{ r2: string; s: string }>>();
-    const ch2 = new Map<string, Array<{ r1: string; s: string }>>();
-    for (const c of chains) {
-      const a1 = ch1.get(c.r1);
-      if (a1) a1.push({ r2: c.r2, s: c.s });
-      else ch1.set(c.r1, [{ r2: c.r2, s: c.s }]);
-      const a2 = ch2.get(c.r2);
-      if (a2) a2.push({ r1: c.r1, s: c.s });
-      else ch2.set(c.r2, [{ r1: c.r1, s: c.s }]);
-    }
-
-    while (queue.length) {
-      const { r, a, b } = queue.pop() as { r: string; a: string; b: string };
-      for (const s of subOf.get(r) ?? []) addE(s, a, b);
-      for (const c of ch1.get(r) ?? []) {
-        for (const z of fwd.get(c.r2)?.get(b) ?? []) addE(c.s, a, z);
-      }
-      for (const c of ch2.get(r) ?? []) {
-        const f1 = fwd.get(c.r1);
-        if (f1) for (const [w, set] of f1) if (set.has(a)) addE(c.s, w, b);
-      }
-    }
-
-    const out: Array<{ a: string; r: string; b: string }> = [];
-    for (const [r, byA] of fwd) {
-      if (r.startsWith("urn:vg:el:realize:role:")) continue; // fresh intermediate role
-      if (!objectProps.has(r)) continue; // only NAMED declared object properties
-      for (const [a, bs] of byA) {
-        for (const b of bs) {
-          if (asserted.has(`${a}\0${r}\0${b}`)) continue;
-          out.push({ a, r, b });
-        }
-      }
-    }
-    return out;
-  }
-
-  /**
-   * Try to classify a module via the PTIME EL fast path. Returns the SAME shape as
-   * KoncludeReasonerLike.classifyModule when the module is provably inside the
-   * EL-conformance slice, or `undefined` to signal the caller to FALL BACK to
-   * Konclude. The returned inferredQuads carry a DefaultGraph term (like Konclude's
-   * classifyModule); the caller re-skolemizes + assigns the inferred graph.
-   */
-  function tryClassifyModuleEL(
-    moduleTriples: LocalityTriple[],
-    DataFactory: any,
-  ): ElClassifyResult | undefined {
-    // ── GATE 1 (PRIMARY, fail SAFE): ALLOWLIST. Every triple in M must use a
-    //    predicate the EL realizer provably reproduces. For rdf:type, the object
-    //    must be an allowed STRUCTURAL type OR a NAMED domain class (ABox
-    //    realization) — NEVER an owl/rdfs/rdf-namespace type-object outside the
-    //    allowed structural set (those are property characteristics etc. that the
-    //    EL realizer silently ignores ⇒ would diverge). ANY violation ⇒ Konclude.
-    //
-    // Role assertions `a p b` are allowed ONLY when `p` is a NAMED object property
-    // DECLARED in M (`p rdf:type owl:ObjectProperty`): those are the edges the EL
-    // role-box realizer consumes. An assertion over an UNDECLARED predicate (an
-    // unknown data/annotation property, or a property whose characteristic the EL
-    // path doesn't model) is NOT provably reproducible ⇒ Konclude. A role
-    // assertion with a LITERAL object on a declared object property is malformed/
-    // out-of-EL ⇒ Konclude.
-    const declaredObjectProps = new Set<string>();
-    for (const t of moduleTriples) {
-      if (t.predicate === EL_RDF_TYPE && t.object === EL_OWL_OBJECT_PROPERTY) {
-        declaredObjectProps.add(t.subject);
-      }
-    }
-    for (const t of moduleTriples) {
-      if (t.predicate === EL_RDF_TYPE) {
-        // Literal-valued rdf:type is malformed RDF — bail to Konclude to be safe.
-        if (t.objectIsLiteral) return undefined;
-        if (EL_ALLOWED_TYPE_OBJECTS.has(t.object)) continue; // structural decl
-        // Not an allowed structural type. It is acceptable ONLY as named-class
-        // membership `i rdf:type C` where C is a DOMAIN class — i.e. NOT in the
-        // OWL/RDFS/RDF vocabulary namespaces (those would be unsupported
-        // characteristics like owl:FunctionalProperty / owl:ReflexiveProperty).
-        if (
-          t.object.startsWith(OWL_NS) ||
-          t.object.startsWith(RDFS_NS) ||
-          t.object.startsWith(RDF_NS)
-        ) {
-          return undefined; // unsupported structural/characteristic type ⇒ Konclude
-        }
-        // Domain-class membership ⇒ allowed (ABox realization).
-        continue;
-      }
-      if (EL_ALLOWED_PREDICATES.has(t.predicate)) continue;
-      // The only other allowed predicate is a DECLARED named object property used
-      // as a role-assertion edge with a NON-literal object.
-      if (declaredObjectProps.has(t.predicate) && !t.objectIsLiteral) continue;
-      return undefined; // any other predicate ⇒ fail safe to Konclude
-    }
-
-    // ── GATE 2: structural EL profile (owlProfile) — falls back on any EL violation. ──
-    const profileTriples: ProfileTriple[] = moduleTriples.map((t) => ({
-      subject: t.subject,
-      predicate: t.predicate,
-      object: t.object,
-      objectIsLiteral: !!t.objectIsLiteral,
-    }));
-    let elValid: boolean;
-    try {
-      elValid = detectOwl2Profiles(profileTriples).el.valid;
-    } catch {
-      return undefined;
-    }
-    if (!elValid) return undefined;
-
-    // ── Partition the module into declarations / TBox / ABox. ──────────────────
-    const isClass = new Set<string>();
-    const isObjectProp = new Set<string>();
-    const isIndividual = new Set<string>();
-    for (const t of moduleTriples) {
-      if (t.predicate === EL_RDF_TYPE) {
-        if (t.object === EL_OWL_CLASS) isClass.add(t.subject);
-        else if (t.object === EL_OWL_OBJECT_PROPERTY) isObjectProp.add(t.subject);
-        else if (t.object === EL_OWL_NAMED_INDIVIDUAL) isIndividual.add(t.subject);
-      }
-    }
-
-    // Type assertions `i rdf:type C` where C is NOT a structural/meta type — these
-    // are the ABox class memberships to realize. Role assertions `a p b` over a
-    // declared object property feed elRoleAssertions.
-    const typeAssertions: Array<{ i: string; cls: string }> = [];
-    for (const t of moduleTriples) {
-      if (t.objectIsLiteral) continue;
-      if (
-        t.predicate === EL_RDF_TYPE &&
-        t.object !== EL_OWL_CLASS &&
-        t.object !== EL_OWL_OBJECT_PROPERTY &&
-        t.object !== EL_OWL_NAMED_INDIVIDUAL &&
-        t.object !== EL_OWL_RESTRICTION
-      ) {
-        typeAssertions.push({ i: t.subject, cls: t.object });
-      }
-    }
-
-    // ── Build the augmented EL TBox: keep TBox/structure, re-encode the ABox. ───
-    // ABox encoding (verified == Konclude in logs/probe-realize.mjs):
-    //   `i rdf:type C`  ⟶  declare i as a Class and assert `{i} ⊑ C`.
-    //   `a p b`         ⟶  declare a,b as Classes and assert `{a} ⊑ ∃p.{b}` via a
-    //                       fresh owl:Restriction node.
-    const aug: ElTriple[] = [];
-    for (const t of moduleTriples) {
-      if (t.objectIsLiteral) continue;
-      if (t.predicate === EL_RDF_TYPE) {
-        // keep ONLY structural decls the EL normaliser consumes; drop ABox assertions.
-        if (
-          t.object === EL_OWL_CLASS ||
-          t.object === EL_OWL_OBJECT_PROPERTY ||
-          t.object === EL_OWL_RESTRICTION ||
-          t.object === EL_OWL_TRANSITIVE_PROPERTY
-        ) {
-          aug.push({ subject: t.subject, predicate: t.predicate, object: t.object });
-        }
-        continue;
-      }
-      if (isObjectProp.has(t.predicate)) continue; // role assertion — re-encoded below
-      // subClassOf / equivalentClass / restriction structure / list cells / role box.
-      aug.push({ subject: t.subject, predicate: t.predicate, object: t.object });
-    }
-
-    const individualsToRealize = new Set<string>();
-    for (const { i, cls } of typeAssertions) {
-      individualsToRealize.add(i);
-      aug.push({ subject: i, predicate: EL_RDF_TYPE, object: EL_OWL_CLASS });
-      aug.push({ subject: i, predicate: EL_RDFS_SUBCLASS_OF, object: cls });
-    }
-    let freshNode = 0;
-    for (const t of moduleTriples) {
-      if (t.objectIsLiteral) continue;
-      if (!isObjectProp.has(t.predicate)) continue;
-      const a = t.subject;
-      const b = t.object;
-      individualsToRealize.add(a);
-      // b participates as an existential filler; if b is an individual it must be a
-      // concept name too so `{a} ⊑ ∃p.{b}` is meaningful. (No type realized FOR b
-      // from this edge unless b also has assertions — matching Konclude.)
-      aug.push({ subject: a, predicate: EL_RDF_TYPE, object: EL_OWL_CLASS });
-      aug.push({ subject: b, predicate: EL_RDF_TYPE, object: EL_OWL_CLASS });
-      const rn = `urn:vg:el:realize:bn:${freshNode++}`;
-      aug.push({ subject: rn, predicate: EL_RDF_TYPE, object: EL_OWL_RESTRICTION });
-      aug.push({ subject: rn, predicate: EL_OWL_ON_PROPERTY, object: t.predicate });
-      aug.push({ subject: rn, predicate: EL_OWL_SOME_VALUES_FROM, object: b });
-      aug.push({ subject: a, predicate: EL_RDFS_SUBCLASS_OF, object: rn });
-    }
-
-    let el;
-    try {
-      el = classifyEL(aug);
-    } catch {
-      return undefined;
-    }
-    // If the EL normaliser itself rejected anything, the module is NOT fully EL —
-    // fall back to be safe (the gate should have caught it, but be defensive).
-    if (!el.inProfile) return undefined;
-
-    // Consistency: classifyEL.isConsistent is ⊤-driven only. In the EL slice we
-    // gate (no disjointness), so the ONLY way the module is inconsistent is an
-    // individual forced into owl:Nothing — i.e. some realized concept set contains
-    // owl:Nothing. If ANY individual is unsatisfiable (⊥ ∈ S({i})), the ABox forces
-    // ⊥ ⇒ the ontology is inconsistent. Detect it and report isConsistent:false.
-    let aboxInconsistent = false;
-    for (const i of individualsToRealize) {
-      const s = el.subsumptions.get(i);
-      if (s && s.has(EL_OWL_NOTHING)) {
-        aboxInconsistent = true;
-        break;
-      }
-    }
-    if (!el.isConsistent || aboxInconsistent) {
-      return { isConsistent: false, unsatisfiableClasses: [], inferredQuads: [] };
-    }
-
-    // ── TYPE realization: NAMED classes in S({i}) minus i / owl:Thing / asserted. ─
-    const asserted = new Set<string>(typeAssertions.map((x) => `${x.i}\0${x.cls}`));
-    const { namedNode, quad } = DataFactory;
-    const inferredQuads: Quad[] = [];
-    const seen = new Set<string>();
-    const emit = (s: string, p: string, o: string) => {
-      const key = `${s}\0${p}\0${o}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      inferredQuads.push(quad(namedNode(s), namedNode(p), namedNode(o)));
-    };
-    for (const i of individualsToRealize) {
-      const s = el.subsumptions.get(i);
-      if (!s) continue;
-      for (const c of s) {
-        if (c === i || c === EL_OWL_THING || c === EL_OWL_NOTHING) continue;
-        if (!isClass.has(c)) continue; // only REAL declared classes (Konclude parity)
-        if (asserted.has(`${i}\0${c}`)) continue;
-        emit(i, EL_RDF_TYPE, c);
-      }
-    }
-
-    // ── ROLE realization: inferred `a q b` over the role box. ──────────────────
-    for (const { a, r, b } of elRoleAssertions(moduleTriples, isObjectProp)) {
-      emit(a, r, b);
-    }
-
-    // unsatisfiableClasses: NAMED classes equivalent to owl:Nothing (Konclude's
-    // getUnsatisfiableClasses parity — exclude individuals and fresh names).
-    const unsatisfiableClasses = el.unsatisfiableClasses.filter((c) => isClass.has(c)).sort();
-
-    return { isConsistent: true, unsatisfiableClasses, inferredQuads };
-  }
-
-  type IncrementalResult = {
-    mode: "incremental" | "full";
-    isConsistent: boolean | null;
-    /** Which classifier produced this step's result: the EL fast path or Konclude. */
-    classifier: "el" | "konclude";
-    inferredDelta: { added: number; removed: number };
-    unsatisfiableClasses: string[];
-    moduleSize: number;
-    fullSize: number;
-    reasonedSignatureSize: number;
-  };
-
-  /**
-   * Establish / refresh the incremental baseline after a full run. `consistent`
-   * is the full run's verdict; the signature is computed from the current base
-   * axioms. Called from the full Konclude path so every full run re-arms
-   * incremental reasoning.
-   */
-  function establishIncrementalBaseline(store: any, consistent: boolean): void {
-    try {
-      const { triples } = gatherBaseAxioms(store);
-      incrementalBaseline = { consistent, signature: signatureOf(triples) };
-    } catch (err) {
-      debugLog("[VG_REASONING_WORKER] establishIncrementalBaseline failed", err);
-      incrementalBaseline = null;
-    }
-  }
-
-  /**
-   * handleReasonIncremental — the auto-incremental step. Implements the procedure
-   * documented above. Falls back to a full run (via handleRunReasoning) when the
-   * precondition does not hold, and re-establishes the baseline in that case.
-   * Returns the mode used plus delta/size metrics.
-   */
-  async function handleReasonIncremental(
-    payload: RDFWorkerCommandPayloads["reasonIncremental"] | undefined,
-  ): Promise<IncrementalResult> {
-    const { DataFactory } = resolveN3();
-    if (!DataFactory) throw new Error("n3-api-unavailable");
-
-    const changedSubjects = Array.isArray(payload?.changedSubjects)
-      ? payload!.changedSubjects.filter((s) => typeof s === "string" && s.length > 0)
-      : [];
-    const changedSignature = Array.isArray(payload?.changedSignature)
-      ? payload!.changedSignature.filter((s) => typeof s === "string" && s.length > 0)
-      : [];
-
-    const store = getSharedStore();
-    const { quads: baseQuads, triples: baseTriples } = gatherBaseAxioms(store);
-
-    // PRECONDITION: a CONSISTENT baseline and a non-empty Σ_Δ. Otherwise full.
-    // H2 (Finding 4 — single drift signal): also force a full run once the
-    // consecutive-step count crosses its cap, so a long incremental-only session
-    // is periodically re-anchored to a from-scratch run.
-    const sigmaDelta = computeChangedSignature(baseTriples, changedSubjects, changedSignature);
-    const baselineOk = incrementalBaseline !== null && incrementalBaseline.consistent === true;
-    const driftCapHit = stepsSinceFull >= MAX_INCREMENTAL_STEPS_BEFORE_FULL;
-    const fallbackToFull = !baselineOk || sigmaDelta.size === 0 || driftCapHit;
-
-    if (fallbackToFull) {
-      // A full re-anchor must produce EXACTLY the from-scratch inferred set. The
-      // Konclude full path ADDS freshly-derived inferred quads to the shared store
-      // but does not by itself purge inferred triples that a prior edit retracted
-      // (it classifies over a working COPY). Clear the maintained inferred graph
-      // first so the re-anchor cannot retain a stale entailment (e.g. an inferred
-      // triple left over from a step that detected inconsistency and skipped its
-      // splice). This makes mode:"full" a TRUE incremental==full re-baseline.
-      const inferredGraphTerm = DataFactory.namedNode(KONCLUDE_INFERRED_GRAPH_IRI);
-      const staleInferred = store.getQuads(null, null, null, inferredGraphTerm) || [];
-      if (staleInferred.length > 0) store.removeQuads(staleInferred);
-
-      const reasoningId = `reasoning-inc-fb-${Date.now().toString(36)}`;
-      const outcome = await handleRunReasoning(
-        { type: "runReasoning", id: reasoningId, reasonerBackend: "konclude" },
-        { mutateSharedStore: true, includeAdded: false, emitSubjects: true, emitChange: true, emitResultEvent: false },
-      );
-      // A full run recomputes the whole inferred set from scratch → re-anchor the
-      // H2 drift counter (handleRunReasoning already re-established the baseline).
-      resetIncrementalDrift();
-      const inferredCount = store.getQuads(
-        null, null, null, DataFactory.namedNode(KONCLUDE_INFERRED_GRAPH_IRI),
-      ).length;
-      return {
-        mode: "full",
-        isConsistent: outcome.isConsistent ?? null,
-        // A full re-anchor always runs the authoritative Konclude full path.
-        classifier: "konclude",
-        inferredDelta: { added: inferredCount, removed: 0 },
-        unsatisfiableClasses: [],
-        moduleSize: baseTriples.length,
-        fullSize: baseTriples.length,
-        reasonedSignatureSize: sigmaDelta.size,
-      };
-    }
-
-    // M = extractStarModule(currentAxioms, Σ_Δ). includeDeclarationsForSignature so
-    // the module is a self-contained, classifiable ontology in isolation.
-    const moduleTriples = extractStarModule(baseTriples, [...sigmaDelta], {
-      includeDeclarationsForSignature: true,
-    });
-
-    // ── moduleSubjects: the SUBJECT terms occurring in M ─────────────────────────
-    // BUG A (SOUNDNESS — subject-based purge, NOT any-position). The PURGE set must
-    // remove an existing inferred quad T iff T's SUBJECT is a subject of some triple
-    // in M. We do NOT purge on predicate/object membership (the old any-position
-    // sig(M) rule), because that OVER-removes still-valid inferred triples M cannot
-    // re-derive: e.g. a valid inferred `y rdf:type C` whose C ∈ sig(M) but whose
-    // supporting assertion is NOT in M would be purged yet never re-derived ⇒
-    // incremental UNDER-approximates full.
-    //
-    // SOUNDNESS ARGUMENT.
-    //   • Classifying M materializes EXACTLY the entailments over sig(M), and the
-    //     inferred triples M produces are about M's SUBJECTS (realization emits
-    //     `s rdf:type C` / `s p o` keyed on a subject that occurs in M). So an
-    //     inferred triple whose SUBJECT is an M-subject is either re-derived by
-    //     classifying M (still valid) or correctly dropped (stale).
-    //   • An inferred triple whose SUBJECT is NOT an M-subject is unaffected by an
-    //     edit localized to Σ_Δ (locality): nothing in M can have produced it and
-    //     nothing in M retracts its support, so it must be KEPT. Purging it would be
-    //     the over-removal bug.
-    //   • Retraction still works: removing `p ⊑ q` (leaving stale `a q b`) adds the
-    //     predicate p to the changed signature (C2), so `a p b` (using p ∈ Σ_Δ) is
-    //     non-local ⇒ in M ⇒ a ∈ moduleSubjects ⇒ the stale `a q b` (subject a) is
-    //     purged and not re-derived.
-    //
-    // moduleSubjects holds the de-skolemized SUBJECT terms of M (`_:label` for blank
-    // subjects, the IRI otherwise) — including ABox individuals — NOT signatureOf(M)
-    // (which omits individuals and would key the purge on class/property symbols).
-    const moduleSubjects = new Set<string>();
-    for (const t of moduleTriples) {
-      if (t.subject) moduleSubjects.add(t.subject);
-    }
-
-    // Classify M: EL FAST PATH when M is provably inside the EL-conformance slice
-    // (PTIME, no Konclude round-trip), else FALL BACK to the SAME Konclude machinery
-    // the full path uses. classifier records which path actually ran. The EL path
-    // returns the SAME shape (isConsistent / unsatisfiableClasses / inferredQuads)
-    // and is byte-identical to Konclude on its accepted slice (see tryClassifyModuleEL).
-    let classifier: "el" | "konclude" = "konclude";
-    let isConsistent: boolean;
-    let unsatisfiableClasses: string[];
-    let inferredQuads: Quad[];
-    const elResult = tryClassifyModuleEL(moduleTriples, DataFactory);
-    if (elResult) {
-      classifier = "el";
-      isConsistent = elResult.isConsistent;
-      unsatisfiableClasses = elResult.unsatisfiableClasses;
-      inferredQuads = elResult.inferredQuads;
-    } else {
-      const konclude = getKoncludeReasoner();
-      await konclude.ready;
-      const moduleQuads = moduleTriplesToQuads(moduleTriples, DataFactory);
-      const k = await konclude.classifyModule(moduleQuads as unknown as N3.Quad[]);
-      isConsistent = k.isConsistent;
-      unsatisfiableClasses = k.unsatisfiableClasses;
-      inferredQuads = k.inferredQuads as unknown as Quad[];
-    }
-
-    if (!isConsistent) {
-      // Inconsistent module ⇒ ontology inconsistent (monotonicity). Do NOT mutate
-      // the inferred graph; leave the baseline intact (still consistent at the
-      // last full run — the agent should fix the edit) but report inconsistency.
-      // Count this as an incremental step (H2 drift) even though no splice ran:
-      // the next edit is still relative to the same un-re-anchored baseline.
-      bumpIncrementalStep();
-      return {
-        mode: "incremental",
-        isConsistent: false,
-        classifier,
-        inferredDelta: { added: 0, removed: 0 },
-        unsatisfiableClasses,
-        moduleSize: moduleTriples.length,
-        fullSize: baseTriples.length,
-        reasonedSignatureSize: sigmaDelta.size,
-      };
-    }
-
-    // ── Splice the delta into urn:vg:inferred ───────────────────────────────────
-    // PURGE every existing inferred quad whose SUBJECT is an M-subject (BUG A:
-    // subject-based, NOT any-position); then ADD ALL freshly-derived inferred quads
-    // from classifying M (no subject filter — H1: the write set must match exactly
-    // what a full run produces over sig(M), and the full path applies no such
-    // filter). Inferred quads whose subject is NOT an M-subject are left UNTOUCHED
-    // (locality guarantee) — including valid inferred triples whose class/property
-    // object happens to lie in sig(M) but whose support is outside M.
-    // Store terms are SKOLEMIZED (urn:vg:bnode:*) while moduleSubjects holds the
-    // de-skolemized `_:` form, so map blank/skolemized subjects before comparing.
-    const inferredGraph = DataFactory.namedNode(KONCLUDE_INFERRED_GRAPH_IRI);
-    const BNODE_PREFIX = "urn:vg:bnode:";
-    const storeSubjectInModule = (term: any): boolean => {
-      if (!term) return false;
-      if (term.termType === "BlankNode") return moduleSubjects.has(`_:${term.value}`);
-      if (term.termType === "NamedNode" && term.value.startsWith(BNODE_PREFIX)) {
-        return moduleSubjects.has(`_:${term.value.slice(BNODE_PREFIX.length)}`);
-      }
-      return moduleSubjects.has(term.value);
-    };
-
-    const existingInferred: Quad[] = store.getQuads(null, null, null, inferredGraph) || [];
-    const baseKeys = new Set(
-      baseQuads.map((q) => `${q.subject.value}\0${q.predicate.value}\0${q.object.value}`),
-    );
-
-    let removed = 0;
-    const removedSubjects = new Set<string>();
-    for (const q of existingInferred) {
-      if (storeSubjectInModule(q.subject)) {
-        store.removeQuad(q);
-        removed++;
-        const sv = subjectTermToString(q.subject, q.subject.value);
-        if (sv) removedSubjects.add(sv);
-      }
-    }
-
-    const touchedSubjects = new Set<string>();
-    let added = 0;
-    const addSeen = new Set<string>();
-    for (const inf of inferredQuads) {
-      const skol = reskolemizeInferred(inf, DataFactory);
-      const key = `${skol.subject.value}\0${skol.predicate.value}\0${skol.object.value}`;
-      // Never write a triple that is asserted in the base graphs (parity with the
-      // full path's sourceKeys filter — classifyModule already filtered the
-      // module's own source, but a module-source triple may equal a base triple).
-      if (baseKeys.has(key)) continue;
-      if (addSeen.has(key)) continue;
-      addSeen.add(key);
-      const q = DataFactory.quad(skol.subject, skol.predicate, skol.object, inferredGraph);
-      const changed = store.addQuad(q);
-      if (changed) {
-        added++;
-        const sv = subjectTermToString(q.subject, q.subject.value);
-        if (sv) touchedSubjects.add(sv);
-      }
-    }
-
-    // Emit change + the touched subjects (carry graphName=urn:vg:inferred so the
-    // auto-reasoning effect's loop guard ignores this write — same as the full
-    // path). Include removed subjects too so the canvas drops stale inferred edges.
-    if (added > 0 || removed > 0) {
-      emitChange({ reason: "reasoningIncremental", addedCount: added, removedCount: removed });
-      for (const s of removedSubjects) touchedSubjects.add(s);
-      if (touchedSubjects.size > 0) {
-        const emission = prepareSubjectEmissionFromSet(touchedSubjects, store, DataFactory);
-        if (emission.subjects.length > 0) {
-          emitSubjects(emission.subjects, emission.quadsBySubject, emission.snapshot, {
-            reason: "reasoningIncremental",
-            graphName: "urn:vg:inferred",
-          });
-        }
-      }
-    }
-
-    // Baseline remains consistent. Refresh its signature so a subsequent edit's
-    // Σ_Δ is computed against the current symbols — but do it INCREMENTALLY
-    // (Finding 2): UNION Σ_Δ into the existing baseline signature instead of
-    // re-scanning the whole store (gatherBaseAxioms getQuads(null×4)) and
-    // recomputing signatureOf over EVERY axiom. The baseline signature only needs
-    // to be a SUPERSET covering the edited symbols for the next Σ_Δ derivation;
-    // Σ_Δ already holds the changed symbols and their neighbour expansion, so the
-    // union is sound and keeps the hot path O(|Σ_Δ|) rather than O(store). A full
-    // recompute still happens whenever the baseline is first ESTABLISHED after a
-    // full run (establishIncrementalBaseline) or INVALIDATED — the correctness
-    // fallback. Advance the H2 drift counter (one successful splice).
-    if (incrementalBaseline) {
-      for (const sym of sigmaDelta) incrementalBaseline.signature.add(sym);
-      incrementalBaseline.consistent = true;
-    } else {
-      // No baseline object to union into (should not happen on this path, since a
-      // consistent baseline was the precondition) — fall back to a full establish.
-      establishIncrementalBaseline(store, true);
-    }
-    bumpIncrementalStep();
-
-    return {
-      mode: "incremental",
-      isConsistent: true,
-      classifier,
-      inferredDelta: { added, removed },
-      unsatisfiableClasses,
-      moduleSize: moduleTriples.length,
-      fullSize: baseTriples.length,
-      reasonedSignatureSize: sigmaDelta.size,
-    };
-  }
-
   function searchTermsInStore(
     store: any,
     payload: RDFWorkerCommandPayloads["searchTerms"],
@@ -3840,8 +2731,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           result = { enabled: workerDebugEnabled };
           break;
         case "syncLoad": {
-          // Bulk load — wholesale change; the incremental baseline no longer holds.
-          invalidateIncrementalBaseline();
+
           const { DataFactory } = resolveN3();
           if (!DataFactory) throw new Error("n3-datafactory-unavailable");
           const store = getSharedStore();
@@ -3910,8 +2800,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           break;
         }
         case "syncRemoveGraph": {
-          // Removing a whole graph is a wholesale change — invalidate the baseline.
-          invalidateIncrementalBaseline();
+
           const { DataFactory } = resolveN3();
           if (!DataFactory) throw new Error("n3-datafactory-unavailable");
           const store = getSharedStore();
@@ -4034,8 +2923,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           break;
         }
         case "importSerialized": {
-          // Import is a bulk load — invalidate the incremental baseline.
-          invalidateIncrementalBaseline();
+
           const { DataFactory } = resolveN3();
           if (!DataFactory) throw new Error("n3-datafactory-unavailable");
           if (!payload || typeof payload !== "object" || typeof (payload as any).content !== "string") {
@@ -4256,8 +3144,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           break;
         }
         case "unloadOntologySubjects": {
-          // Unloading an ontology's subjects is a wholesale change — invalidate.
-          invalidateIncrementalBaseline();
+
           const { DataFactory } = resolveN3();
           if (!DataFactory) throw new Error("n3-datafactory-unavailable");
           const store = getSharedStore();
@@ -4556,8 +3443,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           break;
         }
         case "removeQuadsByNamespace": {
-          // Namespace-scoped bulk removal — invalidate the incremental baseline.
-          invalidateIncrementalBaseline();
+
           const { DataFactory } = resolveN3();
           if (!DataFactory) throw new Error("n3-datafactory-unavailable");
           const store = getSharedStore();
@@ -4611,8 +3497,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           break;
         }
         case "purgeNamespace": {
-          // Purging a namespace is a wholesale change — invalidate the baseline.
-          invalidateIncrementalBaseline();
+
           const { DataFactory } = resolveN3();
           if (!DataFactory) throw new Error("n3-datafactory-unavailable");
           const store = getSharedStore();
@@ -4687,8 +3572,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           break;
         }
         case "renameNamespaceUri": {
-          // Renaming a namespace rewrites many IRIs — invalidate the baseline.
-          invalidateIncrementalBaseline();
+
           const { DataFactory } = resolveN3();
           if (!DataFactory) throw new Error("n3-datafactory-unavailable");
           const store = getSharedStore();
@@ -4932,7 +3816,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           const graphTerm = createGraphTerm(graphName, DataFactory);
           const touchedSubjects = new Set<string>();
           // C2: accumulate the FULL signature (subject + predicate + non-literal
-          // object, de-skolemized to the `_:` form gatherBaseAxioms uses) of every
+          // object, de-skolemized) of every
           // ADDED and REMOVED quad — captured BEFORE removal for retractions. This
           // is Σ_Δ's seed: it MUST carry the changed triple's PREDICATE and OBJECT,
           // not just its subject, so a predicate/object-position edit (e.g.
@@ -5065,10 +3949,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           }
 
           if (added > 0 || removed > 0) {
-            // C2: forward the full changed signature in the emission meta so the
-            // auto-incremental trigger (ReactodiaCanvas) can pass it as
-            // `changedSignature` to reasonIncremental — making predicate/object
-            // edits visible to Σ_Δ, not just subjects.
+            // C2: forward the full changed signature in the emission meta.
             const changedSignature = Array.from(changedSignatureSet);
             emitChange({ reason: "syncBatch", graphName, added, removed, changedSignature });
             if (shouldEmitSubjects && emissionSubjects.length > 0) {
@@ -5119,13 +4000,6 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             result = { type: "construct", triples };
           } else if (queryResult.resultType === "void") {
             await queryResult.execute();
-            // L1 (SOUNDNESS): a SPARQL UPDATE mutates urn:vg:data directly via
-            // Comunica, BYPASSING syncBatch's changed-signature tracking — so the
-            // incremental Σ_Δ cannot see what changed. Invalidate the incremental
-            // baseline so the next reasonIncremental falls back to a full run that
-            // re-anchors from scratch (a wholesale update can never masquerade as a
-            // small Σ_Δ edit). Mirrors the bulk-mutation invalidation elsewhere.
-            invalidateIncrementalBaseline();
             // Trigger the normal subject-emission pipeline so the canvas refreshes
             const { DataFactory } = resolveN3();
             if (DataFactory) {
@@ -5377,31 +4251,6 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           };
           break;
         }
-        case "extractModule": {
-          // R2 — locality-based MODULE EXTRACTION. Gather the TBox/axiom triples
-          // from the SAME base graphs the reasoning path reads (urn:vg:data +
-          // urn:vg:ontologies), convert N3 quads → the pure extractor's triple
-          // shape, and run the ⊥-module ("bot") or iterated ⊤⊥* ("star")
-          // extraction over the requested signature. The result preserves ALL
-          // entailments over Σ (see localityModule.ts / moduleConformance test).
-          //
-          // READ-ONLY: operates on a read of the shared store via a classified
-          // snapshot; never mutates urn:vg:data.
-          const p = (msg.payload ?? { signature: [] }) as RDFWorkerCommandPayloads["extractModule"];
-          const moduleType = p.moduleType === "star" ? "star" : "bot";
-          const includeOntologies = p.includeOntologies !== false;
-          result = extractModuleFromStore(getSharedStore(), p.signature, moduleType, includeOntologies);
-          break;
-        }
-        case "reasonIncremental": {
-          // AUTO-INCREMENTAL REASONING — module-scoped reclassification on edit.
-          // Sound relative to a consistent baseline; falls back to a full run
-          // automatically when no such baseline exists or the edit looks like a
-          // bulk change. Returns { mode, isConsistent, inferredDelta, … }.
-          const p = (msg.payload ?? {}) as RDFWorkerCommandPayloads["reasonIncremental"];
-          result = await handleReasonIncremental(p);
-          break;
-        }
         default:
           throw new Error(`Unsupported command: ${String(msg.command)}`);
       }
@@ -5529,17 +4378,10 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
       const kTouchedSubjects = new Set<string>();
       const kAdditionSeen = new Set<string>();
 
-      // BUG B: a full run must be a TRUE from-scratch replacement of urn:vg:inferred,
-      // not an ADD-ONLY merge. The reasoner classifies a working COPY; without this
-      // step the shared store keeps any inferred triple a prior retraction made stale
-      // (the working copy never had it, so it is never re-derived and never removed),
-      // and establishIncrementalBaseline would then re-anchor consistent=true over a
-      // corrupt inferred graph — poisoning every later incremental step. Clear the
-      // shared store's urn:vg:inferred BEFORE writing the freshly-derived set, so a
-      // full run reflects retractions exactly (matching the incremental fallback's
-      // clear). Gate on kIsConsistent !== null: only when the reasoner produced a
-      // verdict (consistent → fresh inferred written below; inconsistent → inferred
-      // legitimately empty). A reasoner FAILURE (null) leaves inferred untouched.
+      // Clear stale inferred triples before writing fresh ones so a full run
+      // reflects retractions. Gate on kIsConsistent !== null: only when the
+      // reasoner produced a verdict. A reasoner FAILURE (null) leaves inferred
+      // untouched.
       let kRemovedStale = 0;
       const kRemovedSubjects = new Set<string>();
       if (mutateSharedStore && kSharedStoreRef && kIsConsistent !== null) {
@@ -5585,14 +4427,6 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           if (emission.subjects.length > 0) {
             emitSubjects(emission.subjects, emission.quadsBySubject, emission.snapshot, { reason: "reasoning", graphName: "urn:vg:inferred" });
           }
-        }
-        // Auto-incremental baseline: a full run over the shared store re-arms the
-        // incremental loop. Record the consistency verdict + the current axiom
-        // signature so a subsequent edit can be re-classified module-scoped. Only
-        // when the reasoner actually produced a verdict (kIsConsistent !== null);
-        // a reasoner FAILURE leaves the baseline as-is (no false re-arm).
-        if (kIsConsistent !== null) {
-          establishIncrementalBaseline(kSharedStoreRef, kIsConsistent === true);
         }
       }
 

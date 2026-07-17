@@ -556,39 +556,6 @@
       }
     },
     {
-      "name": "extractModule",
-      "description": "Extract a self-contained locality-based module (sub-ontology) that preserves all entailments over the given terms — for reuse, focused reasoning, or export (ROBOT-extract style). Input { signature: string[] (≥1 class/property IRIs), moduleType?: \"bot\"|\"star\" (default \"bot\"; \"star\" = the smaller iterated ⊤⊥* module), includeOntologies?: boolean (default true) }. Returns { moduleTriples: {subject,predicate,object}[], moduleTurtle, moduleSize, fullSize, reductionPercent, signature }. The module is the standard syntactic-locality module (Cuenca Grau et al., JAIR 2008) over the asserted graph (+ loaded ontologies): for every axiom α over the signature, O ⊨ α iff module ⊨ α — the building block for incremental / modular reasoning. It extracts the module and guarantees Σ-entailment conformance; it does not by itself perform live incremental-reasoning-on-edit (a documented follow-up). Read-only: never mutates asserted data.",
-      "inputSchema": {
-        "type": "object",
-        "required": [
-          "signature"
-        ],
-        "properties": {
-          "signature": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Class / property IRIs defining the module signature Σ (at least one). Prefix notation supported."
-          },
-          "moduleType": {
-            "type": "string",
-            "enum": [
-              "bot",
-              "star"
-            ],
-            "default": "bot",
-            "description": "\"bot\" = ⊥-locality module (default). \"star\" = iterated ⊤⊥* module (⊆ bot; usually smaller). Both preserve all Σ-entailments."
-          },
-          "includeOntologies": {
-            "type": "boolean",
-            "default": true,
-            "description": "Include axioms from loaded ontologies (urn:vg:ontologies) alongside the asserted graph (urn:vg:data). Default true."
-          }
-        }
-      }
-    },
-    {
       "name": "getCapabilities",
       "description": "Return available layout algorithms, export formats, and loaded ontologies.",
       "inputSchema": {
