@@ -141,7 +141,8 @@ class KoncludeReasoner {
   private readonly _reasoner: RdfReasoner;
 
   constructor() {
-    const workerUrl = `${(import.meta as any).env.BASE_URL}rdf-reasoner-konclude/worker.js?v=40`;
+    const base = (import.meta as any).env?.BASE_URL ?? "/";
+    const workerUrl = new URL(`${base}rdf-reasoner-konclude/worker.js`, self.location.href);
     this._reasoner = new RdfReasoner({ workerUrl });
     this.ready = this._reasoner.ready;
   }
