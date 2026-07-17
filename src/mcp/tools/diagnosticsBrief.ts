@@ -47,9 +47,7 @@ export interface DiagnosticsData {
     skipped: boolean;
   }[];
   unsatisfiableClasses: string[];
-  // TODO(rdf-reasoner-konclude): re-add profile/expressivity once reasoner
-  // exposes detectProfiles(store) with per-named-graph EL/QL/RL/DL classification.
-  profile?: {
+  profile: {
     owl2dl: boolean;
     violations: { axiom: string; reason: string }[];
     el?: { valid: boolean; violations: { construct: string; axiom: string; reason: string }[] };
