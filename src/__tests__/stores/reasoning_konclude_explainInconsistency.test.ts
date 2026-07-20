@@ -6,6 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { RdfReasoner } from "rdf-reasoner-konclude";
+import type { Quad } from "@rdfjs/types";
 import * as N3 from "n3";
 import * as fs from "fs";
 import * as path from "path";
@@ -36,7 +37,7 @@ describe("explainInconsistency()", () => {
         console.warn("[TEST] Konclude WASM unavailable — skipping:", String(e));
         return;
       }
-      let result: N3.Quad[][] | undefined;
+      let result: Quad[][] | undefined;
       try {
         const store = loadTtlStore("reasoning-demo.ttl");
         result = await r.explainInconsistency(store);
@@ -59,10 +60,10 @@ describe("explainInconsistency()", () => {
         console.warn("[TEST] Konclude WASM unavailable — skipping:", String(e));
         return;
       }
-      let result: N3.Quad[][] | undefined;
+      let result: Quad[][] | undefined;
       try {
         const store = loadTtlStore("reasoning-demo-inconsistent.ttl");
-        result = await r.explainInconsistency(store, 1);
+        result = await r.explainInconsistency(store, { maxJustifications: 1 });
       } finally {
         r.terminate();
       }
@@ -89,10 +90,10 @@ describe("explainInconsistency()", () => {
         console.warn("[TEST] Konclude WASM unavailable — skipping:", String(e));
         return;
       }
-      let result: N3.Quad[][] | undefined;
+      let result: Quad[][] | undefined;
       try {
         const store = loadTtlStore("reasoning-demo-inconsistent.ttl");
-        result = await r.explainInconsistency(store, 2);
+        result = await r.explainInconsistency(store, { maxJustifications: 2 });
       } finally {
         r.terminate();
       }
@@ -114,7 +115,7 @@ describe("explainInconsistency()", () => {
         console.warn("[TEST] Konclude WASM unavailable — skipping:", String(e));
         return;
       }
-      let result: N3.Quad[][] | undefined;
+      let result: Quad[][] | undefined;
       try {
         const store = new N3.Store();
         result = await r.explainInconsistency(store);

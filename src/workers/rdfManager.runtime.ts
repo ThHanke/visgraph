@@ -253,7 +253,7 @@ class KoncludeReasoner {
       subjectIri,
       predicateIri,
       objectIri,
-      { maxJustifications, objectIsClassLike: _objectIsClassLike },
+      { maxJustifications, objectIsClassLike: _objectIsClassLike, nativeOnly: true },
     ) as Promise<{
       isEntailed: boolean | null;
       justifications: N3.Quad[][];
