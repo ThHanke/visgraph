@@ -3272,9 +3272,21 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
       if (kUsedReasoner) {
         const rawInferred: Quad[] = kWorkingStore.getQuads(null, null, null, kInferredGraphTerm);
         debugLog("[VG_REASONING_WORKER] Konclude rawInferred from store:", rawInferred.length);
+
+        // Dedup: build set of asserted S/P/O keys so inferred quads that match
+        // asserted triples are suppressed (prevents amber "inferred" styling on
+        // asserted types like alice rdf:type Employee).
+        const assertedKeys = new Set<string>();
+        if (mutateSharedStore && kSharedStoreRef) {
+          for (const q of kSharedStoreRef.getQuads(null, null, null, null) as Quad[]) {
+            assertedKeys.add(`${q.subject.value}\0${q.predicate.value}\0${q.object.value}`);
+          }
+        }
+
         for (const inferredQuad of skolemizeQuads(rawInferred, DataFactory)) {
           const key = quadKeyFromTerms(inferredQuad);
-          if (!kAdditionSeen.has(key)) {
+          const spoKey = `${inferredQuad.subject.value}\0${inferredQuad.predicate.value}\0${inferredQuad.object.value}`;
+          if (!kAdditionSeen.has(key) && !assertedKeys.has(spoKey)) {
             kAdditionSeen.add(key);
             kAddedQuads.push(inferredQuad);
             if (mutateSharedStore && kSharedStoreRef) {
