@@ -17,6 +17,17 @@ function getButton() {
   return screen.getByRole('button', { name: /Explain inference/i });
 }
 
+function getTooltipText(): string {
+  const allDivs = document.querySelectorAll('div[style]');
+  for (const el of allDivs) {
+    const s = (el as HTMLElement).style;
+    if (s.position === 'fixed' && s.zIndex === '99999' && el.textContent) {
+      return el.textContent;
+    }
+  }
+  return '';
+}
+
 afterEach(() => cleanup());
 
 describe('EntailmentExplanation', () => {
@@ -61,10 +72,10 @@ describe('EntailmentExplanation', () => {
     render(<EntailmentExplanation triple={TRIPLE} explain={explain as any} />);
     fireEvent.mouseEnter(getButton());
     await waitFor(() => {
-      const title = getButton().getAttribute('title') ?? '';
-      expect(title).toContain('Inferred because:');
-      expect(title).toContain('Person ⊑ Agent');
-      expect(title).toContain('Alice rdf:type Person');
+      const tip = getTooltipText();
+      expect(tip).toContain('Inferred because:');
+      expect(tip).toContain('Person ⊑ Agent');
+      expect(tip).toContain('Alice rdf:type Person');
     });
   });
 
@@ -73,7 +84,7 @@ describe('EntailmentExplanation', () => {
     render(<EntailmentExplanation triple={TRIPLE} explain={explain as any} />);
     fireEvent.mouseEnter(getButton());
     await waitFor(() => {
-      expect(getButton().getAttribute('title')).toContain('vacuously');
+      expect(getTooltipText()).toContain('vacuously');
     });
   });
 
@@ -82,7 +93,7 @@ describe('EntailmentExplanation', () => {
     render(<EntailmentExplanation triple={TRIPLE} explain={explain as any} />);
     fireEvent.mouseEnter(getButton());
     await waitFor(() => {
-      expect(getButton().getAttribute('title')).toContain('inconsistent');
+      expect(getTooltipText()).toContain('inconsistent');
     });
   });
 
@@ -91,7 +102,7 @@ describe('EntailmentExplanation', () => {
     render(<EntailmentExplanation triple={TRIPLE} explain={explain as any} />);
     fireEvent.mouseEnter(getButton());
     await waitFor(() => {
-      expect(getButton().getAttribute('title')).toContain('Asserted');
+      expect(getTooltipText()).toContain('Asserted');
     });
   });
 
@@ -100,7 +111,7 @@ describe('EntailmentExplanation', () => {
     render(<EntailmentExplanation triple={TRIPLE} explain={explain as any} />);
     fireEvent.mouseEnter(getButton());
     await waitFor(() => {
-      expect(getButton().getAttribute('title')).toContain('no detailed justification');
+      expect(getTooltipText()).toContain('no justification');
     });
   });
 
@@ -109,7 +120,7 @@ describe('EntailmentExplanation', () => {
     render(<EntailmentExplanation triple={TRIPLE} explain={explain as any} />);
     fireEvent.mouseEnter(getButton());
     await waitFor(() => {
-      expect(getButton().getAttribute('title')).toContain('reasoner offline');
+      expect(getTooltipText()).toContain('reasoner offline');
     });
   });
 
@@ -120,12 +131,13 @@ describe('EntailmentExplanation', () => {
     render(<EntailmentExplanation triple={TRIPLE} explain={explain as any} />);
     fireEvent.mouseEnter(getButton());
     await waitFor(() => {
-      expect(getButton().getAttribute('title')).toContain('reasoner offline');
+      expect(getTooltipText()).toContain('reasoner offline');
     });
+    fireEvent.mouseLeave(getButton());
     fireEvent.mouseEnter(getButton());
     await waitFor(() => expect(explain).toHaveBeenCalledTimes(2));
     await waitFor(() => {
-      expect(getButton().getAttribute('title')).toContain('no detailed justification');
+      expect(getTooltipText()).toContain('no justification');
     });
   });
 

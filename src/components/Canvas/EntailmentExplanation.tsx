@@ -73,8 +73,9 @@ export function EntailmentExplanation(
       const formatted = formatResult(result, prefixes);
       console.debug(`[Explain] ${label} done ${(performance.now() - t0).toFixed(0)}ms — ${formatted.slice(0, 80)}`);
       setText(formatted);
-    }).catch(() => {
+    }).catch((err: unknown) => {
       asked.current = false;
+      setText(`Error: ${err instanceof Error ? err.message : String(err)}`);
     });
   }, [explain, triple.subject, triple.predicate, triple.object, triple.objectIsLiteral, prefixes, label]);
 
