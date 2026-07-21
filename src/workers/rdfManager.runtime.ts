@@ -25,7 +25,7 @@ import { ensureDefaultNamespaceMap } from "../constants/namespaces.ts";
 import { RDF_TYPE, RDFS_LABEL, SHACL } from "../constants/vocabularies.ts";
 import { OWL_SCHEMA_AXIOMS } from "../constants/owlSchemaData.ts";
 import { mipsToReasoningError, shaclViolationToEntry } from "./reasoningDiagnostics.ts";
-import { RdfReasoner, type LaconicJustification, type LaconicPart } from "rdf-reasoner-konclude";
+import { RdfReasoner, type LaconicJustification, type LaconicPart, type ValidationResult, type ExplainEntailmentOptions } from "rdf-reasoner-konclude";
 
 import { QueryEngine } from "@comunica/query-sparql-rdfjs";
 const KONCLUDE_INFERRED_GRAPH_IRI = "urn:vg:inferred";
@@ -68,75 +68,23 @@ function serializeLaconicJustification(lj: LaconicJustification): SerializedLaco
   };
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-// SINGLE SOURCE OF TRUTH — reasoning-base graph exclusions (Finding 1)
-// ───────────────────────────────────────────────────────────────────────────
-// Every Konclude/locality entry point that builds the "base axioms" the reasoner
-// sees must filter the shared store down to the SAME graphs. Previously each call
-// site hand-rolled its own inline Set, and the copies were NOT identical — a
-// latent soundness risk, because the incremental-classify base and the full-
-// classify base were kept in sync only by manual coincidence. These named
-// constants are the ONE definition; every former inline copy now reads from here,
-// so the incremental and full reasoning bases provably share a source.
-//
-// Graph roles: urn:vg:data (asserted ABox/TBox) and urn:vg:ontologies (loaded
-// schema) are the reasoning INPUT; urn:vg:inferred holds derived triples (never
-// fed back as input); urn:vg:shapes is SHACL; urn:vg:workflows and
-// urn:vg:provenance are application metadata. None of the latter four are OWL DL
-// input to the reasoner.
+const INFERRED_GRAPH = KONCLUDE_INFERRED_GRAPH_IRI;
 
-/**
- * The canonical reasoning-base exclusion: drop inferred/shapes/workflows/
- * provenance so the base is exactly the asserted TBox/ABox + loaded ontologies.
- * Used by every consistency / unsat / justification
- * path that reads the CURRENT store (the reasoner must never re-consume its own
- * inferred output, hence urn:vg:inferred is excluded here).
- */
-const EXCLUDED_FROM_REASONING: ReadonlySet<string> = new Set([
+const EXCLUDED_FROM_REASONING_WORKING_COPY: ReadonlySet<string> = new Set([
   "urn:vg:workflows",
-  "urn:vg:inferred",
-  "urn:vg:shapes",
   "urn:vg:provenance",
+  "urn:vg:inferred",
 ]);
-
-/**
- * Variant for reason(): identical to EXCLUDED_FROM_REASONING but WITHOUT
- * urn:vg:inferred, because reason() explicitly REMOVES the inferred graph from
- * the store FIRST (it is about to overwrite it) and then filters the remainder.
- * Excluding inferred here too would be harmless but redundant; the intentional
- * difference is documented so it is not mistaken for drift. Defined relative to
- * the canonical set so the two can never silently diverge on the other graphs.
- */
-const EXCLUDED_FROM_REASONING_KEEP_INFERRED: ReadonlySet<string> = new Set(
-  [...EXCLUDED_FROM_REASONING].filter((g) => g !== "urn:vg:inferred"),
-);
-
-/**
- * Variant for constructing the full-run WORKING COPY of the shared store: drop
- * only workflows/provenance, KEEPING inferred AND shapes. This is deliberately
- * broader (keeps more) than EXCLUDED_FROM_REASONING because the working copy is
- * then handed to reason(), which performs the FINAL reasoning-base filtering
- * (clears inferred, drops shapes) itself. Pre-dropping shapes/inferred here would
- * be redundant; pre-keeping them lets reason() own the canonical filter. Defined
- * as the subset of EXCLUDED_FROM_REASONING that is NOT reason()-handled, so it
- * stays anchored to the same definition.
- */
-const EXCLUDED_FROM_REASONING_WORKING_COPY: ReadonlySet<string> = new Set(
-  ["urn:vg:workflows", "urn:vg:provenance"].filter((g) =>
-    EXCLUDED_FROM_REASONING.has(g),
-  ),
-);
 
 
 // ---------------------------------------------------------------------------
-// KoncludeReasoner — thin adapter around rdf-reasoner-konclude v0.4.0 RdfReasoner.
-// Handles ontosphere-specific concerns: blank-node de-skolemization
-// (urn:vg:bnode:*), named-graph filtering (EXCLUDED_FROM_REASONING), and
+// DlReasoner — thin pass-through to rdf-reasoner-konclude RdfReasoner.
+// Handles ontosphere-specific concerns: INFERRED_GRAPH mapping and
 // SerializedLaconicJustification format conversion for the worker boundary.
 // ---------------------------------------------------------------------------
 
 
-class KoncludeReasoner {
+class DlReasoner {
   readonly ready: Promise<void>;
   private readonly _reasoner: RdfReasoner;
 
@@ -147,71 +95,16 @@ class KoncludeReasoner {
     this.ready = this._reasoner.ready;
   }
 
-  private static _deskolemize(candidates: N3.Quad[]): N3.Quad[] {
-    const BNODE_PREFIX = "urn:vg:bnode:";
-    return candidates.map((q) => {
-      const subj = q.subject.termType === "NamedNode" && q.subject.value.startsWith(BNODE_PREFIX)
-        ? N3.DataFactory.blankNode(q.subject.value.slice(BNODE_PREFIX.length))
-        : q.subject;
-      const obj = q.object.termType === "NamedNode" && q.object.value.startsWith(BNODE_PREFIX)
-        ? N3.DataFactory.blankNode(q.object.value.slice(BNODE_PREFIX.length))
-        : q.object;
-      if (subj === q.subject && obj === q.object) return q;
-      return N3.DataFactory.quad(subj, q.predicate, obj, q.graph);
-    });
-  }
-
-  private _buildReasoningStore(store: N3.Store, excluded: ReadonlySet<string>): N3.Store {
-    const allQuads: N3.Quad[] = store.getQuads(null, null, null, null);
-    const filtered = allQuads.filter((q) => {
-      const g = q.graph.termType === "DefaultGraph" ? "" : q.graph.value;
-      return !excluded.has(g);
-    });
-    return new N3.Store(KoncludeReasoner._deskolemize(filtered));
-  }
-
   reason(store: N3.Store): Promise<void> {
-    return (async () => {
-      const inferredGraphNode = N3.DataFactory.namedNode(KONCLUDE_INFERRED_GRAPH_IRI);
-      store.removeQuads(store.getQuads(null, null, null, inferredGraphNode));
-
-      const reasoningStore = this._buildReasoningStore(store, EXCLUDED_FROM_REASONING_KEEP_INFERRED);
-      await this._reasoner.materialize(reasoningStore, { includeClassHierarchy: true });
-
-      const inferred = reasoningStore.getQuads(
-        null, null, null,
-        N3.DataFactory.namedNode("urn:konclude:inferred"),
-      );
-
-      const sourceKeys = new Set(
-        reasoningStore.getQuads(null, null, null, N3.DataFactory.defaultGraph())
-          .map((q: N3.Quad) => `${q.subject.value}\0${q.predicate.value}\0${q.object.value}`),
-      );
-
-      for (const q of inferred) {
-        const key = `${q.subject.value}\0${q.predicate.value}\0${q.object.value}`;
-        if (!sourceKeys.has(key)) {
-          store.addQuad(N3.DataFactory.quad(q.subject, q.predicate, q.object, inferredGraphNode));
-        }
-      }
-
-      debugLog("[VG_REASONING_WORKER] Konclude inferred quads:", inferred.length);
-    })();
+    return this._reasoner.materialize(store, { includeClassHierarchy: true, inferredGraph: INFERRED_GRAPH }) as Promise<void>;
   }
 
-  checkConsistency(store: N3.Store): Promise<boolean> {
-    const reasoningStore = this._buildReasoningStore(store, EXCLUDED_FROM_REASONING);
-    return this._reasoner.checkConsistency(reasoningStore);
-  }
-
-  getUnsatisfiableClasses(store: N3.Store): Promise<string[]> {
-    const reasoningStore = this._buildReasoningStore(store, EXCLUDED_FROM_REASONING);
-    return this._reasoner.getUnsatisfiableClasses(reasoningStore);
+  validate(store: N3.Store): Promise<ValidationResult> {
+    return this._reasoner.validate(store) as Promise<ValidationResult>;
   }
 
   explainInconsistency(store: N3.Store, maxJustifications = 1): Promise<N3.Quad[][]> {
-    const reasoningStore = this._buildReasoningStore(store, EXCLUDED_FROM_REASONING);
-    return this._reasoner.explainInconsistency(reasoningStore, { maxJustifications }) as Promise<N3.Quad[][]>;
+    return this._reasoner.explainInconsistency(store, { maxJustifications, inferredGraph: INFERRED_GRAPH }) as Promise<N3.Quad[][]>;
   }
 
   explainInconsistencyLaconic(
@@ -224,8 +117,7 @@ class KoncludeReasoner {
     }>
   > {
     return (async () => {
-      const reasoningStore = this._buildReasoningStore(store, EXCLUDED_FROM_REASONING);
-      const results = await this._reasoner.explainInconsistencyLaconic(reasoningStore, { maxJustifications });
+      const results = await this._reasoner.explainInconsistencyLaconic(store, { maxJustifications, inferredGraph: INFERRED_GRAPH });
       return (results as Array<{ justification: N3.Quad[]; laconic: LaconicJustification }>).map((r) => ({
         justification: r.justification as N3.Quad[],
         laconic: serializeLaconicJustification(r.laconic),
@@ -238,8 +130,7 @@ class KoncludeReasoner {
     subjectIri: string,
     predicateIri: string,
     objectIri: string,
-    _objectIsClassLike: boolean,
-    maxJustifications = 1,
+    opts?: ExplainEntailmentOptions,
   ): Promise<{
     isEntailed: boolean | null;
     justifications: N3.Quad[][];
@@ -247,13 +138,12 @@ class KoncludeReasoner {
     vacuous?: boolean;
     reason?: string;
   }> {
-    const reasoningStore = this._buildReasoningStore(store, EXCLUDED_FROM_REASONING);
     return this._reasoner.explainEntailment(
-      reasoningStore,
+      store,
       subjectIri,
       predicateIri,
       objectIri,
-      { maxJustifications, objectIsClassLike: _objectIsClassLike, nativeOnly: true },
+      { inferredGraph: INFERRED_GRAPH, justificationMode: 'causal', ...opts },
     ) as Promise<{
       isEntailed: boolean | null;
       justifications: N3.Quad[][];
@@ -273,23 +163,21 @@ const RDFS_LABEL_IRI = RDFS_LABEL;
 let _cachedQueryEngine: QueryEngine | null = null;
 
 /**
- * The subset of KoncludeReasoner the worker runtime depends on. Declared as an
+ * The subset of DlReasoner the worker runtime depends on. Declared as an
  * interface so a TEST can inject a node-compatible adapter (the production
- * KoncludeReasoner wraps RdfReasoner which spawns a nested Web Worker,
+ * DlReasoner wraps RdfReasoner which spawns a nested Web Worker,
  * unavailable under vitest's node environment).
  */
-export interface KoncludeReasonerLike {
+export interface DlReasonerLike {
   readonly ready: Promise<void>;
   reason(store: N3.Store): Promise<void>;
-  checkConsistency(store: N3.Store): Promise<boolean>;
-  getUnsatisfiableClasses(store: N3.Store): Promise<string[]>;
+  validate(store: N3.Store): Promise<ValidationResult>;
   explainInconsistency(store: N3.Store, maxJustifications?: number): Promise<N3.Quad[][]>;
   /**
    * LACONIC inconsistency explanation (Horridge et al. ISWC 2008). OPTIONAL —
-   * the production KoncludeReasoner implements it; the test node adapter may omit
+   * the production DlReasoner implements it; the test node adapter may omit
    * it (the worker handler guards on its presence and falls back to the plain
-   * MIPS-only result). Returns, per justification, the original MIPS quads plus
-   * the laconic axiom parts (superfluous-part-free) and their source mapping.
+   * MIPS-only result).
    */
   explainInconsistencyLaconic?(
     store: N3.Store,
@@ -305,8 +193,7 @@ export interface KoncludeReasonerLike {
     subjectIri: string,
     predicateIri: string,
     objectIri: string,
-    objectIsClassLike: boolean,
-    maxJustifications?: number,
+    opts?: ExplainEntailmentOptions,
   ): Promise<{
     isEntailed: boolean | null;
     justifications: N3.Quad[][];
@@ -317,41 +204,34 @@ export interface KoncludeReasonerLike {
   terminate(): void;
 }
 
-let _koncludeReasoner: KoncludeReasonerLike | null = null;
-let _koncludeReasonerFactory: (() => KoncludeReasonerLike) | null = null;
+let _dlReasoner: DlReasonerLike | null = null;
+let _dlReasonerFactory: (() => DlReasonerLike) | null = null;
 
-/**
- * TEST-ONLY: override the Konclude reasoner factory so a node-compatible adapter
- * (e.g. one wrapping the package `RdfReasoner`) can drive the REAL worker
- * full-run paths under vitest. Pass `null` to restore
- * the production factory. Clears any cached instance so the override takes effect
- * on the next `getKoncludeReasoner()`.
- */
-export function setKoncludeReasonerFactoryForTest(
-  factory: (() => KoncludeReasonerLike) | null,
+export function setDlReasonerFactoryForTest(
+  factory: (() => DlReasonerLike) | null,
 ): void {
-  if (_koncludeReasoner) {
-    try { _koncludeReasoner.terminate(); } catch { /* ignore */ }
-    _koncludeReasoner = null;
+  if (_dlReasoner) {
+    try { _dlReasoner.terminate(); } catch { /* ignore */ }
+    _dlReasoner = null;
   }
-  _koncludeReasonerFactory = factory;
+  _dlReasonerFactory = factory;
 }
 
-function getKoncludeReasoner(): KoncludeReasonerLike {
-  if (!_koncludeReasoner) {
-    _koncludeReasoner = _koncludeReasonerFactory
-      ? _koncludeReasonerFactory()
-      : new KoncludeReasoner();
+function getDlReasoner(): DlReasonerLike {
+  if (!_dlReasoner) {
+    _dlReasoner = _dlReasonerFactory
+      ? _dlReasonerFactory()
+      : new DlReasoner();
   }
-  return _koncludeReasoner;
+  return _dlReasoner;
 }
 
 const _entailmentCache = new Map<string, unknown>();
 
-function resetKoncludeReasoner(): void {
-  if (_koncludeReasoner) {
-    _koncludeReasoner.terminate();
-    _koncludeReasoner = null;
+function resetDlReasoner(): void {
+  if (_dlReasoner) {
+    _dlReasoner.terminate();
+    _dlReasoner = null;
   }
   _entailmentCache.clear();
 }
@@ -1830,7 +1710,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
               );
             }
           }
-          if (removed > 0) resetKoncludeReasoner();
+          if (removed > 0) resetDlReasoner();
           result = { graphName, removed };
           break;
         }
@@ -2190,7 +2070,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             emitChange({ reason: "unloadOntologySubjects", ontologyUrl: unloadUrl, removed: removedSubjects.length });
             emitSubjects(emission.subjects, emission.quadsBySubject, emission.snapshot, { reason: "unloadOntologySubjects", ontologyUrl: unloadUrl, removedSubjects });
           }
-          if (removedSubjects.length > 0) resetKoncludeReasoner();
+          if (removedSubjects.length > 0) resetDlReasoner();
           result = { removed: removedSubjects.length, removedSubjects };
           break;
         }
@@ -3058,7 +2938,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
         case "explainInconsistency": {
           const p = (msg.payload ?? {}) as { maxJustifications?: number };
           const n = typeof p.maxJustifications === "number" ? p.maxJustifications : 1;
-          const konclude = getKoncludeReasoner();
+          const konclude = getDlReasoner();
           await konclude.ready;
           const store = getSharedStore();
 
@@ -3118,12 +2998,14 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           }
           break;
         }
-        case "getUnsatisfiableClasses": {
-          const konclude = getKoncludeReasoner();
+        case "validate": {
+          const konclude = getDlReasoner();
           await konclude.ready;
-          // The wrapper filters base graphs (excludes inferred/shapes/workflows) internally.
-          const unsatisfiable = await konclude.getUnsatisfiableClasses(getSharedStore());
-          result = { unsatisfiable: Array.isArray(unsatisfiable) ? unsatisfiable : [] };
+          const vr = await konclude.validate(getSharedStore());
+          result = {
+            consistent: vr.consistent,
+            unsatisfiable: vr.warnings.map((w) => w.classIRI),
+          };
           break;
         }
         case "verifyRepair": {
@@ -3131,8 +3013,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           //
           // Build a working store COPY of the shared store with the candidate's
           // axioms removed, then run the SAME Konclude consistency oracle that
-          // explainInconsistency() / checkConsistency() use (the wrapper filters
-          // base graphs and de-skolemises internally). The shared urn:vg:data
+          // explainInconsistency() / validate() use. The shared urn:vg:data
           // store is never mutated.
           //
           // verifyRepair accepts an ARRAY of removals: callers verify a single
@@ -3151,7 +3032,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           };
           const { StoreCls } = resolveN3();
           if (!StoreCls) throw new Error("n3-store-unavailable");
-          const konclude = getKoncludeReasoner();
+          const konclude = getDlReasoner();
           await konclude.ready;
           const source = getSharedStore();
           const removals = p.removals ?? [];
@@ -3187,7 +3068,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             copy.addQuad(q);
           }
           const removedCount = allQuads.length - copy.size;
-          const verifiedConsistent = await konclude.checkConsistency(copy);
+          const verifiedConsistent = (await konclude.validate(copy)).consistent;
           result = {
             verifiedConsistent,
             removedCount,
@@ -3218,7 +3099,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             result = cached;
             break;
           }
-          const konclude = getKoncludeReasoner();
+          const konclude = getDlReasoner();
           await konclude.ready;
           const objectIsClassLike = p.objectIsLiteral !== true;
           const { isEntailed, justifications, ontologyInconsistent, vacuous, reason } =
@@ -3227,8 +3108,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
               p.subjectIri,
               p.predicateIri,
               p.objectIri,
-              objectIsClassLike,
-              n,
+              { objectIsClassLike, maxJustifications: n },
             );
           const termValue = (t: { value: string; termType?: string }) =>
             t.termType === "BlankNode" ? `_:${t.value}` : t.value;
@@ -3325,7 +3205,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
         if (!sabAvailable) {
           throw new Error("SharedArrayBuffer unavailable — page needs HTTPS + COOP/COEP headers (or localhost). Use reasonerBackend='n3' as fallback.");
         }
-        const konclude = getKoncludeReasoner();
+        const konclude = getDlReasoner();
         await konclude.ready;
         const kQuadCount = kWorkingStore.size ?? kWorkingStore.countQuads?.(null,null,null,null) ?? 0;
         debugLog("[VG_REASONING_WORKER] Konclude input quads:", kQuadCount);
@@ -3333,7 +3213,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
         const kStart = Date.now();
         // Phase 1: consistency check — populates cache in the Konclude instance so
         // the subsequent explainInconsistency() call skips the redundant WASM round-trip.
-        const kConsistencyResult = await konclude.checkConsistency(kWorkingStore);
+        const kConsistencyResult = (await konclude.validate(kWorkingStore)).consistent;
         if (kConsistencyResult) {
           reasoningStage({ type: "reasoningStage", id: msg.id, stage: "reasoner-start", meta: { backend: 'konclude' } });
           await konclude.reason(kWorkingStore);

@@ -139,7 +139,7 @@ export type RDFWorkerCommandPayloads = {
   setDebug: { enabled: boolean };
   runShaclValidation: undefined;
   explainInconsistency: { maxJustifications?: number };
-  getUnsatisfiableClasses: undefined;
+  validate: undefined;
   /**
    * Symbolically verify a repair candidate: build a working store COPY without
    * the listed axioms and re-run the EXISTING Konclude consistency oracle.
@@ -229,7 +229,7 @@ export const RDF_WORKER_COMMANDS = [
   "setDebug",
   "runShaclValidation",
   "explainInconsistency",
-  "getUnsatisfiableClasses",
+  "validate",
   "verifyRepair",
   "searchTerms",
   "explainEntailment",
@@ -682,8 +682,8 @@ const COMMAND_VALIDATORS: Record<RDFWorkerCommandName, CommandValidator> = {
       "explainInconsistency.maxJustifications must be a number when provided",
     );
   },
-  getUnsatisfiableClasses(payload) {
-    invariant(typeof payload === "undefined", "getUnsatisfiableClasses payload must be undefined");
+  validate(payload) {
+    invariant(typeof payload === "undefined", "validate payload must be undefined");
   },
   verifyRepair(payload) {
     assertPlainObject(payload, "verifyRepair payload must be an object");

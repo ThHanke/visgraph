@@ -171,7 +171,7 @@ export const RepairSuggestions = memo(({ reasoningId, isConsistent }: RepairSugg
           justifications = await rdfManager.explainInconsistency(3);
         }
         let unsatisfiableClasses: string[] = [];
-        try { unsatisfiableClasses = await rdfManager.getUnsatisfiableClasses(); } catch { unsatisfiableClasses = []; }
+        try { unsatisfiableClasses = (await rdfManager.validate()).unsatisfiable; } catch { unsatisfiableClasses = []; }
         const shacl = await rdfManager.runShaclValidation();
         const shaclViolations = (shacl?.violations ?? []) as DiagnosticsData['shaclViolations'];
 

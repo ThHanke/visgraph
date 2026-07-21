@@ -7,7 +7,7 @@ const {
   mockExplainInconsistency,
   mockExplainInconsistencyWithLaconic,
   mockRunShacl,
-  mockGetUnsat,
+  mockValidate,
   mockFetchQuadsPage,
   mockVerifyRepair,
   mockVerifyRepairDetailed,
@@ -16,7 +16,7 @@ const {
   mockExplainInconsistency: vi.fn(),
   mockExplainInconsistencyWithLaconic: vi.fn(),
   mockRunShacl: vi.fn(),
-  mockGetUnsat: vi.fn(),
+  mockValidate: vi.fn(),
   mockFetchQuadsPage: vi.fn(),
   mockVerifyRepair: vi.fn(),
   mockVerifyRepairDetailed: vi.fn(),
@@ -31,7 +31,7 @@ vi.mock('@/utils/rdfManager', () => ({
     runReasoning: mockRunReasoning,
     explainInconsistency: mockExplainInconsistency,
     runShaclValidation: mockRunShacl,
-    getUnsatisfiableClasses: mockGetUnsat,
+    validate: mockValidate,
     fetchQuadsPage: mockFetchQuadsPage,
     verifyRepair: mockVerifyRepair,
     verifyRepairDetailed: mockVerifyRepairDetailed,
@@ -55,7 +55,7 @@ beforeEach(() => {
   mockRunReasoning.mockResolvedValue({ isConsistent: true, errors: [] });
   mockExplainInconsistency.mockResolvedValue([]);
   mockRunShacl.mockResolvedValue({ conforms: true, violations: [], shapeCount: 0 });
-  mockGetUnsat.mockResolvedValue([]);
+  mockValidate.mockResolvedValue({ consistent: true, unsatisfiable: [] });
   mockFetchQuadsPage.mockResolvedValue({ items: [] });
   mockVerifyRepair.mockResolvedValue(true);
   mockVerifyRepairDetailed.mockResolvedValue({
@@ -254,7 +254,7 @@ describe('explainDiagnostics', () => {
   });
 
   it('unsatisfiable class from Konclude is reported', async () => {
-    mockGetUnsat.mockResolvedValue(['http://ex/EmptyClass']);
+    mockValidate.mockResolvedValue({ consistent: true, unsatisfiable: ['http://ex/EmptyClass'] });
     const res = await explainDiagnostics.handler({});
     expect(res.data.unsatisfiableClasses).toContain('http://ex/EmptyClass');
     expect(res.data.repairBrief).toContain('EmptyClass');

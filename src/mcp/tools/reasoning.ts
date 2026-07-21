@@ -297,7 +297,7 @@ const explainDiagnostics: McpTool = {
 
       // 3. Unsatisfiable classes (Konclude classification — classes equivalent to owl:Nothing).
       let unsatisfiableClasses: string[] = [];
-      try { unsatisfiableClasses = await rdfManager.getUnsatisfiableClasses(); } catch { unsatisfiableClasses = []; }
+      try { unsatisfiableClasses = (await rdfManager.validate()).unsatisfiable; } catch { unsatisfiableClasses = []; }
 
       // 4. OWL 2 profile detection over the asserted data graph.
       const profileTriples = await loadDataProfileTriples();

@@ -903,11 +903,13 @@ export class RDFManagerImpl {
     return { justifications, laconicJustifications };
   }
 
-  /** IRIs of classes entailed to be unsatisfiable (equivalent to owl:Nothing). */
-  async getUnsatisfiableClasses(): Promise<string[]> {
-    const response = await this.worker.call("getUnsatisfiableClasses", undefined);
+  async validate(): Promise<{ consistent: boolean; unsatisfiable: string[] }> {
+    const response = await this.worker.call("validate", undefined);
     const safe = isPlainObject(response) ? response : {};
-    return Array.isArray(safe.unsatisfiable) ? (safe.unsatisfiable as string[]) : [];
+    return {
+      consistent: (safe as any).consistent === true,
+      unsatisfiable: Array.isArray((safe as any).unsatisfiable) ? ((safe as any).unsatisfiable as string[]) : [],
+    };
   }
 
   /**
