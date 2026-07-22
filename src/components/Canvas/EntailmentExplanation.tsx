@@ -74,7 +74,7 @@ export function EntailmentExplanation(
       asked.current = false;
       setText(`Error: ${err instanceof Error ? err.message : String(err)}`);
     });
-  }, [explain, triple.subject, triple.predicate, triple.object, triple.objectIsLiteral, prefixes, label]);
+  }, [explain, triple.subject, triple.predicate, triple.object, triple.objectIsLiteral, prefixes]);
 
   const onLeave = React.useCallback(() => setHovered(false), []);
 
