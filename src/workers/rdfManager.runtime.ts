@@ -25,7 +25,7 @@ import { ensureDefaultNamespaceMap } from "../constants/namespaces.ts";
 import { RDF_TYPE, RDFS_LABEL, SHACL } from "../constants/vocabularies.ts";
 import { OWL_SCHEMA_AXIOMS } from "../constants/owlSchemaData.ts";
 import { mipsToReasoningError, shaclViolationToEntry } from "./reasoningDiagnostics.ts";
-import { RdfReasoner, type LaconicJustification, type LaconicPart, type ValidationResult, type ExplainEntailmentOptions } from "rdf-reasoner-konclude";
+import { RdfReasoner, type LaconicJustification, type LaconicPart, type ValidationResult, type ExplainEntailmentOptions, type InferenceDelta } from "rdf-reasoner-konclude";
 
 import { QueryEngine } from "@comunica/query-sparql-rdfjs";
 const KONCLUDE_INFERRED_GRAPH_IRI = "urn:vg:inferred";
@@ -70,11 +70,6 @@ function serializeLaconicJustification(lj: LaconicJustification): SerializedLaco
 
 const INFERRED_GRAPH = KONCLUDE_INFERRED_GRAPH_IRI;
 
-const EXCLUDED_FROM_REASONING_WORKING_COPY: ReadonlySet<string> = new Set([
-  "urn:vg:workflows",
-  "urn:vg:provenance",
-  "urn:vg:inferred",
-]);
 
 
 // ---------------------------------------------------------------------------
@@ -95,8 +90,13 @@ class DlReasoner {
     this.ready = this._reasoner.ready;
   }
 
-  reason(store: N3.Store): Promise<void> {
-    return this._reasoner.materialize(store, { includeClassHierarchy: true, inferredGraph: INFERRED_GRAPH }) as Promise<void>;
+  reason(store: N3.Store): Promise<{ delta: InferenceDelta }> {
+    return this._reasoner.materialize(store, {
+      includeClassHierarchy: true,
+      inferredGraph: INFERRED_GRAPH,
+      returnDelta: true,
+      explanations: true,
+    }) as Promise<{ delta: InferenceDelta }>;
   }
 
   validate(store: N3.Store): Promise<ValidationResult> {
@@ -170,7 +170,7 @@ let _cachedQueryEngine: QueryEngine | null = null;
  */
 export interface DlReasonerLike {
   readonly ready: Promise<void>;
-  reason(store: N3.Store): Promise<void>;
+  reason(store: N3.Store): Promise<{ delta: InferenceDelta }>;
   validate(store: N3.Store): Promise<ValidationResult>;
   explainInconsistency(store: N3.Store, maxJustifications?: number): Promise<N3.Quad[][]>;
   /**
@@ -3167,37 +3167,21 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
 
     // ── KONCLUDE PATH ──────────────────────────────────────────────────────────
     if ((msg.reasonerBackend ?? 'konclude') !== 'n3') {
-      let kSharedStoreRef: any | null = null;
-      let kWorkingStore: any;
-
-      if (mutateSharedStore) {
-        kSharedStoreRef = getSharedStore();
-        kWorkingStore = new (StoreCls as any)();
-        try {
-          // Working-copy pre-filter (Finding 1): keep inferred AND shapes here;
-          // reason() does the FINAL reasoning-base filtering on this copy. Single
-          // source of truth — EXCLUDED_FROM_REASONING_WORKING_COPY.
-          const allQuads: Quad[] = kSharedStoreRef.getQuads(null, null, null, null);
-          const filteredQuads = allQuads.filter((q: Quad) => {
-            const g = q.graph.termType === "DefaultGraph" ? "" : q.graph.value;
-            return !EXCLUDED_FROM_REASONING_WORKING_COPY.has(g);
-          });
-          kWorkingStore.addQuads(filteredQuads);
-        } catch (_) {
-          kWorkingStore = kSharedStoreRef;
-        }
-      } else {
-        kWorkingStore = new (StoreCls as any)();
-        for (const pq of msg.quads || []) {
-          try { kWorkingStore.addQuad(deserializeQuad(pq, DataFactory)); } catch (_) { /* ignore */ }
-        }
-      }
+      const kStore = mutateSharedStore
+        ? getSharedStore()
+        : (() => {
+            const s = new (StoreCls as any)();
+            for (const pq of msg.quads || []) {
+              try { s.addQuad(deserializeQuad(pq, DataFactory)); } catch (_) { /* ignore */ }
+            }
+            return s;
+          })();
 
       let kUsedReasoner = false;
       let kReasonerDuration = 0;
       let kIsConsistent: boolean | null = null;
       let kMipsErrors: ReasoningError[] = [];
-      const kInferredGraphTerm = DataFactory.namedNode("urn:vg:inferred");
+      let kDelta: InferenceDelta = { added: [], removed: [] };
 
       try {
         const sabAvailable = typeof SharedArrayBuffer !== 'undefined';
@@ -3207,27 +3191,23 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
         }
         const konclude = getDlReasoner();
         await konclude.ready;
-        const kQuadCount = kWorkingStore.size ?? kWorkingStore.countQuads?.(null,null,null,null) ?? 0;
+        const kQuadCount = kStore.size ?? kStore.countQuads?.(null,null,null,null) ?? 0;
         debugLog("[VG_REASONING_WORKER] Konclude input quads:", kQuadCount);
         reasoningStage({ type: "reasoningStage", id: msg.id, stage: "consistency-check", meta: { backend: 'konclude' } });
         const kStart = Date.now();
-        // Phase 1: consistency check — populates cache in the Konclude instance so
-        // the subsequent explainInconsistency() call skips the redundant WASM round-trip.
-        const kConsistencyResult = (await konclude.validate(kWorkingStore)).consistent;
+        const kConsistencyResult = (await konclude.validate(kStore)).consistent;
         if (kConsistencyResult) {
           reasoningStage({ type: "reasoningStage", id: msg.id, stage: "reasoner-start", meta: { backend: 'konclude' } });
-          await konclude.reason(kWorkingStore);
+          const result = await konclude.reason(kStore);
+          kDelta = result.delta;
           kReasonerDuration = Date.now() - kStart;
           kUsedReasoner = true;
           kIsConsistent = true;
           reasoningStage({ type: "reasoningStage", id: msg.id, stage: "reasoner-complete", meta: { durationMs: kReasonerDuration, backend: 'konclude' } });
         } else {
-          // Phase 2: ontology is inconsistent — emit stage so the UI can show the badge
-          // before the MIPS explanation run. explainInconsistency() hits the consistency
-          // cache set above, so no second WASM consistency call is made.
           reasoningStage({ type: "reasoningStage", id: msg.id, stage: "inconsistent-detected", meta: { durationMs: Date.now() - kStart } });
           const DEFAULT_UI_MAX_JUSTIFICATIONS = 3;
-          const mips = await konclude.explainInconsistency(kWorkingStore, DEFAULT_UI_MAX_JUSTIFICATIONS);
+          const mips = await konclude.explainInconsistency(kStore, DEFAULT_UI_MAX_JUSTIFICATIONS);
           kReasonerDuration = Date.now() - kStart;
           kIsConsistent = false;
           kMipsErrors = mips.map(mipsToReasoningError);
@@ -3238,8 +3218,6 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
         const errMsg = String((err as Error).message || err);
         console.error("[VG_REASONING_WORKER] Konclude failed:", errMsg);
         reasoningStage({ type: "reasoningStage", id: msg.id, stage: "reasoner-error", meta: { error: errMsg } });
-        // F1: surface the failure as a result error instead of swallowing it, so the
-        // report no longer shows a silent "0 errors" success when reasoning actually failed.
         kMipsErrors.push({
           rule: "reasoner-error",
           severity: "error",
@@ -3247,68 +3225,26 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
         });
       }
 
-      const kAddedQuads: Quad[] = [];
+      const kAddedQuads = kUsedReasoner ? skolemizeQuads(kDelta.added, DataFactory) : [];
       const kTouchedSubjects = new Set<string>();
-      const kAdditionSeen = new Set<string>();
-
-      // Clear stale inferred triples before writing fresh ones so a full run
-      // reflects retractions. Gate on kIsConsistent !== null: only when the
-      // reasoner produced a verdict. A reasoner FAILURE (null) leaves inferred
-      // untouched.
-      let kRemovedStale = 0;
+      for (const q of kAddedQuads) {
+        const sv = subjectTermToString(q.subject, q.subject.value);
+        if (sv) kTouchedSubjects.add(sv);
+      }
       const kRemovedSubjects = new Set<string>();
-      if (mutateSharedStore && kSharedStoreRef && kIsConsistent !== null) {
-        const staleInferred = kSharedStoreRef.getQuads(null, null, null, kInferredGraphTerm) || [];
-        if (staleInferred.length > 0) {
-          for (const q of staleInferred) {
-            const sv = subjectTermToString(q.subject, q.subject.value);
-            if (sv) kRemovedSubjects.add(sv);
-          }
-          kSharedStoreRef.removeQuads(staleInferred);
-          kRemovedStale = staleInferred.length;
-        }
+      for (const q of kDelta.removed) {
+        const sv = subjectTermToString(q.subject, q.subject.value);
+        if (sv) kRemovedSubjects.add(sv);
       }
 
-      if (kUsedReasoner) {
-        const rawInferred: Quad[] = kWorkingStore.getQuads(null, null, null, kInferredGraphTerm);
-        debugLog("[VG_REASONING_WORKER] Konclude rawInferred from store:", rawInferred.length);
-
-        // Dedup: build set of asserted S/P/O keys so inferred quads that match
-        // asserted triples are suppressed (prevents amber "inferred" styling on
-        // asserted types like alice rdf:type Employee).
-        const assertedKeys = new Set<string>();
-        if (mutateSharedStore && kSharedStoreRef) {
-          for (const q of kSharedStoreRef.getQuads(null, null, null, null) as Quad[]) {
-            assertedKeys.add(`${q.subject.value}\0${q.predicate.value}\0${q.object.value}`);
-          }
+      if (mutateSharedStore) {
+        if (emitChangeFlag && (kAddedQuads.length > 0 || kDelta.removed.length > 0)) {
+          emitChange({ reason: "reasoning", addedCount: kAddedQuads.length, removedCount: kDelta.removed.length });
         }
-
-        for (const inferredQuad of skolemizeQuads(rawInferred, DataFactory)) {
-          const key = quadKeyFromTerms(inferredQuad);
-          const spoKey = `${inferredQuad.subject.value}\0${inferredQuad.predicate.value}\0${inferredQuad.object.value}`;
-          if (!kAdditionSeen.has(key) && !assertedKeys.has(spoKey)) {
-            kAdditionSeen.add(key);
-            kAddedQuads.push(inferredQuad);
-            if (mutateSharedStore && kSharedStoreRef) {
-              try { kSharedStoreRef.addQuad(inferredQuad); } catch (_) { /* dup */ }
-            }
-            const sv = subjectTermToString(inferredQuad.subject, inferredQuad.subject.value);
-            if (sv) kTouchedSubjects.add(sv);
-          }
-        }
-      }
-
-      if (mutateSharedStore && kSharedStoreRef) {
-        if (emitChangeFlag && (kAddedQuads.length > 0 || kRemovedStale > 0)) {
-          emitChange({ reason: "reasoning", addedCount: kAddedQuads.length, removedCount: kRemovedStale });
-        }
-        // Emit for added subjects AND for subjects whose stale inferred we cleared
-        // (BUG B) so the canvas drops retracted inferred edges even when no new
-        // inferred triple replaces them.
         if (emitSubjectsFlag && (kAddedQuads.length > 0 || kRemovedSubjects.size > 0)) {
           const emitSet = new Set(kTouchedSubjects);
           for (const s of kRemovedSubjects) emitSet.add(s);
-          const emission = prepareSubjectEmissionFromSet(emitSet, kSharedStoreRef, DataFactory);
+          const emission = prepareSubjectEmissionFromSet(emitSet, kStore, DataFactory);
           if (emission.subjects.length > 0) {
             emitSubjects(emission.subjects, emission.quadsBySubject, emission.snapshot, { reason: "reasoning", graphName: "urn:vg:inferred" });
           }
