@@ -64,14 +64,11 @@ export function EntailmentExplanation(
 
     if (asked.current) return;
     asked.current = true;
-    const t0 = performance.now();
-    console.debug(`[Explain] ${label} — querying`);
     const call = explain ?? rdfManager.explainEntailment.bind(rdfManager);
     call(triple.subject, triple.predicate, triple.object, {
       objectIsLiteral: triple.objectIsLiteral,
     }).then(result => {
       const formatted = formatResult(result, prefixes);
-      console.debug(`[Explain] ${label} done ${(performance.now() - t0).toFixed(0)}ms — ${formatted.slice(0, 80)}`);
       setText(formatted);
     }).catch((err: unknown) => {
       asked.current = false;
