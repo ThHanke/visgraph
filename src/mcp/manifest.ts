@@ -407,10 +407,10 @@ export const mcpManifest: McpToolManifestEntry[] = [
     name: 'explainDiagnostics',
     description:
       'Run the full symbolic verifier (OWL 2 DL reasoning + SHACL) and return ONE structured diagnosis of everything wrong with the current graph: ' +
-      '{ isConsistent, justifications, unsatisfiableClasses, profile, shaclViolations, repairBrief, suggestedRepairs }. ' +
+      '{ isConsistent, justifications, unsatisfiableClasses, shaclViolations, repairBrief, suggestedRepairs }. ' +
       'When isConsistent=false, justifications lists each minimal contradictory axiom set (MIPS) — remove or revise one axiom per set. '
       + 'laconicJustifications (Horridge, Parsia & Sattler, ISWC 2008) is the superfluous-part-free refinement aligned by index with justifications: each entry pinpoints the precise culprit axiom PART — e.g. the "A ⊑ B" part of "A ⊑ B ⊓ C" — with parts[] carrying the part and its source axiom (sourceSubject/sourcePredicate/sourceObject), sharpened (a superfluous part was dropped) and skipped (a cost cap suppressed laconic for that MIPS). The repair brief and the axiom-weakening repairs use it to target the minimal culprit conjunct. ' +
-      'profile reports OWL 2 profile analysis: the legacy DL sanity check (owl2dl + violations, e.g. a literal on an object property) PLUS structural EL/QL/RL detection — el/ql/rl each { valid, violations:[{construct,axiom,reason}] } listing the disallowed constructs found, and mostRestrictive (EL|QL|RL|DL|Full) is the tightest profile the ontology fits, telling you whether a cheaper profile-specific reasoner (EL/QL/RL) is sound & complete instead of full OWL 2 DL; shaclViolations are data-shape failures; ' +
+      'shaclViolations are data-shape failures; ' +
       'repairBrief is a ranked plain-language summary to act on. ' +
       'suggestedRepairs is a ranked list of EXECUTABLE, reasoner-computed fixes: each { id, issue, action:{tool,args}, rationale, verifiedConsistent?, verifiedSet?, justificationsCovered?, needsValue?, needsManualReview? }. ' +
       'For inconsistencies the DELETION repairs (kind:"delete") form a minimal hitting set over the MIPS — removing the WHOLE set restores consistency. Apply each via its action.tool (always removeLink for inconsistency repairs; it removes IRI- and literal-object triples and TBox axioms alike) with action.args. ' +
@@ -442,37 +442,6 @@ export const mcpManifest: McpToolManifestEntry[] = [
         predicateIri: { type: 'string', description: 'IRI of the predicate — rdfs:subClassOf or rdf:type.' },
         objectIri: { type: 'string', description: 'IRI of the axiom object (the superclass, or the class).' },
         maxJustifications: { type: 'number', default: 1, description: 'Maximum number of independent justifications to return.' },
-      },
-    },
-  },
-  {
-    name: 'extractModule',
-    description:
-      'Extract a self-contained locality-based module (sub-ontology) that preserves all entailments over the given terms — for reuse, focused reasoning, or export (ROBOT-extract style). ' +
-      'Input { signature: string[] (≥1 class/property IRIs), moduleType?: "bot"|"star" (default "bot"; "star" = the smaller iterated ⊤⊥* module), includeOntologies?: boolean (default true) }. ' +
-      'Returns { moduleTriples: {subject,predicate,object}[], moduleTurtle, moduleSize, fullSize, reductionPercent, signature }. ' +
-      'The module is the standard syntactic-locality module (Cuenca Grau et al., JAIR 2008) over the asserted graph (+ loaded ontologies): for every axiom α over the signature, O ⊨ α iff module ⊨ α — the building block for incremental / modular reasoning. ' +
-      'It extracts the module and guarantees Σ-entailment conformance; it does not by itself perform live incremental-reasoning-on-edit (a documented follow-up). Read-only: never mutates asserted data.',
-    inputSchema: {
-      type: 'object',
-      required: ['signature'],
-      properties: {
-        signature: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Class / property IRIs defining the module signature Σ (at least one). Prefix notation supported.',
-        },
-        moduleType: {
-          type: 'string',
-          enum: ['bot', 'star'],
-          default: 'bot',
-          description: '"bot" = ⊥-locality module (default). "star" = iterated ⊤⊥* module (⊆ bot; usually smaller). Both preserve all Σ-entailments.',
-        },
-        includeOntologies: {
-          type: 'boolean',
-          default: true,
-          description: 'Include axioms from loaded ontologies (urn:vg:ontologies) alongside the asserted graph (urn:vg:data). Default true.',
-        },
       },
     },
   },

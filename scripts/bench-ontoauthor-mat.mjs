@@ -80,12 +80,18 @@ async function freshPage(browser) {
   });
 
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await sleep(3000);
+  await sleep(4000);
 
   await page.evaluate(async () => {
     const mod = await import('/src/mcp/ontosphereMcpServer.ts');
     await mod.registerMcpTools();
   });
+
+  // Wait until tools are actually available (guards against Vite transform lag)
+  await page.waitForFunction(
+    () => window.__mcpTools && Object.keys(window.__mcpTools).length > 30,
+    { timeout: 15000 },
+  );
 
   return { page, ctx };
 }

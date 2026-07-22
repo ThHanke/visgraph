@@ -61,3 +61,7 @@ public/paper/lncs-splnproc.zip
 # Research workspace (paper drafts, study data) and orchestration state — local only
 _research_workspace/
 .omc/
+
+# Benchmark ontology files (temporary, not for production)
+public/bench-*.owl*
+public/bench-*.ttl

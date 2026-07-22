@@ -7,7 +7,7 @@ const {
   mockExplainInconsistency,
   mockExplainInconsistencyWithLaconic,
   mockRunShacl,
-  mockGetUnsat,
+  mockValidate,
   mockFetchQuadsPage,
   mockVerifyRepair,
   mockVerifyRepairDetailed,
@@ -16,7 +16,7 @@ const {
   mockExplainInconsistency: vi.fn(),
   mockExplainInconsistencyWithLaconic: vi.fn(),
   mockRunShacl: vi.fn(),
-  mockGetUnsat: vi.fn(),
+  mockValidate: vi.fn(),
   mockFetchQuadsPage: vi.fn(),
   mockVerifyRepair: vi.fn(),
   mockVerifyRepairDetailed: vi.fn(),
@@ -31,7 +31,7 @@ vi.mock('@/utils/rdfManager', () => ({
     runReasoning: mockRunReasoning,
     explainInconsistency: mockExplainInconsistency,
     runShaclValidation: mockRunShacl,
-    getUnsatisfiableClasses: mockGetUnsat,
+    validate: mockValidate,
     fetchQuadsPage: mockFetchQuadsPage,
     verifyRepair: mockVerifyRepair,
     verifyRepairDetailed: mockVerifyRepairDetailed,
@@ -55,7 +55,7 @@ beforeEach(() => {
   mockRunReasoning.mockResolvedValue({ isConsistent: true, errors: [] });
   mockExplainInconsistency.mockResolvedValue([]);
   mockRunShacl.mockResolvedValue({ conforms: true, violations: [], shapeCount: 0 });
-  mockGetUnsat.mockResolvedValue([]);
+  mockValidate.mockResolvedValue({ consistent: true, unsatisfiable: [] });
   mockFetchQuadsPage.mockResolvedValue({ items: [] });
   mockVerifyRepair.mockResolvedValue(true);
   mockVerifyRepairDetailed.mockResolvedValue({
@@ -254,26 +254,13 @@ describe('explainDiagnostics', () => {
   });
 
   it('unsatisfiable class from Konclude is reported', async () => {
-    mockGetUnsat.mockResolvedValue(['http://ex/EmptyClass']);
+    mockValidate.mockResolvedValue({ consistent: true, unsatisfiable: ['http://ex/EmptyClass'] });
     const res = await explainDiagnostics.handler({});
     expect(res.data.unsatisfiableClasses).toContain('http://ex/EmptyClass');
     expect(res.data.repairBrief).toContain('EmptyClass');
   });
 
-  it('OWL 2 profile violation (literal on object property) is reported', async () => {
-    mockFetchQuadsPage.mockResolvedValue({
-      items: [
-        // ex:knows declared an object property
-        { subject: { value: 'http://ex/knows' }, predicate: { value: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type' }, object: { value: 'http://www.w3.org/2002/07/owl#ObjectProperty', termType: 'NamedNode' } },
-        // ...but used with a literal object
-        { subject: { value: 'http://ex/a' }, predicate: { value: 'http://ex/knows' }, object: { value: '42', termType: 'Literal' } },
-      ],
-    });
-    const res = await explainDiagnostics.handler({});
-    expect(res.data.profile.owl2dl).toBe(false);
-    expect(res.data.profile.violations.length).toBeGreaterThan(0);
-    expect(res.data.repairBrief).toContain('OWL 2 DL PROFILE');
-  });
+  // Profile detection removed — will be re-added via rdf-reasoner-konclude API.
 
   it('SHACL violation is reported', async () => {
     mockRunShacl.mockResolvedValue({

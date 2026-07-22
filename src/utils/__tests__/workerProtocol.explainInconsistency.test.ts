@@ -24,12 +24,12 @@ describe("explainInconsistency worker command", () => {
   });
 });
 
-describe("getUnsatisfiableClasses worker command", () => {
+describe("validate worker command", () => {
   it("is a registered command", () => {
-    expect(RDF_WORKER_COMMANDS).toContain("getUnsatisfiableClasses");
+    expect(RDF_WORKER_COMMANDS).toContain("validate");
   });
   it("accepts undefined payload, rejects a payload", () => {
-    expect(() => validateRdfWorkerCommandInput("getUnsatisfiableClasses", undefined)).not.toThrow();
-    expect(() => validateRdfWorkerCommandInput("getUnsatisfiableClasses", {})).toThrow();
+    expect(() => validateRdfWorkerCommandInput("validate", undefined)).not.toThrow();
+    expect(() => validateRdfWorkerCommandInput("validate", {})).toThrow();
   });
 });

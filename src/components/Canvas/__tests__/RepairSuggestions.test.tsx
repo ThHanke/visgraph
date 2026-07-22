@@ -19,7 +19,7 @@ const hoisted = vi.hoisted(() => ({
   }),
   rdf: {
     explainInconsistency: vi.fn(),
-    getUnsatisfiableClasses: vi.fn(),
+    validate: vi.fn(),
     runShaclValidation: vi.fn(),
     verifyRepair: vi.fn(),
     removeTriple: vi.fn(),
@@ -66,7 +66,7 @@ const JUSTIFICATION = [
 
 function primeConsistentInconsistency() {
   hoisted.rdf.explainInconsistency.mockResolvedValue(JUSTIFICATION);
-  hoisted.rdf.getUnsatisfiableClasses.mockResolvedValue([]);
+  hoisted.rdf.validate.mockResolvedValue({ consistent: true, unsatisfiable: [] });
   hoisted.rdf.runShaclValidation.mockResolvedValue({ conforms: true, violations: [], shapeCount: 0 });
   // Removing the single repair restores consistency.
   hoisted.rdf.verifyRepair.mockResolvedValue(true);
@@ -169,7 +169,7 @@ describe('RepairSuggestions', () => {
       ],
     ];
     hoisted.rdf.explainInconsistency.mockResolvedValue(ontologyGraphJustif);
-    hoisted.rdf.getUnsatisfiableClasses.mockResolvedValue([]);
+    hoisted.rdf.validate.mockResolvedValue({ consistent: true, unsatisfiable: [] });
     hoisted.rdf.runShaclValidation.mockResolvedValue({ conforms: true, violations: [], shapeCount: 0 });
     hoisted.rdf.verifyRepair.mockResolvedValue(true);
     // Simulate a store where the quad EXISTS in urn:vg:ontologies: a data-graph
@@ -252,7 +252,7 @@ describe('RepairSuggestions', () => {
       ],
     ];
     hoisted.rdf.explainInconsistency.mockResolvedValue(ontologyGraphJustif);
-    hoisted.rdf.getUnsatisfiableClasses.mockResolvedValue([]);
+    hoisted.rdf.validate.mockResolvedValue({ consistent: true, unsatisfiable: [] });
     hoisted.rdf.runShaclValidation.mockResolvedValue({ conforms: true, violations: [], shapeCount: 0 });
     hoisted.rdf.verifyRepair.mockResolvedValue(true);
     hoisted.rdf.applyBatch.mockImplementation((changes: { removes?: { graph?: string }[] }, fallback: string) => {
@@ -308,7 +308,7 @@ describe('RepairSuggestions', () => {
       ],
     ];
     hoisted.rdf.explainInconsistency.mockResolvedValue(literalJustif);
-    hoisted.rdf.getUnsatisfiableClasses.mockResolvedValue([]);
+    hoisted.rdf.validate.mockResolvedValue({ consistent: true, unsatisfiable: [] });
     hoisted.rdf.runShaclValidation.mockResolvedValue({ conforms: true, violations: [], shapeCount: 0 });
     hoisted.rdf.verifyRepair.mockResolvedValue(true);
     hoisted.rdf.applyBatch.mockResolvedValue({ added: 0, removed: 1 });
@@ -369,7 +369,7 @@ describe('RepairSuggestions', () => {
       ],
     ];
     hoisted.rdf.explainInconsistency.mockResolvedValue(twoJustifs);
-    hoisted.rdf.getUnsatisfiableClasses.mockResolvedValue([]);
+    hoisted.rdf.validate.mockResolvedValue({ consistent: true, unsatisfiable: [] });
     hoisted.rdf.runShaclValidation.mockResolvedValue({ conforms: true, violations: [], shapeCount: 0 });
     // Each single removal does NOT restore consistency, but the full set does.
     hoisted.rdf.verifyRepair.mockImplementation((removals: { subject: string }[]) =>
@@ -434,7 +434,7 @@ describe('RepairSuggestions', () => {
       ],
     ];
     hoisted.rdf.explainInconsistency.mockResolvedValue(twoJustifs);
-    hoisted.rdf.getUnsatisfiableClasses.mockResolvedValue([]);
+    hoisted.rdf.validate.mockResolvedValue({ consistent: true, unsatisfiable: [] });
     hoisted.rdf.runShaclValidation.mockResolvedValue({ conforms: true, violations: [], shapeCount: 0 });
     hoisted.rdf.verifyRepair.mockImplementation((removals: { subject: string }[]) =>
       Promise.resolve(removals.length > 1),
@@ -487,7 +487,7 @@ describe('RepairSuggestions', () => {
     ] as ReturnType<typeof computeMod.computeRepairs>);
 
     hoisted.rdf.explainInconsistency.mockResolvedValue([[{ subject: `${EX}i`, predicate: RDF_TYPE, object: `${EX}A` }]]);
-    hoisted.rdf.getUnsatisfiableClasses.mockResolvedValue([]);
+    hoisted.rdf.validate.mockResolvedValue({ consistent: true, unsatisfiable: [] });
     hoisted.rdf.runShaclValidation.mockResolvedValue({ conforms: true, violations: [], shapeCount: 0 });
     hoisted.rdf.verifyRepair.mockResolvedValue(true);
     // Only the single valid removal is in the batch.
@@ -515,7 +515,7 @@ describe('RepairSuggestions', () => {
   });
 
   it('shows the consistent/conformant empty state when there are no issues', async () => {
-    hoisted.rdf.getUnsatisfiableClasses.mockResolvedValue([]);
+    hoisted.rdf.validate.mockResolvedValue({ consistent: true, unsatisfiable: [] });
     hoisted.rdf.runShaclValidation.mockResolvedValue({ conforms: true, violations: [], shapeCount: 0 });
 
     render(<RepairSuggestions reasoningId="r3" isConsistent={true} />);
@@ -534,7 +534,7 @@ describe('RepairSuggestions', () => {
       [{ subject: `${EX}A`, predicate: RDFS_SUBCLASS, object: `${EX}B` }],
     ];
     hoisted.rdf.explainInconsistency.mockResolvedValue(subClassJustif);
-    hoisted.rdf.getUnsatisfiableClasses.mockResolvedValue([]);
+    hoisted.rdf.validate.mockResolvedValue({ consistent: true, unsatisfiable: [] });
     hoisted.rdf.runShaclValidation.mockResolvedValue({ conforms: true, violations: [], shapeCount: 0 });
     hoisted.rdf.verifyRepair.mockResolvedValue(true);
     // Hierarchy: B ⊑ C → A ⊑ B can weaken to A ⊑ C.

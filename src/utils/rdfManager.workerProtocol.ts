@@ -139,7 +139,7 @@ export type RDFWorkerCommandPayloads = {
   setDebug: { enabled: boolean };
   runShaclValidation: undefined;
   explainInconsistency: { maxJustifications?: number };
-  getUnsatisfiableClasses: undefined;
+  validate: undefined;
   /**
    * Symbolically verify a repair candidate: build a working store COPY without
    * the listed axioms and re-run the EXISTING Konclude consistency oracle.
@@ -192,43 +192,6 @@ export type RDFWorkerCommandPayloads = {
     maxJustifications?: number;
   };
   /**
-   * Extract a self-contained syntactic-locality-based MODULE (sub-ontology) over
-   * a signature Σ. Gathers the TBox/axiom triples from the SAME base graphs the
-   * reasoning path uses (urn:vg:data + urn:vg:ontologies), converts them to the
-   * locality extractor's triple shape, and runs the ⊥-module ("bot") or iterated
-   * ⊤⊥* ("star") extraction. The module preserves ALL entailments over Σ.
-   * READ-ONLY — operates on a read of the store; never mutates urn:vg:data.
-   * Returns { moduleTriples: {subject,predicate,object}[], moduleSize, fullSize, signature }.
-   */
-  extractModule: {
-    signature: string[];
-    moduleType?: "bot" | "star";
-    includeOntologies?: boolean;
-  };
-  /**
-   * AUTO-INCREMENTAL REASONING (module-scoped reclassification on edit).
-   *
-   * Re-classify ONLY the ⊤⊥*-module M induced by the changed signature Σ_Δ,
-   * splicing the resulting inferred delta into urn:vg:inferred, instead of
-   * re-classifying the whole store. Sound RELATIVE TO A CONSISTENT BASELINE: a
-   * prior FULL runReasoning must have established that the ontology was consistent
-   * and recorded its axiom signature. Because the pre-edit ontology was consistent
-   * and only axioms over Σ_Δ changed, every new/retracted entailment (and any new
-   * inconsistency) is expressible over Σ_Δ ⊆ sig(M); the locality guarantee then
-   * makes re-classifying M sufficient and the inferred triples whose subject lies
-   * outside sig(M) provably unchanged.
-   *
-   * `changedSubjects` and/or `changedSignature` seed Σ_Δ (the worker expands it
-   * conservatively over directly-referenced class/property neighbours). When NO
-   * consistent baseline exists, the edit looks like a bulk load, or Σ_Δ is empty,
-   * the worker FALLS BACK to a full run (and re-establishes the baseline). The
-   * mode actually used is reported. READ-then-WRITE only on urn:vg:inferred;
-   * never mutates urn:vg:data.
-   */
-  reasonIncremental: {
-    changedSubjects?: string[];
-    changedSignature?: string[];
-  };
   getOntologyStats: undefined;
   /**
    * Enable or disable OPFS crash-recovery persistence for this session. The
@@ -266,12 +229,10 @@ export const RDF_WORKER_COMMANDS = [
   "setDebug",
   "runShaclValidation",
   "explainInconsistency",
-  "getUnsatisfiableClasses",
+  "validate",
   "verifyRepair",
   "searchTerms",
   "explainEntailment",
-  "extractModule",
-  "reasonIncremental",
   "getOntologyStats",
 ] as const;
 
@@ -721,8 +682,8 @@ const COMMAND_VALIDATORS: Record<RDFWorkerCommandName, CommandValidator> = {
       "explainInconsistency.maxJustifications must be a number when provided",
     );
   },
-  getUnsatisfiableClasses(payload) {
-    invariant(typeof payload === "undefined", "getUnsatisfiableClasses payload must be undefined");
+  validate(payload) {
+    invariant(typeof payload === "undefined", "validate payload must be undefined");
   },
   verifyRepair(payload) {
     assertPlainObject(payload, "verifyRepair payload must be an object");
@@ -782,53 +743,6 @@ const COMMAND_VALIDATORS: Record<RDFWorkerCommandName, CommandValidator> = {
     assertOptionalFiniteNumber(
       maxJustifications,
       "explainEntailment.maxJustifications must be a number when provided",
-    );
-  },
-  extractModule(payload) {
-    assertPlainObject(payload, "extractModule payload must be an object");
-    const { signature, moduleType, includeOntologies } =
-      payload as RDFWorkerCommandPayloads["extractModule"];
-    assertStringArray(signature, "extractModule.signature must be an array of strings");
-    invariant(
-      signature.length > 0,
-      "extractModule.signature must be a non-empty array of term IRIs",
-      { signature },
-    );
-    for (const term of signature) {
-      invariant(
-        typeof term === "string" && term.trim().length > 0,
-        "extractModule.signature entries must be non-empty strings",
-        { term },
-      );
-    }
-    if (typeof moduleType !== "undefined") {
-      invariant(
-        moduleType === "bot" || moduleType === "star",
-        "extractModule.moduleType must be 'bot' or 'star' when provided",
-        { moduleType },
-      );
-    }
-    if (typeof includeOntologies !== "undefined") {
-      assertBoolean(
-        includeOntologies,
-        "extractModule.includeOntologies must be a boolean when provided",
-      );
-    }
-  },
-  reasonIncremental(payload) {
-    // Both fields optional; an empty payload is valid (worker derives Σ_Δ = ∅ and
-    // falls back to a full run). When provided each must be a string array.
-    if (typeof payload === "undefined") return;
-    assertPlainObject(payload, "reasonIncremental payload must be an object when provided");
-    const { changedSubjects, changedSignature } =
-      payload as RDFWorkerCommandPayloads["reasonIncremental"];
-    assertOptionalStringArray(
-      changedSubjects,
-      "reasonIncremental.changedSubjects must be an array of strings when provided",
-    );
-    assertOptionalStringArray(
-      changedSignature,
-      "reasonIncremental.changedSignature must be an array of strings when provided",
     );
   },
   getOntologyStats(payload) {

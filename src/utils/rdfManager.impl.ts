@@ -903,11 +903,13 @@ export class RDFManagerImpl {
     return { justifications, laconicJustifications };
   }
 
-  /** IRIs of classes entailed to be unsatisfiable (equivalent to owl:Nothing). */
-  async getUnsatisfiableClasses(): Promise<string[]> {
-    const response = await this.worker.call("getUnsatisfiableClasses", undefined);
+  async validate(): Promise<{ consistent: boolean; unsatisfiable: string[] }> {
+    const response = await this.worker.call("validate", undefined);
     const safe = isPlainObject(response) ? response : {};
-    return Array.isArray(safe.unsatisfiable) ? (safe.unsatisfiable as string[]) : [];
+    return {
+      consistent: (safe as any).consistent === true,
+      unsatisfiable: Array.isArray((safe as any).unsatisfiable) ? ((safe as any).unsatisfiable as string[]) : [],
+    };
   }
 
   /**
@@ -993,87 +995,6 @@ export class RDFManagerImpl {
           score: number;
         }>)
       : [];
-  }
-
-  /**
-   * Extract a self-contained syntactic-locality-based MODULE (sub-ontology) over
-   * a signature Σ. The worker gathers the TBox/axiom triples from the SAME base
-   * graphs the reasoning path reads (urn:vg:data + urn:vg:ontologies), runs the
-   * ⊥-module ("bot", default) or iterated ⊤⊥* ("star") locality fixpoint, and
-   * returns the module triples plus size metrics. The module preserves ALL
-   * entailments over Σ (the conformance guarantee). READ-ONLY — never mutates
-   * urn:vg:data. This is the building block for incremental / modular reasoning
-   * (R2); full auto-incremental-on-edit is a documented follow-up.
-   */
-  async extractModule(
-    signature: string[],
-    opts?: { moduleType?: "bot" | "star"; includeOntologies?: boolean },
-  ): Promise<{
-    moduleTriples: { subject: string; predicate: string; object: string }[];
-    moduleSize: number;
-    fullSize: number;
-    signature: string[];
-  }> {
-    const response = await this.worker.call("extractModule", {
-      signature,
-      moduleType: opts?.moduleType,
-      includeOntologies: opts?.includeOntologies,
-    });
-    const safe = (isPlainObject(response) ? response : {}) as Record<string, unknown>;
-    const num = (v: unknown): number => (typeof v === "number" ? v : 0);
-    return {
-      moduleTriples: Array.isArray(safe.moduleTriples)
-        ? (safe.moduleTriples as { subject: string; predicate: string; object: string }[])
-        : [],
-      moduleSize: num(safe.moduleSize),
-      fullSize: num(safe.fullSize),
-      signature: Array.isArray(safe.signature) ? (safe.signature as string[]) : [...signature],
-    };
-  }
-
-  /**
-   * AUTO-INCREMENTAL REASONING — re-classify ONLY the ⊤⊥*-module induced by the
-   * changed signature Σ_Δ and splice the inferred delta into urn:vg:inferred,
-   * instead of re-classifying the whole store. Sound relative to a CONSISTENT
-   * baseline established by a prior full `runReasoning`; when no such baseline
-   * exists (or the edit looks like a bulk change / Σ_Δ is empty) the worker FALLS
-   * BACK to a full run and re-establishes the baseline. The mode actually used is
-   * returned. Pass the subjects (and/or explicit class/property symbols) the edit
-   * touched; the worker expands Σ_Δ conservatively for soundness. READ-then-WRITE
-   * only on urn:vg:inferred; never mutates urn:vg:data.
-   */
-  async reasonIncremental(opts?: {
-    changedSubjects?: string[];
-    changedSignature?: string[];
-  }): Promise<{
-    mode: "incremental" | "full";
-    isConsistent: boolean | null;
-    inferredDelta: { added: number; removed: number };
-    unsatisfiableClasses: string[];
-    moduleSize: number;
-    fullSize: number;
-    reasonedSignatureSize: number;
-  }> {
-    const response = await this.worker.call("reasonIncremental", {
-      changedSubjects: opts?.changedSubjects,
-      changedSignature: opts?.changedSignature,
-    });
-    const safe = (isPlainObject(response) ? response : {}) as Record<string, unknown>;
-    const num = (v: unknown): number => (typeof v === "number" ? v : 0);
-    const delta = isPlainObject(safe.inferredDelta)
-      ? (safe.inferredDelta as Record<string, unknown>)
-      : {};
-    return {
-      mode: safe.mode === "incremental" ? "incremental" : "full",
-      isConsistent: typeof safe.isConsistent === "boolean" ? safe.isConsistent : null,
-      inferredDelta: { added: num(delta.added), removed: num(delta.removed) },
-      unsatisfiableClasses: Array.isArray(safe.unsatisfiableClasses)
-        ? (safe.unsatisfiableClasses as string[])
-        : [],
-      moduleSize: num(safe.moduleSize),
-      fullSize: num(safe.fullSize),
-      reasonedSignatureSize: num(safe.reasonedSignatureSize),
-    };
   }
 
   /**

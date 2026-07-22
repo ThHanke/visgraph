@@ -6,6 +6,8 @@ import { VALID_ALGORITHMS } from './layout';
 import { rdfManager } from '@/utils/rdfManager';
 import { checkOwl2Profile, detectOwl2Profiles, type ProfileTriple } from '@/utils/owlProfile';
 import { buildRepairBrief, type DiagnosticsData } from './diagnosticsBrief';
+// TODO(rdf-reasoner-konclude): replace local computeRepairs/axiomWeakening with
+// reasoner API once repair/weakening endpoints land (plan-050 deferred scope).
 import {
   computeRepairs,
   addWeakeningRepairs,
@@ -42,7 +44,7 @@ function repairToRemoval(r: RepairSuggestion): VerifyRepairRemoval {
   };
 }
 
-/** Read the asserted data graph and project it to ProfileTriple[] (literal-aware). */
+
 async function loadDataProfileTriples(): Promise<ProfileTriple[]> {
   const page = await rdfManager.fetchQuadsPage({ graphName: DATA_GRAPH, limit: 0, serialize: true });
   const items = (page?.items ?? []) as Array<{
@@ -295,13 +297,9 @@ const explainDiagnostics: McpTool = {
 
       // 3. Unsatisfiable classes (Konclude classification — classes equivalent to owl:Nothing).
       let unsatisfiableClasses: string[] = [];
-      try { unsatisfiableClasses = await rdfManager.getUnsatisfiableClasses(); } catch { unsatisfiableClasses = []; }
+      try { unsatisfiableClasses = (await rdfManager.validate()).unsatisfiable; } catch { unsatisfiableClasses = []; }
 
       // 4. OWL 2 profile detection over the asserted data graph.
-      //    Keep the legacy DL-sanity fields (owl2dl + violations) for backward
-      //    compatibility, and ADD structural EL/QL/RL classification plus the
-      //    `mostRestrictive` label (the tightest profile the ontology fits —
-      //    tells an agent whether a cheaper, profile-specific reasoner suffices).
       const profileTriples = await loadDataProfileTriples();
       const dlReport = checkOwl2Profile(profileTriples);
       const profiles = detectOwl2Profiles(profileTriples);
@@ -600,83 +598,4 @@ const explainEntailment: McpTool = {
   },
 };
 
-// ---------------------------------------------------------------------------
-// extractModule
-// ---------------------------------------------------------------------------
-
-/** Serialise a triple object as one N-Triples-ish line for the turtle output. */
-function tripleToTurtleLine(t: { subject: string; predicate: string; object: string }): string {
-  const term = (v: string): string =>
-    v.startsWith('_:') || /^b\d+$/.test(v) ? v : `<${v}>`;
-  return `${term(t.subject)} ${term(t.predicate)} ${term(t.object)} .`;
-}
-
-const extractModule: McpTool = {
-  name: 'extractModule',
-  description:
-    'Extract a self-contained locality-based module (sub-ontology) that preserves all entailments over the given terms — for reuse, focused reasoning, or export (ROBOT-extract style). ' +
-    'Input { signature: string[] (≥1 class/property IRIs), moduleType?: "bot"|"star" (default "bot"; "star" = the smaller iterated ⊤⊥* module), includeOntologies?: boolean (default true — also draw axioms from loaded ontologies in urn:vg:ontologies) }. ' +
-    'Returns { success, data: { moduleTriples: {subject,predicate,object}[], moduleTurtle, moduleSize, fullSize, reductionPercent, signature } }. ' +
-    'The module is the standard syntactic-locality module (Cuenca Grau et al., JAIR 2008) over the asserted graph (+ loaded ontologies): for every axiom α expressible using only the signature terms, O ⊨ α iff module ⊨ α. ' +
-    'This is the building block for incremental / modular reasoning: reason over the small module instead of the whole ontology when your question is confined to the signature. ' +
-    'NOTE: this extracts the module + guarantees Σ-entailment conformance; it does NOT by itself perform live incremental-reasoning-on-edit (a global inconsistency outside Σ still needs separate handling — a documented follow-up). Read-only: never mutates asserted data.',
-  inputSchema: {
-    type: 'object',
-    required: ['signature'],
-    properties: {
-      signature: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'Class / property IRIs that define the module signature Σ (at least one). Prefix notation supported.',
-      },
-      moduleType: {
-        type: 'string',
-        enum: ['bot', 'star'],
-        default: 'bot',
-        description: '"bot" = the ⊥-locality module (default). "star" = the iterated ⊤⊥* module (⊆ bot; usually smaller). Both preserve all Σ-entailments.',
-      },
-      includeOntologies: {
-        type: 'boolean',
-        default: true,
-        description: 'Include axioms from loaded ontologies (urn:vg:ontologies) in addition to the asserted graph (urn:vg:data). Default true.',
-      },
-    },
-  },
-  async handler(params): Promise<McpResult> {
-    try {
-      const { signature, moduleType, includeOntologies } = (params ?? {}) as {
-        signature?: string[];
-        moduleType?: 'bot' | 'star';
-        includeOntologies?: boolean;
-      };
-      if (!Array.isArray(signature) || signature.length === 0) {
-        return { success: false, error: 'extractModule requires a non-empty signature array of term IRIs.' };
-      }
-
-      const { moduleTriples, moduleSize, fullSize, signature: sig } = await rdfManager.extractModule(
-        signature,
-        { moduleType, includeOntologies },
-      );
-
-      const reductionPercent =
-        fullSize > 0 ? Math.round(((fullSize - moduleSize) / fullSize) * 1000) / 10 : 0;
-      const moduleTurtle = moduleTriples.map(tripleToTurtleLine).join('\n');
-
-      return {
-        success: true,
-        data: {
-          moduleTriples,
-          moduleTurtle,
-          moduleSize,
-          fullSize,
-          reductionPercent,
-          signature: sig,
-        },
-      };
-    } catch (e) {
-      return { success: false, error: `extractModule: ${(e as Error)?.message ?? String(e)}` };
-    }
-  },
-};
-
-export const reasoningTools: McpTool[] = [runReasoning, clearInferred, getCapabilities, explainDiagnostics, explainEntailment, extractModule];
+export const reasoningTools: McpTool[] = [runReasoning, clearInferred, getCapabilities, explainDiagnostics, explainEntailment];

@@ -1536,138 +1536,67 @@ export default function ReactodiaCanvas() {
     registerSetViewMode(actions.setViewMode);
   }, [actions.setViewMode]);
 
-  // ─── Auto-reasoning: AUTO-INCREMENTAL reclassification on urn:vg:data edits ──
-  // Read autoReasoning from settings store. Using getState() inside the handler
-  // avoids re-registering the subscription on every settings change.
+  // ─── Auto-reasoning: full reclassification on urn:vg:data edits ─────────────
   const autoReasoningDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Accumulate the subjects touched by edits between debounced runs so the
-  // incremental step can derive Σ_Δ from exactly what changed.
-  const pendingChangedSubjectsRef = React.useRef<Set<string>>(new Set());
-  // C2: accumulate the FULL changed signature (subject + predicate + object IRIs
-  // of every added/removed triple) the worker emits, so predicate/object-position
-  // edits are visible to Σ_Δ — not just the subjects.
-  const pendingChangedSignatureRef = React.useRef<Set<string>>(new Set());
-  // BUG C: a stable scheduler the run-completion path can call to flush edits that
-  // accumulated WHILE a reasoning run was in flight. Assigned by the auto-reasoning
-  // effect; read by handleIncrementalReasoning's finally block.
+  const pendingEditRef = React.useRef(false);
   const scheduleAutoReasoningRef = React.useRef<(() => void) | null>(null);
 
-  // Module-scoped incremental reasoning: re-classify only the ⊤⊥*-module induced
-  // by the changed subjects and splice the delta into urn:vg:inferred. The worker
-  // falls back to a full run (and re-establishes the baseline) automatically when
-  // no consistent baseline exists; we then refresh the canvas from the inferred
-  // graph either way. Separate from the manual `handleRunReasoning` (full run +
-  // full report) so live editing stays fast at scale.
-  const handleIncrementalReasoning = React.useCallback(
-    async (changedSubjects: string[], changedSignature: string[]) => {
-      setIsReasoning(true);
-      isReasoningRef.current = true;
-      try {
-        const outcome = await rdfManager.reasonIncremental({ changedSubjects, changedSignature });
-        setIsInconsistentDetected(outcome.isConsistent === false);
-        // Refresh the canvas from the (possibly spliced) inferred graph.
-        await handleApplyInferred();
-        return outcome;
-      } finally {
-        setIsReasoning(false);
-        isReasoningRef.current = false;
-        // BUG C: if edits accumulated WHILE this run was in flight, flush them now
-        // by scheduling another debounced incremental run. Without this, pending
-        // edits would only be reasoned over on the next unrelated edit (staleness).
-        if (
-          (pendingChangedSubjectsRef.current.size > 0 ||
-            pendingChangedSignatureRef.current.size > 0) &&
-          useSettingsStore.getState().settings.autoReasoning
-        ) {
-          scheduleAutoReasoningRef.current?.();
-        }
+  const handleAutoReasoning = React.useCallback(async () => {
+    setIsReasoning(true);
+    isReasoningRef.current = true;
+    try {
+      const cfg = useAppConfigStore.getState().config;
+      const rulesets = Array.isArray(cfg?.reasoningRulesets) ? cfg.reasoningRulesets : [];
+      const backend = cfg?.reasonerBackend ?? 'konclude';
+      const result = await rdfManager.runReasoning({ rulesets, reasonerBackend: backend });
+      setCurrentReasoning(result);
+      setReasoningHistory(h => [...h, result]);
+      setIsInconsistentDetected(result.isConsistent === false);
+      await handleApplyInferred();
+    } finally {
+      setIsReasoning(false);
+      isReasoningRef.current = false;
+      if (
+        pendingEditRef.current &&
+        useSettingsStore.getState().settings.autoReasoning
+      ) {
+        pendingEditRef.current = false;
+        scheduleAutoReasoningRef.current?.();
       }
-    },
-    [handleApplyInferred],
-  );
+    }
+  }, [handleApplyInferred]);
 
   React.useEffect(() => {
     const AUTO_REASONING_DEBOUNCE_MS = 1500;
 
-    // (Re)schedule the debounced incremental run. Factored out so BOTH a fresh edit
-    // AND a self-reschedule (when the debounce fires mid-run) AND the run-completion
-    // flush use the IDENTICAL scheduling path.
     const schedule = () => {
       if (autoReasoningDebounceRef.current) clearTimeout(autoReasoningDebounceRef.current);
       autoReasoningDebounceRef.current = setTimeout(() => {
         autoReasoningDebounceRef.current = null;
-        // Re-check guards inside the timeout in case state changed while waiting.
         if (!useSettingsStore.getState().settings.autoReasoning) return;
-        // BUG C: if a run is in flight when the debounce fires, do NOT drop the
-        // pending edits — RE-SCHEDULE so they are reasoned over once the current run
-        // completes (the run-completion flush also re-schedules; whichever fires
-        // first wins, the other is a harmless no-op once pending is drained).
         if (isReasoningRef.current) {
-          schedule();
+          pendingEditRef.current = true;
           return;
         }
-        // Nothing accumulated (already flushed) ⇒ no-op.
-        if (
-          pendingChangedSubjectsRef.current.size === 0 &&
-          pendingChangedSignatureRef.current.size === 0
-        ) {
-          return;
-        }
-        const changed = [...pendingChangedSubjectsRef.current];
-        const changedSig = [...pendingChangedSignatureRef.current];
-        pendingChangedSubjectsRef.current = new Set();
-        pendingChangedSignatureRef.current = new Set();
-        void handleIncrementalReasoning(changed, changedSig);
+        if (!pendingEditRef.current) return;
+        pendingEditRef.current = false;
+        void handleAutoReasoning();
       }, AUTO_REASONING_DEBOUNCE_MS);
     };
     scheduleAutoReasoningRef.current = schedule;
 
     const handler = (
-      subjects: string[],
+      _subjects: string[],
       _quads?: unknown,
       _snapshot?: unknown,
       meta?: Record<string, unknown> | null,
     ) => {
-      // Guard 1: only react to explicit urn:vg:data writes — NOT to inferred-graph
-      // writes that the reasoner itself makes. This is the primary infinite-loop
-      // break: every emitSubjects call from the (full OR incremental) reasoner
-      // carries graphName=urn:vg:inferred, so it is unconditionally ignored here.
-      //
-      // BUG FIX: a missing graphName (graphName === null) must NOT be treated as a
-      // urn:vg:data write. Only an EXPLICIT urn:vg:data graphName triggers
-      // reasoning; an emission with no graphName is ambiguous (it could be an
-      // inferred/internal emission that simply omitted the tag) and must not
-      // spuriously fire reasoning. This closes a latent re-entrancy / false-trigger
-      // hole in the previous `graphName === null` allowance.
       const graphName = meta && typeof meta.graphName === 'string' ? meta.graphName : null;
       if (graphName !== 'urn:vg:data') return;
-
-      // Guard 2: skip full-refresh (initial load / view-mode switch) — those are not
-      // user edits; firing reasoning on startup would be noisy.
       if (meta?.reason === 'emitAllSubjects') return;
-
-      // Guard 3: only proceed when autoReasoning is enabled (read live from store).
       if (!useSettingsStore.getState().settings.autoReasoning) return;
 
-      // BUG C: ALWAYS accumulate the changed subjects + signature into the pending
-      // refs FIRST — BEFORE any in-flight guard — so an edit landing while a run is
-      // in flight is never lost. (Previously the `if (isReasoningRef.current) return`
-      // guard sat before this accumulation, dropping such edits entirely.)
-      for (const s of subjects) {
-        if (typeof s === 'string' && s.length > 0) pendingChangedSubjectsRef.current.add(s);
-      }
-      // C2: accumulate the full changed signature the worker forwarded in meta
-      // (subject + predicate + object IRIs of every added/removed triple).
-      const sig = meta && Array.isArray((meta as { changedSignature?: unknown }).changedSignature)
-        ? ((meta as { changedSignature?: unknown }).changedSignature as unknown[])
-        : [];
-      for (const s of sig) {
-        if (typeof s === 'string' && s.length > 0) pendingChangedSignatureRef.current.add(s);
-      }
-
-      // Debounce: coalesce rapid successive edits into a single reasoning run. If a
-      // run is in flight, schedule() re-schedules itself until the run completes;
-      // the edit is safely held in the pending refs meanwhile.
+      pendingEditRef.current = true;
       schedule();
     };
 
@@ -1680,7 +1609,7 @@ export default function ReactodiaCanvas() {
         autoReasoningDebounceRef.current = null;
       }
     };
-  }, [handleIncrementalReasoning]);
+  }, [handleAutoReasoning]);
 
   // ─── Undo / Redo keyboard shortcuts (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y) ──
   React.useEffect(() => {

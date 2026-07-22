@@ -10,6 +10,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { RdfReasoner } from "rdf-reasoner-konclude";
+import type { Quad } from "@rdfjs/types";
 import * as N3 from "n3";
 import * as fs from "fs";
 import * as path from "path";
@@ -85,7 +86,7 @@ describe("KoncludeReasoner adapter consistency", () => {
       }
       try {
         const inconsistentStore = loadTtlStore("reasoning-demo-inconsistent.ttl");
-        const mips = await r.explainInconsistency(inconsistentStore, 1);
+        const mips = await r.explainInconsistency(inconsistentStore, { maxJustifications: 1 });
         expect(mips.length).toBeGreaterThanOrEqual(1);
 
         // Now use a consistent store and materialize — must not throw
@@ -109,10 +110,10 @@ describe("KoncludeReasoner adapter consistency", () => {
         console.warn("[TEST] Konclude WASM unavailable — skipping:", String(e));
         return;
       }
-      let mips: N3.Quad[][] | undefined;
+      let mips: Quad[][] | undefined;
       try {
         const store = loadTtlStore("reasoning-demo-inconsistent.ttl");
-        mips = await r.explainInconsistency(store, 1);
+        mips = await r.explainInconsistency(store, { maxJustifications: 1 });
       } finally {
         r.terminate();
       }
