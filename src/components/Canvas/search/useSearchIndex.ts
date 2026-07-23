@@ -8,6 +8,15 @@ import type { SearchFilter, SearchIndexContext } from './SearchIndexContext';
 
 const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
 
+let _entities: ReadonlyArray<ElementModel> = [];
+
+export function lookupLabel(iri: string): string | undefined {
+  for (const e of _entities) {
+    if (e.id === iri) return entityLabel(e);
+  }
+  return undefined;
+}
+
 function entityLabel(entity: ElementModel): string {
   const labels = entity.properties[RDFS_LABEL];
   if (labels && labels.length > 0) {
@@ -94,7 +103,9 @@ export function useSearchIndex(): SearchIndexContext {
       ]);
       if (ac.signal.aborted) return;
       setClassGraph(graph);
-      setAllEntities(lookupItems.map(item => item.element));
+      const entities = lookupItems.map(item => item.element);
+      _entities = entities;
+      setAllEntities(entities);
     } catch (err) {
       if (!(err instanceof Error) || err.name !== 'AbortError') {
         console.warn('[useSearchIndex] fetch failed', err);
