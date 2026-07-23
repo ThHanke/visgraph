@@ -10,13 +10,6 @@ const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
 
 let _entities: ReadonlyArray<ElementModel> = [];
 
-export function lookupLabel(iri: string): string | undefined {
-  for (const e of _entities) {
-    if (e.id === iri) return entityLabel(e);
-  }
-  return undefined;
-}
-
 function entityLabel(entity: ElementModel): string {
   const labels = entity.properties[RDFS_LABEL];
   if (labels && labels.length > 0) {

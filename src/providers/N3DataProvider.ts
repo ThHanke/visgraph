@@ -200,6 +200,7 @@ const TBOX_BASE_TYPES = [
 
 const RDFS_SUB_CLASS_OF   = 'http://www.w3.org/2000/01/rdf-schema#subClassOf';
 const RDFS_SUB_PROP_OF    = 'http://www.w3.org/2000/01/rdf-schema#subPropertyOf';
+const RDFS_LABEL          = 'http://www.w3.org/2000/01/rdf-schema#label';
 
 export class N3DataProvider implements DataProvider {
   private inner = new RdfDataProvider({
@@ -702,6 +703,17 @@ export class N3DataProvider implements DataProvider {
 
   connectedLinkStats(p: { elementId: ElementIri; inexactCount?: boolean; signal?: AbortSignal }): Promise<DataProviderLinkCount[]> {
     return this.inner.connectedLinkStats(p);
+  }
+
+  labelForIri(iri: string): string | undefined {
+    const dataset = (this.inner as any).dataset;
+    if (!dataset) return undefined;
+    const subject = this.inner.factory.namedNode(iri);
+    const predicate = this.inner.factory.namedNode(RDFS_LABEL);
+    for (const q of dataset.iterateMatches(subject, predicate, null)) {
+      if (q.object.termType === 'Literal' && q.object.value) return q.object.value;
+    }
+    return undefined;
   }
 
   async lookup(p: DataProviderLookupParams): Promise<DataProviderLookupItem[]> {

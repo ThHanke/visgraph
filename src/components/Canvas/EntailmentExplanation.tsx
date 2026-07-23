@@ -4,7 +4,7 @@ import { HelpCircle } from 'lucide-react';
 import { rdfManager } from '../../utils/rdfManager';
 import { PrefixContext } from '../../providers/PrefixContext';
 import { prefixShorten } from '../../providers/prefixShorten';
-import { lookupLabel } from './search/useSearchIndex';
+import { dataProvider } from './ReactodiaCanvas';
 
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 const SUBCLASS_OF = 'http://www.w3.org/2000/01/rdf-schema#subClassOf';
@@ -32,7 +32,7 @@ function formatAxiom(
 }
 
 function labelOrLocal(iri: string): string {
-  return lookupLabel(iri) ?? iri.split(/[/#]/).pop() ?? iri;
+  return dataProvider.labelForIri(iri) ?? iri.split(/[/#]/).pop() ?? iri;
 }
 
 function formatAxiomReadable(
