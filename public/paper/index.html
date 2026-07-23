@@ -76,11 +76,19 @@ article footer p { font-size:0.846em; color:#555; text-indent:0; }
                  href="https://orcid.org/0000-0003-1649-6832">Thomas Hanke</a>
             </span>
           </dd>
+          <dd id="author-2">
+            <span about="" rel="schema:creator schema:author">
+              <a about="#sai-teja-potu" typeof="schema:Person"
+                 rel="schema:url" property="schema:name"
+                 href="https://orcid.org/0009-0007-7468-3544">Sai Teja Potu</a>
+            </span>
+          </dd>
         </dl>
 
         <ul id="author-org">
           <li id="author-org-1">
             <span about="#thomas-hanke" rel="schema:memberOf" resource="#fraunhofer-iwm"></span>
+            <span about="#sai-teja-potu" rel="schema:memberOf" resource="#fraunhofer-iwm"></span>
             <a about="#fraunhofer-iwm" typeof="schema:Organization"
                property="schema:name" rel="schema:url"
                href="https://www.iwm.fraunhofer.de/">Fraunhofer Institute for Mechanics of Materials IWM</a>,
@@ -97,6 +105,12 @@ article footer p { font-size:0.846em; color:#555; text-indent:0; }
                  alt="ORCID" width="16" height="16" style="vertical-align: text-bottom;" />
             <a about="#thomas-hanke" rel="owl:sameAs"
                href="https://orcid.org/0000-0003-1649-6832">https://orcid.org/0000-0003-1649-6832</a>
+          </li>
+          <li>
+            <img src="media/orcid_16x16.png"
+                 alt="ORCID" width="16" height="16" style="vertical-align: text-bottom;" />
+            <a about="#sai-teja-potu" rel="owl:sameAs"
+               href="https://orcid.org/0009-0007-7468-3544">https://orcid.org/0009-0007-7468-3544</a>
           </li>
         </ul>
 
@@ -123,12 +137,11 @@ article footer p { font-size:0.846em; color:#555; text-indent:0; }
           <h2>Keywords</h2>
           <div>
             <ul>
-              <li property="schema:about">Ontology Engineering</li>
-              <li property="schema:about">Semantic Web</li>
+              <li property="schema:about">Knowledge Graph Quality</li>
               <li property="schema:about">OWL 2 DL Reasoning</li>
-              <li property="schema:about">Knowledge Graph Visualization</li>
-              <li property="schema:about">Model Context Protocol</li>
               <li property="schema:about">SHACL Validation</li>
+              <li property="schema:about">Knowledge Graph Lifecycle</li>
+              <li property="schema:about">Model Context Protocol</li>
               <li property="schema:about">Browser-Based Tools</li>
             </ul>
           </div>
@@ -139,12 +152,12 @@ article footer p { font-size:0.846em; color:#555; text-indent:0; }
           <h2 property="schema:name">Introduction</h2>
           <div datatype="rdf:HTML" property="schema:description">
             <p>Ontology engineering remains a cornerstone of the Semantic Web, yet the available tools impose substantial prerequisites. Prot&eacute;g&eacute;&nbsp;<a class="ref" href="#ref-5">[5]</a>, the de facto standard, requires Java and local installation; server-based platforms demand deployment infrastructure; and even lightweight browser tools like WebVOWL&nbsp;<a class="ref" href="#ref-6">[6]</a> offer only read-only views without editing or reasoning. These requirements create friction in educational settings, collaborative workshops, and rapid prototyping scenarios where participants may lack the ability or permission to install software.</p>
-            <p>We address this gap with <em>Ontosphere</em>, a semantic web workbench that runs entirely in the browser. A user opens a URL and immediately has access to a full-featured ontology editor with visual graph authoring, OWL&nbsp;2&nbsp;DL reasoning, SHACL validation, and AI-agent integration &mdash; with no installation, no server, and no account creation. All computation, including description-logic inference, executes client-side via Web Workers and WebAssembly.</p>
+            <p>We address this gap with <em>Ontosphere</em>, a semantic web workbench that runs entirely in the browser. A user opens a URL and immediately has access to a full-featured ontology editor with visual graph authoring, OWL&nbsp;2&nbsp;DL&nbsp;<a class="ref" href="#ref-9">[9]</a> reasoning, SHACL validation, and AI-agent integration &mdash; with no installation, no server, and no account creation. All computation, including description-logic inference, executes client-side via Web Workers and WebAssembly.</p>
             <p>The contributions of this work are threefold:</p>
             <ol>
-              <li><strong>In-browser OWL&nbsp;2&nbsp;DL reasoning with full explanations.</strong> We compile the Konclude tableau reasoner&nbsp;<a class="ref" href="#ref-1">[1]</a> to WebAssembly and execute it in a SharedArrayBuffer-backed Web Worker, providing full SROIQ(D) expressivity within the browser &mdash; a capability not previously available in any browser-based ontology tool. Horridge-style justifications and axiom-weakening repairs support interactive debugging of both inconsistencies and entailments.</li>
-              <li><strong>A 42-tool MCP surface for AI integration.</strong> A Model Context Protocol&nbsp;<a class="ref" href="#ref-4">[4]</a> server allows any MCP-compatible AI agent to build, query, reason over, and validate knowledge graphs programmatically, with PROV-O provenance tracking of agent edits.</li>
-              <li><strong>Zero-install architecture.</strong> The entire system is packaged as a static single-page application served from a CDN, requiring only a modern browser with SharedArrayBuffer support.</li>
+              <li><strong>Reasoning-driven knowledge graph quality assurance.</strong> We compile the Konclude tableau reasoner&nbsp;<a class="ref" href="#ref-1">[1]</a> to WebAssembly and execute it in a SharedArrayBuffer-backed Web Worker, providing full SROIQ(D) expressivity within the browser &mdash; a capability not previously available in any browser-based ontology tool. Inferred triples are materialised into the store so that subsequent SHACL validation covers both asserted and derived data. Laconic justifications&nbsp;<a class="ref" href="#ref-12">[12]</a> and axiom-weakening repairs&nbsp;<a class="ref" href="#ref-13">[13]</a> support interactive debugging of both inconsistencies and entailments.</li>
+              <li><strong>Named-graph lifecycle with AI-agent governance.</strong> Five principal named graphs separate asserted data, loaded ontologies, inferred triples, SHACL shapes, and PROV-O provenance. A 42-tool Model Context Protocol&nbsp;<a class="ref" href="#ref-4">[4]</a> server allows any MCP-compatible AI agent to build, query, reason over, and validate knowledge graphs programmatically; every agent mutation is recorded in the provenance graph for audit and selective revert.</li>
+              <li><strong>Zero-install, serverless deployment.</strong> The entire system is packaged as a static single-page application served from a CDN, requiring only a modern browser with SharedArrayBuffer support &mdash; removing infrastructure barriers to knowledge graph curation.</li>
             </ol>
           </div>
         </section>
@@ -160,8 +173,8 @@ article footer p { font-size:0.846em; color:#555; text-indent:0; }
               <figcaption>Ontosphere system architecture. All components run client-side in the browser; only the AI chat interface is external.</figcaption>
             </figure>
 
-            <p>An in-memory quad store powered by N3.js&nbsp;<a class="ref" href="#ref-3">[3]</a> serves as the single source of truth, managing five named graphs for asserted triples, loaded ontologies, reasoner-derived triples, SHACL constraint shapes, and PROV-O provenance records of agent edits. The store accepts Turtle, JSON-LD, RDF/XML, N-Triples, and N3 serialisations as well as SPARQL endpoints, and a Comunica-based SPARQL engine provides query capabilities over the combined graph. For visual interaction, the Reactodia&nbsp;<a class="ref" href="#ref-2">[2]</a> canvas provides an interactive workspace that we extend with an always-on authoring mode: users add nodes via search, draw edges by dragging a halo handle between nodes, and edit annotation properties inline. Two independent views &mdash; TBox for classes and properties, ABox for individuals &mdash; allow working at different levels of abstraction.</p>
-            <p>The Konclude reasoner&nbsp;<a class="ref" href="#ref-1">[1]</a>, a complete tableau reasoner for the description logic SROIQ(D), is compiled to WebAssembly and executed in a dedicated Web Worker with SharedArrayBuffer-backed pthreads. Reasoning completes in 250&thinsp;ms&ndash;2.5&thinsp;s for typical benchmark ontologies (LUBM, GALEN, Pizza), with inferred triples visually distinguished by amber dashed edges. Full Horridge-style justifications explain both inconsistencies (minimal inconsistency-preserving subsets) and arbitrary entailments (&ldquo;why is A a subclass of B?&rdquo;), and axiom-weakening repairs offer less-destructive alternatives to axiom deletion. Automatic consistency checking reports per-entity clash details. After OWL inference, the shacl-engine library&nbsp;<a class="ref" href="#ref-11">[11]</a> provides SHACL Core validation with SPARQL-based constraints (&sect;3.4). Multiple graph layout algorithms &mdash; Dagre&nbsp;<a class="ref" href="#ref-8">[8]</a> and ELK&nbsp;<a class="ref" href="#ref-8">[8]</a> &mdash; run as Web Workers, and a three-level fold hierarchy manages visual complexity through annotation toggling, subclass chain collapsing, and community-detection clustering (Louvain&nbsp;<a class="ref" href="#ref-10">[10]</a>, Label Propagation, K-Means). Finally, 42 tools are registered with the browser&rsquo;s <code>navigator.modelContext</code> API&nbsp;<a class="ref" href="#ref-4">[4]</a> across eight categories (&sect;3.2), and an AI Relay Bridge bookmarklet extends this integration to arbitrary AI chat interfaces via BroadcastChannel &mdash; requiring no server, extension, or API keys.</p>
+            <p>An in-memory quad store powered by N3.js&nbsp;<a class="ref" href="#ref-3">[3]</a> serves as the single source of truth, managing five principal named graphs for asserted triples, loaded ontologies, reasoner-derived triples, SHACL constraint shapes, and PROV-O provenance records of agent edits. The store accepts Turtle, JSON-LD, RDF/XML, N-Triples, and N3 serialisations as well as SPARQL endpoints, and a Comunica-based SPARQL engine provides query capabilities over the combined graph. For visual interaction, the Reactodia&nbsp;<a class="ref" href="#ref-2">[2]</a> canvas provides an interactive workspace that we extend with an always-on authoring mode: users add nodes via search, draw edges by dragging a halo handle between nodes, and edit annotation properties inline. Two independent views &mdash; TBox for classes and properties, ABox for individuals &mdash; allow working at different levels of abstraction.</p>
+            <p>The Konclude reasoner&nbsp;<a class="ref" href="#ref-1">[1]</a>, a complete tableau reasoner for the description logic SROIQ(D), is compiled to WebAssembly and executed in a dedicated Web Worker with SharedArrayBuffer-backed pthreads. Reasoning completes in 250&thinsp;ms&ndash;2.5&thinsp;s for typical benchmark ontologies (LUBM, GALEN, Pizza), with inferred triples visually distinguished by amber dashed edges. Laconic justifications&nbsp;<a class="ref" href="#ref-12">[12]</a> explain both inconsistencies (minimal inconsistency-preserving subsets) and arbitrary entailments (&ldquo;why is A a subclass of B?&rdquo;), and axiom-weakening repairs&nbsp;<a class="ref" href="#ref-13">[13]</a> offer less-destructive alternatives to axiom deletion. Automatic consistency checking reports per-entity clash details. After OWL inference, the shacl-engine library&nbsp;<a class="ref" href="#ref-11">[11]</a> provides SHACL Core validation (&sect;3.4). Multiple graph layout algorithms &mdash; Dagre&nbsp;<a class="ref" href="#ref-14">[14]</a> and ELK&nbsp;<a class="ref" href="#ref-8">[8]</a> &mdash; run as Web Workers, and a three-level fold hierarchy manages visual complexity through annotation toggling, subclass chain collapsing, and community-detection clustering (Louvain&nbsp;<a class="ref" href="#ref-10">[10]</a>, Label Propagation, K-Means). Finally, 42 tools are registered via a <code>navigator.modelContext</code> polyfill implementing the Model Context Protocol&nbsp;<a class="ref" href="#ref-4">[4]</a> across eight categories (&sect;3.2), and an AI Relay Bridge bookmarklet extends this integration to arbitrary AI chat interfaces via BroadcastChannel &mdash; requiring no server, extension, or API keys.</p>
           </div>
         </section>
 
@@ -172,7 +185,7 @@ article footer p { font-size:0.846em; color:#555; text-indent:0; }
 
             <section>
               <h3>In-Browser OWL 2 DL Reasoning</h3>
-              <p>Existing browser-based ontology tools are limited to lightweight reasoning profiles: WebVOWL&nbsp;<a class="ref" href="#ref-6">[6]</a> provides no reasoning at all, and while OWL&thinsp;2&thinsp;EL reasoners have been demonstrated in JavaScript, the full OWL&nbsp;2&nbsp;DL profile &mdash; SROIQ(D) with nominals, number restrictions, role chains, and full Boolean constructors &mdash; has not previously been available in the browser. We achieve this by compiling the Konclude reasoner&nbsp;<a class="ref" href="#ref-1">[1]</a> to WebAssembly with SharedArrayBuffer-backed pthread support. The reasoner executes in a dedicated Web Worker, preserving UI responsiveness during classification. All OWL&nbsp;2&nbsp;DL constructs are supported, and a bundled demo exercises 15 distinct construct patterns on a small employee ontology. Beyond classification, the system computes Horridge-style justifications for arbitrary entailments and offers axiom-weakening repairs (Troquard et al., AAAI 2018) as less-destructive alternatives to axiom deletion when inconsistencies arise.</p>
+              <p>Existing browser-based ontology tools are limited to lightweight reasoning profiles: WebVOWL&nbsp;<a class="ref" href="#ref-6">[6]</a> provides no reasoning at all, and while OWL&thinsp;2&thinsp;EL reasoners have been demonstrated in JavaScript, the full OWL&nbsp;2&nbsp;DL profile &mdash; SROIQ(D) with nominals, number restrictions, role chains, and full Boolean constructors &mdash; has not previously been available in the browser. We achieve this by compiling the Konclude reasoner&nbsp;<a class="ref" href="#ref-1">[1]</a> to WebAssembly with SharedArrayBuffer-backed pthread support. The reasoner executes in a dedicated Web Worker, preserving UI responsiveness during classification. All OWL&nbsp;2&nbsp;DL constructs are supported, and a bundled demo exercises 15 distinct construct patterns on a small employee ontology. Beyond classification, the system computes laconic justifications&nbsp;<a class="ref" href="#ref-12">[12]</a> for arbitrary entailments and offers axiom-weakening repairs&nbsp;<a class="ref" href="#ref-13">[13]</a> as less-destructive alternatives to axiom deletion when inconsistencies arise.</p>
             </section>
 
             <section>
@@ -208,7 +221,7 @@ article footer p { font-size:0.846em; color:#555; text-indent:0; }
               <figcaption>Screencast of the live demonstration (~4&thinsp;min).</figcaption>
             </figure>
 
-            <p>The presenter opens Ontosphere with a <code>?url=</code> parameter pointing to a PMDCO chemical-composition dataset, resolves labels via the ontology autocomplete registry, and loads 67 community-maintained SHACL auto-shapes. Konclude classifies the PMDCO hierarchy, then SHACL validation reports one violation: <code>some_silicon</code> lacks a required <code>has&nbsp;quality</code> relationship. The presenter fixes this by creating a new class and individual via visual authoring, drawing the missing edge with a halo drag. Re-running reasoning confirms all constraints satisfied, and the corrected dataset is exported in Turtle, JSON-LD, or RDF/XML.</p>
+            <p>The presenter opens Ontosphere with a <code>?url=</code> parameter pointing to a PMDCO chemical-composition dataset, resolves labels via the ontology autocomplete registry, and loads bundled SHACL shapes for ontology quality checking. Konclude classifies the PMDCO hierarchy, then SHACL validation reports one violation: <code>some_silicon</code> lacks a required <code>has&nbsp;quality</code> relationship. The presenter fixes this by creating a new class and individual via visual authoring, drawing the missing edge with a halo drag. Re-running reasoning confirms all constraints satisfied, and the corrected dataset is exported in Turtle, JSON-LD, or RDF/XML.</p>
             <p>Per-feature screencasts: <a href="https://thhanke.github.io/ontosphere/demo-videos/feat-loading.mp4">loading</a> (68&thinsp;s), <a href="https://thhanke.github.io/ontosphere/demo-videos/feat-exploration.mp4">exploration</a> (90&thinsp;s), <a href="https://thhanke.github.io/ontosphere/demo-videos/feat-authoring.mp4">authoring</a> (103&thinsp;s), <a href="https://thhanke.github.io/ontosphere/demo-videos/feat-clustering.mp4">clustering</a> (43&thinsp;s), <a href="https://thhanke.github.io/ontosphere/demo-videos/feat-reasoning.mp4">reasoning</a> (141&thinsp;s), <a href="https://thhanke.github.io/ontosphere/demo-videos/feat-shacl.mp4">SHACL</a> (85&thinsp;s), <a href="https://thhanke.github.io/ontosphere/demo-videos/feat-ai-relay.mp4">AI relay</a> (65&thinsp;s).</p>
           </div>
         </section>
@@ -217,7 +230,7 @@ article footer p { font-size:0.846em; color:#555; text-indent:0; }
         <section id="related-work" rel="schema:hasPart" resource="#related-work">
           <h2 property="schema:name">Related Work</h2>
           <div datatype="rdf:HTML" property="schema:description">
-            <p>The landscape of ontology tools presents a trade-off between capability and accessibility. Prot&eacute;g&eacute;&nbsp;<a class="ref" href="#ref-5">[5]</a> offers comprehensive OWL&nbsp;2 editing and reasoning through desktop plugins but requires Java; WebProt&eacute;g&eacute; provides a web interface at the cost of a server backend without client-side reasoning; and WebVOWL&nbsp;<a class="ref" href="#ref-6">[6]</a> visualises ontologies in the browser but is read-only. To our knowledge, no existing tool combines zero-install browser execution, OWL&nbsp;2&nbsp;DL reasoning, visual graph editing, SHACL validation, and AI-agent integration. Ontosphere is the first system to offer full SROIQ(D) reasoning with Horridge-style justifications and axiom-weakening repairs in the browser and the first ontology workbench to expose its functionality through MCP.</p>
+            <p>The landscape of ontology tools presents a trade-off between capability and accessibility. Prot&eacute;g&eacute;&nbsp;<a class="ref" href="#ref-5">[5]</a> offers comprehensive OWL&nbsp;2 editing and reasoning through desktop plugins but requires Java; WebProt&eacute;g&eacute; provides a web interface at the cost of a server backend without client-side reasoning; and WebVOWL&nbsp;<a class="ref" href="#ref-6">[6]</a> visualises ontologies in the browser but is read-only. To our knowledge, no existing tool combines zero-install browser execution, OWL&nbsp;2&nbsp;DL reasoning, visual graph editing, SHACL validation, and AI-agent integration. Ontosphere is the first system to offer full SROIQ(D) reasoning with laconic justifications&nbsp;<a class="ref" href="#ref-12">[12]</a> and axiom-weakening repairs&nbsp;<a class="ref" href="#ref-13">[13]</a> in the browser and the first ontology workbench to expose its functionality through MCP.</p>
           </div>
         </section>
 
@@ -253,6 +266,9 @@ article footer p { font-size:0.846em; color:#555; text-indent:0; }
               <li id="ref-9" property="schema:citation">Grau, B.C., Horrocks, I., Motik, B., Parsia, B., Patel-Schneider, P., Sattler, U.: OWL 2: The Next Step for OWL. <em>J. Web Semantics</em> 6(4), 309&ndash;322 (2008). <a href="https://doi.org/10.1016/j.websem.2008.05.001">https://doi.org/10.1016/j.websem.2008.05.001</a></li>
               <li id="ref-10" property="schema:citation">Blondel, V.D., Guillaume, J.-L., Lambiotte, R., Lefebvre, E.: Fast unfolding of communities in large networks. <em>J. Statistical Mechanics: Theory and Experiment</em> 2008(10), P10008 (2008). <a href="https://doi.org/10.1088/1742-5468/2008/10/P10008">https://doi.org/10.1088/1742-5468/2008/10/P10008</a></li>
               <li id="ref-11" property="schema:citation">Bergwinkl, T.: shacl-engine: A fast RDF/JS SHACL engine. <a href="https://github.com/rdf-ext/shacl-engine">https://github.com/rdf-ext/shacl-engine</a> (2023).</li>
+              <li id="ref-12" property="schema:citation">Horridge, M., Parsia, B., Sattler, U.: Laconic and Precise Justifications in OWL. In: ISWC 2008, pp.&nbsp;323&ndash;338. Springer (2008). <a href="https://doi.org/10.1007/978-3-540-88564-1_21">https://doi.org/10.1007/978-3-540-88564-1_21</a></li>
+              <li id="ref-13" property="schema:citation">Troquard, N., Confalonieri, R., Galliani, P., Pe&ntilde;aloza, R., Porello, D., Kutz, O.: Repairing Ontologies via Axiom Weakening. In: AAAI 2018, pp.&nbsp;1981&ndash;1988 (2018). <a href="https://doi.org/10.1609/aaai.v32i1.11572">https://doi.org/10.1609/aaai.v32i1.11572</a></li>
+              <li id="ref-14" property="schema:citation">Pettitt, C.: Dagre: Directed graph layout for JavaScript. <a href="https://github.com/dagrejs/dagre">https://github.com/dagrejs/dagre</a></li>
             </ol>
           </div>
         </section>
