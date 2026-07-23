@@ -30,7 +30,7 @@ export function computeClustersLouvainNgraph(
   let level = 0;
 
   let nodeToOriginals = new Map<any, string[]>();
-  graph.forEachNode((n: any) => nodeToOriginals.set(n.id, [String(n.id)]));
+  graph.forEachNode((n: any) => { nodeToOriginals.set(n.id, [String(n.id)]); });
 
   while (communities.canCoarse && communities.canCoarse()) {
     level++;

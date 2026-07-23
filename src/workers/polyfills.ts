@@ -24,13 +24,13 @@
   // and toString('utf8') calls that are used in this project.
   if (typeof (globalThis as any).Buffer === "undefined") {
     class BufferShim extends Uint8Array {
-      static from(input: any, encoding?: string) {
+      static override from(input: any, encoding?: any): BufferShim {
         if (typeof input === "string") {
           // support only utf-8 strings which is sufficient for our needs
           const enc = new TextEncoder();
           return new BufferShim(enc.encode(input));
         } else if (Array.isArray(input) || ArrayBuffer.isView(input)) {
-          return new BufferShim(input);
+          return new BufferShim(new Uint8Array(input as any));
         } else if (input instanceof ArrayBuffer) {
           return new BufferShim(new Uint8Array(input));
         } else if (input && (input.buffer || input.length)) {

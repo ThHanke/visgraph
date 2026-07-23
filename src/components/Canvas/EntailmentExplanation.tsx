@@ -4,6 +4,7 @@ import { HelpCircle } from 'lucide-react';
 import { rdfManager } from '../../utils/rdfManager';
 import { PrefixContext } from '../../providers/PrefixContext';
 import { prefixShorten } from '../../providers/prefixShorten';
+import { lookupLabel } from './search/useSearchIndex';
 
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 const SUBCLASS_OF = 'http://www.w3.org/2000/01/rdf-schema#subClassOf';
@@ -30,15 +31,47 @@ function formatAxiom(
   return `${s} ${shorten(axiom.predicate)} ${o}`;
 }
 
-function formatResult(result: ExplainResult, prefixes: Record<string, string>): string {
-  if (result.ontologyInconsistent) return 'Cannot explain: ontology is inconsistent.';
-  if (result.isEntailed === false) return 'Asserted (not inferred).';
-  if (result.vacuous) return 'Holds vacuously (unsatisfiable class).';
+function labelOrLocal(iri: string): string {
+  return lookupLabel(iri) ?? iri.split(/[/#]/).pop() ?? iri;
+}
+
+function formatAxiomReadable(
+  axiom: { subject: string; predicate: string; object: string },
+): string {
+  const s = labelOrLocal(axiom.subject);
+  const o = labelOrLocal(axiom.object);
+  if (axiom.predicate === SUBCLASS_OF) return `${s} is a subclass of ${o}`;
+  if (axiom.predicate === SUBPROPERTY_OF) return `${s} is a subproperty of ${o}`;
+  if (axiom.predicate === RDF_TYPE) return `${s} is a ${o}`;
+  return `${s} ${labelOrLocal(axiom.predicate)} ${o}`;
+}
+
+interface FormattedLine {
+  formal: string;
+  readable: string;
+}
+
+function formatResult(
+  result: ExplainResult,
+  prefixes: Record<string, string>,
+): { header: string; lines: FormattedLine[] } {
+  if (result.ontologyInconsistent)
+    return { header: 'Cannot explain: ontology is inconsistent.', lines: [] };
+  if (result.isEntailed === false)
+    return { header: 'Asserted (not inferred).', lines: [] };
+  if (result.vacuous)
+    return { header: 'Holds vacuously (unsatisfiable class).', lines: [] };
   const justs = (result.justifications ?? []).filter(j => Array.isArray(j) && j.length > 0);
-  if (justs.length === 0) return 'Inferred (no justification available).';
-  const lines = ['Inferred because:'];
-  for (const j of justs) for (const ax of j) lines.push(`  • ${formatAxiom(ax, prefixes)}`);
-  return lines.join('\n');
+  if (justs.length === 0)
+    return { header: 'Inferred (no justification available).', lines: [] };
+  const lines: FormattedLine[] = [];
+  for (const j of justs)
+    for (const ax of j)
+      lines.push({
+        formal: formatAxiom(ax, prefixes),
+        readable: formatAxiomReadable(ax),
+      });
+  return { header: 'Inferred because:', lines };
 }
 
 export interface EntailmentExplanationProps {
@@ -50,7 +83,7 @@ export interface EntailmentExplanationProps {
 export function EntailmentExplanation(
   { triple, explain, label }: EntailmentExplanationProps,
 ): React.ReactElement {
-  const [text, setText] = React.useState<string | null>(null);
+  const [tooltip, setTooltip] = React.useState<{ header: string; lines: FormattedLine[] } | null>(null);
   const [hovered, setHovered] = React.useState(false);
   const [pos, setPos] = React.useState({ x: 0, y: 0 });
   const btnRef = React.useRef<HTMLButtonElement>(null);
@@ -68,11 +101,10 @@ export function EntailmentExplanation(
     call(triple.subject, triple.predicate, triple.object, {
       objectIsLiteral: triple.objectIsLiteral,
     }).then(result => {
-      const formatted = formatResult(result, prefixes);
-      setText(formatted);
+      setTooltip(formatResult(result, prefixes));
     }).catch((err: unknown) => {
       asked.current = false;
-      setText(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      setTooltip({ header: `Error: ${err instanceof Error ? err.message : String(err)}`, lines: [] });
     });
   }, [explain, triple.subject, triple.predicate, triple.object, triple.objectIsLiteral, prefixes]);
 
@@ -108,7 +140,7 @@ export function EntailmentExplanation(
       >
         <HelpCircle size={12} aria-hidden />
       </button>
-      {hovered && text && ReactDOM.createPortal(
+      {hovered && tooltip && ReactDOM.createPortal(
         <div style={{
           position: 'fixed',
           left: pos.x,
@@ -123,11 +155,17 @@ export function EntailmentExplanation(
           whiteSpace: 'pre-line',
           pointerEvents: 'none',
           zIndex: 99999,
-          maxWidth: 320,
+          maxWidth: 400,
           border: '1px solid rgba(255,255,255,0.1)',
           boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
         }}>
-          {text}
+          <div>{tooltip.header}</div>
+          {tooltip.lines.map((line, i) => (
+            <div key={i} style={{ marginTop: 2 }}>
+              <div style={{ color: '#a0a0b8' }}>{`  • ${line.formal}`}</div>
+              <div style={{ fontStyle: 'italic', color: '#c8c8e0', marginLeft: 16 }}>{line.readable}</div>
+            </div>
+          ))}
         </div>,
         document.body,
       )}

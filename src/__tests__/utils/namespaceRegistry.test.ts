@@ -52,8 +52,8 @@ describe("namespaceRegistry helpers (adapted)", () => {
 
   test("persisting registry writes it into ontology store via setNamespaceRegistry", () => {
     const registry = [
-      { prefix: "ex", namespace: "http://example.com/", color: "#abc" },
-      { prefix: "foaf", namespace: "http://xmlns.com/foaf/0.1/", color: "#def" },
+      { prefix: "ex", uri: "http://example.com/", namespace: "http://example.com/", color: "#abc" },
+      { prefix: "foaf", uri: "http://xmlns.com/foaf/0.1/", namespace: "http://xmlns.com/foaf/0.1/", color: "#def" },
     ];
     // ensure empty initially
     useOntologyStore.getState().setNamespaceRegistry([]);

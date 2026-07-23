@@ -1538,7 +1538,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
 
   async function handleCommand(msg: RDFWorkerCommand) {
     try {
-      const payload = (msg as { payload?: unknown }).payload;
+      const payload = (msg as { payload?: Record<string, any> }).payload;
       let result: unknown;
       switch (msg.command) {
         case "ping":
@@ -3261,9 +3261,9 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
             for (const v of shaclResult.violations) {
               const entry = shaclViolationToEntry(v);
               if (entry.severity === "error") {
-                kShaclErrors.push(entry);
+                kShaclErrors.push({ ...entry, severity: "error" as const });
               } else {
-                kWarnings.push(entry);
+                kWarnings.push({ ...entry, severity: "warning" as const });
               }
             }
           }
@@ -3736,9 +3736,9 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
           for (const v of shaclResult.violations) {
             const entry = shaclViolationToEntry(v);
             if (entry.severity === "error") {
-              errors.push(entry);
+              errors.push({ ...entry, severity: "error" as const });
             } else {
-              warnings.push(entry);
+              warnings.push({ ...entry, severity: "warning" as const });
             }
           }
         }

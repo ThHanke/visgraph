@@ -124,7 +124,7 @@ export function VgClassesSection({ onEntityCreated }: VgClassesSectionProps) {
       getCommandBus(Reactodia.InstancesSearchTopic).trigger('setCriteria', {
         criteria: filterKind === 'type'
           ? { elementType: node.iri }
-          : { refElementLink: node.iri },
+          : { refElementLink: node.iri as unknown as Reactodia.LinkTypeIri },
       });
     },
     [setActiveFilter, setSectionActive, getCommandBus]

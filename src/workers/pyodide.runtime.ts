@@ -452,7 +452,8 @@ if '/tmp' not in sys.path:
   }
 
   async function handleCommand(message: PyodideWorkerCommand) {
-    const { id, command, payload } = message;
+    const { id, command } = message;
+    const payload = 'payload' in message ? (message as any).payload : undefined;
 
     try {
       switch (command) {

@@ -290,10 +290,10 @@ const loadOntology: McpTool = {
           .map(p => ({ prefix: p.prefix, description: (p as any).description ?? p.name }));
         return {
           success: false,
-          error: result.error,
+          error: (result as any).error ?? 'Unknown error',
           hint: 'Pass query instead of url to search the registry.',
           ...(suggestions.length ? { suggestions } : {}),
-        };
+        } as McpResult;
       }
       return { success: true, data: { loaded: result.url, ...(result.canonicalUrl ? { canonicalUrl: result.canonicalUrl } : {}) } };
     } catch (e) {
@@ -304,7 +304,7 @@ const loadOntology: McpTool = {
         error: String(e),
         hint: 'Pass query instead of url to search the registry.',
         ...(suggestions.length ? { suggestions } : {}),
-      };
+      } as McpResult;
     }
   },
 };
@@ -626,6 +626,8 @@ const getGraphState: McpTool = {
 // ---------------------------------------------------------------------------
 const help: McpTool = {
   name: 'help',
+  description: 'List all available tools or get details about a specific tool.',
+  inputSchema: { type: 'object', properties: { tool: { type: 'string', description: 'Tool name to get help for' } } },
   async handler(params): Promise<McpResult> {
     const { tool } = (params ?? {}) as { tool?: string };
     if (tool) {

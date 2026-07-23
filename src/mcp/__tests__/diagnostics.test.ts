@@ -74,9 +74,10 @@ describe('explainDiagnostics', () => {
   it('clean graph → consistent, no issues, "No issues detected." brief', async () => {
     const res = await explainDiagnostics.handler({});
     expect(res.success).toBe(true);
-    expect(res.data.isConsistent).toBe(true);
-    expect(res.data.justifications).toEqual([]);
-    expect(res.data.repairBrief).toBe('No issues detected.');
+    const data = (res as any).data;
+    expect(data.isConsistent).toBe(true);
+    expect(data.justifications).toEqual([]);
+    expect(data.repairBrief).toBe('No issues detected.');
     // does not call explainInconsistency when consistent
     expect(mockExplainInconsistency).not.toHaveBeenCalled();
   });
@@ -91,11 +92,11 @@ describe('explainDiagnostics', () => {
     ]);
     const res = await explainDiagnostics.handler({ maxJustifications: 2 });
     expect(res.success).toBe(true);
-    expect(res.data.isConsistent).toBe(false);
-    expect(res.data.justifications).toHaveLength(1);
-    expect(res.data.justifications[0]).toHaveLength(2);
+    expect((res as any).data.isConsistent).toBe(false);
+    expect((res as any).data.justifications).toHaveLength(1);
+    expect((res as any).data.justifications[0]).toHaveLength(2);
     expect(mockExplainInconsistency).toHaveBeenCalledWith(2);
-    expect(res.data.repairBrief.toLowerCase()).toContain('disjointwith');
+    expect((res as any).data.repairBrief.toLowerCase()).toContain('disjointwith');
   });
 
   it('inconsistent graph → returns ranked, verified suggestedRepairs targeting a justification axiom', async () => {
@@ -112,10 +113,10 @@ describe('explainDiagnostics', () => {
 
     const res = (await explainDiagnostics.handler({ maxJustifications: 3 })) as { success: boolean; data: any };
     expect(res.success).toBe(true);
-    expect(Array.isArray(res.data.suggestedRepairs)).toBe(true);
-    expect(res.data.suggestedRepairs.length).toBeGreaterThanOrEqual(1);
+    expect(Array.isArray((res as any).data.suggestedRepairs)).toBe(true);
+    expect((res as any).data.suggestedRepairs.length).toBeGreaterThanOrEqual(1);
 
-    const top = res.data.suggestedRepairs[0];
+    const top = (res as any).data.suggestedRepairs[0];
     // The action targets an axiom that actually appears in a justification.
     const axiomKeys = new Set(mips.flat().map((a) => `${a.subject} ${a.predicate} ${a.object}`));
     const topKey = `${top.action.args.subjectIri} ${top.action.args.predicateIri} ${top.action.args.objectIri}`;
@@ -126,7 +127,7 @@ describe('explainDiagnostics', () => {
     // verifyRepair was invoked with the chosen axiom.
     expect(mockVerifyRepair).toHaveBeenCalled();
     // The brief enumerates the ranked repairs.
-    expect(res.data.repairBrief).toContain('SUGGESTED REPAIRS');
+    expect((res as any).data.repairBrief).toContain('SUGGESTED REPAIRS');
   });
 
   it('does not call verifyRepair when the graph is consistent', async () => {
@@ -162,16 +163,16 @@ describe('explainDiagnostics', () => {
     const res = (await explainDiagnostics.handler({ maxJustifications: 3 })) as { success: boolean; data: any };
     expect(res.success).toBe(true);
 
-    const inc = res.data.suggestedRepairs.filter((r: any) => r.issue === 'inconsistency' && !r.needsManualReview);
+    const inc = (res as any).data.suggestedRepairs.filter((r: any) => r.issue === 'inconsistency' && !r.needsManualReview);
     expect(inc.length).toBeGreaterThanOrEqual(2);
     // Every per-axiom verdict is false…
     for (const r of inc) expect(r.verifiedConsistent).toBe(false);
     // …yet the full-set verdict is true and surfaced both top-level and per-repair.
-    expect(res.data.repairSetVerifiedConsistent).toBe(true);
+    expect((res as any).data.repairSetVerifiedConsistent).toBe(true);
     for (const r of inc) expect(r.verifiedSet).toBe(true);
     // The brief must NOT read a per-axiom false as "this repair is wrong".
-    expect(res.data.repairBrief).toContain('apply the full repair set');
-    expect(res.data.repairBrief).toContain('restore consistency');
+    expect((res as any).data.repairBrief).toContain('apply the full repair set');
+    expect((res as any).data.repairBrief).toContain('restore consistency');
     // The FIRST verifyRepairDetailed call carries ALL removals (the full-set
     // check); any subsequent calls are the bounded subset-minimality search.
     expect(mockVerifyRepairDetailed).toHaveBeenCalled();
@@ -248,16 +249,16 @@ describe('explainDiagnostics', () => {
     });
     const res = (await explainDiagnostics.handler({})) as { success: boolean; data: any };
     expect(res.success).toBe(true);
-    expect(res.data.repairSetMatchWarning).toBeTruthy();
-    expect(res.data.repairSetMatchWarning).toContain('0 of 1');
-    expect(res.data.repairBrief).toContain('WARNING');
+    expect((res as any).data.repairSetMatchWarning).toBeTruthy();
+    expect((res as any).data.repairSetMatchWarning).toContain('0 of 1');
+    expect((res as any).data.repairBrief).toContain('WARNING');
   });
 
   it('unsatisfiable class from Konclude is reported', async () => {
     mockValidate.mockResolvedValue({ consistent: true, unsatisfiable: ['http://ex/EmptyClass'] });
     const res = await explainDiagnostics.handler({});
-    expect(res.data.unsatisfiableClasses).toContain('http://ex/EmptyClass');
-    expect(res.data.repairBrief).toContain('EmptyClass');
+    expect((res as any).data.unsatisfiableClasses).toContain('http://ex/EmptyClass');
+    expect((res as any).data.repairBrief).toContain('EmptyClass');
   });
 
   // Profile detection removed — will be re-added via rdf-reasoner-konclude API.
@@ -269,16 +270,16 @@ describe('explainDiagnostics', () => {
       shapeCount: 1,
     });
     const res = await explainDiagnostics.handler({});
-    expect(res.data.shaclViolations).toHaveLength(1);
-    expect(res.data.repairBrief).toContain('projectAlpha');
+    expect((res as any).data.shaclViolations).toHaveLength(1);
+    expect((res as any).data.repairBrief).toContain('projectAlpha');
   });
 
   it('returns success:false with context on internal error', async () => {
     mockRunReasoning.mockRejectedValue(new Error('worker boom'));
     const res = await explainDiagnostics.handler({});
     expect(res.success).toBe(false);
-    expect(res.error).toContain('explainDiagnostics');
-    expect(res.error).toContain('worker boom');
+    expect((res as any).error).toContain('explainDiagnostics');
+    expect((res as any).error).toContain('worker boom');
   });
 
   // LACONIC threading (Horridge et al. ISWC 2008): when rdfManager exposes the
@@ -324,12 +325,12 @@ describe('explainDiagnostics', () => {
       };
       expect(res.success).toBe(true);
       // The laconic refinement is surfaced in the response data …
-      expect(Array.isArray(res.data.laconicJustifications)).toBe(true);
-      expect(res.data.laconicJustifications[0].sharpened).toBe(true);
-      expect(res.data.laconicJustifications[0].parts[0].object).toBe('http://ex/B');
+      expect(Array.isArray((res as any).data.laconicJustifications)).toBe(true);
+      expect((res as any).data.laconicJustifications[0].sharpened).toBe(true);
+      expect((res as any).data.laconicJustifications[0].parts[0].object).toBe('http://ex/B');
       // … and the precise culprit PART is rendered in the brief.
-      expect(res.data.repairBrief).toContain('Precise culprit');
-      expect(res.data.repairBrief).toContain('part of');
+      expect((res as any).data.repairBrief).toContain('Precise culprit');
+      expect((res as any).data.repairBrief).toContain('part of');
       expect(mockExplainInconsistencyWithLaconic).toHaveBeenCalledWith(3);
     } finally {
       delete (rdfManager as unknown as { explainInconsistencyWithLaconic?: unknown })

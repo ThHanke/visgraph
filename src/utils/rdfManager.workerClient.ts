@@ -32,7 +32,7 @@ export interface RdfManagerWorkerClientOptions {
    * When true, no web worker is spawned. Instead, commands are executed synchronously against
    * the provided executor. Intended for tests that cannot run workers.
    */
-  executor?: <C extends RDFWorkerCommandName>(
+  executor?: <C extends keyof RDFWorkerCommandPayloads>(
     command: C,
     payload: RDFWorkerCommandPayloads[C],
   ) => Promise<unknown>;
@@ -83,9 +83,10 @@ export class RdfManagerWorkerClient {
       if (data.ok) {
         responder.resolve(data.result);
       } else {
-        const err = new Error(data.error || "rdf-worker-error");
-        if (data.stack) {
-          (err as any).stack = data.stack;
+        const failData = data as { ok: false; error: string; stack?: string };
+        const err = new Error(failData.error || "rdf-worker-error");
+        if (failData.stack) {
+          (err as any).stack = failData.stack;
         }
         responder.reject(err);
       }
@@ -155,7 +156,7 @@ export class RdfManagerWorkerClient {
     return this.workerInit;
   }
 
-  async call<C extends RDFWorkerCommandName, T = unknown>(
+  async call<C extends keyof RDFWorkerCommandPayloads, T = unknown>(
     command: C,
     payload?: RDFWorkerCommandPayloads[C],
   ): Promise<T> {

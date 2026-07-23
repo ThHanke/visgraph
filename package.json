@@ -1,7 +1,7 @@
 {
   "name": "ontosphere",
   "description": "Browser-based interactive RDF/ontology knowledge graph editor — authoring, OWL 2 DL reasoning (Konclude), clustering, multi-algorithm layout, and MCP support. Runs entirely client-side.",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "license": "Apache-2.0",
   "author": "Thomas Hanke <thomas.hnke82@gmail.com> (https://github.com/ThHanke)",
   "homepage": "https://thhanke.github.io/ontosphere/",
@@ -120,7 +120,7 @@
     "ngraph.slpa": "0.1.0",
     "rdf-canonize": "^5.0.0",
     "rdf-parse": "4.0.0",
-    "rdf-reasoner-konclude": "^0.6.8",
+    "rdf-reasoner-konclude": "^0.6.9",
     "react": "19.2.0",
     "react-day-picker": "9.11.1",
     "react-dom": "19.2.0",

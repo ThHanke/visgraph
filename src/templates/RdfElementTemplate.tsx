@@ -113,8 +113,8 @@ function RdfElementBody({ props }: { props: Reactodia.TemplateProps }) {
   if (!(element instanceof Reactodia.EntityElement)) return null;
 
   const data = element.data;
-  const label = getLabel(data, prefixes, registry);
-  const nsColor = getNamespaceColor(data.id, registry);
+  const label = getLabel(data, prefixes, registry as unknown as readonly NSEntry[]);
+  const nsColor = getNamespaceColor(data.id, registry as unknown as readonly NSEntry[]);
 
   const typeChips = displayTypes.map(typeIri => {
     const prefixed = prefixShorten(typeIri, prefixes);

@@ -84,7 +84,7 @@ describe('runLayout', () => {
     const result = await tool('runLayout').handler({ algorithm: 'nope' });
     expect(result).toMatchObject({ success: false });
     if (!result.success) {
-      expect(result.error).toContain('dagre-lr');
+      expect((result as any).error).toContain('dagre-lr');
     }
   });
 

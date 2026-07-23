@@ -9,9 +9,9 @@ import type { NamespaceRegistryEntry } from '../../utils/termUtils';
 
 describe('Node colors from namespace registry (not fat map)', () => {
   const testRegistry: NamespaceRegistryEntry[] = [
-    { prefix: 'ex', namespace: 'http://example.com/', color: '#FF0000' },
-    { prefix: 'prov', namespace: 'http://www.w3.org/ns/prov#', color: '#00FF00' },
-    { prefix: 'owl', namespace: 'http://www.w3.org/2002/07/owl#', color: '#0000FF' },
+    { prefix: 'ex', uri: 'http://example.com/', namespace: 'http://example.com/', color: '#FF0000' },
+    { prefix: 'prov', uri: 'http://www.w3.org/ns/prov#', namespace: 'http://www.w3.org/ns/prov#', color: '#00FF00' },
+    { prefix: 'owl', uri: 'http://www.w3.org/2002/07/owl#', namespace: 'http://www.w3.org/2002/07/owl#', color: '#0000FF' },
   ];
 
   it('should derive color from namespace registry', () => {
@@ -36,8 +36,8 @@ describe('Node colors from namespace registry (not fat map)', () => {
 
   it('should use longest matching namespace', () => {
     const registryWithNested: NamespaceRegistryEntry[] = [
-      { prefix: 'ex', namespace: 'http://example.com/', color: '#FF0000' },
-      { prefix: 'ex-sub', namespace: 'http://example.com/subnamespace/', color: '#00FF00' },
+      { prefix: 'ex', uri: 'http://example.com/', namespace: 'http://example.com/', color: '#FF0000' },
+      { prefix: 'ex-sub', uri: 'http://example.com/subnamespace/', namespace: 'http://example.com/subnamespace/', color: '#00FF00' },
     ];
 
     const color = getNodeColor(
@@ -51,7 +51,7 @@ describe('Node colors from namespace registry (not fat map)', () => {
 
   it('should return undefined when namespace has no color', () => {
     const registryNoColor: NamespaceRegistryEntry[] = [
-      { prefix: 'ex', namespace: 'http://example.com/', color: undefined },
+      { prefix: 'ex', uri: 'http://example.com/', namespace: 'http://example.com/', color: undefined },
     ];
 
     const color = getNodeColor(
@@ -65,7 +65,7 @@ describe('Node colors from namespace registry (not fat map)', () => {
 
   it('should use palette as fallback when registry has no color', () => {
     const registryNoColor: NamespaceRegistryEntry[] = [
-      { prefix: 'ex', namespace: 'http://example.com/', color: undefined },
+      { prefix: 'ex', uri: 'http://example.com/', namespace: 'http://example.com/', color: undefined },
     ];
 
     const palette = {
@@ -95,7 +95,7 @@ describe('Node colors from namespace registry (not fat map)', () => {
 
   it('should return undefined when namespace has no color and no fat map', () => {
     const registryNoColor: NamespaceRegistryEntry[] = [
-      { prefix: 'ex', namespace: 'http://example.com/', color: undefined },
+      { prefix: 'ex', uri: 'http://example.com/', namespace: 'http://example.com/', color: undefined },
     ];
 
     const color = getNodeColor(

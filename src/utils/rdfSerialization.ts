@@ -19,7 +19,7 @@ export type WorkerLiteral = {
   datatype?: string;
   language?: string;
 };
-export type WorkerDefaultGraph = { termType: "DefaultGraph"; value?: string };
+export type WorkerDefaultGraph = { termType: "DefaultGraph"; value: string };
 
 export type WorkerTerm =
   | WorkerNamedNode
@@ -177,5 +177,5 @@ export function deserializeQuad(
   }
   const object = deserializeTerm(serial.object, factory);
   const graph = deserializeTerm(serial.graph, factory);
-  return factory.quad(subject, predicate, object, graph);
+  return factory.quad(subject as any, predicate, object as any, graph as any);
 }

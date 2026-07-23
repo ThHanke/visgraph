@@ -558,7 +558,7 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         for (const ap of ann) {
           try {
             const predRaw = (ap && (ap.propertyUri || ap.property || ap.key)) || "";
-            const pred = typeof mgr?.expandPrefix === "function" && predRaw ? mgr.expandPrefix(String(predRaw)) : String(predRaw);
+            const pred = typeof (mgr as any)?.expandPrefix === "function" && predRaw ? (mgr as any).expandPrefix(String(predRaw)) : String(predRaw);
             if (!pred) continue;
 
             // Prefer provided native Term if present; otherwise build a Term from the value.
@@ -587,12 +587,12 @@ export const useOntologyStore = create<OntologyStore>((set, get) => ({
         for (const t of types) {
           try {
             const rdfTypePred =
-              mgr && typeof mgr.expandPrefix === "function"
-                ? mgr.expandPrefix("rdf:type")
+              mgr && typeof (mgr as any).expandPrefix === "function"
+                ? (mgr as any).expandPrefix("rdf:type")
                 : "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
             const expanded =
-              mgr && typeof mgr.expandPrefix === "function"
-                ? mgr.expandPrefix(String(t))
+              mgr && typeof (mgr as any).expandPrefix === "function"
+                ? (mgr as any).expandPrefix(String(t))
                 : String(t);
             if (expanded) {
               adds.push({ subject: String(entityUri), predicate: String(rdfTypePred), object: String(expanded) });

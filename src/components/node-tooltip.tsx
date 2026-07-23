@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+// @ts-expect-error -- @xyflow/react not installed; this file is unused dead code
 import { NodeToolbar, type NodeToolbarProps } from "@xyflow/react";
 import React, {
   createContext,

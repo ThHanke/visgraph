@@ -82,7 +82,7 @@ describe("ResizableNamespaceLegend store-driven behavior", () => {
     vi.clearAllMocks();
     const storeModule = await import("../../stores/ontologyStore");
     const store = storeModule.useOntologyStore();
-    store.reset();
+    (store as any).reset?.();
   });
 
   it("shows default namespace on load and displays entries after registry is populated", async () => {
@@ -98,8 +98,8 @@ describe("ResizableNamespaceLegend store-driven behavior", () => {
     const store = storeModule.useOntologyStore();
     // Populate registry as reconcile would
     const newRegistry = [
-      { prefix: "owl", namespace: OWL.namespace, color: "#E2CFEA" },
-      { prefix: "ex", namespace: "http://example.com/", color: "#7DD3FC" },
+      { prefix: "owl", uri: OWL.namespace, namespace: OWL.namespace, color: "#E2CFEA" },
+      { prefix: "ex", uri: "http://example.com/", namespace: "http://example.com/", color: "#7DD3FC" },
     ];
     store.setNamespaceRegistry(newRegistry);
     // Force re-render of the legend so it reads the updated registry
@@ -130,8 +130,8 @@ describe("ResizableNamespaceLegend store-driven behavior", () => {
     const storeModule = await import("../../stores/ontologyStore");
     const store = storeModule.useOntologyStore();
     const registry = [
-      { prefix: "ex", namespace: "http://example.com/", color: "#7DD3FC" },
-      { prefix: "owl", namespace: OWL.namespace, color: "#E2CFEA" },
+      { prefix: "ex", uri: "http://example.com/", namespace: "http://example.com/", color: "#7DD3FC" },
+      { prefix: "owl", uri: OWL.namespace, namespace: OWL.namespace, color: "#E2CFEA" },
     ];
     store.setNamespaceRegistry(registry);
     rerender(React.createElement(ResizableNamespaceLegend, {}));
@@ -164,8 +164,8 @@ describe("ResizableNamespaceLegend store-driven behavior", () => {
     const storeModule = await import("../../stores/ontologyStore");
     const store = storeModule.useOntologyStore();
     const registry = [
-      { prefix: "", namespace: DEFAULT_NAMESPACE_URI, color: "#ABCDEF" },
-      { prefix: "ex", namespace: "http://example.com/resource", color: "#7DD3FC" },
+      { prefix: "", uri: DEFAULT_NAMESPACE_URI, namespace: DEFAULT_NAMESPACE_URI, color: "#ABCDEF" },
+      { prefix: "ex", uri: "http://example.com/resource", namespace: "http://example.com/resource", color: "#7DD3FC" },
     ];
     store.setNamespaceRegistry(registry);
     rerender(React.createElement(ResizableNamespaceLegend, {}));
