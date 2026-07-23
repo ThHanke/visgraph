@@ -123,7 +123,7 @@ function buildProperties(
 // ---------------------------------------------------------------------------
 
 interface EntityEditorProps {
-  options: Reactodia.PropertyEditorOptionsEntity;
+  options: Reactodia.PropertyEditorOptions;
 }
 
 const EntityEditor = ({ options }: EntityEditorProps) => {

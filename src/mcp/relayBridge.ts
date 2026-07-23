@@ -59,7 +59,7 @@ function shortIri(iri: unknown): string | undefined {
 }
 
 function toastLabel(tool: string, result: McpResult): string {
-  const d = result.data as Record<string, unknown> | null | undefined;
+  const d = (result as any).data as Record<string, unknown> | null | undefined;
   if (!d) return tool;
   switch (tool) {
     case 'loadOntology':
@@ -146,7 +146,7 @@ async function buildCanvasSummary(
       .map(n => n.label || n.iri.split(/[/#]/).pop() || n.iri)
       .join(', ');
     const more = nodeCount > MAX_LABELS ? ` +${nodeCount - MAX_LABELS} more` : '';
-    const viewMode = useAppConfigStore.getState().viewMode;
+    const viewMode = useAppConfigStore.getState().config.viewMode;
     const viewLabel = viewMode === 'tbox' ? 'TBox' : 'ABox';
     return `Store: ${nodeCount} node${nodeCount !== 1 ? 's' : ''} (${labels}${more}), ${linkCount} link${linkCount !== 1 ? 's' : ''} · view: ${viewLabel}`;
   } catch {
@@ -251,7 +251,7 @@ async function handleCall(
     toast.success(`✓ ${toastLabel(tool, result)}`);
     notifyCallLog({ tool, success: true, timestamp: Date.now() });
   } else {
-    toast.error(`✗ ${toastLabel(tool, result)}: ${result.error}`);
+    toast.error(`✗ ${toastLabel(tool, result)}: ${(result as any).error}`);
     notifyCallLog({ tool, success: false, timestamp: Date.now() });
   }
 

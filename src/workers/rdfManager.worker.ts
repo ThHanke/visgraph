@@ -1,3 +1,4 @@
+/// <reference lib="webworker" />
 import { createRdfWorkerRuntime } from "./rdfManager.runtime.ts";
 
 declare const self: DedicatedWorkerGlobalScope;

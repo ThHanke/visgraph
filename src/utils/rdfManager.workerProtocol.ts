@@ -191,14 +191,9 @@ export type RDFWorkerCommandPayloads = {
     objectIsLiteral?: boolean;
     maxJustifications?: number;
   };
-  /**
   getOntologyStats: undefined;
-  /**
-   * Enable or disable OPFS crash-recovery persistence for this session. The
-   * enable preference is owned by the main thread (localStorage); this command
-   * pushes it to the worker, where the actual OPFS I/O lives. When OPFS is
-   * unavailable the worker no-ops regardless of this flag.
-   */
+  syncRemoveBatchSubjectsFromGraph: { subjects: string[]; graphName?: string };
+  unloadOntologySubjects: { ontologyUrl: string };
 };
 
 export const RDF_WORKER_COMMANDS = [
@@ -453,7 +448,7 @@ const COMMAND_VALIDATORS: Record<RDFWorkerCommandName, CommandValidator> = {
   },
   setNamespaces(payload) {
     assertPlainObject(payload, "setNamespaces payload must be an object");
-    const { namespaces, replace } = payload as SyncNamespacesPayload;
+    const { namespaces, replace } = payload as unknown as SyncNamespacesPayload;
     invariant(isStringRecord(namespaces), "setNamespaces.namespaces must be a string record", {
       namespaces,
     });
@@ -463,7 +458,7 @@ const COMMAND_VALIDATORS: Record<RDFWorkerCommandName, CommandValidator> = {
   },
   setBlacklist(payload) {
     assertPlainObject(payload, "setBlacklist payload must be an object");
-    const { prefixes, uris } = payload as SyncBlacklistPayload;
+    const { prefixes, uris } = payload as unknown as SyncBlacklistPayload;
     assertArray(prefixes, "setBlacklist.prefixes must be an array");
     assertArray(uris, "setBlacklist.uris must be an array");
     for (const prefix of prefixes as unknown[]) {
@@ -478,7 +473,7 @@ const COMMAND_VALIDATORS: Record<RDFWorkerCommandName, CommandValidator> = {
   },
   syncBatch(payload) {
     assertPlainObject(payload, "syncBatch payload must be an object");
-    const { graphName, adds, removes, options } = payload as SyncBatchPayload;
+    const { graphName, adds, removes, options } = payload as unknown as SyncBatchPayload;
     assertString(graphName, "syncBatch.graphName must be a string");
     assertWorkerQuadArray(adds, "syncBatch.adds must contain WorkerQuad entries");
     assertWorkerQuadUpdateArray(removes, "syncBatch.removes must contain WorkerQuadUpdate entries");
@@ -494,7 +489,7 @@ const COMMAND_VALIDATORS: Record<RDFWorkerCommandName, CommandValidator> = {
   },
   syncLoad(payload) {
     assertPlainObject(payload, "syncLoad payload must be an object");
-    const { quads, graphName, prefixes, parsingMeta } = payload as SyncLoadPayload;
+    const { quads, graphName, prefixes, parsingMeta } = payload as unknown as SyncLoadPayload;
     assertWorkerQuadArray(quads, "syncLoad.quads must contain WorkerQuad entries");
     assertString(graphName, "syncLoad.graphName must be a string");
     assertOptionalStringRecord(prefixes, "syncLoad.prefixes must be a string record when provided");
@@ -502,12 +497,12 @@ const COMMAND_VALIDATORS: Record<RDFWorkerCommandName, CommandValidator> = {
   },
   syncRemoveGraph(payload) {
     assertPlainObject(payload, "syncRemoveGraph payload must be an object");
-    const { graphName } = payload as SyncRemoveGraphPayload;
+    const { graphName } = payload as unknown as SyncRemoveGraphPayload;
     assertString(graphName, "syncRemoveGraph.graphName must be a string");
   },
   syncRemoveAllQuadsForIri(payload) {
     assertPlainObject(payload, "syncRemoveAllQuadsForIri payload must be an object");
-    const { iri, graphName, includePredicate } = payload as SyncRemoveAllQuadsForIriPayload;
+    const { iri, graphName, includePredicate } = payload as unknown as SyncRemoveAllQuadsForIriPayload;
     assertString(iri, "syncRemoveAllQuadsForIri.iri must be a string");
     if (typeof graphName !== "undefined") {
       assertString(graphName, "syncRemoveAllQuadsForIri.graphName must be a string when provided");
@@ -521,7 +516,7 @@ const COMMAND_VALIDATORS: Record<RDFWorkerCommandName, CommandValidator> = {
   },
   fetchQuadsPage(payload) {
     assertPlainObject(payload, "fetchQuadsPage payload must be an object");
-    const { graphName, offset, limit, serialize, filter } = payload as FetchQuadsPagePayload;
+    const { graphName, offset, limit, serialize, filter } = payload as unknown as FetchQuadsPagePayload;
     assertString(graphName, "fetchQuadsPage.graphName must be a string");
     assertNumber(offset, "fetchQuadsPage.offset must be a finite number");
     assertNumber(limit, "fetchQuadsPage.limit must be a finite number");
@@ -570,7 +565,7 @@ const COMMAND_VALIDATORS: Record<RDFWorkerCommandName, CommandValidator> = {
   },
   triggerSubjects(payload) {
     assertPlainObject(payload, "triggerSubjects payload must be an object");
-    const { subjects } = payload as TriggerSubjectsPayload;
+    const { subjects } = payload as unknown as TriggerSubjectsPayload;
     assertArray(subjects, "triggerSubjects.subjects must be an array");
     for (const subject of subjects as unknown[]) {
       assertString(subject, "triggerSubjects.subjects entries must be strings");
@@ -606,7 +601,7 @@ const COMMAND_VALIDATORS: Record<RDFWorkerCommandName, CommandValidator> = {
   },
   importSerialized(payload) {
     assertPlainObject(payload, "importSerialized payload must be an object");
-    const { content, graphName, contentType, filename, baseIri } = payload as ImportSerializedPayload;
+    const { content, graphName, contentType, filename, baseIri } = payload as unknown as ImportSerializedPayload;
     assertString(content, "importSerialized.content must be a string");
     assertOptionalString(graphName, "importSerialized.graphName must be a string when provided");
     assertOptionalString(contentType, "importSerialized.contentType must be a string when provided");
@@ -615,13 +610,13 @@ const COMMAND_VALIDATORS: Record<RDFWorkerCommandName, CommandValidator> = {
   },
   exportGraph(payload) {
     assertPlainObject(payload, "exportGraph payload must be an object");
-    const { graphName, format } = payload as ExportGraphPayload;
+    const { graphName, format } = payload as unknown as ExportGraphPayload;
     assertOptionalString(graphName, "exportGraph.graphName must be a string when provided");
     assertOptionalString(format, "exportGraph.format must be a string when provided");
   },
   removeQuadsByNamespace(payload) {
     assertPlainObject(payload, "removeQuadsByNamespace payload must be an object");
-    const { graphName, namespaceUris } = payload as RemoveQuadsByNamespacePayload;
+    const { graphName, namespaceUris } = payload as any as RemoveQuadsByNamespacePayload;
     assertString(graphName, "removeQuadsByNamespace.graphName must be a string");
     assertStringArray(
       namespaceUris,
@@ -630,12 +625,12 @@ const COMMAND_VALIDATORS: Record<RDFWorkerCommandName, CommandValidator> = {
   },
   purgeNamespace(payload) {
     assertPlainObject(payload, "purgeNamespace payload must be an object");
-    const { prefixOrUri } = payload as PurgeNamespacePayload;
+    const { prefixOrUri } = payload as any as PurgeNamespacePayload;
     assertString(prefixOrUri, "purgeNamespace.prefixOrUri must be a string");
   },
   renameNamespaceUri(payload) {
     assertPlainObject(payload, "renameNamespaceUri payload must be an object");
-    const { oldUri, newUri, allNamespaceUris } = payload as RenameNamespaceUriPayload;
+    const { oldUri, newUri, allNamespaceUris } = payload as any as RenameNamespaceUriPayload;
     assertString(oldUri, "renameNamespaceUri.oldUri must be a string");
     assertString(newUri, "renameNamespaceUri.newUri must be a string");
     assertArray(allNamespaceUris, "renameNamespaceUri.allNamespaceUris must be an array");

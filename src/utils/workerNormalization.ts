@@ -22,9 +22,9 @@ export function ensureWorkerTerm(value: WorkerTerm | unknown, context: TermConte
     case "NamedNode":
       return { termType: "NamedNode", value: value.value };
     case "DefaultGraph":
-      return context === "graph" ? { termType: "DefaultGraph" } : coerceDefaultGraphToContext(context);
+      return context === "graph" ? { termType: "DefaultGraph", value: "" } : coerceDefaultGraphToContext(context);
     default:
-      throw new Error(`Unsupported WorkerTerm type '${value.termType}' for context '${context}'`);
+      throw new Error(`Unsupported WorkerTerm type '${(value as any).termType}' for context '${context}'`);
   }
 }
 
@@ -40,13 +40,13 @@ function coerceLiteralToNamedNode(literal: WorkerLiteral, context: TermContext):
   if (context === "object") return literal;
   if (context === "graph") {
     return literal.value === "default"
-      ? { termType: "DefaultGraph" }
+      ? { termType: "DefaultGraph", value: "" }
       : { termType: "NamedNode", value: literal.value };
   }
   return { termType: "NamedNode", value: literal.value };
 }
 
 function coerceDefaultGraphToContext(context: TermContext): WorkerTerm {
-  if (context === "graph") return { termType: "DefaultGraph" };
+  if (context === "graph") return { termType: "DefaultGraph", value: "" };
   return { termType: "NamedNode", value: "" };
 }

@@ -4,6 +4,7 @@
  */
 
 import { LiteralProperty, AnnotationPropertyValue, EntityType, RDFType } from './ontology';
+// @ts-expect-error -- @xyflow/react not installed; types kept for future use
 import type { Node as RFNodeType, Edge as RFEdgeType } from '@xyflow/react';
 
 /**

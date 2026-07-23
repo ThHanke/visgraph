@@ -308,7 +308,7 @@ function normalizeAppConfigInput(value: unknown, context: string): AppConfig {
   };
 }
 
-type Setter = Parameters<Parameters<typeof create<AppConfigStore>>[0]>[0];
+type Setter = (partial: Partial<AppConfigStore> | ((state: AppConfigStore) => Partial<AppConfigStore>)) => void;
 
 function updateConfig(set: Setter, updater: (config: AppConfig) => AppConfig) {
   set((state) => ({ config: updater(state.config) }));

@@ -30,9 +30,9 @@ export function workerQuadsToRdf(wqs: WorkerQuad[]): Quad[] {
         ? f.defaultGraph()
         : f.namedNode(wq.graph.value);
     return f.quad(
-      toTerm(wq.subject) as ReturnType<typeof f.namedNode>,
-      toTerm(wq.predicate) as ReturnType<typeof f.namedNode>,
-      toTerm(wq.object),
+      toTerm(wq.subject) as any,
+      toTerm(wq.predicate) as any,
+      toTerm(wq.object) as any,
       graph
     );
   });

@@ -14,7 +14,7 @@ import type {
   RDFWorkerCommandPayloads,
   WorkerReconcileSubjectSnapshotPayload,
 } from "./rdfManager.workerProtocol";
-import type { WorkerQuad, WorkerQuadUpdate, WorkerTerm } from "./rdfSerialization";
+import type { WorkerQuad, WorkerQuadUpdate, WorkerTerm, WorkerNamedNode } from "./rdfSerialization";
 import {
   isWorkerQuad,
   serializeTerm,
@@ -287,7 +287,7 @@ const normalizeWorkerTerm = (term: WorkerTerm, context: TermContext): WorkerTerm
       return cloneLiteral(term);
     case "DefaultGraph":
     default:
-      if (context === "graph") return { termType: "DefaultGraph" };
+      if (context === "graph") return { termType: "DefaultGraph", value: "" };
       if (context === "object") return { termType: "Literal", value };
       return { termType: "NamedNode", value };
   }
@@ -304,7 +304,7 @@ const extractDatatype = (input: unknown): string | undefined => {
 
 const coerceWorkerTerm = (value: any, context: TermContext): WorkerTerm | null => {
   if (value === null || typeof value === "undefined") {
-    if (context === "graph") return { termType: "DefaultGraph" };
+    if (context === "graph") return { termType: "DefaultGraph", value: "" };
     if (context === "object") return null;
     return null;
   }
@@ -377,7 +377,7 @@ const coerceWorkerTerm = (value: any, context: TermContext): WorkerTerm | null =
 
       if (context === "graph") {
         if (typeHint === "defaultgraph" || raw === "default") {
-          return { termType: "DefaultGraph" };
+          return { termType: "DefaultGraph", value: "" };
         }
         if (typeHint === "bnode" || typeHint === "blank" || typeHint === "blanknode") {
           return normalizeWorkerTerm({ termType: "BlankNode", value: raw }, context);
@@ -400,7 +400,7 @@ const coerceWorkerTerm = (value: any, context: TermContext): WorkerTerm | null =
 
   const str = String(value ?? "").trim();
   if (!str) {
-    if (context === "graph") return { termType: "DefaultGraph" };
+    if (context === "graph") return { termType: "DefaultGraph", value: "" };
     if (context === "object") return null;
     return null;
   }
@@ -416,7 +416,7 @@ const coerceWorkerTerm = (value: any, context: TermContext): WorkerTerm | null =
   }
 
   if (context === "graph") {
-    if (str === "default") return { termType: "DefaultGraph" };
+    if (str === "default") return { termType: "DefaultGraph", value: "" };
     return normalizeWorkerTerm({ termType: "NamedNode", value: str }, context);
   }
 
@@ -437,7 +437,7 @@ const toWorkerGraphTerm = (value: any, fallbackGraph: string): WorkerTerm => {
   const raw = typeof value === "undefined" || value === null ? fallbackGraph : value;
   const term = coerceWorkerTerm(raw, "graph");
   if (!term) {
-    if (fallbackGraph === "default") return { termType: "DefaultGraph" };
+    if (fallbackGraph === "default") return { termType: "DefaultGraph", value: "" };
     return {
       termType: "NamedNode",
       value: String(fallbackGraph || DEFAULT_GRAPH),
@@ -456,7 +456,7 @@ const toWorkerGraphTerm = (value: any, fallbackGraph: string): WorkerTerm => {
     if (fallbackGraph && fallbackGraph !== "default") {
       return { termType: "NamedNode", value: fallbackGraph };
     }
-    return { termType: "DefaultGraph" };
+    return { termType: "DefaultGraph", value: "" };
   }
   return {
     termType: "NamedNode",
@@ -1348,7 +1348,7 @@ export class RDFManagerImpl {
       adds: [
         {
           subject: subjectTerm,
-          predicate: predicateTerm,
+          predicate: predicateTerm as WorkerNamedNode,
           object: objectTerm,
           graph: graphTerm,
         },
@@ -1366,7 +1366,7 @@ export class RDFManagerImpl {
     if (!subjectTerm || !predicateTerm) return;
     const update: WorkerQuadUpdate = {
       subject: subjectTerm,
-      predicate: predicateTerm,
+      predicate: predicateTerm as WorkerNamedNode,
       graph: toWorkerGraphTerm(graphName, graphName),
     };
     const objectTerm = toWorkerObjectTerm(object);
@@ -1402,7 +1402,7 @@ export class RDFManagerImpl {
           if (!subject || !predicate || !object) continue;
           payload.adds.push({
             subject,
-            predicate,
+            predicate: predicate as WorkerNamedNode,
             object,
             graph: toWorkerGraphTerm(entry?.graph ?? entry?.g, graphName),
           });
@@ -1420,7 +1420,7 @@ export class RDFManagerImpl {
           if (!subject || !predicate) continue;
           const removal: WorkerQuadUpdate = {
             subject,
-            predicate,
+            predicate: predicate as WorkerNamedNode,
             graph: toWorkerGraphTerm(entry?.graph ?? entry?.g, graphName),
           };
           const objectSource = entry?.object ?? entry?.o ?? entry?.value;

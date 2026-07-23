@@ -23,7 +23,7 @@ describe('workerQuadsToRdf', () => {
     };
     const [q] = workerQuadsToRdf([wq as any]);
     expect(q.object.termType).toBe('Literal');
-    expect(q.object.language).toBe('en');
+    expect((q.object as any).language).toBe('en');
   });
   it('converts a blank node', () => {
     const wq = {

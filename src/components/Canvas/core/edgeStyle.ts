@@ -1,3 +1,4 @@
+// @ts-expect-error -- @xyflow/react not installed; this file is unused dead code
 import { MarkerType } from "@xyflow/react";
 
 /**

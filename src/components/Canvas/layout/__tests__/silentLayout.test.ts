@@ -17,7 +17,7 @@ const respectsFixed: LayoutFunction = async (graph, state) => {
 
 // Mock engine that ignores fixed flag (moves all nodes)
 const ignoresFixed: LayoutFunction = async (_graph, state) => {
-  const bounds: LayoutState['bounds'] = {};
+  const bounds: Record<string, { x: number; y: number; width: number; height: number }> = {};
   for (const [id, b] of Object.entries(state.bounds)) {
     bounds[id] = { x: b.x + 999, y: b.y + 999, width: b.width, height: b.height };
   }
@@ -96,7 +96,7 @@ describe('runSilentLayout', () => {
   });
 
   it('passes fixed flag and all edges to engine', async () => {
-    const spy = vi.fn<Parameters<LayoutFunction>, ReturnType<LayoutFunction>>(
+    const spy = vi.fn<LayoutFunction>(
       async (_graph, state) => ({ bounds: state.bounds })
     );
 
@@ -111,7 +111,7 @@ describe('runSilentLayout', () => {
     );
 
     expect(spy).toHaveBeenCalledOnce();
-    const [graph] = spy.mock.calls[0];
+    const [graph] = spy.mock.calls[0] as [LayoutGraph, LayoutState];
 
     // All nodes passed including fixed
     expect(Object.keys(graph.nodes)).toContain('a');
@@ -132,7 +132,7 @@ describe('runSilentLayout', () => {
   });
 
   it('all fixed → seeds returned, engine not called', async () => {
-    const spy = vi.fn<Parameters<LayoutFunction>, ReturnType<LayoutFunction>>(
+    const spy = vi.fn<LayoutFunction>(
       async (_g, s) => ({ bounds: s.bounds })
     );
 

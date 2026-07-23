@@ -83,7 +83,7 @@ function elkAlgorithmOptions(algorithm: string, spacing: number): Record<string,
 }
 
 export function createElkLayout(
-  algorithm: 'layered' | 'force' | 'stress',
+  algorithm: 'layered' | 'force' | 'stress' | 'radial',
   spacing: number
 ): LayoutFunction {
   return async (graph: LayoutGraph, state: LayoutState): Promise<LayoutState> => {
@@ -110,7 +110,7 @@ export function createElkLayout(
 async function runElk(
   graph: LayoutGraph,
   state: LayoutState,
-  algorithm: 'layered' | 'force' | 'stress',
+  algorithm: 'layered' | 'force' | 'stress' | 'radial',
   spacing: number
 ): Promise<LayoutState> {
   const worker = new Worker(

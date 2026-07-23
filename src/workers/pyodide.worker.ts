@@ -1,3 +1,4 @@
+/// <reference lib="webworker" />
 /**
  * @fileoverview Pyodide web worker entry point
  * Executes Python code in a separate thread using Pyodide

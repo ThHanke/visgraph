@@ -77,7 +77,8 @@ describe("Konclude DL reasoning: reasoning-demo.ttl", () => {
         ),
       ).toBe(true);
 
-      // Direct hierarchy edges echoed from source
+      // v0.6.9+: echoed source triples are no longer returned — Employee subClassOf Person
+      // is asserted in source, so it must NOT appear in inferred graph.
       expect(
         inferred.some(
           (q) =>
@@ -85,9 +86,9 @@ describe("Konclude DL reasoning: reasoning-demo.ttl", () => {
             q.predicate.value === RDFS_SUB_CLASS_OF &&
             q.object.value === `${EX}Person`,
         ),
-      ).toBe(true);
+      ).toBe(false);
 
-      // Lock in echo count — count assertions last so per-construct checks run first
+      // Lock in count — v0.6.9 returns 12 genuinely new triples, 0 echoed
       const sourceKeys = new Set(
         store
           .getQuads(null, null, null, N3.DataFactory.defaultGraph())
@@ -97,8 +98,8 @@ describe("Konclude DL reasoning: reasoning-demo.ttl", () => {
         sourceKeys.has(`${q.subject.value} ${q.predicate.value} ${q.object.value}`),
       );
       console.log("[TEST] classify() echoed:", echoed.length, "| genuinely new:", inferred.length - echoed.length);
-      expect(inferred.length).toBe(13);
-      expect(echoed.length).toBe(1);
+      expect(inferred.length).toBe(12);
+      expect(echoed.length).toBe(0);
     },
     30000,
   );
@@ -183,7 +184,7 @@ describe("Konclude DL reasoning: reasoning-demo.ttl", () => {
       expect(inferred.some((q) => q.subject.value === `${EX}aliceCEO` && q.predicate.value === RDF_TYPE && q.object.value === `${EX}Executive`),
         "aliceCEO rdf:type Executive (sameAs ex:alice propagates alice's types)").toBe(true);
 
-      // Lock in totals — count assertions last so all per-construct checks run first
+      // Lock in totals — v0.6.9 returns 53 genuinely new triples, 0 echoed
       const sourceKeys = new Set(
         store
           .getQuads(null, null, null, N3.DataFactory.defaultGraph())
@@ -193,9 +194,8 @@ describe("Konclude DL reasoning: reasoning-demo.ttl", () => {
         sourceKeys.has(`${q.subject.value} ${q.predicate.value} ${q.object.value}`),
       );
       console.log("[TEST] materialize() echoed:", echoed.length, "| genuinely new:", inferred.length - echoed.length);
-      expect(inferred.length).toBe(70);
-      expect(echoed.length).toBe(17);
-      expect(inferred.length - echoed.length).toBe(53);
+      expect(inferred.length).toBe(53);
+      expect(echoed.length).toBe(0);
     },
     30000,
   );

@@ -188,7 +188,7 @@ function applySettingsPatch(current: Settings, patch: Partial<Settings>, context
 }
 
 function withSettingsUpdate(
-  set: Parameters<Parameters<typeof create<SettingsStore>>[0]>[0],
+  set: (partial: Partial<SettingsStore> | ((state: SettingsStore) => Partial<SettingsStore>)) => void,
   updater: (settings: Settings) => Settings,
 ) {
   set((state) => ({ settings: updater(state.settings) }));
