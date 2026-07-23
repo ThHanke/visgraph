@@ -77,8 +77,8 @@
 
   <!-- Row 3: MCP Server -->
   <rect x="30" y="180" width="495" height="52" class="box mcp-box" />
-  <text x="275" y="202" text-anchor="middle" class="label label-md">MCP Server (34 Tools via navigator.modelContext)</text>
-  <text x="275" y="217" text-anchor="middle" class="label label-xs">Graph Mgmt | Node Ops | Link Ops | Layout | Reasoning | Namespaces | SHACL Validation</text>
+  <text x="275" y="202" text-anchor="middle" class="label label-md">MCP Server (42 Tools via navigator.modelContext)</text>
+  <text x="275" y="217" text-anchor="middle" class="label label-xs">Graph Mgmt | Node Ops | Link Ops | Layout | Reasoning | Namespaces | SHACL | Provenance</text>
 
   <!-- Arrows from Row 2 down to MCP -->
   <line x1="90" y1="164" x2="90" y2="180" class="arrow" />

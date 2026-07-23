@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ZIP_NAME="ontosphere-iswc2026-paper.zip"
+VARIANT="${1:-short}"  # "short" (index.html) or "demo" (demo.html)
+case "$VARIANT" in
+  short) ZIP_NAME="ontosphere-dmkg2026-short.zip"; HTML_FILE="index.html"; PDF_NAME="ontosphere-dmkg2026-short.pdf" ;;
+  demo)  ZIP_NAME="ontosphere-dmkg2026-demo.zip";  HTML_FILE="demo.html";  PDF_NAME="ontosphere-dmkg2026-demo.pdf"  ;;
+  *)     echo "Usage: $0 [short|demo]" >&2; exit 1 ;;
+esac
 PAPER_DIR="dist/paper"
 TMPDIR=""
 
@@ -16,8 +21,8 @@ trap cleanup EXIT
 echo "Building project..."
 npm run build --silent
 
-if [ ! -f "$PAPER_DIR/index.html" ]; then
-  echo "ERROR: $PAPER_DIR/index.html not found after build." >&2
+if [ ! -f "$PAPER_DIR/$HTML_FILE" ]; then
+  echo "ERROR: $PAPER_DIR/$HTML_FILE not found after build." >&2
   exit 1
 fi
 
@@ -25,7 +30,7 @@ fi
 # Check <link> tags (ignore canonical/meta), <script src=>, and <img src=>
 # that reference external URLs (http/https).
 EXTERNAL=$(grep -oP '<(link|script|img)\b[^>]*(src|href)="https?://[^"]*"' \
-  "$PAPER_DIR/index.html" \
+  "$PAPER_DIR/$HTML_FILE" \
   | grep -v 'rel="canonical"' \
   || true)
 
@@ -65,9 +70,8 @@ with zipfile.ZipFile(dst, 'w', zipfile.ZIP_DEFLATED) as zf:
 " "$TMPDIR" "$ZIP_NAME"
 
 # --- Generate PDF via Playwright + dokieli print styles ---------------
-PDF_NAME="ontosphere-iswc2026-paper.pdf"
 echo ""
-echo "Generating PDF via Playwright (dokieli @media print styles)..."
+echo "Generating PDF for $VARIANT ($HTML_FILE) via Playwright..."
 
 PAPER_PORT=8766
 python3 -m http.server $PAPER_PORT --directory "$PAPER_DIR" --bind 127.0.0.1 &>/dev/null &
@@ -79,7 +83,7 @@ const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage();
-  await page.goto('http://127.0.0.1:${PAPER_PORT}/', { waitUntil: 'networkidle' });
+  await page.goto('http://127.0.0.1:${PAPER_PORT}/${HTML_FILE}', { waitUntil: 'networkidle' });
   await page.pdf({
     path: '${PDF_NAME}',
     format: 'A4',

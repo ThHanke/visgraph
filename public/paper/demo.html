@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Ontosphere Demo: Browser-Based OWL Reasoning and SHACL Correction for PMDco Data Quality</title>
+  <link rel="canonical" href="https://thhanke.github.io/ontosphere/paper/demo.html" />
+  <link href="media/css/lncs.css" media="all" rel="stylesheet" title="LNCS" />
+  <link href="media/css/dokieli.css" rel="stylesheet" media="all" />
+  <script src="scripts/dokieli.js"></script>
+  <style>
+#generative-ai-declaration h2:before { content:""; }
+a { color:#000; text-decoration:underline; }
+section a.ref { text-decoration:none; }
+figure video { max-width:100%; width:100%; }
+#author-orcid { font-size:0.846em; }
+article footer { text-align:center; margin-top:2em; }
+article footer p { font-size:0.846em; color:#555; text-indent:0; }
+@media print {
+  a[href]::after { content:none !important; }
+  video { display:none !important; }
+}
+  </style>
+</head>
+
+<body about="" typeof="schema:CreativeWork prov:Entity"
+  prefix="
+    rdf: http://www.w3.org/1999/02/22-rdf-syntax-ns#
+    rdfs: http://www.w3.org/2000/01/rdf-schema#
+    owl: http://www.w3.org/2002/07/owl#
+    xsd: http://www.w3.org/2001/XMLSchema#
+    dcterms: http://purl.org/dc/terms/
+    dctypes: http://purl.org/dc/dcmitype/
+    foaf: http://xmlns.com/foaf/0.1/
+    schema: http://schema.org/
+    prov: http://www.w3.org/ns/prov#
+    sioc: http://rdfs.org/sioc/ns#
+    bibo: http://purl.org/ontology/bibo/
+    cito: http://purl.org/spar/cito/
+    deo: http://purl.org/spar/deo/
+    doco: http://purl.org/spar/doco/
+    fabio: http://purl.org/spar/fabio/
+    oa: http://www.w3.org/ns/oa#
+    as: https://www.w3.org/ns/activitystreams#
+  ">
+
+  <main>
+    <article about="" typeof="schema:ScholarlyArticle">
+
+      <h1 property="schema:name">Ontosphere Demo: Browser-Based OWL Reasoning and SHACL Correction for PMDco Data Quality</h1>
+
+      <div id="authors">
+        <dl id="author-name">
+          <dt>Authors</dt>
+          <dd id="author-1">
+            <span about="" rel="schema:creator schema:publisher schema:author">
+              <a about="#thomas-hanke" typeof="schema:Person"
+                 rel="schema:url" property="schema:name"
+                 href="https://orcid.org/0000-0003-1649-6832">Thomas Hanke</a>
+            </span>
+          </dd>
+          <dd id="author-2">
+            <span about="" rel="schema:creator schema:author">
+              <a about="#sai-teja-potu" typeof="schema:Person"
+                 rel="schema:url" property="schema:name"
+                 href="https://orcid.org/0009-0007-7468-3544">Sai Teja Potu</a>
+            </span>
+          </dd>
+        </dl>
+
+        <ul id="author-org">
+          <li id="author-org-1">
+            <span about="#thomas-hanke" rel="schema:memberOf" resource="#fraunhofer-iwm"></span>
+            <span about="#sai-teja-potu" rel="schema:memberOf" resource="#fraunhofer-iwm"></span>
+            <a about="#fraunhofer-iwm" typeof="schema:Organization"
+               property="schema:name" rel="schema:url"
+               href="https://www.iwm.fraunhofer.de/">Fraunhofer Institute for Mechanics of Materials IWM</a>,
+            <span class="adr">
+              <span class="locality">Freiburg</span>,
+              <span class="country-name">Germany</span>
+            </span>
+          </li>
+        </ul>
+
+        <ul id="author-orcid">
+          <li>
+            <img src="media/orcid_16x16.png"
+                 alt="ORCID" width="16" height="16" style="vertical-align: text-bottom;" />
+            <a about="#thomas-hanke" rel="owl:sameAs"
+               href="https://orcid.org/0000-0003-1649-6832">https://orcid.org/0000-0003-1649-6832</a>
+          </li>
+          <li>
+            <img src="media/orcid_16x16.png"
+                 alt="ORCID" width="16" height="16" style="vertical-align: text-bottom;" />
+            <a about="#sai-teja-potu" rel="owl:sameAs"
+               href="https://orcid.org/0009-0007-7468-3544">https://orcid.org/0009-0007-7468-3544</a>
+          </li>
+        </ul>
+
+        <p id="identifier">
+          Identifier: <a href="https://thhanke.github.io/ontosphere/paper/demo.html">https://thhanke.github.io/ontosphere/paper/demo.html</a>
+        </p>
+      </div>
+
+      <div id="content">
+
+        <!-- Abstract -->
+        <section id="abstract">
+          <h2>Abstract</h2>
+          <div datatype="rdf:HTML" property="schema:abstract">
+            <p>We demonstrate <em>Ontosphere</em>, a zero-install, browser-based semantic web workbench that combines OWL&nbsp;2&nbsp;DL reasoning, SHACL validation, visual graph authoring, and AI-agent integration in a single client-side application. The demonstration walks through a data-quality correction workflow using the Platform MaterialDigital Core Ontology (PMDco): loading a chemical-composition dataset, classifying it with the Konclude reasoner compiled to WebAssembly, discovering a SHACL violation activated by reasoning-derived types, correcting the data through visual authoring, and exporting the validated result. The entire workflow executes in the browser without server infrastructure. A screencast (~4&thinsp;min) and the live system are publicly available.</p>
+          </div>
+        </section>
+
+        <!-- Keywords -->
+        <section id="keywords">
+          <h2>Keywords</h2>
+          <div>
+            <ul>
+              <li property="schema:about">OWL 2 DL Reasoning</li>
+              <li property="schema:about">SHACL Validation</li>
+              <li property="schema:about">Knowledge Graph Quality</li>
+              <li property="schema:about">Materials Science Ontologies</li>
+              <li property="schema:about">Browser-Based Tools</li>
+            </ul>
+          </div>
+        </section>
+
+        <!-- 1. Introduction -->
+        <section id="introduction" rel="schema:hasPart" resource="#introduction">
+          <h2 property="schema:name">Introduction</h2>
+          <div datatype="rdf:HTML" property="schema:description">
+            <p>Quality assurance for ontology-conformant data in materials science requires both logical reasoning (to infer implicit types) and constraint validation (to check data shapes). These operations traditionally depend on desktop tools like Prot&eacute;g&eacute;&nbsp;<a class="ref" href="#ref-8">[8]</a> or server-hosted platforms, creating friction in collaborative and educational settings.</p>
+            <p>Ontosphere&nbsp;<a class="ref" href="#ref-1">[1]</a> addresses this by running a complete OWL&nbsp;2&nbsp;DL reasoner (Konclude&nbsp;<a class="ref" href="#ref-2">[2]</a>, compiled to WebAssembly) alongside SHACL validation and visual graph authoring in a single browser tab. In this demonstration, we show how reasoning-activated SHACL constraints expose data-quality gaps that would remain hidden without classification, and how domain experts can correct these gaps interactively.</p>
+          </div>
+        </section>
+
+        <!-- 2. System Overview -->
+        <section id="system-overview" rel="schema:hasPart" resource="#system-overview">
+          <h2 property="schema:name">System Overview</h2>
+          <div datatype="rdf:HTML" property="schema:description">
+            <p>Ontosphere (v1.7.2) is a Vite-bundled React single-page application in which all computation occurs client-side. Its architecture comprises:</p>
+            <ul>
+              <li><strong>N3.js quad store</strong>&nbsp;<a class="ref" href="#ref-3">[3]</a> &mdash; five principal named graphs (asserted data, loaded ontologies, inferred triples, SHACL shapes, PROV-O provenance).</li>
+              <li><strong>Konclude WASM reasoner</strong>&nbsp;<a class="ref" href="#ref-2">[2]</a> &mdash; full SROIQ(D) classification in a SharedArrayBuffer-backed Web Worker, with laconic justifications&nbsp;<a class="ref" href="#ref-7">[7]</a> for inconsistencies and arbitrary entailments, plus axiom-weakening repairs.</li>
+              <li><strong>SHACL validation</strong> via shacl-engine&nbsp;<a class="ref" href="#ref-6">[6]</a> &mdash; executes automatically after OWL inference; inferred triples are materialised into the store before validation, ensuring that reasoning-derived types are subject to shape constraints.</li>
+              <li><strong>Reactodia canvas</strong>&nbsp;<a class="ref" href="#ref-4">[4]</a> &mdash; visual graph editor with always-on authoring, TBox/ABox views, and halo-drag edge creation.</li>
+              <li><strong>42-tool MCP server</strong>&nbsp;<a class="ref" href="#ref-5">[5]</a> &mdash; exposes all operations to AI agents via the Model Context Protocol, with PROV-O provenance tracking.</li>
+            </ul>
+
+            <figure id="fig-architecture">
+              <img src="media/architecture.svg" alt="Ontosphere system architecture" />
+              <figcaption>System architecture. All components run client-side; only the AI chat interface is external.</figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <!-- 3. Demonstration -->
+        <section id="demonstration" rel="schema:hasPart" resource="#demonstration">
+          <h2 property="schema:name">Demonstration</h2>
+          <div datatype="rdf:HTML" property="schema:description">
+            <p>The demonstration (<a href="https://thhanke.github.io/ontosphere/demo-videos/iswc2026-comprehensive.mp4">screencast, ~4&thinsp;min</a>) follows a data-quality correction story using real-world materials-science data from the PMD Core Ontology (PMDCO). The live system is available at <a href="https://thhanke.github.io/ontosphere/">https://thhanke.github.io/ontosphere/</a>.</p>
+
+            <figure id="fig-demo-video">
+              <video controls width="100%" preload="metadata">
+                <source src="https://thhanke.github.io/ontosphere/demo-videos/iswc2026-comprehensive.mp4" type="video/mp4" />
+                <p>Demo video: <a href="https://thhanke.github.io/ontosphere/demo-videos/iswc2026-comprehensive.mp4">download mp4</a></p>
+              </video>
+              <figcaption>Screencast of the demonstration (~4&thinsp;min).</figcaption>
+            </figure>
+
+            <p>The workflow proceeds in five steps:</p>
+            <ol>
+              <li><strong>Load.</strong> The presenter opens Ontosphere with a <code>?url=</code> parameter pointing to a PMDCO chemical-composition dataset describing a silicon&ndash;iron alloy. Labels are resolved via the ontology autocomplete registry, and bundled SHACL shapes for ontology quality checking are loaded.</li>
+              <li><strong>Classify.</strong> Konclude classifies the PMDCO hierarchy. The silicon portion (<code>some_silicon</code>) is inferred to be a <code>pmdco:Semiconductor</code> based on its material composition &mdash; a type not explicitly asserted in the source data. Inferred triples appear as amber dashed edges on the canvas.</li>
+              <li><strong>Validate.</strong> SHACL validation runs automatically after reasoning. Because <code>some_silicon</code> is now typed as a <code>pmdco:Semiconductor</code>, a previously inactive shape constraint activates and reports a violation: the required <code>has&nbsp;quality</code> relationship is missing.</li>
+              <li><strong>Correct.</strong> The presenter creates a new quality class and individual via visual authoring, then draws the missing <code>has&nbsp;quality</code> edge using a halo drag. This is a domain-expert correction &mdash; only a materials scientist can decide what quality to assign.</li>
+              <li><strong>Export.</strong> Re-running reasoning confirms all constraints are satisfied. The corrected dataset is exported in Turtle, JSON-LD, or RDF/XML, preserving both the expert&rsquo;s asserted correction and the reasoner&rsquo;s inferred classification.</li>
+            </ol>
+            <p>The key insight is that reasoning and validation are complementary: OWL classification reveals implicit types, which in turn activate SHACL constraints that expose data-quality gaps invisible to validation alone.</p>
+          </div>
+        </section>
+
+        <!-- 4. Availability -->
+        <section id="availability" rel="schema:hasPart" resource="#availability">
+          <h2 property="schema:name">Availability</h2>
+          <div datatype="rdf:HTML" property="schema:description">
+            <p>Ontosphere is deployed at <a href="https://thhanke.github.io/ontosphere/">https://thhanke.github.io/ontosphere/</a> and released under the Apache&nbsp;2.0 licence. Source code is available at <a href="https://github.com/ThHanke/ontosphere">https://github.com/ThHanke/ontosphere</a>. Per-feature screencasts cover <a href="https://thhanke.github.io/ontosphere/demo-videos/feat-loading.mp4">loading</a> (68&thinsp;s), <a href="https://thhanke.github.io/ontosphere/demo-videos/feat-exploration.mp4">exploration</a> (90&thinsp;s), <a href="https://thhanke.github.io/ontosphere/demo-videos/feat-authoring.mp4">authoring</a> (103&thinsp;s), <a href="https://thhanke.github.io/ontosphere/demo-videos/feat-clustering.mp4">clustering</a> (43&thinsp;s), <a href="https://thhanke.github.io/ontosphere/demo-videos/feat-reasoning.mp4">reasoning</a> (141&thinsp;s), <a href="https://thhanke.github.io/ontosphere/demo-videos/feat-shacl.mp4">SHACL</a> (85&thinsp;s), and <a href="https://thhanke.github.io/ontosphere/demo-videos/feat-ai-relay.mp4">AI relay</a> (65&thinsp;s).</p>
+          </div>
+        </section>
+
+        <!-- Acknowledgements -->
+        <section id="acknowledgements">
+          <h2>Acknowledgements</h2>
+          <div datatype="rdf:HTML" property="schema:description">
+            <p>Ontosphere builds on several open-source projects: Konclude&nbsp;<a class="ref" href="#ref-2">[2]</a>, Reactodia&nbsp;<a class="ref" href="#ref-4">[4]</a>, N3.js&nbsp;<a class="ref" href="#ref-3">[3]</a>, and shacl-engine&nbsp;<a class="ref" href="#ref-6">[6]</a>. This work was supported by the Fraunhofer Institute for Mechanics of Materials&nbsp;IWM.</p>
+          </div>
+        </section>
+
+        <!-- Declaration on Generative AI -->
+        <section id="generative-ai-declaration">
+          <h2>Declaration on Generative AI</h2>
+          <div datatype="rdf:HTML" property="schema:description">
+            <p>During the preparation of this work, the author used Claude (Anthropic) for grammar and spelling checks, style improvements, and verifying factual consistency of feature descriptions against the codebase. The author reviewed and edited the content as needed and takes full responsibility for the publication&rsquo;s content.</p>
+          </div>
+        </section>
+
+        <!-- References -->
+        <section id="references">
+          <h2>References</h2>
+          <div>
+            <ol>
+              <li id="ref-1" property="schema:citation">Hanke, T.: Ontosphere: A Zero-Install Semantic Web Workbench with In-Browser OWL 2 DL Reasoning. <a href="https://thhanke.github.io/ontosphere/paper/">https://thhanke.github.io/ontosphere/paper/</a> (2026).</li>
+              <li id="ref-2" property="schema:citation">Steigmiller, A., Liebig, T., Glimm, B.: Konclude: System description. <em>J. Web Semantics</em> 27&ndash;28, 78&ndash;85 (2014). <a href="https://doi.org/10.1016/j.websem.2014.06.003">https://doi.org/10.1016/j.websem.2014.06.003</a></li>
+              <li id="ref-3" property="schema:citation">Verborgh, R., Taelman, R.: N3.js: An open-source JavaScript library for RDF. <a href="https://github.com/rdfjs/N3.js">https://github.com/rdfjs/N3.js</a></li>
+              <li id="ref-4" property="schema:citation">Mouromtsev, D., Pavlov, D., Emelyanov, Y., Morozov, A., Razdyakonov, D., Galkin, M.: The Simple Web-based Tool for Visualization and Sharing of Semantic Data and Ontologies. In: ISWC 2015 Posters &amp; Demos (2015).</li>
+              <li id="ref-5" property="schema:citation">Anthropic: Model Context Protocol Specification. <a href="https://modelcontextprotocol.io">https://modelcontextprotocol.io</a> (2024).</li>
+              <li id="ref-6" property="schema:citation">Bergwinkl, T.: shacl-engine: A fast RDF/JS SHACL engine. <a href="https://github.com/rdf-ext/shacl-engine">https://github.com/rdf-ext/shacl-engine</a> (2023).</li>
+              <li id="ref-7" property="schema:citation">Horridge, M., Parsia, B., Sattler, U.: Laconic and Precise Justifications in OWL. In: ISWC 2008, pp.&nbsp;323&ndash;338. Springer (2008). <a href="https://doi.org/10.1007/978-3-540-88564-1_21">https://doi.org/10.1007/978-3-540-88564-1_21</a></li>
+              <li id="ref-8" property="schema:citation">Musen, M.A.: The Prot&eacute;g&eacute; project: A look back and a look forward. <em>AI Matters</em> 1(4), 4&ndash;12 (2015). <a href="https://doi.org/10.1145/2757001.2757003">https://doi.org/10.1145/2757001.2757003</a></li>
+            </ol>
+          </div>
+        </section>
+
+      </div><!-- #content -->
+
+      <footer>
+        <p>
+          Live demo:
+          <a about="" rel="schema:url" href="https://thhanke.github.io/ontosphere/">https://thhanke.github.io/ontosphere/</a>
+          <br />
+          DOI:
+          <a about="" rel="bibo:doi schema:identifier" href="https://doi.org/10.5281/zenodo.19605270">10.5281/zenodo.19605270</a>
+          <br />
+          Source:
+          <a about="" rel="schema:codeRepository" href="https://github.com/ThHanke/ontosphere">https://github.com/ThHanke/ontosphere</a>
+        </p>
+        <p>
+          Submitted to DMKG 2026: 5th International Workshop on Data Management for Knowledge Graphs, co-located with ISWC 2026, October 25&ndash;26, 2026, Bari, Italy.
+        </p>
+        <p>
+          &copy; 2026 Copyright for this paper by its author. Use permitted under Creative Commons License Attribution 4.0 International
+          (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>).
+        </p>
+      </footer>
+
+    </article>
+  </main>
+
+</body>
+</html>
