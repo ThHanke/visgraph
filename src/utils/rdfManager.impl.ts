@@ -160,16 +160,21 @@ const resolveJsonLdContexts = async (
     if (typeof entry !== "string") return entry;
     if (!entry.startsWith("http://") && !entry.startsWith("https://")) return entry;
     contextUrls.push(entry);
-    // Upgrade http→https to avoid Firefox CORS failures on 301 redirects
-    const fetchUrl = entry.startsWith("http://") ? entry.replace("http://", "https://") : entry;
-    try {
-      const resp = await fetchFn(fetchUrl, { Accept: "application/ld+json, application/json" }, signal);
-      if (!resp.ok) return entry;
-      const body = await resp.json();
-      return body?.["@context"] ?? body;
-    } catch {
-      return entry;
+    // Try https first to avoid Firefox CORS failures on 301 redirects,
+    // then fall back to the original scheme so plain http sources still work.
+    const httpsUrl = entry.startsWith("http://") ? entry.replace("http://", "https://") : entry;
+    const urlsToTry = httpsUrl !== entry ? [httpsUrl, entry] : [entry];
+    for (const url of urlsToTry) {
+      try {
+        const resp = await fetchFn(url, { Accept: "application/ld+json, application/json" }, signal);
+        if (!resp.ok) continue;
+        const body = await resp.json();
+        return body?.["@context"] ?? body;
+      } catch {
+        continue;
+      }
     }
+    return entry;
   };
 
   if (Array.isArray(ctx)) {
