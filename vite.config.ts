@@ -26,7 +26,7 @@ function coiHeadersPlugin(): Plugin {
 
 
 export default defineConfig({
-  base: process.env.NODE_ENV === 'production' ? '/ontosphere/' : '/',
+  base: process.env.VITE_BASE_PATH ?? (process.env.NODE_ENV === 'production' ? '/ontosphere/' : '/'),
   // Dev server settings (keep for local development)
   server: {
     host: "::",

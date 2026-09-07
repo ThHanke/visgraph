@@ -799,8 +799,19 @@ npm run typecheck:ratchet  # TypeScript error ratchet
 # Build the image
 docker build -t ontosphere:latest .
 
-# Run the static server (opens on http://localhost:8080)
+# Run the static server (HTTPS on https://localhost:8080)
 docker run --rm -p 8080:8080 ontosphere:latest
+```
+
+The container serves **HTTPS with a self-signed certificate** by default so that
+`SharedArrayBuffer` (required by the OWL WASM reasoner) works on remote hostnames,
+not just `localhost`. Your browser will show a certificate warning on first visit —
+accept it to proceed.
+
+To disable HTTPS and serve plain HTTP instead (OWL reasoner will only work on `localhost`):
+
+```sh
+docker run --rm -p 8080:8080 -e HTTPS=false ontosphere:latest
 ```
 
 The Dockerfile uses a two-stage build (Node 22 slim builder → Node 22 slim server) and pins

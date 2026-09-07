@@ -1105,6 +1105,9 @@ export default function ReactodiaCanvas() {
         u.searchParams.get('rdfUrl') ||
         u.searchParams.get('vg_url') ||
         '';
+      if (startupUrl && window.location.protocol === 'https:' && startupUrl.startsWith('http://')) {
+        startupUrl = startupUrl.replace(/^http:\/\//, 'https://');
+      }
       startupApiKey = u.searchParams.get('apiKey') || '';
       startupApiKeyHeader = u.searchParams.get('apiKeyHeader') || '';
       shaclShapesParam = u.searchParams.get('shaclShapes') || '';
