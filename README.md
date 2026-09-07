@@ -294,6 +294,10 @@ Ontosphere validates RDF data against [SHACL](https://www.w3.org/TR/shacl/) (Sha
 
 SHACL validation runs automatically as part of the reasoning pipeline. After reasoning completes, the reasoning report shows SHACL violations alongside OWL inferences, with **SHACL** / **OWL** source badges on each finding. Only SHACL errors (severity `sh:Violation`) mark the data as invalid; warnings (`sh:Warning`) and info-level findings do not.
 
+Both property-based constraints (`sh:property`) and SPARQL-based constraints (`sh:sparql`) are supported. SPARQL constraints let you express checks that go beyond the built-in constraint components — any SELECT query returning `$this` bindings will flag matching focus nodes as violations.
+
+> **Note on `sh:severity`:** per the SHACL spec, `sh:severity` is declared on the *shape* (the `sh:NodeShape` or `sh:PropertyShape`), not inside the `sh:sparql` node. A `sh:severity` triple placed inside the SPARQL constraint block is ignored by the engine.
+
 Affected nodes display validation badges directly on the canvas — red for errors, amber for warnings. Clicking a finding in the reasoning report navigates to the affected node.
 
 ### Loading shapes

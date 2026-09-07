@@ -1069,7 +1069,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
       import("@rdfjs/dataset") as Promise<any>,
     ]);
     const { Validator } = shaclMod;
-    const { targetResolvers } = sparqlMod;
+    const { targetResolvers, validations } = sparqlMod;
     const factory = dataModelMod.default ?? dataModelMod;
     const dataset = datasetMod.default?.dataset ?? datasetMod.dataset;
 
@@ -1096,7 +1096,7 @@ export function createRdfWorkerRuntime(postMessage: (message: unknown) => void):
       (q: any) => q.predicate.value === RDF_TYPE && q.object.value === SH_NODESHAPE,
     ).length;
 
-    const validator = new Validator(shapesDs, { factory, targetResolvers });
+    const validator = new Validator(shapesDs, { factory, targetResolvers, validations });
     let report: any;
     try {
       report = await validator.validate({ dataset: dataDs });
